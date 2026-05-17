@@ -41,6 +41,7 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - `cookies()` is now part of that same shared-metadata move: browser, session, and `WebPage` expose Rust-owned cookie data and Python only adapts the result shape.
 - Session response metadata has moved further down as well: `raw_data` and `encoding` now come from the Rust core and Python only forwards them.
 - Browser download-path configuration now comes from Rust too: launch options and runtime setters call CDP `Browser.setDownloadBehavior`, Python only forwards the path, and download completion waiting is handled in Rust instead of Python-side polling loops.
+- Browser-side listener coverage now has a Rust-owned first pass too: page-scoped request/response/failure packet capture plus `start / wait / clear / stop` live in the Rust core, and Python only exposes thin compatibility wrappers around those objects.
 
 ## Errors Encountered
 - `uvx` was not on the reduced PATH inside scripted commands; resolved by using `uv tool run maturin`.
@@ -53,6 +54,7 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Parallel browser launches can fight over Chromium's default temp profile lock; verification now treats browser examples/tests as serial checks.
 - Public `httpbin` endpoints can occasionally return a transient non-success status; verification now retries those requests in tests/examples instead of treating one external blip as a core regression.
 - `run_checks.sh` originally trusted whatever Rust extension was already installed in `python/.venv`; it now rebuilds and reinstalls the local extension first so Python verification cannot pass against stale artifacts.
+- The first listener implementation hit a borrow-checker conflict when draining timed-out packets; resolved by capturing the queue length before the mutable drain call.
 
 ## Completion Audit
 - Required root layout:
@@ -69,10 +71,11 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
   - `WebPage` orchestration lives in Rust
   - snapshot traversal and selected metadata live in Rust
   - cookie sync plus `cookies()` / `raw_data` / `encoding` exposure now live in Rust
+  - page-scoped network listener now lives in Rust and is reachable from both `ChromiumPage` and driver-mode `WebPage`
   - browser download-path configuration, download waiting, and local file download now live in Rust
 - Still missing before the goal can be considered complete:
-  - more of the reference browser subsystems such as listener and fuller download management
+  - fuller parity inside browser subsystems such as listener response bodies / extra info / interception-style controls and fuller download management
   - a stronger completion pass against the remaining compatibility surface
 
 ## Status
-**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, `cookies()` plus session `raw_data` / `encoding` and basic browser download-path control/waiting now live in the Rust core, and the next focused gap is broader browser-side core coverage such as listener and fuller download management plus the remaining compatibility audit.
+**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, browser/session/`WebPage` listener coverage now has a Rust-owned first pass, and the remaining gaps are fuller listener/download parity plus the final compatibility audit against the broader reference surface.

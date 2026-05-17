@@ -62,6 +62,7 @@
   - `WebPage`
   - locator parsing for CSS / `tag:` / `t:` / `@name=value` / `xpath:`
   - browser/session cookie header transfer primitives
+  - page-scoped network listener with Rust-owned packet queueing and filter matching
   - browser download-path configuration and wait-for-download helper
 - Python wrappers:
   - `ChromiumOptions`
@@ -73,6 +74,7 @@
   - `SessionPage`
   - `SessionElement`
   - `WebPage` thin wrapper over the Rust core
+  - `Listener` / `ListenerPacket` thin wrappers over the Rust listener core
 - Verified operations:
   - launch browser
   - open page
@@ -82,6 +84,7 @@
   - read browser/session/`WebPage` `cookies()`
   - read session-backed `raw_data` and `encoding`
   - download a local file through a Rust-configured browser download path and wait for it from Rust
+  - capture completed browser network packets from both `ChromiumPage` and driver-mode `WebPage`
   - query elements
   - nested snapshot queries from browser/session/html snapshots
   - snapshot root lookup plus `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters`
@@ -112,4 +115,5 @@
 - `cookies()` has now moved into the Rust core and Python only adapts the returned objects.
 - Session response metadata `raw_data` and `encoding` now lives in Rust as well.
 - Basic browser download enablement and wait-for-download now lives in Rust too.
-- The next highest-value surfaces are browser-only subsystems such as listener and fuller download management, then the remaining reference-style convenience and parity helpers.
+- Listener now has a first Rust-owned pass, but it still lacks fuller reference-style parity such as response body capture, extra-info merging, and interception controls.
+- The next highest-value surface after that is fuller download management, then the remaining reference-style convenience and parity helpers.

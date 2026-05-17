@@ -6,6 +6,7 @@ use serde_json::Value;
 use crate::browser::{Browser, LaunchOptions};
 use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
+use crate::listener::Listener;
 use crate::session::{CookieEntry, SessionElement, SessionOptions, SessionPage};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -171,8 +172,16 @@ impl WebPage {
         self.browser.set_download_path(path)
     }
 
-    pub fn wait_for_download(&self, filename: Option<&str>, timeout_ms: u64) -> OpenPageResult<String> {
+    pub fn wait_for_download(
+        &self,
+        filename: Option<&str>,
+        timeout_ms: u64,
+    ) -> OpenPageResult<String> {
         self.browser.wait_for_download(filename, timeout_ms)
+    }
+
+    pub fn listener(&self) -> Listener {
+        self.driver.listener()
     }
 
     pub fn change_mode(
@@ -367,7 +376,8 @@ impl WebPage {
             self.session.set_cookie_header(&url, &cookie_header)?;
         }
         if copy_user_agent {
-            self.session.set_user_agent(Some(self.driver.user_agent()?))?;
+            self.session
+                .set_user_agent(Some(self.driver.user_agent()?))?;
         }
         Ok(())
     }
@@ -393,10 +403,9 @@ impl WebPage {
     }
 
     fn set_mode(&self, mode: WebMode) -> OpenPageResult<()> {
-        let mut current = self
-            .mode
-            .lock()
-            .map_err(|_| OpenPageError::BrowserOperation("webpage mode lock poisoned".to_string()))?;
+        let mut current = self.mode.lock().map_err(|_| {
+            OpenPageError::BrowserOperation("webpage mode lock poisoned".to_string())
+        })?;
         *current = mode;
         Ok(())
     }

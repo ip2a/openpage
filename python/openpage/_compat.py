@@ -6,6 +6,18 @@ from typing import Any
 
 import openpage_rs as _openpage_rs
 
+_UNSET = object()
+
+
+def _normalize_listener_values(
+    values: str | list[str] | tuple[str, ...] | set[str] | None,
+) -> list[str] | None:
+    if values is None:
+        return None
+    if isinstance(values, str):
+        return [values]
+    return list(values)
+
 
 @dataclass
 class ChromiumOptions:
@@ -110,6 +122,7 @@ class Browser:
 class Page:
     def __init__(self, inner: _openpage_rs.Page) -> None:
         self._inner = inner
+        self._listener: Listener | None = None
 
     def goto(self, url: str) -> None:
         self._inner.goto(url)
@@ -149,6 +162,12 @@ class Page:
 
     def evaluate(self, expression: str) -> Any:
         return self.run_js(expression)
+
+    @property
+    def listen(self) -> "Listener":
+        if self._listener is None:
+            self._listener = Listener(self._inner.listener())
+        return self._listener
 
     def s_ele(self, locator: str | None = None) -> "SessionElement":
         if locator is None:
@@ -326,6 +345,7 @@ class WebPage:
             timeout_secs=session_options.timeout_secs,
             user_agent=session_options.user_agent,
         )
+        self._listener: Listener | None = None
 
     @property
     def mode(self) -> str:
@@ -370,6 +390,12 @@ class WebPage:
     def json(self) -> Any | None:
         raw = self._inner.json()
         return json.loads(raw) if raw is not None else None
+
+    @property
+    def listen(self) -> "Listener":
+        if self._listener is None:
+            self._listener = Listener(self._inner.listener())
+        return self._listener
 
     def ele(self, locator: str) -> Any:
         return _wrap_compat_element(self._inner.find(locator))
@@ -424,6 +450,159 @@ class WebPage:
 
     def quit(self) -> None:
         self._inner.quit()
+
+
+class Listener:
+    def __init__(self, inner: _openpage_rs.Listener) -> None:
+        self._inner = inner
+
+    def start(
+        self,
+        targets: str | list[str] | tuple[str, ...] | set[str] | None = None,
+        is_regex: bool = False,
+        method: str | list[str] | tuple[str, ...] | set[str] | None = None,
+        res_type: str | list[str] | tuple[str, ...] | set[str] | None = None,
+    ) -> None:
+        self._inner.start(
+            _normalize_listener_values(targets),
+            is_regex,
+            _normalize_listener_values(method),
+            _normalize_listener_values(res_type),
+        )
+
+    def wait(
+        self,
+        count: int = 1,
+        timeout: float | None = None,
+        fit_count: bool = True,
+    ) -> "ListenerPacket | list[ListenerPacket]":
+        timeout_ms = None if timeout is None else int(timeout * 1000)
+        packets = [ListenerPacket(item) for item in self._inner.wait(count, timeout_ms, fit_count)]
+        return packets[0] if count == 1 else packets
+
+    def clear(self) -> None:
+        self._inner.clear()
+
+    def stop(self) -> None:
+        self._inner.stop()
+
+    @property
+    def listening(self) -> bool:
+        return self._inner.is_listening()
+
+
+class ListenerPacket:
+    def __init__(self, inner: _openpage_rs.ListenerPacket) -> None:
+        self._inner = inner
+        self._request: ListenerRequest | None = None
+        self._response: ListenerResponse | None | object = _UNSET
+        self._fail_info: ListenerFailInfo | None | object = _UNSET
+
+    def __repr__(self) -> str:
+        return f'<ListenerPacket url="{self.url}" method="{self.method}" failed={self.is_failed}>'
+
+    @property
+    def target(self) -> str | None:
+        return self._inner.target()
+
+    @property
+    def url(self) -> str:
+        return self._inner.url()
+
+    @property
+    def method(self) -> str:
+        return self._inner.method()
+
+    @property
+    def resource_type(self) -> str | None:
+        return self._inner.resource_type()
+
+    @property
+    def is_failed(self) -> bool:
+        return self._inner.is_failed()
+
+    @property
+    def request(self) -> "ListenerRequest":
+        if self._request is None:
+            self._request = ListenerRequest(self._inner.request())
+        return self._request
+
+    @property
+    def response(self) -> "ListenerResponse | None":
+        if self._response is _UNSET:
+            response = self._inner.response()
+            self._response = None if response is None else ListenerResponse(response)
+        return self._response
+
+    @property
+    def fail_info(self) -> "ListenerFailInfo | None":
+        if self._fail_info is _UNSET:
+            fail_info = self._inner.fail_info()
+            self._fail_info = None if fail_info is None else ListenerFailInfo(fail_info)
+        return self._fail_info
+
+
+class ListenerRequest:
+    def __init__(self, inner: _openpage_rs.ListenerRequest) -> None:
+        self._inner = inner
+
+    @property
+    def url(self) -> str:
+        return self._inner.url()
+
+    @property
+    def method(self) -> str:
+        return self._inner.method()
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return dict(self._inner.headers())
+
+    @property
+    def post_data(self) -> str | None:
+        return self._inner.post_data()
+
+
+class ListenerResponse:
+    def __init__(self, inner: _openpage_rs.ListenerResponse) -> None:
+        self._inner = inner
+
+    @property
+    def url(self) -> str:
+        return self._inner.url()
+
+    @property
+    def status(self) -> int:
+        return self._inner.status()
+
+    @property
+    def status_text(self) -> str:
+        return self._inner.status_text()
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return dict(self._inner.headers())
+
+    @property
+    def mime_type(self) -> str:
+        return self._inner.mime_type()
+
+
+class ListenerFailInfo:
+    def __init__(self, inner: _openpage_rs.ListenerFailInfo) -> None:
+        self._inner = inner
+
+    @property
+    def error_text(self) -> str:
+        return self._inner.error_text()
+
+    @property
+    def canceled(self) -> bool | None:
+        return self._inner.canceled()
+
+    @property
+    def blocked_reason(self) -> str | None:
+        return self._inner.blocked_reason()
 
 
 class Element:

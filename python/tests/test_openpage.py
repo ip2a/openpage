@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import json
 import tempfile
+import threading
 import time
 import unittest
+from contextlib import contextmanager
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote
 
@@ -37,6 +43,16 @@ DOWNLOAD_HTML = """
 </html>
 """
 
+LISTENER_HTML = """
+<!doctype html>
+<html>
+<body>
+  <button id="trigger" onclick='fetch("/api/data", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: "openpage"})}).then(r => r.json()).then(() => { document.getElementById("out").textContent = "done"; })'>Send</button>
+  <div id="out"></div>
+</body>
+</html>
+"""
+
 
 def data_url() -> str:
     return "data:text/html," + quote(HTML)
@@ -44,6 +60,49 @@ def data_url() -> str:
 
 def download_data_url() -> str:
     return "data:text/html," + quote(DOWNLOAD_HTML)
+
+
+@contextmanager
+def serve_listener_site():
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path != "/":
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+
+            payload = LISTENER_HTML.encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_POST(self) -> None:
+            if self.path != "/api/data":
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length).decode("utf-8")
+            payload = json.dumps({"received": body}).encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format: str, *args: object) -> None:
+            del format, args
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
 
 
 def assert_get_ok(page: SessionPage | WebPage, url: str, attempts: int = 3) -> None:
@@ -122,6 +181,37 @@ class OpenPageIntegrationTest(unittest.TestCase):
             finally:
                 page.quit()
 
+    def test_browser_listener_captures_completed_post_request(self) -> None:
+        with serve_listener_site() as base_url:
+            page = ChromiumPage(ChromiumOptions())
+            listener = page.listen
+            try:
+                listener.start(targets="/api/data", method="POST")
+                self.assertTrue(page.get(base_url))
+                page.ele("#trigger").click()
+
+                packet = listener.wait(timeout=5.0)
+                self.assertEqual(packet.method, "POST")
+                self.assertTrue(packet.url.endswith("/api/data"))
+                self.assertIn(packet.resource_type, {"Fetch", "XHR"})
+                self.assertFalse(packet.is_failed)
+                self.assertIsNone(packet.fail_info)
+
+                response = packet.response
+                self.assertIsNotNone(response)
+                assert response is not None
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.mime_type, "application/json")
+
+                content_type = (
+                    packet.request.headers.get("Content-Type")
+                    or packet.request.headers.get("content-type")
+                )
+                self.assertEqual(content_type, "application/json")
+            finally:
+                listener.stop()
+                page.quit()
+
     def test_session_page_flow(self) -> None:
         options = SessionOptions().set_user_agent("openpage-test-agent")
         page = SessionPage(options)
@@ -175,6 +265,28 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 self.assertEqual(page.raw_data, b"")
                 self.assertIsNone(page.encoding)
             finally:
+                page.quit()
+
+    def test_webpage_listener_uses_driver_page(self) -> None:
+        with serve_listener_site() as base_url:
+            page = WebPage(mode="d")
+            listener = page.listen
+            try:
+                listener.start(targets="/api/data", method="POST")
+                self.assertTrue(page.get(base_url))
+                page.ele("#trigger").click()
+
+                packet = listener.wait(timeout=5.0)
+                self.assertEqual(packet.method, "POST")
+                self.assertTrue(packet.url.endswith("/api/data"))
+                self.assertFalse(packet.is_failed)
+
+                response = packet.response
+                self.assertIsNotNone(response)
+                assert response is not None
+                self.assertEqual(response.status, 200)
+            finally:
+                listener.stop()
                 page.quit()
 
 

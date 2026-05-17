@@ -2,8 +2,8 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use encoding_rs::Encoding;
 use ego_tree::NodeId;
+use encoding_rs::Encoding;
 use reqwest::blocking::{Client, ClientBuilder};
 use reqwest::cookie::{CookieStore, Jar};
 use reqwest::header::{CONTENT_TYPE, USER_AGENT};
@@ -197,7 +197,11 @@ impl SessionPage {
     pub fn set_cookie_header(&self, url: &str, cookie_header: &str) -> OpenPageResult<()> {
         let url = Url::parse(url).map_err(|err| OpenPageError::Http(err.to_string()))?;
         let jar = self.lock_state()?.cookie_jar.clone();
-        for cookie in cookie_header.split(';').map(str::trim).filter(|item| !item.is_empty()) {
+        for cookie in cookie_header
+            .split(';')
+            .map(str::trim)
+            .filter(|item| !item.is_empty())
+        {
             jar.add_cookie_str(cookie, &url);
         }
         Ok(())
@@ -215,8 +219,8 @@ impl SessionPage {
 
     fn first_text(&self, body: &Arc<String>, selector: &str) -> OpenPageResult<Option<String>> {
         let html = Html::parse_document(body);
-        let selector_obj =
-            Selector::parse(selector).map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
+        let selector_obj = Selector::parse(selector)
+            .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
         Ok(html
             .select(&selector_obj)
             .next()
@@ -243,7 +247,11 @@ impl SessionPage {
         Ok((state.client.clone(), state.user_agent.clone()))
     }
 
-    fn store_response(&self, requested_url: &str, response: reqwest::blocking::Response) -> OpenPageResult<bool> {
+    fn store_response(
+        &self,
+        requested_url: &str,
+        response: reqwest::blocking::Response,
+    ) -> OpenPageResult<bool> {
         let final_url = response.url().to_string();
         let status = response.status().as_u16();
         let content_type = response
@@ -328,7 +336,9 @@ impl SessionElement {
         self.with_element(|element| {
             nearest_parent_element(element)
                 .map(|parent| session_element_from_ref(&self.html, parent))
-                .ok_or_else(|| OpenPageError::ElementNotFound("parent element not found".to_string()))
+                .ok_or_else(|| {
+                    OpenPageError::ElementNotFound("parent element not found".to_string())
+                })
         })
     }
 
@@ -336,7 +346,11 @@ impl SessionElement {
         self.child_with(None, 1)
     }
 
-    pub fn child_with(&self, locator: Option<&str>, index: usize) -> OpenPageResult<SessionElement> {
+    pub fn child_with(
+        &self,
+        locator: Option<&str>,
+        index: usize,
+    ) -> OpenPageResult<SessionElement> {
         nth_from_start(
             self.children_with(locator)?,
             index,
@@ -387,11 +401,7 @@ impl SessionElement {
     }
 
     pub fn next_with(&self, locator: Option<&str>, index: usize) -> OpenPageResult<SessionElement> {
-        nth_from_start(
-            self.nexts_with(locator)?,
-            index,
-            "next element not found",
-        )
+        nth_from_start(self.nexts_with(locator)?, index, "next element not found")
     }
 
     pub fn nexts(&self) -> OpenPageResult<Vec<SessionElement>> {
@@ -412,7 +422,11 @@ impl SessionElement {
         self.before_with(None, 1)
     }
 
-    pub fn before_with(&self, locator: Option<&str>, index: usize) -> OpenPageResult<SessionElement> {
+    pub fn before_with(
+        &self,
+        locator: Option<&str>,
+        index: usize,
+    ) -> OpenPageResult<SessionElement> {
         nth_from_end(
             self.befores_with(locator)?,
             index,
@@ -425,14 +439,20 @@ impl SessionElement {
     }
 
     pub fn befores_with(&self, locator: Option<&str>) -> OpenPageResult<Vec<SessionElement>> {
-        self.with_element(|element| document_relatives(&self.html, element, RelativeDirection::Before, locator))
+        self.with_element(|element| {
+            document_relatives(&self.html, element, RelativeDirection::Before, locator)
+        })
     }
 
     pub fn after(&self) -> OpenPageResult<SessionElement> {
         self.after_with(None, 1)
     }
 
-    pub fn after_with(&self, locator: Option<&str>, index: usize) -> OpenPageResult<SessionElement> {
+    pub fn after_with(
+        &self,
+        locator: Option<&str>,
+        index: usize,
+    ) -> OpenPageResult<SessionElement> {
         nth_from_start(
             self.afters_with(locator)?,
             index,
@@ -445,7 +465,9 @@ impl SessionElement {
     }
 
     pub fn afters_with(&self, locator: Option<&str>) -> OpenPageResult<Vec<SessionElement>> {
-        self.with_element(|element| document_relatives(&self.html, element, RelativeDirection::After, locator))
+        self.with_element(|element| {
+            document_relatives(&self.html, element, RelativeDirection::After, locator)
+        })
     }
 
     fn with_element<T, F>(&self, f: F) -> OpenPageResult<T>
@@ -556,7 +578,11 @@ fn snapshot_find_all_arc(html: Arc<String>, locator: &str) -> OpenPageResult<Vec
         .collect())
 }
 
-fn find_in_scope(html: Arc<String>, scope_id: NodeId, locator: &str) -> OpenPageResult<SessionElement> {
+fn find_in_scope(
+    html: Arc<String>,
+    scope_id: NodeId,
+    locator: &str,
+) -> OpenPageResult<SessionElement> {
     let parsed = Html::parse_document(html.as_ref());
     let scope = element_from_document(&parsed, scope_id)?;
     let selector = parse_selector(locator)?;
@@ -593,7 +619,10 @@ fn session_element_from_ref(html: &Arc<String>, element: ElementRef<'_>) -> Sess
     }
 }
 
-fn element_from_document<'a>(document: &'a Html, node_id: NodeId) -> OpenPageResult<ElementRef<'a>> {
+fn element_from_document<'a>(
+    document: &'a Html,
+    node_id: NodeId,
+) -> OpenPageResult<ElementRef<'a>> {
     document
         .tree
         .get(node_id)
@@ -618,7 +647,11 @@ where
     let selector = parse_optional_selector(locator)?;
     Ok(elements
         .into_iter()
-        .filter(|element| selector.as_ref().is_none_or(|selector| selector.matches(element)))
+        .filter(|element| {
+            selector
+                .as_ref()
+                .is_none_or(|selector| selector.matches(element))
+        })
         .map(|element| session_element_from_ref(html, element))
         .collect())
 }
@@ -636,10 +669,16 @@ fn document_relatives(
     let current_index = elements
         .iter()
         .position(|candidate| candidate.id() == current_id)
-        .ok_or_else(|| OpenPageError::ElementNotFound("snapshot node no longer exists".to_string()))?;
+        .ok_or_else(|| {
+            OpenPageError::ElementNotFound("snapshot node no longer exists".to_string())
+        })?;
 
     let ancestor_ids: HashSet<_> = element.ancestors().map(|node| node.id()).collect();
-    let descendant_ids: HashSet<_> = element.descendants().skip(1).map(|node| node.id()).collect();
+    let descendant_ids: HashSet<_> = element
+        .descendants()
+        .skip(1)
+        .map(|node| node.id())
+        .collect();
 
     let iter: Box<dyn Iterator<Item = ElementRef<'_>> + '_> = match direction {
         RelativeDirection::Before => Box::new(
@@ -657,7 +696,11 @@ fn document_relatives(
     };
 
     Ok(iter
-        .filter(|candidate| selector.as_ref().is_none_or(|selector| selector.matches(candidate)))
+        .filter(|candidate| {
+            selector
+                .as_ref()
+                .is_none_or(|selector| selector.matches(candidate))
+        })
         .map(|candidate| session_element_from_ref(html, candidate))
         .collect())
 }
@@ -745,7 +788,10 @@ mod tests {
         let heading = root.find("h1").expect("nested heading should exist");
         let first_item = root.find(".item").expect("nested item should exist");
 
-        assert_eq!(heading.text().expect("heading text"), Some("OpenPage".to_string()));
+        assert_eq!(
+            heading.text().expect("heading text"),
+            Some("OpenPage".to_string())
+        );
         assert_eq!(heading.tag().expect("heading tag"), "h1".to_string());
         assert_eq!(
             first_item.attr("data-kind").expect("item attr"),
@@ -762,8 +808,14 @@ mod tests {
         let items = root.find_all(".item").expect("items should exist");
 
         assert_eq!(items.len(), 2);
-        assert_eq!(items[0].text().expect("first item text"), Some("alpha".to_string()));
-        assert_eq!(items[1].text().expect("second item text"), Some("beta".to_string()));
+        assert_eq!(
+            items[0].text().expect("first item text"),
+            Some("alpha".to_string())
+        );
+        assert_eq!(
+            items[1].text().expect("second item text"),
+            Some("beta".to_string())
+        );
 
         let top_level = snapshot_find_all(HTML, ".item").expect("top-level items should exist");
         assert_eq!(top_level.len(), 2);
@@ -776,41 +828,101 @@ mod tests {
         let items = root.find(".items").expect("items list should exist");
 
         assert_eq!(root.tag().expect("root tag"), "html".to_string());
-        assert_eq!(submit.parent().expect("submit parent").tag().expect("parent tag"), "section");
-        assert_eq!(submit.next().expect("next sibling").attr("id").expect("next id"), Some("out".to_string()));
-        assert_eq!(submit.prev().expect("prev sibling").attr("id").expect("prev id"), Some("name".to_string()));
+        assert_eq!(
+            submit
+                .parent()
+                .expect("submit parent")
+                .tag()
+                .expect("parent tag"),
+            "section"
+        );
+        assert_eq!(
+            submit
+                .next()
+                .expect("next sibling")
+                .attr("id")
+                .expect("next id"),
+            Some("out".to_string())
+        );
+        assert_eq!(
+            submit
+                .prev()
+                .expect("prev sibling")
+                .attr("id")
+                .expect("prev id"),
+            Some("name".to_string())
+        );
 
         let children = items.children().expect("direct children");
         assert_eq!(children.len(), 2);
-        assert_eq!(children[0].text().expect("first child text"), Some("alpha".to_string()));
-        assert_eq!(children[1].text().expect("second child text"), Some("beta".to_string()));
-        assert_eq!(submit.raw_text().expect("submit raw text"), Some("Go".to_string()));
+        assert_eq!(
+            children[0].text().expect("first child text"),
+            Some("alpha".to_string())
+        );
+        assert_eq!(
+            children[1].text().expect("second child text"),
+            Some("beta".to_string())
+        );
+        assert_eq!(
+            submit.raw_text().expect("submit raw text"),
+            Some("Go".to_string())
+        );
     }
 
     #[test]
     fn snapshot_relative_lists_cover_before_after_and_filtered_siblings() {
         let root = snapshot_root(HTML).expect("document root should exist");
         let submit = root.find("#submit").expect("submit should exist");
-        let second_item = root.find(".item[data-kind='b']").expect("second item should exist");
+        let second_item = root
+            .find(".item[data-kind='b']")
+            .expect("second item should exist");
 
         let prevs = submit.prevs().expect("previous siblings");
         assert_eq!(prevs.len(), 2);
         assert_eq!(prevs[0].tag().expect("first prev tag"), "h1".to_string());
-        assert_eq!(prevs[1].attr("id").expect("second prev id"), Some("name".to_string()));
+        assert_eq!(
+            prevs[1].attr("id").expect("second prev id"),
+            Some("name".to_string())
+        );
 
         let nexts = submit.nexts().expect("next siblings");
         assert_eq!(nexts.len(), 2);
-        assert_eq!(nexts[0].attr("id").expect("first next id"), Some("out".to_string()));
+        assert_eq!(
+            nexts[0].attr("id").expect("first next id"),
+            Some("out".to_string())
+        );
         assert_eq!(nexts[1].tag().expect("second next tag"), "ul".to_string());
 
         let afters = submit.afters_with(Some(".item")).expect("following items");
         assert_eq!(afters.len(), 2);
-        assert_eq!(afters[0].text().expect("first after text"), Some("alpha".to_string()));
-        assert_eq!(submit.after_with(Some(".item"), 2).expect("second matching after").text().expect("second matching after text"), Some("beta".to_string()));
+        assert_eq!(
+            afters[0].text().expect("first after text"),
+            Some("alpha".to_string())
+        );
+        assert_eq!(
+            submit
+                .after_with(Some(".item"), 2)
+                .expect("second matching after")
+                .text()
+                .expect("second matching after text"),
+            Some("beta".to_string())
+        );
 
-        let befores = second_item.befores_with(Some(".item")).expect("preceding items");
+        let befores = second_item
+            .befores_with(Some(".item"))
+            .expect("preceding items");
         assert_eq!(befores.len(), 1);
-        assert_eq!(befores[0].text().expect("preceding item text"), Some("alpha".to_string()));
-        assert_eq!(second_item.before().expect("nearest preceding element").text().expect("nearest preceding text"), Some("alpha".to_string()));
+        assert_eq!(
+            befores[0].text().expect("preceding item text"),
+            Some("alpha".to_string())
+        );
+        assert_eq!(
+            second_item
+                .before()
+                .expect("nearest preceding element")
+                .text()
+                .expect("nearest preceding text"),
+            Some("alpha".to_string())
+        );
     }
 }

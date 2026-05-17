@@ -34,7 +34,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ensure_get(&page, "https://httpbin.org/cookies/set?token=session")?;
     ensure_get(&page, "https://httpbin.org/cookies")?;
     page.change_mode(Some(WebMode::Driver), true, true)?;
-    println!("driver mode after session sync: {:?}", page.find("body")?.text()?);
+    println!(
+        "driver mode after session sync: {:?}",
+        page.find("body")?.text()?
+    );
 
     page.quit()?;
     Ok(())

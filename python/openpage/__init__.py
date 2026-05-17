@@ -2,6 +2,11 @@ from ._compat import Browser
 from ._compat import ChromiumOptions
 from ._compat import ChromiumPage
 from ._compat import Element
+from ._compat import Listener
+from ._compat import ListenerFailInfo
+from ._compat import ListenerPacket
+from ._compat import ListenerRequest
+from ._compat import ListenerResponse
 from ._compat import Page
 from ._compat import SessionElement
 from ._compat import SessionOptions
@@ -13,6 +18,11 @@ __all__ = [
     "ChromiumOptions",
     "ChromiumPage",
     "Element",
+    "Listener",
+    "ListenerFailInfo",
+    "ListenerPacket",
+    "ListenerRequest",
+    "ListenerResponse",
     "Page",
     "SessionElement",
     "SessionOptions",

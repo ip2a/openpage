@@ -3,8 +3,8 @@ use std::sync::Arc;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
-use chromiumoxide::cdp::browser_protocol::page::{CaptureScreenshotFormat, PrintToPdfParams};
 use chromiumoxide::cdp::browser_protocol::network::CookieParam;
+use chromiumoxide::cdp::browser_protocol::page::{CaptureScreenshotFormat, PrintToPdfParams};
 use chromiumoxide::page::{Page as OxPage, ScreenshotParams};
 use serde_json::Value;
 use tokio::runtime::Runtime;
@@ -12,8 +12,12 @@ use url::Url;
 
 use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
+use crate::listener::Listener;
 use crate::locator::{Locator, LocatorKind};
-use crate::session::{CookieEntry, SessionElement, cookies_from_header, snapshot_find, snapshot_find_all, snapshot_root};
+use crate::session::{
+    CookieEntry, SessionElement, cookies_from_header, snapshot_find, snapshot_find_all,
+    snapshot_root,
+};
 
 #[derive(Clone, Debug)]
 pub struct Page {
@@ -183,6 +187,10 @@ impl Page {
 
     pub fn run_js(&self, script: &str) -> OpenPageResult<Value> {
         self.evaluate(script)
+    }
+
+    pub fn listener(&self) -> Listener {
+        Listener::new(Arc::clone(&self.runtime), self.inner.clone())
     }
 
     pub fn snapshot_find(&self, locator: &str) -> OpenPageResult<SessionElement> {

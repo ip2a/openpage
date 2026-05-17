@@ -1,6 +1,7 @@
 pub mod browser;
 pub mod element;
 pub mod error;
+pub mod listener;
 pub mod locator;
 pub mod page;
 pub mod session;
@@ -12,6 +13,7 @@ pub mod python;
 pub use browser::{Browser, LaunchOptions};
 pub use element::Element;
 pub use error::{OpenPageError, OpenPageResult};
+pub use listener::{Listener, ListenerFailInfo, ListenerPacket, ListenerRequest, ListenerResponse};
 pub use locator::{Locator, LocatorKind};
 pub use page::Page;
 pub use session::{CookieEntry, SessionElement, SessionOptions, SessionPage};

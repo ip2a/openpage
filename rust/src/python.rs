@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use pyo3::exceptions::PyRuntimeError;
@@ -7,6 +8,9 @@ use pyo3::types::PyBytes;
 use crate::browser::{Browser, LaunchOptions};
 use crate::element::Element;
 use crate::error::OpenPageError;
+use crate::listener::{
+    Listener, ListenerFailInfo, ListenerPacket, ListenerRequest, ListenerResponse,
+};
 use crate::page::Page;
 use crate::session::{CookieEntry, SessionElement, SessionOptions, SessionPage};
 use crate::webpage::{WebElement, WebMode, WebPage};
@@ -47,6 +51,31 @@ pub struct PyWebPage {
     inner: WebPage,
 }
 
+#[pyclass(module = "openpage_rs", name = "Listener")]
+pub struct PyListener {
+    inner: Listener,
+}
+
+#[pyclass(module = "openpage_rs", name = "ListenerPacket")]
+pub struct PyListenerPacket {
+    inner: ListenerPacket,
+}
+
+#[pyclass(module = "openpage_rs", name = "ListenerRequest")]
+pub struct PyListenerRequest {
+    inner: ListenerRequest,
+}
+
+#[pyclass(module = "openpage_rs", name = "ListenerResponse")]
+pub struct PyListenerResponse {
+    inner: ListenerResponse,
+}
+
+#[pyclass(module = "openpage_rs", name = "ListenerFailInfo")]
+pub struct PyListenerFailInfo {
+    inner: ListenerFailInfo,
+}
+
 #[pymethods]
 impl PyBrowser {
     #[staticmethod]
@@ -79,12 +108,7 @@ impl PyBrowser {
         let browser = self.inner.clone();
         let url = url.map(str::to_string);
         let page = py.detach(move || browser.new_page(url.as_deref()))?;
-        Py::new(
-            py,
-            PyPage {
-                inner: Some(page),
-            },
-        )
+        Py::new(py, PyPage { inner: Some(page) })
     }
 
     fn close(&self, py: Python<'_>) -> PyResult<()> {
@@ -136,12 +160,7 @@ impl PyBrowser {
         let browser = self.inner.clone();
         let target_id = target_id.to_string();
         let page = py.detach(move || browser.get_page(&target_id))?;
-        Py::new(
-            py,
-            PyPage {
-                inner: Some(page),
-            },
-        )
+        Py::new(py, PyPage { inner: Some(page) })
     }
 }
 
@@ -186,24 +205,14 @@ impl PyPage {
         let page = self.page()?.clone();
         let locator = locator.to_string();
         let element = py.detach(move || page.wait_for(&locator, timeout_ms))?;
-        Py::new(
-            py,
-            PyElement {
-                inner: element,
-            },
-        )
+        Py::new(py, PyElement { inner: element })
     }
 
     fn find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PyElement>> {
         let page = self.page()?.clone();
         let locator = locator.to_string();
         let element = py.detach(move || page.find(&locator))?;
-        Py::new(
-            py,
-            PyElement {
-                inner: element,
-            },
-        )
+        Py::new(py, PyElement { inner: element })
     }
 
     fn find_all(&self, py: Python<'_>, locator: &str) -> PyResult<Vec<Py<PyElement>>> {
@@ -240,7 +249,8 @@ impl PyPage {
         let page = self.page()?.clone();
         let locator = locator.to_string();
         let name = name.to_string();
-        py.detach(move || page.attr(&locator, &name)).map_err(Into::into)
+        py.detach(move || page.attr(&locator, &name))
+            .map_err(Into::into)
     }
 
     #[pyo3(signature = (path, full_page=true))]
@@ -266,6 +276,11 @@ impl PyPage {
             .map_err(|err| OpenPageError::Serialization(err.to_string()).into())
     }
 
+    fn listener(&self, py: Python<'_>) -> PyResult<Py<PyListener>> {
+        let listener = self.page()?.listener();
+        Py::new(py, PyListener { inner: listener })
+    }
+
     fn snapshot_find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PySessionElement>> {
         let page = self.page()?.clone();
         let locator = locator.to_string();
@@ -273,7 +288,11 @@ impl PyPage {
         Py::new(py, PySessionElement { inner: element })
     }
 
-    fn snapshot_find_all(&self, py: Python<'_>, locator: &str) -> PyResult<Vec<Py<PySessionElement>>> {
+    fn snapshot_find_all(
+        &self,
+        py: Python<'_>,
+        locator: &str,
+    ) -> PyResult<Vec<Py<PySessionElement>>> {
         let page = self.page()?.clone();
         let locator = locator.to_string();
         py.detach(move || page.snapshot_find_all(&locator))?
@@ -472,7 +491,8 @@ impl PySessionPage {
     fn cookie_header(&self, py: Python<'_>, url: &str) -> PyResult<Option<String>> {
         let page = self.inner.clone();
         let url = url.to_string();
-        py.detach(move || page.cookie_header(&url)).map_err(Into::into)
+        py.detach(move || page.cookie_header(&url))
+            .map_err(Into::into)
     }
 
     fn cookies(&self, py: Python<'_>) -> PyResult<Vec<(String, String, Option<String>)>> {
@@ -482,12 +502,7 @@ impl PySessionPage {
             .map_err(Into::into)
     }
 
-    fn set_cookie_header(
-        &self,
-        py: Python<'_>,
-        url: &str,
-        cookie_header: &str,
-    ) -> PyResult<()> {
+    fn set_cookie_header(&self, py: Python<'_>, url: &str, cookie_header: &str) -> PyResult<()> {
         let page = self.inner.clone();
         let url = url.to_string();
         let cookie_header = cookie_header.to_string();
@@ -587,7 +602,11 @@ impl PySessionElement {
     }
 
     #[pyo3(signature = (locator=None))]
-    fn children(&self, py: Python<'_>, locator: Option<&str>) -> PyResult<Vec<Py<PySessionElement>>> {
+    fn children(
+        &self,
+        py: Python<'_>,
+        locator: Option<&str>,
+    ) -> PyResult<Vec<Py<PySessionElement>>> {
         let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
         self.inner
             .children_with(normalized)?
@@ -681,7 +700,11 @@ impl PySessionElement {
     }
 
     #[pyo3(signature = (locator=None))]
-    fn befores(&self, py: Python<'_>, locator: Option<&str>) -> PyResult<Vec<Py<PySessionElement>>> {
+    fn befores(
+        &self,
+        py: Python<'_>,
+        locator: Option<&str>,
+    ) -> PyResult<Vec<Py<PySessionElement>>> {
         let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
         self.inner
             .befores_with(normalized)?
@@ -776,6 +799,11 @@ impl PyWebPage {
         let filename = filename.map(str::to_string);
         py.detach(move || page.wait_for_download(filename.as_deref(), timeout_ms))
             .map_err(Into::into)
+    }
+
+    fn listener(&self, py: Python<'_>) -> PyResult<Py<PyListener>> {
+        let listener = self.inner.listener();
+        Py::new(py, PyListener { inner: listener })
     }
 
     fn get(&self, py: Python<'_>, url: &str) -> PyResult<bool> {
@@ -874,7 +902,11 @@ impl PyWebPage {
         Py::new(py, PySessionElement { inner: element })
     }
 
-    fn snapshot_find_all(&self, py: Python<'_>, locator: &str) -> PyResult<Vec<Py<PySessionElement>>> {
+    fn snapshot_find_all(
+        &self,
+        py: Python<'_>,
+        locator: &str,
+    ) -> PyResult<Vec<Py<PySessionElement>>> {
         let page = self.inner.clone();
         let locator = locator.to_string();
         py.detach(move || page.snapshot_find_all(&locator))?
@@ -931,6 +963,159 @@ impl PyWebPage {
     }
 }
 
+#[pymethods]
+impl PyListener {
+    #[pyo3(signature = (targets=None, is_regex=false, methods=None, resource_types=None))]
+    fn start(
+        &self,
+        py: Python<'_>,
+        targets: Option<Vec<String>>,
+        is_regex: bool,
+        methods: Option<Vec<String>>,
+        resource_types: Option<Vec<String>>,
+    ) -> PyResult<()> {
+        let listener = self.inner.clone();
+        py.detach(move || listener.start(targets, is_regex, methods, resource_types))?;
+        Ok(())
+    }
+
+    #[pyo3(signature = (count=1, timeout_ms=None, fit_count=true))]
+    fn wait(
+        &self,
+        py: Python<'_>,
+        count: usize,
+        timeout_ms: Option<u64>,
+        fit_count: bool,
+    ) -> PyResult<Vec<Py<PyListenerPacket>>> {
+        let listener = self.inner.clone();
+        py.detach(move || listener.wait(count, timeout_ms, fit_count))?
+            .into_iter()
+            .map(|inner| Py::new(py, PyListenerPacket { inner }))
+            .collect()
+    }
+
+    fn clear(&self, py: Python<'_>) -> PyResult<()> {
+        let listener = self.inner.clone();
+        py.detach(move || listener.clear())?;
+        Ok(())
+    }
+
+    fn stop(&self, py: Python<'_>) -> PyResult<()> {
+        let listener = self.inner.clone();
+        py.detach(move || listener.stop())?;
+        Ok(())
+    }
+
+    fn is_listening(&self) -> PyResult<bool> {
+        self.inner.is_listening().map_err(Into::into)
+    }
+}
+
+#[pymethods]
+impl PyListenerPacket {
+    fn target(&self) -> Option<String> {
+        self.inner.matched_target.clone()
+    }
+
+    fn url(&self) -> String {
+        self.inner.url.clone()
+    }
+
+    fn method(&self) -> String {
+        self.inner.method.clone()
+    }
+
+    fn resource_type(&self) -> Option<String> {
+        self.inner.resource_type.clone()
+    }
+
+    fn is_failed(&self) -> bool {
+        self.inner.is_failed
+    }
+
+    fn request(&self, py: Python<'_>) -> PyResult<Py<PyListenerRequest>> {
+        Py::new(
+            py,
+            PyListenerRequest {
+                inner: self.inner.request.clone(),
+            },
+        )
+    }
+
+    fn response(&self, py: Python<'_>) -> PyResult<Option<Py<PyListenerResponse>>> {
+        self.inner
+            .response
+            .clone()
+            .map(|inner| Py::new(py, PyListenerResponse { inner }))
+            .transpose()
+    }
+
+    fn fail_info(&self, py: Python<'_>) -> PyResult<Option<Py<PyListenerFailInfo>>> {
+        self.inner
+            .fail_info
+            .clone()
+            .map(|inner| Py::new(py, PyListenerFailInfo { inner }))
+            .transpose()
+    }
+}
+
+#[pymethods]
+impl PyListenerRequest {
+    fn url(&self) -> String {
+        self.inner.url.clone()
+    }
+
+    fn method(&self) -> String {
+        self.inner.method.clone()
+    }
+
+    fn headers(&self) -> Vec<(String, String)> {
+        header_tuples(&self.inner.headers)
+    }
+
+    fn post_data(&self) -> Option<String> {
+        self.inner.post_data.clone()
+    }
+}
+
+#[pymethods]
+impl PyListenerResponse {
+    fn url(&self) -> String {
+        self.inner.url.clone()
+    }
+
+    fn status(&self) -> i64 {
+        self.inner.status
+    }
+
+    fn status_text(&self) -> String {
+        self.inner.status_text.clone()
+    }
+
+    fn headers(&self) -> Vec<(String, String)> {
+        header_tuples(&self.inner.headers)
+    }
+
+    fn mime_type(&self) -> String {
+        self.inner.mime_type.clone()
+    }
+}
+
+#[pymethods]
+impl PyListenerFailInfo {
+    fn error_text(&self) -> String {
+        self.inner.error_text.clone()
+    }
+
+    fn canceled(&self) -> Option<bool> {
+        self.inner.canceled
+    }
+
+    fn blocked_reason(&self) -> Option<String> {
+        self.inner.blocked_reason.clone()
+    }
+}
+
 impl PyPage {
     fn page(&self) -> PyResult<&Page> {
         self.inner
@@ -953,6 +1138,15 @@ fn cookie_entries_to_tuples(entries: Vec<CookieEntry>) -> Vec<(String, String, O
         .collect()
 }
 
+fn header_tuples(headers: &HashMap<String, String>) -> Vec<(String, String)> {
+    let mut headers = headers
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<Vec<_>>();
+    headers.sort_by(|left, right| left.0.cmp(&right.0));
+    headers
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBrowser>()?;
     m.add_class::<PyPage>()?;
@@ -960,5 +1154,10 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySessionPage>()?;
     m.add_class::<PySessionElement>()?;
     m.add_class::<PyWebPage>()?;
+    m.add_class::<PyListener>()?;
+    m.add_class::<PyListenerPacket>()?;
+    m.add_class::<PyListenerRequest>()?;
+    m.add_class::<PyListenerResponse>()?;
+    m.add_class::<PyListenerFailInfo>()?;
     Ok(())
 }
