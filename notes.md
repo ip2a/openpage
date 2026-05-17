@@ -62,6 +62,7 @@
   - `WebPage`
   - locator parsing for CSS / `tag:` / `t:` / `@name=value` / `xpath:`
   - browser/session cookie header transfer primitives
+  - browser download-path configuration
 - Python wrappers:
   - `ChromiumOptions`
   - `Browser`
@@ -80,6 +81,7 @@
   - read session-backed `status_code` from `WebPage` in session mode
   - read browser/session/`WebPage` `cookies()`
   - read session-backed `raw_data` and `encoding`
+  - download a local file through a Rust-configured browser download path
   - query elements
   - nested snapshot queries from browser/session/html snapshots
   - snapshot root lookup plus `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters`
@@ -109,4 +111,5 @@
 - The next parity gap inside this area is the remaining reference-style helpers around paths, comments, and richer locator modes.
 - `cookies()` has now moved into the Rust core and Python only adapts the returned objects.
 - Session response metadata `raw_data` and `encoding` now lives in Rust as well.
-- The next highest-value surfaces are browser-only subsystems such as listener/download, then the remaining reference-style convenience and parity helpers.
+- Basic browser download enablement now lives in Rust too.
+- The next highest-value surfaces are browser-only subsystems such as listener and fuller download management, then the remaining reference-style convenience and parity helpers.

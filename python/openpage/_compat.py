@@ -10,6 +10,7 @@ import openpage_rs as _openpage_rs
 @dataclass
 class ChromiumOptions:
     browser_path: str | None = None
+    download_path: str | None = None
     headless_mode: bool = True
     user_data_path: str | None = None
     width: int = 1280
@@ -22,6 +23,10 @@ class ChromiumOptions:
 
     def set_user_data_path(self, path: str) -> "ChromiumOptions":
         self.user_data_path = path
+        return self
+
+    def set_download_path(self, path: str) -> "ChromiumOptions":
+        self.download_path = path
         return self
 
     def headless(self, on_off: bool = True) -> "ChromiumOptions":
@@ -61,6 +66,7 @@ class Browser:
         options = options or ChromiumOptions()
         inner = _openpage_rs.Browser.launch(
             browser_path=options.browser_path,
+            download_path=options.download_path,
             headless=options.headless_mode,
             user_data_dir=options.user_data_path,
             width=options.width,
@@ -86,6 +92,13 @@ class Browser:
     @property
     def version(self) -> str:
         return self._inner.version()
+
+    @property
+    def download_path(self) -> str | None:
+        return self._inner.download_path()
+
+    def set_download_path(self, path: str) -> None:
+        self._inner.set_download_path(path)
 
     def close(self) -> None:
         self._inner.close()
@@ -198,6 +211,13 @@ class ChromiumPage(Page):
     def get_tab(self, target_id: str) -> "Page":
         return self.browser.get_page(target_id)
 
+    @property
+    def download_path(self) -> str | None:
+        return self.browser.download_path
+
+    def set_download_path(self, path: str) -> None:
+        self.browser.set_download_path(path)
+
 
 class SessionPage:
     def __init__(self, session_or_options: SessionOptions | None = None) -> None:
@@ -291,6 +311,7 @@ class WebPage:
         self._inner = _openpage_rs.WebPage.create(
             mode=mode.lower(),
             browser_path=chromium_options.browser_path,
+            download_path=chromium_options.download_path,
             headless=chromium_options.headless_mode,
             user_data_dir=chromium_options.user_data_path,
             width=chromium_options.width,
@@ -369,6 +390,10 @@ class WebPage:
     def tab_ids(self) -> list[str]:
         return self._inner.tab_ids()
 
+    @property
+    def download_path(self) -> str | None:
+        return self._inner.download_path()
+
     def cookies(self) -> list[dict[str, str | None]]:
         return [
             {"name": name, "value": value, "domain": domain}
@@ -384,6 +409,9 @@ class WebPage:
 
     def cookies_to_browser(self) -> None:
         self._inner.cookies_to_browser()
+
+    def set_download_path(self, path: str) -> None:
+        self._inner.set_download_path(path)
 
     def quit(self) -> None:
         self._inner.quit()

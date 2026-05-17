@@ -50,10 +50,11 @@ pub struct PyWebPage {
 #[pymethods]
 impl PyBrowser {
     #[staticmethod]
-    #[pyo3(signature = (browser_path=None, headless=true, user_data_dir=None, width=1280, height=900, no_sandbox=false))]
+    #[pyo3(signature = (browser_path=None, download_path=None, headless=true, user_data_dir=None, width=1280, height=900, no_sandbox=false))]
     fn launch(
         py: Python<'_>,
         browser_path: Option<String>,
+        download_path: Option<String>,
         headless: bool,
         user_data_dir: Option<String>,
         width: u32,
@@ -62,6 +63,7 @@ impl PyBrowser {
     ) -> PyResult<Self> {
         let options = LaunchOptions {
             browser_path: browser_path.map(PathBuf::from),
+            download_path: download_path.map(PathBuf::from),
             user_data_dir: user_data_dir.map(PathBuf::from),
             headless,
             width,
@@ -94,6 +96,17 @@ impl PyBrowser {
     fn version(&self, py: Python<'_>) -> PyResult<String> {
         let browser = self.inner.clone();
         py.detach(move || browser.version()).map_err(Into::into)
+    }
+
+    fn download_path(&self) -> PyResult<Option<String>> {
+        self.inner.download_path().map_err(Into::into)
+    }
+
+    fn set_download_path(&self, py: Python<'_>, path: &str) -> PyResult<()> {
+        let browser = self.inner.clone();
+        let path = path.to_string();
+        py.detach(move || browser.set_download_path(&path))?;
+        Ok(())
     }
 
     fn tabs_count(&self, py: Python<'_>) -> PyResult<usize> {
@@ -678,11 +691,12 @@ impl PySessionElement {
 #[pymethods]
 impl PyWebPage {
     #[staticmethod]
-    #[pyo3(signature = (mode="d", browser_path=None, headless=true, user_data_dir=None, width=1280, height=900, no_sandbox=false, timeout_secs=15, user_agent=None))]
+    #[pyo3(signature = (mode="d", browser_path=None, download_path=None, headless=true, user_data_dir=None, width=1280, height=900, no_sandbox=false, timeout_secs=15, user_agent=None))]
     fn create(
         py: Python<'_>,
         mode: &str,
         browser_path: Option<String>,
+        download_path: Option<String>,
         headless: bool,
         user_data_dir: Option<String>,
         width: u32,
@@ -694,6 +708,7 @@ impl PyWebPage {
         let mode = WebMode::parse(mode)?;
         let launch_options = LaunchOptions {
             browser_path: browser_path.map(PathBuf::from),
+            download_path: download_path.map(PathBuf::from),
             user_data_dir: user_data_dir.map(PathBuf::from),
             headless,
             width,
@@ -723,6 +738,18 @@ impl PyWebPage {
     fn tab_ids(&self, py: Python<'_>) -> PyResult<Vec<String>> {
         let page = self.inner.clone();
         py.detach(move || page.tab_ids()).map_err(Into::into)
+    }
+
+    fn download_path(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let page = self.inner.clone();
+        py.detach(move || page.download_path()).map_err(Into::into)
+    }
+
+    fn set_download_path(&self, py: Python<'_>, path: &str) -> PyResult<()> {
+        let page = self.inner.clone();
+        let path = path.to_string();
+        py.detach(move || page.set_download_path(&path))?;
+        Ok(())
     }
 
     fn get(&self, py: Python<'_>, url: &str) -> PyResult<bool> {

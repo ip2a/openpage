@@ -163,6 +163,14 @@ impl WebPage {
         self.browser.tab_ids()
     }
 
+    pub fn download_path(&self) -> OpenPageResult<Option<String>> {
+        self.browser.download_path()
+    }
+
+    pub fn set_download_path(&self, path: &str) -> OpenPageResult<()> {
+        self.browser.set_download_path(path)
+    }
+
     pub fn change_mode(
         &self,
         mode: Option<WebMode>,

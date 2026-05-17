@@ -28,9 +28,22 @@ HTML = """
 </html>
 """
 
+DOWNLOAD_HTML = """
+<!doctype html>
+<html>
+<body>
+  <a id="download" href="data:text/plain;charset=utf-8,openpage-download" download="openpage.txt">Download</a>
+</body>
+</html>
+"""
+
 
 def data_url() -> str:
     return "data:text/html," + quote(HTML)
+
+
+def download_data_url() -> str:
+    return "data:text/html," + quote(DOWNLOAD_HTML)
 
 
 def assert_get_ok(page: SessionPage | WebPage, url: str, attempts: int = 3) -> None:
@@ -95,6 +108,25 @@ class OpenPageIntegrationTest(unittest.TestCase):
         finally:
             browser.close()
 
+    def test_download_path_supports_file_downloads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            page = ChromiumPage(ChromiumOptions().set_download_path(tmp_dir))
+            target = Path(tmp_dir) / "openpage.txt"
+            try:
+                self.assertEqual(page.download_path, tmp_dir)
+                self.assertTrue(page.get(download_data_url()))
+                page.ele("#download").click()
+
+                for _ in range(50):
+                    if target.exists():
+                        break
+                    time.sleep(0.1)
+
+                self.assertTrue(target.exists())
+                self.assertEqual(target.read_text(), "openpage-download")
+            finally:
+                page.quit()
+
     def test_session_page_flow(self) -> None:
         options = SessionOptions().set_user_agent("openpage-test-agent")
         page = SessionPage(options)
@@ -118,32 +150,37 @@ class OpenPageIntegrationTest(unittest.TestCase):
         self.assertEqual(page.encoding, "utf-8")
 
     def test_webpage_mode_switch_and_cookie_sync(self) -> None:
-        page = WebPage(mode="d", chromium_options=ChromiumOptions())
-        try:
-            self.assertEqual(page.mode, "d")
-            assert_get_ok(page, "https://httpbin.org/cookies/set?token=browser")
-            assert_get_ok(page, "https://httpbin.org/cookies")
-            page.change_mode("s", go=True, copy_cookies=True)
-            self.assertEqual(page.mode, "s")
-            self.assertEqual(page.status_code, 200)
-            self.assertTrue(page.user_agent)
-            self.assertEqual(page.json["cookies"]["token"], "browser")
-            self.assertIn({"name": "token", "value": "browser", "domain": "httpbin.org"}, page.cookies())
-            self.assertIn(b"browser", page.raw_data)
-            self.assertEqual(page.encoding, "utf-8")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            page = WebPage(
+                mode="d",
+                chromium_options=ChromiumOptions().set_download_path(tmp_dir),
+            )
+            try:
+                self.assertEqual(page.mode, "d")
+                self.assertEqual(page.download_path, tmp_dir)
+                assert_get_ok(page, "https://httpbin.org/cookies/set?token=browser")
+                assert_get_ok(page, "https://httpbin.org/cookies")
+                page.change_mode("s", go=True, copy_cookies=True)
+                self.assertEqual(page.mode, "s")
+                self.assertEqual(page.status_code, 200)
+                self.assertTrue(page.user_agent)
+                self.assertEqual(page.json["cookies"]["token"], "browser")
+                self.assertIn({"name": "token", "value": "browser", "domain": "httpbin.org"}, page.cookies())
+                self.assertIn(b"browser", page.raw_data)
+                self.assertEqual(page.encoding, "utf-8")
 
-            assert_get_ok(page, "https://httpbin.org/cookies/set?token=session")
-            assert_get_ok(page, "https://httpbin.org/cookies")
-            page.change_mode("d", go=True, copy_cookies=True)
-            self.assertEqual(page.mode, "d")
-            self.assertIsNone(page.status_code)
-            self.assertTrue(page.user_agent)
-            self.assertIn('"token": "session"', page.ele("body").text or "")
-            self.assertIn({"name": "token", "value": "session", "domain": "httpbin.org"}, page.cookies())
-            self.assertEqual(page.raw_data, b"")
-            self.assertIsNone(page.encoding)
-        finally:
-            page.quit()
+                assert_get_ok(page, "https://httpbin.org/cookies/set?token=session")
+                assert_get_ok(page, "https://httpbin.org/cookies")
+                page.change_mode("d", go=True, copy_cookies=True)
+                self.assertEqual(page.mode, "d")
+                self.assertIsNone(page.status_code)
+                self.assertTrue(page.user_agent)
+                self.assertIn('"token": "session"', page.ele("body").text or "")
+                self.assertIn({"name": "token", "value": "session", "domain": "httpbin.org"}, page.cookies())
+                self.assertEqual(page.raw_data, b"")
+                self.assertIsNone(page.encoding)
+            finally:
+                page.quit()
 
 
 if __name__ == "__main__":
