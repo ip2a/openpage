@@ -344,6 +344,44 @@ impl PyPage {
         py.detach(move || page.user_agent()).map_err(Into::into)
     }
 
+    fn ready_state(&self, py: Python<'_>) -> PyResult<String> {
+        let page = self.page()?.clone();
+        py.detach(move || page.ready_state()).map_err(Into::into)
+    }
+
+    fn is_loading(&self, py: Python<'_>) -> PyResult<bool> {
+        let page = self.page()?.clone();
+        py.detach(move || page.is_loading()).map_err(Into::into)
+    }
+
+    #[pyo3(signature = (text, exclude=false, timeout_ms=10000))]
+    fn wait_for_url_change(
+        &self,
+        py: Python<'_>,
+        text: &str,
+        exclude: bool,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.page()?.clone();
+        let text = text.to_string();
+        py.detach(move || page.wait_for_url_change(&text, exclude, timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (text, exclude=false, timeout_ms=10000))]
+    fn wait_for_title_change(
+        &self,
+        py: Python<'_>,
+        text: &str,
+        exclude: bool,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.page()?.clone();
+        let text = text.to_string();
+        py.detach(move || page.wait_for_title_change(&text, exclude, timeout_ms))
+            .map_err(Into::into)
+    }
+
     fn cookie_header(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.page()?.clone();
         py.detach(move || page.cookie_header()).map_err(Into::into)
@@ -415,6 +453,65 @@ impl PyElement {
         let value = self.inner.run_js(script)?;
         serde_json::to_string(&value)
             .map_err(|err| OpenPageError::Serialization(err.to_string()).into())
+    }
+
+    fn is_selected(&self) -> PyResult<bool> {
+        self.inner.is_selected().map_err(Into::into)
+    }
+
+    fn is_checked(&self) -> PyResult<bool> {
+        self.inner.is_checked().map_err(Into::into)
+    }
+
+    fn is_displayed(&self) -> PyResult<bool> {
+        self.inner.is_displayed().map_err(Into::into)
+    }
+
+    fn is_enabled(&self) -> PyResult<bool> {
+        self.inner.is_enabled().map_err(Into::into)
+    }
+
+    fn is_alive(&self) -> PyResult<bool> {
+        self.inner.is_alive().map_err(Into::into)
+    }
+
+    fn has_rect(&self) -> PyResult<bool> {
+        self.inner.has_rect().map_err(Into::into)
+    }
+
+    fn is_in_viewport(&self) -> PyResult<bool> {
+        self.inner.is_in_viewport().map_err(Into::into)
+    }
+
+    fn is_clickable(&self) -> PyResult<bool> {
+        self.inner.is_clickable().map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000))]
+    fn wait_until_displayed(&self, timeout_ms: u64) -> PyResult<bool> {
+        self.inner
+            .wait_until_displayed(timeout_ms)
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000))]
+    fn wait_until_hidden(&self, timeout_ms: u64) -> PyResult<bool> {
+        self.inner.wait_until_hidden(timeout_ms).map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000))]
+    fn wait_until_enabled(&self, timeout_ms: u64) -> PyResult<bool> {
+        self.inner.wait_until_enabled(timeout_ms).map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000))]
+    fn wait_until_disabled(&self, timeout_ms: u64) -> PyResult<bool> {
+        self.inner.wait_until_disabled(timeout_ms).map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000))]
+    fn wait_until_deleted(&self, timeout_ms: u64) -> PyResult<bool> {
+        self.inner.wait_until_deleted(timeout_ms).map_err(Into::into)
     }
 
     fn find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PyElement>> {

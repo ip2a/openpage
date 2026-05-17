@@ -62,6 +62,7 @@
   - `WebPage`
   - locator parsing for CSS / `tag:` / `t:` / `@name=value` / `xpath:`
   - browser/session cookie header transfer primitives
+  - browser-backed page/element state checks and wait polling
   - page-scoped network listener with Rust-owned packet queueing, filter matching, and response body capture
   - request/response extra info exposure through the same Rust listener core
   - browser download-path configuration, mission tracking, cancel/wait support, and wait-for-download helper
@@ -85,6 +86,8 @@
   - read session-backed `status_code` from `WebPage` in session mode
   - read browser/session/`WebPage` `cookies()`
   - read session-backed `raw_data` and `encoding`
+  - read page and element states from Rust-backed browser objects
+  - wait for page title/url changes and element displayed/hidden/enabled/deleted states from Rust
   - download a local file through a Rust-configured browser download path and wait for it from Rust
   - capture completed browser network packets from both `ChromiumPage` and driver-mode `WebPage`
   - capture listener response bodies for matched browser requests
@@ -120,6 +123,7 @@
 - `cookies()` has now moved into the Rust core and Python only adapts the returned objects.
 - Session response metadata `raw_data` and `encoding` now lives in Rust as well.
 - Basic browser download enablement and wait-for-download now lives in Rust too.
+- Browser-backed wait/state has a first Rust-owned pass now, but it still lacks the broader reference-style surface such as document-load orchestration and richer element wait variants.
 - Listener now has response body capture and extra-info merging in Rust, but it still lacks fuller reference-style parity such as interception controls.
 - Download management now has a first Rust-owned pass as well, but it still lacks richer reference-style policies such as rename/skip/overwrite coordination and broader per-tab controls.
 - The next highest-value surfaces are fuller listener/download parity, then the remaining reference-style convenience and parity helpers.

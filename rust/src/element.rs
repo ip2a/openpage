@@ -1,5 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 
 use chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat;
 use chromiumoxide::element::Element as OxElement;
@@ -116,6 +118,92 @@ impl Element {
         })
     }
 
+    pub fn is_selected(&self) -> OpenPageResult<bool> {
+        value_as_bool(self.run_js("return !!this.selected;")?, "selected")
+    }
+
+    pub fn is_checked(&self) -> OpenPageResult<bool> {
+        value_as_bool(self.run_js("return !!this.checked;")?, "checked")
+    }
+
+    pub fn is_displayed(&self) -> OpenPageResult<bool> {
+        value_as_bool(
+            self.run_js(
+                "const style = window.getComputedStyle(this); \
+                 return !(style.visibility === 'hidden' || style.display === 'none' || this.hidden);",
+            )?,
+            "displayed",
+        )
+    }
+
+    pub fn is_enabled(&self) -> OpenPageResult<bool> {
+        value_as_bool(self.run_js("return !this.disabled;")?, "enabled")
+    }
+
+    pub fn is_alive(&self) -> OpenPageResult<bool> {
+        match self.run_js("return !!this.isConnected;") {
+            Ok(value) => value_as_bool(value, "alive"),
+            Err(_) => Ok(false),
+        }
+    }
+
+    pub fn has_rect(&self) -> OpenPageResult<bool> {
+        value_as_bool(
+            self.run_js(
+                "const rect = this.getBoundingClientRect(); \
+                 return !!(rect.width && rect.height);",
+            )?,
+            "has_rect",
+        )
+    }
+
+    pub fn is_in_viewport(&self) -> OpenPageResult<bool> {
+        value_as_bool(
+            self.run_js(
+                "const rect = this.getBoundingClientRect(); \
+                 if (!rect.width || !rect.height) { return false; } \
+                 const x = rect.left + rect.width / 2; \
+                 const y = rect.top + rect.height / 2; \
+                 return x >= 0 && y >= 0 && x <= window.innerWidth && y <= window.innerHeight;",
+            )?,
+            "in_viewport",
+        )
+    }
+
+    pub fn is_clickable(&self) -> OpenPageResult<bool> {
+        value_as_bool(
+            self.run_js(
+                "const style = window.getComputedStyle(this); \
+                 const rect = this.getBoundingClientRect(); \
+                 return !!(rect.width && rect.height) \
+                    && !this.disabled \
+                    && !(style.visibility === 'hidden' || style.display === 'none' || this.hidden) \
+                    && style.pointerEvents !== 'none';",
+            )?,
+            "clickable",
+        )
+    }
+
+    pub fn wait_until_displayed(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        self.wait_until(timeout_ms, |element| element.is_displayed(), false)
+    }
+
+    pub fn wait_until_hidden(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        self.wait_until(timeout_ms, |element| element.is_displayed().map(|value| !value), true)
+    }
+
+    pub fn wait_until_enabled(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        self.wait_until(timeout_ms, |element| element.is_enabled(), false)
+    }
+
+    pub fn wait_until_disabled(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        self.wait_until(timeout_ms, |element| element.is_enabled().map(|value| !value), false)
+    }
+
+    pub fn wait_until_deleted(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        self.wait_until(timeout_ms, |element| element.is_alive().map(|value| !value), true)
+    }
+
     pub fn find(&self, locator: &str) -> OpenPageResult<Element> {
         let locator = Locator::parse(locator)?;
         self.runtime.block_on(async {
@@ -155,5 +243,39 @@ impl Element {
                 .map(|element| Element::new(Arc::clone(&self.runtime), element))
                 .collect())
         })
+    }
+
+    fn wait_until<F>(&self, timeout_ms: u64, mut predicate: F, treat_errors_as_success: bool) -> OpenPageResult<bool>
+    where
+        F: FnMut(&Self) -> OpenPageResult<bool>,
+    {
+        let timeout = Duration::from_millis(timeout_ms.max(1));
+        let deadline = Instant::now() + timeout;
+        loop {
+            match predicate(self) {
+                Ok(true) => return Ok(true),
+                Ok(false) => {}
+                Err(_) if treat_errors_as_success => return Ok(true),
+                Err(err) => {
+                    if Instant::now() >= deadline {
+                        return Err(err);
+                    }
+                }
+            }
+
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            sleep(Duration::from_millis(50));
+        }
+    }
+}
+
+fn value_as_bool(value: Value, name: &str) -> OpenPageResult<bool> {
+    match value {
+        Value::Bool(value) => Ok(value),
+        other => Err(OpenPageError::JavaScript(format!(
+            "{name} state script did not return a bool: {other}"
+        ))),
     }
 }

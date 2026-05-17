@@ -214,6 +214,51 @@ impl Page {
         }
     }
 
+    pub fn ready_state(&self) -> OpenPageResult<String> {
+        match self.evaluate("document.readyState")? {
+            Value::String(value) => Ok(value),
+            value => Err(OpenPageError::JavaScript(format!(
+                "document.readyState did not return a string: {value}"
+            ))),
+        }
+    }
+
+    pub fn is_loading(&self) -> OpenPageResult<bool> {
+        Ok(self.ready_state()? != "complete")
+    }
+
+    pub fn wait_for_url_change(
+        &self,
+        text: &str,
+        exclude: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<bool> {
+        self.wait_for_change(timeout_ms, |page| {
+            let value = page.url()?;
+            Ok(if exclude {
+                !value.contains(text)
+            } else {
+                value.contains(text)
+            })
+        })
+    }
+
+    pub fn wait_for_title_change(
+        &self,
+        text: &str,
+        exclude: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<bool> {
+        self.wait_for_change(timeout_ms, |page| {
+            let value = page.title()?;
+            Ok(if exclude {
+                !value.contains(text)
+            } else {
+                value.contains(text)
+            })
+        })
+    }
+
     pub fn cookie_header(&self) -> OpenPageResult<Option<String>> {
         self.runtime.block_on(async {
             let cookies = self
@@ -270,6 +315,23 @@ impl Page {
                 .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
             Ok(())
         })
+    }
+
+    fn wait_for_change<F>(&self, timeout_ms: u64, mut predicate: F) -> OpenPageResult<bool>
+    where
+        F: FnMut(&Self) -> OpenPageResult<bool>,
+    {
+        let timeout = Duration::from_millis(timeout_ms.max(1));
+        let deadline = Instant::now() + timeout;
+        loop {
+            if predicate(self)? {
+                return Ok(true);
+            }
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            sleep(Duration::from_millis(50));
+        }
     }
 }
 

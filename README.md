@@ -142,6 +142,7 @@ This first version is intentionally browser-first:
   - snapshot node metadata `tag / inner_html / raw_text / attrs`
   - shared metadata `user_agent / status_code / cookies() / raw_data / encoding`
   - `post_json`
+  - page and element state checks plus first-pass wait helpers for browser-backed objects
   - browser/session mode switching
   - current-URL cookie sync between browser and session
   - page-scoped network listener with `start / wait / clear / stop`, response body capture, and extra-info exposure when Chromium emits it
@@ -170,6 +171,7 @@ Current integration checks cover:
 - page-scoped network listener capture from both `ChromiumPage` and driver-mode `WebPage`
 - listener response body capture for matched browser requests
 - listener response extra info exposure for matched browser requests
+- page and element state/wait helpers for browser-backed objects
 - event-driven download mission tracking from both `ChromiumPage` and driver-mode `WebPage`
 - session-backed `raw_data` and `encoding` from Rust across `SessionPage` and `WebPage`
 - local browser download flow through a configured download path and Rust-side `wait_for_download()`

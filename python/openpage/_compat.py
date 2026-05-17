@@ -130,6 +130,8 @@ class Page:
     def __init__(self, inner: _openpage_rs.Page) -> None:
         self._inner = inner
         self._listener: Listener | None = None
+        self._wait: PageWait | None = None
+        self._states: PageStates | None = None
 
     def goto(self, url: str) -> None:
         self._inner.goto(url)
@@ -157,6 +159,18 @@ class Page:
     @property
     def user_agent(self) -> str:
         return self._inner.user_agent()
+
+    @property
+    def wait(self) -> "PageWait":
+        if self._wait is None:
+            self._wait = PageWait(self)
+        return self._wait
+
+    @property
+    def states(self) -> "PageStates":
+        if self._states is None:
+            self._states = PageStates(self)
+        return self._states
 
     def cookies(self) -> list[dict[str, str | None]]:
         return [
@@ -255,6 +269,73 @@ class ChromiumPage(Page):
 
     def last_download(self) -> "DownloadMission | None":
         return self.browser.last_download()
+
+
+class PageWait:
+    def __init__(self, page: Page) -> None:
+        self._page = page
+
+    def ele_displayed(
+        self,
+        loc_or_ele: str | "Element",
+        timeout: float = 10.0,
+    ) -> "Element | bool":
+        try:
+            ele = loc_or_ele if isinstance(loc_or_ele, Element) else self._page.ele(loc_or_ele, timeout)
+        except Exception:
+            return False
+        return ele.wait.displayed(timeout)
+
+    def ele_hidden(
+        self,
+        loc_or_ele: str | "Element",
+        timeout: float = 10.0,
+    ) -> "Element | bool":
+        try:
+            ele = loc_or_ele if isinstance(loc_or_ele, Element) else self._page.ele(loc_or_ele, timeout)
+        except Exception:
+            return False
+        return ele.wait.hidden(timeout)
+
+    def ele_deleted(
+        self,
+        loc_or_ele: str | "Element",
+        timeout: float = 10.0,
+    ) -> "Element | bool":
+        try:
+            ele = loc_or_ele if isinstance(loc_or_ele, Element) else self._page.ele(loc_or_ele, timeout)
+        except Exception:
+            return False
+        return ele.wait.deleted(timeout)
+
+    def url_change(
+        self,
+        text: str,
+        exclude: bool = False,
+        timeout: float = 10.0,
+    ) -> "Page | bool":
+        return self._page if self._page._inner.wait_for_url_change(text, exclude, int(timeout * 1000)) else False
+
+    def title_change(
+        self,
+        text: str,
+        exclude: bool = False,
+        timeout: float = 10.0,
+    ) -> "Page | bool":
+        return self._page if self._page._inner.wait_for_title_change(text, exclude, int(timeout * 1000)) else False
+
+
+class PageStates:
+    def __init__(self, page: Page) -> None:
+        self._page = page
+
+    @property
+    def ready_state(self) -> str:
+        return self._page._inner.ready_state()
+
+    @property
+    def is_loading(self) -> bool:
+        return self._page._inner.is_loading()
 
 
 class SessionPage:
@@ -727,6 +808,8 @@ class ListenerFailInfo:
 class Element:
     def __init__(self, inner: _openpage_rs.Element) -> None:
         self._inner = inner
+        self._states: ElementStates | None = None
+        self._wait: ElementWait | None = None
 
     def click(self) -> None:
         self._inner.click()
@@ -754,6 +837,18 @@ class Element:
     def run_js(self, script: str) -> Any:
         return json.loads(self._inner.run_js(script))
 
+    @property
+    def states(self) -> "ElementStates":
+        if self._states is None:
+            self._states = ElementStates(self)
+        return self._states
+
+    @property
+    def wait(self) -> "ElementWait":
+        if self._wait is None:
+            self._wait = ElementWait(self)
+        return self._wait
+
     def ele(self, locator: str) -> "Element":
         return Element(self._inner.find(locator))
 
@@ -762,6 +857,63 @@ class Element:
 
     def save_screenshot(self, path: str) -> None:
         self._inner.save_screenshot(path)
+
+
+class ElementStates:
+    def __init__(self, element: Element) -> None:
+        self._element = element
+
+    @property
+    def is_selected(self) -> bool:
+        return self._element._inner.is_selected()
+
+    @property
+    def is_checked(self) -> bool:
+        return self._element._inner.is_checked()
+
+    @property
+    def is_displayed(self) -> bool:
+        return self._element._inner.is_displayed()
+
+    @property
+    def is_enabled(self) -> bool:
+        return self._element._inner.is_enabled()
+
+    @property
+    def is_alive(self) -> bool:
+        return self._element._inner.is_alive()
+
+    @property
+    def has_rect(self) -> bool:
+        return self._element._inner.has_rect()
+
+    @property
+    def is_in_viewport(self) -> bool:
+        return self._element._inner.is_in_viewport()
+
+    @property
+    def is_clickable(self) -> bool:
+        return self._element._inner.is_clickable()
+
+
+class ElementWait:
+    def __init__(self, element: Element) -> None:
+        self._element = element
+
+    def displayed(self, timeout: float = 10.0) -> "Element | bool":
+        return self._element if self._element._inner.wait_until_displayed(int(timeout * 1000)) else False
+
+    def hidden(self, timeout: float = 10.0) -> "Element | bool":
+        return self._element if self._element._inner.wait_until_hidden(int(timeout * 1000)) else False
+
+    def enabled(self, timeout: float = 10.0) -> "Element | bool":
+        return self._element if self._element._inner.wait_until_enabled(int(timeout * 1000)) else False
+
+    def disabled(self, timeout: float = 10.0) -> "Element | bool":
+        return self._element if self._element._inner.wait_until_disabled(int(timeout * 1000)) else False
+
+    def deleted(self, timeout: float = 10.0) -> "Element | bool":
+        return self._element if self._element._inner.wait_until_deleted(int(timeout * 1000)) else False
 
 
 class SessionElement:

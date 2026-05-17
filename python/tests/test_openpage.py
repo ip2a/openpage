@@ -155,11 +155,15 @@ def serve_download_site():
 
 
 def assert_get_ok(page: SessionPage | WebPage, url: str, attempts: int = 3) -> None:
-    last_status = None
+    last_status: int | str | None = None
     for attempt in range(attempts):
-        if page.get(url):
-            return
-        last_status = getattr(page, "status_code", None)
+        try:
+            if page.get(url):
+                return
+        except RuntimeError as err:
+            last_status = str(err)
+        else:
+            last_status = getattr(page, "status_code", None)
         if attempt + 1 < attempts:
             time.sleep(1.0)
     raise AssertionError(f"GET {url} failed after {attempts} attempts, last status={last_status}")
@@ -215,6 +219,64 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 self.assertGreater(shot.stat().st_size, 0)
         finally:
             browser.close()
+
+    def test_page_wait_and_element_states(self) -> None:
+        page = ChromiumPage(ChromiumOptions())
+        try:
+            self.assertTrue(page.get(data_url()))
+            self.assertEqual(page.states.ready_state, "complete")
+            self.assertFalse(page.states.is_loading)
+
+            name = page.ele("#name")
+            submit = page.ele("#submit")
+            self.assertFalse(name.states.is_selected)
+            self.assertFalse(name.states.is_checked)
+            self.assertTrue(submit.states.is_displayed)
+            self.assertTrue(submit.states.is_enabled)
+            self.assertTrue(submit.states.has_rect)
+            self.assertTrue(submit.states.is_in_viewport)
+            self.assertTrue(submit.states.is_clickable)
+            self.assertIsNot(page.wait.ele_displayed("#submit", timeout=1.0), False)
+            self.assertIs(submit.wait.displayed(timeout=1.0), submit)
+
+            page.run_js(
+                """
+                const button = document.getElementById('submit');
+                button.disabled = true;
+                setTimeout(() => { button.disabled = false; }, 150);
+                """
+            )
+            self.assertIsNot(submit.wait.disabled(timeout=1.0), False)
+            self.assertIsNot(submit.wait.enabled(timeout=2.0), False)
+
+            page.run_js(
+                """
+                const temp = document.createElement('div');
+                temp.id = 'temp';
+                temp.textContent = 'temp';
+                document.body.appendChild(temp);
+                setTimeout(() => { temp.style.display = 'none'; }, 150);
+                """
+            )
+            temp = page.ele("#temp")
+            self.assertTrue(temp.states.is_displayed)
+            self.assertIsNot(page.wait.ele_hidden(temp, timeout=2.0), False)
+
+            page.run_js(
+                """
+                const doomed = document.createElement('div');
+                doomed.id = 'doomed';
+                doomed.textContent = 'doomed';
+                document.body.appendChild(doomed);
+                setTimeout(() => { doomed.remove(); }, 150);
+                """
+            )
+            doomed = page.ele("#doomed")
+            self.assertTrue(doomed.states.is_alive)
+            self.assertIsNot(doomed.wait.deleted(timeout=2.0), False)
+            self.assertFalse(doomed.states.is_alive)
+        finally:
+            page.quit()
 
     def test_download_path_supports_file_downloads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -305,6 +367,24 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 self.assertIsNotNone(response_extra_info.headers_text)
             finally:
                 listener.stop()
+                page.quit()
+
+    def test_page_wait_detects_title_and_url_changes(self) -> None:
+        with serve_listener_site() as base_url:
+            page = ChromiumPage(ChromiumOptions())
+            try:
+                self.assertTrue(page.get(base_url))
+                page.run_js(
+                    """
+                    setTimeout(() => {
+                        document.title = 'openpage changed';
+                        history.replaceState({}, '', '/changed');
+                    }, 150);
+                    """
+                )
+                self.assertIs(page.wait.title_change("openpage changed", timeout=2.0), page)
+                self.assertIs(page.wait.url_change("/changed", timeout=2.0), page)
+            finally:
                 page.quit()
 
     def test_session_page_flow(self) -> None:
