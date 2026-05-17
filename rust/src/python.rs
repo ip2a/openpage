@@ -505,30 +505,134 @@ impl PySessionElement {
         )
     }
 
-    fn children(&self, py: Python<'_>) -> PyResult<Vec<Py<PySessionElement>>> {
+    #[pyo3(signature = (locator=None, index=1))]
+    fn child(
+        &self,
+        py: Python<'_>,
+        locator: Option<&str>,
+        index: usize,
+    ) -> PyResult<Py<PySessionElement>> {
+        let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
+        Py::new(
+            py,
+            PySessionElement {
+                inner: self.inner.child_with(normalized, index)?,
+            },
+        )
+    }
+
+    #[pyo3(signature = (locator=None))]
+    fn children(&self, py: Python<'_>, locator: Option<&str>) -> PyResult<Vec<Py<PySessionElement>>> {
+        let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
         self.inner
-            .children()?
+            .children_with(normalized)?
             .into_iter()
             .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
     }
 
-    fn prev(&self, py: Python<'_>) -> PyResult<Py<PySessionElement>> {
+    #[pyo3(signature = (locator=None, index=1))]
+    fn prev(
+        &self,
+        py: Python<'_>,
+        locator: Option<&str>,
+        index: usize,
+    ) -> PyResult<Py<PySessionElement>> {
+        let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
         Py::new(
             py,
             PySessionElement {
-                inner: self.inner.prev()?,
+                inner: self.inner.prev_with(normalized, index)?,
             },
         )
     }
 
-    fn next(&self, py: Python<'_>) -> PyResult<Py<PySessionElement>> {
+    #[pyo3(signature = (locator=None, index=1))]
+    fn next(
+        &self,
+        py: Python<'_>,
+        locator: Option<&str>,
+        index: usize,
+    ) -> PyResult<Py<PySessionElement>> {
+        let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
         Py::new(
             py,
             PySessionElement {
-                inner: self.inner.next()?,
+                inner: self.inner.next_with(normalized, index)?,
             },
         )
+    }
+
+    #[pyo3(signature = (locator=None, index=1))]
+    fn before(
+        &self,
+        py: Python<'_>,
+        locator: Option<&str>,
+        index: usize,
+    ) -> PyResult<Py<PySessionElement>> {
+        let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
+        Py::new(
+            py,
+            PySessionElement {
+                inner: self.inner.before_with(normalized, index)?,
+            },
+        )
+    }
+
+    #[pyo3(signature = (locator=None, index=1))]
+    fn after(
+        &self,
+        py: Python<'_>,
+        locator: Option<&str>,
+        index: usize,
+    ) -> PyResult<Py<PySessionElement>> {
+        let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
+        Py::new(
+            py,
+            PySessionElement {
+                inner: self.inner.after_with(normalized, index)?,
+            },
+        )
+    }
+
+    #[pyo3(signature = (locator=None))]
+    fn prevs(&self, py: Python<'_>, locator: Option<&str>) -> PyResult<Vec<Py<PySessionElement>>> {
+        let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
+        self.inner
+            .prevs_with(normalized)?
+            .into_iter()
+            .map(|inner| Py::new(py, PySessionElement { inner }))
+            .collect()
+    }
+
+    #[pyo3(signature = (locator=None))]
+    fn nexts(&self, py: Python<'_>, locator: Option<&str>) -> PyResult<Vec<Py<PySessionElement>>> {
+        let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
+        self.inner
+            .nexts_with(normalized)?
+            .into_iter()
+            .map(|inner| Py::new(py, PySessionElement { inner }))
+            .collect()
+    }
+
+    #[pyo3(signature = (locator=None))]
+    fn befores(&self, py: Python<'_>, locator: Option<&str>) -> PyResult<Vec<Py<PySessionElement>>> {
+        let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
+        self.inner
+            .befores_with(normalized)?
+            .into_iter()
+            .map(|inner| Py::new(py, PySessionElement { inner }))
+            .collect()
+    }
+
+    #[pyo3(signature = (locator=None))]
+    fn afters(&self, py: Python<'_>, locator: Option<&str>) -> PyResult<Vec<Py<PySessionElement>>> {
+        let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
+        self.inner
+            .afters_with(normalized)?
+            .into_iter()
+            .map(|inner| Py::new(py, PySessionElement { inner }))
+            .collect()
     }
 }
 

@@ -412,17 +412,38 @@ class SessionElement:
     def eles(self, locator: str) -> list["SessionElement"]:
         return [SessionElement(item) for item in self._inner.find_all(locator)]
 
+    def child(self, locator: str | None = None, index: int = 1) -> "SessionElement":
+        return SessionElement(self._inner.child(locator, index))
+
     def parent(self) -> "SessionElement":
         return SessionElement(self._inner.parent())
 
-    def children(self) -> list["SessionElement"]:
-        return [SessionElement(item) for item in self._inner.children()]
+    def children(self, locator: str | None = None) -> list["SessionElement"]:
+        return [SessionElement(item) for item in self._inner.children(locator)]
 
-    def prev(self) -> "SessionElement":
-        return SessionElement(self._inner.prev())
+    def prev(self, locator: str | None = None, index: int = 1) -> "SessionElement":
+        return SessionElement(self._inner.prev(locator, index))
 
-    def next(self) -> "SessionElement":
-        return SessionElement(self._inner.next())
+    def next(self, locator: str | None = None, index: int = 1) -> "SessionElement":
+        return SessionElement(self._inner.next(locator, index))
+
+    def before(self, locator: str | None = None, index: int = 1) -> "SessionElement":
+        return SessionElement(self._inner.before(locator, index))
+
+    def after(self, locator: str | None = None, index: int = 1) -> "SessionElement":
+        return SessionElement(self._inner.after(locator, index))
+
+    def prevs(self, locator: str | None = None) -> list["SessionElement"]:
+        return [SessionElement(item) for item in self._inner.prevs(locator)]
+
+    def nexts(self, locator: str | None = None) -> list["SessionElement"]:
+        return [SessionElement(item) for item in self._inner.nexts(locator)]
+
+    def befores(self, locator: str | None = None) -> list["SessionElement"]:
+        return [SessionElement(item) for item in self._inner.befores(locator)]
+
+    def afters(self, locator: str | None = None) -> list["SessionElement"]:
+        return [SessionElement(item) for item in self._inner.afters(locator)]
 
     def s_ele(self, locator: str | None = None) -> "SessionElement":
         if locator is None:

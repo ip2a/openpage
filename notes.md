@@ -79,7 +79,7 @@
   - read session-backed `status_code` from `WebPage` in session mode
   - query elements
   - nested snapshot queries from browser/session/html snapshots
-  - snapshot root lookup plus `parent / children / prev / next`
+  - snapshot root lookup plus `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters`
   - input, click, clear
   - run JS
   - screenshot
@@ -101,6 +101,6 @@
 - `cargo run --manifest-path rust/Cargo.toml --example webpage_modes`
 
 ## Next audit focus
-- The snapshot DOM core is now partially in place with traversable node identity in Rust.
-- The next parity gap inside this area is the rest of the relative-navigation family: `before / after / prevs / nexts / befores / afters`.
+- The snapshot DOM core now covers the main relative-navigation family in Rust.
+- The next parity gap inside this area is richer node metadata and convenience surfaces such as `attrs`, `raw_text`, and more reference-style helpers.
 - After that, the highest-value surfaces are session/browser response metadata and browser-only subsystems such as listener/download.

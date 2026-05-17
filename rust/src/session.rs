@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -264,29 +265,120 @@ impl SessionElement {
         })
     }
 
+    pub fn child(&self) -> OpenPageResult<SessionElement> {
+        self.child_with(None, 1)
+    }
+
+    pub fn child_with(&self, locator: Option<&str>, index: usize) -> OpenPageResult<SessionElement> {
+        nth_from_start(
+            self.children_with(locator)?,
+            index,
+            "child element not found",
+        )
+    }
+
     pub fn children(&self) -> OpenPageResult<Vec<SessionElement>> {
+        self.children_with(None)
+    }
+
+    pub fn children_with(&self, locator: Option<&str>) -> OpenPageResult<Vec<SessionElement>> {
         self.with_element(|element| {
-            Ok(element
-                .child_elements()
-                .map(|child| session_element_from_ref(&self.html, child))
-                .collect())
+            collect_matching_elements(&self.html, element.child_elements(), locator)
         })
     }
 
     pub fn prev(&self) -> OpenPageResult<SessionElement> {
+        self.prev_with(None, 1)
+    }
+
+    pub fn prev_with(&self, locator: Option<&str>, index: usize) -> OpenPageResult<SessionElement> {
+        nth_from_end(
+            self.prevs_with(locator)?,
+            index,
+            "previous element not found",
+        )
+    }
+
+    pub fn prevs(&self) -> OpenPageResult<Vec<SessionElement>> {
+        self.prevs_with(None)
+    }
+
+    pub fn prevs_with(&self, locator: Option<&str>) -> OpenPageResult<Vec<SessionElement>> {
         self.with_element(|element| {
-            previous_element(element)
-                .map(|prev| session_element_from_ref(&self.html, prev))
-                .ok_or_else(|| OpenPageError::ElementNotFound("previous element not found".to_string()))
+            let mut items = collect_matching_elements(
+                &self.html,
+                element.prev_siblings().filter_map(ElementRef::wrap),
+                locator,
+            )?;
+            items.reverse();
+            Ok(items)
         })
     }
 
     pub fn next(&self) -> OpenPageResult<SessionElement> {
+        self.next_with(None, 1)
+    }
+
+    pub fn next_with(&self, locator: Option<&str>, index: usize) -> OpenPageResult<SessionElement> {
+        nth_from_start(
+            self.nexts_with(locator)?,
+            index,
+            "next element not found",
+        )
+    }
+
+    pub fn nexts(&self) -> OpenPageResult<Vec<SessionElement>> {
+        self.nexts_with(None)
+    }
+
+    pub fn nexts_with(&self, locator: Option<&str>) -> OpenPageResult<Vec<SessionElement>> {
         self.with_element(|element| {
-            next_element(element)
-                .map(|next| session_element_from_ref(&self.html, next))
-                .ok_or_else(|| OpenPageError::ElementNotFound("next element not found".to_string()))
+            collect_matching_elements(
+                &self.html,
+                element.next_siblings().filter_map(ElementRef::wrap),
+                locator,
+            )
         })
+    }
+
+    pub fn before(&self) -> OpenPageResult<SessionElement> {
+        self.before_with(None, 1)
+    }
+
+    pub fn before_with(&self, locator: Option<&str>, index: usize) -> OpenPageResult<SessionElement> {
+        nth_from_end(
+            self.befores_with(locator)?,
+            index,
+            "preceding element not found",
+        )
+    }
+
+    pub fn befores(&self) -> OpenPageResult<Vec<SessionElement>> {
+        self.befores_with(None)
+    }
+
+    pub fn befores_with(&self, locator: Option<&str>) -> OpenPageResult<Vec<SessionElement>> {
+        self.with_element(|element| document_relatives(&self.html, element, RelativeDirection::Before, locator))
+    }
+
+    pub fn after(&self) -> OpenPageResult<SessionElement> {
+        self.after_with(None, 1)
+    }
+
+    pub fn after_with(&self, locator: Option<&str>, index: usize) -> OpenPageResult<SessionElement> {
+        nth_from_start(
+            self.afters_with(locator)?,
+            index,
+            "following element not found",
+        )
+    }
+
+    pub fn afters(&self) -> OpenPageResult<Vec<SessionElement>> {
+        self.afters_with(None)
+    }
+
+    pub fn afters_with(&self, locator: Option<&str>) -> OpenPageResult<Vec<SessionElement>> {
+        self.with_element(|element| document_relatives(&self.html, element, RelativeDirection::After, locator))
     }
 
     fn with_element<T, F>(&self, f: F) -> OpenPageResult<T>
@@ -390,6 +482,111 @@ fn element_from_document<'a>(document: &'a Html, node_id: NodeId) -> OpenPageRes
         .ok_or_else(|| OpenPageError::ElementNotFound("snapshot node no longer exists".to_string()))
 }
 
+#[derive(Clone, Copy)]
+enum RelativeDirection {
+    Before,
+    After,
+}
+
+fn collect_matching_elements<'a, I>(
+    html: &Arc<String>,
+    elements: I,
+    locator: Option<&str>,
+) -> OpenPageResult<Vec<SessionElement>>
+where
+    I: IntoIterator<Item = ElementRef<'a>>,
+{
+    let selector = parse_optional_selector(locator)?;
+    Ok(elements
+        .into_iter()
+        .filter(|element| selector.as_ref().is_none_or(|selector| selector.matches(element)))
+        .map(|element| session_element_from_ref(html, element))
+        .collect())
+}
+
+fn document_relatives(
+    html: &Arc<String>,
+    element: ElementRef<'_>,
+    direction: RelativeDirection,
+    locator: Option<&str>,
+) -> OpenPageResult<Vec<SessionElement>> {
+    let selector = parse_optional_selector(locator)?;
+    let root = element.tree().root();
+    let elements: Vec<_> = root.descendants().filter_map(ElementRef::wrap).collect();
+    let current_id = element.id();
+    let current_index = elements
+        .iter()
+        .position(|candidate| candidate.id() == current_id)
+        .ok_or_else(|| OpenPageError::ElementNotFound("snapshot node no longer exists".to_string()))?;
+
+    let ancestor_ids: HashSet<_> = element.ancestors().map(|node| node.id()).collect();
+    let descendant_ids: HashSet<_> = element.descendants().skip(1).map(|node| node.id()).collect();
+
+    let iter: Box<dyn Iterator<Item = ElementRef<'_>> + '_> = match direction {
+        RelativeDirection::Before => Box::new(
+            elements[..current_index]
+                .iter()
+                .copied()
+                .filter(|candidate| !ancestor_ids.contains(&candidate.id())),
+        ),
+        RelativeDirection::After => Box::new(
+            elements[current_index + 1..]
+                .iter()
+                .copied()
+                .filter(|candidate| !descendant_ids.contains(&candidate.id())),
+        ),
+    };
+
+    Ok(iter
+        .filter(|candidate| selector.as_ref().is_none_or(|selector| selector.matches(candidate)))
+        .map(|candidate| session_element_from_ref(html, candidate))
+        .collect())
+}
+
+fn nth_from_start(
+    elements: Vec<SessionElement>,
+    index: usize,
+    error_message: &str,
+) -> OpenPageResult<SessionElement> {
+    if index == 0 {
+        return Err(OpenPageError::ElementNotFound(format!(
+            "{error_message}: index must be >= 1"
+        )));
+    }
+    elements
+        .into_iter()
+        .nth(index - 1)
+        .ok_or_else(|| OpenPageError::ElementNotFound(error_message.to_string()))
+}
+
+fn nth_from_end(
+    elements: Vec<SessionElement>,
+    index: usize,
+    error_message: &str,
+) -> OpenPageResult<SessionElement> {
+    if index == 0 {
+        return Err(OpenPageError::ElementNotFound(format!(
+            "{error_message}: index must be >= 1"
+        )));
+    }
+    let len = elements.len();
+    if index > len {
+        return Err(OpenPageError::ElementNotFound(error_message.to_string()));
+    }
+    elements
+        .into_iter()
+        .nth(len - index)
+        .ok_or_else(|| OpenPageError::ElementNotFound(error_message.to_string()))
+}
+
+fn parse_optional_selector(locator: Option<&str>) -> OpenPageResult<Option<Selector>> {
+    locator
+        .map(str::trim)
+        .filter(|locator| !locator.is_empty())
+        .map(parse_selector)
+        .transpose()
+}
+
 fn nearest_parent_element(element: ElementRef<'_>) -> Option<ElementRef<'_>> {
     let mut current = element.parent();
     while let Some(node) = current {
@@ -397,28 +594,6 @@ fn nearest_parent_element(element: ElementRef<'_>) -> Option<ElementRef<'_>> {
             return Some(parent);
         }
         current = node.parent();
-    }
-    None
-}
-
-fn previous_element(element: ElementRef<'_>) -> Option<ElementRef<'_>> {
-    let mut current = element.prev_sibling();
-    while let Some(node) = current {
-        if let Some(prev) = ElementRef::wrap(node) {
-            return Some(prev);
-        }
-        current = node.prev_sibling();
-    }
-    None
-}
-
-fn next_element(element: ElementRef<'_>) -> Option<ElementRef<'_>> {
-    let mut current = element.next_sibling();
-    while let Some(node) = current {
-        if let Some(next) = ElementRef::wrap(node) {
-            return Some(next);
-        }
-        current = node.next_sibling();
     }
     None
 }
@@ -487,5 +662,32 @@ mod tests {
         assert_eq!(children.len(), 2);
         assert_eq!(children[0].text().expect("first child text"), Some("alpha".to_string()));
         assert_eq!(children[1].text().expect("second child text"), Some("beta".to_string()));
+    }
+
+    #[test]
+    fn snapshot_relative_lists_cover_before_after_and_filtered_siblings() {
+        let root = snapshot_root(HTML).expect("document root should exist");
+        let submit = root.find("#submit").expect("submit should exist");
+        let second_item = root.find(".item[data-kind='b']").expect("second item should exist");
+
+        let prevs = submit.prevs().expect("previous siblings");
+        assert_eq!(prevs.len(), 2);
+        assert_eq!(prevs[0].tag().expect("first prev tag"), "h1".to_string());
+        assert_eq!(prevs[1].attr("id").expect("second prev id"), Some("name".to_string()));
+
+        let nexts = submit.nexts().expect("next siblings");
+        assert_eq!(nexts.len(), 2);
+        assert_eq!(nexts[0].attr("id").expect("first next id"), Some("out".to_string()));
+        assert_eq!(nexts[1].tag().expect("second next tag"), "ul".to_string());
+
+        let afters = submit.afters_with(Some(".item")).expect("following items");
+        assert_eq!(afters.len(), 2);
+        assert_eq!(afters[0].text().expect("first after text"), Some("alpha".to_string()));
+        assert_eq!(submit.after_with(Some(".item"), 2).expect("second matching after").text().expect("second matching after text"), Some("beta".to_string()));
+
+        let befores = second_item.befores_with(Some(".item")).expect("preceding items");
+        assert_eq!(befores.len(), 1);
+        assert_eq!(befores[0].text().expect("preceding item text"), Some("alpha".to_string()));
+        assert_eq!(second_item.before().expect("nearest preceding element").text().expect("nearest preceding text"), Some("alpha".to_string()));
     }
 }

@@ -43,7 +43,7 @@ The architectural decision did not change:
 - `WebPage` is implemented in Rust as orchestration over Rust browser/session primitives.
 - Rust owns the execution primitives for browser and session work.
 - Python owns the thin compatibility wrappers and object adaptation layer.
-- Snapshot `SessionElement` nodes now carry Rust-side node identity, which made root/parent/children/prev/next traversal possible without moving DOM logic back into Python.
+- Snapshot `SessionElement` nodes now carry Rust-side node identity, which made root/child/children/parent/prev/next/before/after traversal possible without moving DOM logic back into Python.
 
 ## Python binding behavior
 
@@ -64,4 +64,4 @@ The architectural decision did not change:
 - `WebPage` mode switching and cookie sync pass integration tests.
 - Python `WebPage` now forwards to a Rust `WebPage` core instead of keeping the mode logic in Python.
 - Python snapshot queries now route through Rust and support nested `SessionElement` lookups.
-- Snapshot traversal now covers root lookup plus `parent / children / prev / next`, and `WebPage.status_code` exposes session-mode HTTP status from the shared Rust core.
+- Snapshot traversal now covers root lookup plus `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters`, and `WebPage.status_code` exposes session-mode HTTP status from the shared Rust core.
