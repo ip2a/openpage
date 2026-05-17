@@ -44,6 +44,7 @@ The architectural decision did not change:
 - Rust owns the execution primitives for browser and session work.
 - Python owns the thin compatibility wrappers and object adaptation layer.
 - Snapshot `SessionElement` nodes now carry Rust-side node identity, which made root/child/children/parent/prev/next/before/after traversal possible without moving DOM logic back into Python.
+- Shared metadata access is moving down with the same rule: Python now reads `user_agent`, `status_code`, `raw_text`, and `attrs` from Rust rather than re-deriving them locally.
 
 ## Python binding behavior
 

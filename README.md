@@ -107,7 +107,8 @@ This first version is intentionally browser-first:
   - `get / ele / eles / run_js / click / input / clear / screenshot / pdf`
   - snapshot `s_ele / s_eles` queries for browser, session, and `WebPage`
   - snapshot root lookup plus `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters`
-  - snapshot node metadata `tag / inner_html`
+  - snapshot node metadata `tag / inner_html / raw_text / attrs`
+  - shared metadata `user_agent / status_code`
   - `post_json`
   - browser/session mode switching
   - current-URL cookie sync between browser and session

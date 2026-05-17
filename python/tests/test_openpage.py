@@ -50,6 +50,7 @@ class OpenPageIntegrationTest(unittest.TestCase):
         try:
             self.assertTrue(page.get(data_url()))
             self.assertEqual(page.title, "")
+            self.assertTrue(page.user_agent)
             self.assertEqual(page.ele("h1").text, "OpenPage")
             self.assertEqual(page.s_ele("h1").text, "OpenPage")
             root = page.s_ele()
@@ -58,6 +59,8 @@ class OpenPageIntegrationTest(unittest.TestCase):
             self.assertEqual(snapshot.ele("h1").text, "OpenPage")
             self.assertEqual(snapshot.children()[0].tag, "h1")
             self.assertEqual(snapshot.child(index=2).attr("id"), "name")
+            self.assertEqual(page.s_ele("#name").attrs["id"], "name")
+            self.assertEqual(page.s_ele("#submit").raw_text, "Go")
             self.assertEqual([item.text for item in snapshot.eles(".item")], ["a", "b"])
             self.assertEqual(page.s_ele("#submit").next().attr("id"), "out")
             self.assertEqual(page.s_ele("#out").prev().attr("id"), "submit")
@@ -93,7 +96,8 @@ class OpenPageIntegrationTest(unittest.TestCase):
             browser.close()
 
     def test_session_page_flow(self) -> None:
-        page = SessionPage(SessionOptions())
+        options = SessionOptions().set_user_agent("openpage-test-agent")
+        page = SessionPage(options)
         self.assertTrue(page.get("https://example.com"))
         self.assertEqual(page.title, "Example Domain")
         self.assertEqual(page.ele("h1").text, "Example Domain")
@@ -102,6 +106,8 @@ class OpenPageIntegrationTest(unittest.TestCase):
         self.assertEqual(page.s_ele("body").ele("h1").text, "Example Domain")
         self.assertEqual(page.s_ele("h1").parent().tag, "div")
         self.assertEqual(page.s_ele("h1").parent().parent().tag, "body")
+        self.assertEqual(page.s_ele("h1").raw_text, "Example Domain")
+        self.assertEqual(page.user_agent, "openpage-test-agent")
         self.assertEqual(page.status_code, 200)
 
         assert_get_ok(page, "https://httpbin.org/json")
@@ -116,6 +122,7 @@ class OpenPageIntegrationTest(unittest.TestCase):
             page.change_mode("s", go=True, copy_cookies=True)
             self.assertEqual(page.mode, "s")
             self.assertEqual(page.status_code, 200)
+            self.assertTrue(page.user_agent)
             self.assertEqual(page.json["cookies"]["token"], "browser")
 
             assert_get_ok(page, "https://httpbin.org/cookies/set?token=session")
@@ -123,6 +130,7 @@ class OpenPageIntegrationTest(unittest.TestCase):
             page.change_mode("d", go=True, copy_cookies=True)
             self.assertEqual(page.mode, "d")
             self.assertIsNone(page.status_code)
+            self.assertTrue(page.user_agent)
             self.assertIn('"token": "session"', page.ele("body").text or "")
         finally:
             page.quit()

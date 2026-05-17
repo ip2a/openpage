@@ -118,6 +118,10 @@ class Page:
     def html(self) -> str:
         return self._inner.html()
 
+    @property
+    def user_agent(self) -> str:
+        return self._inner.user_agent()
+
     def run_js(self, expression: str) -> Any:
         return json.loads(self._inner.evaluate(expression))
 
@@ -225,6 +229,10 @@ class SessionPage:
     def title(self) -> str | None:
         return self._inner.title()
 
+    @property
+    def user_agent(self) -> str | None:
+        return self._inner.user_agent()
+
     def set_user_agent(self, user_agent: str | None) -> None:
         self._inner.set_user_agent(user_agent)
 
@@ -290,6 +298,10 @@ class WebPage:
     @property
     def title(self) -> str | None:
         return self._inner.title()
+
+    @property
+    def user_agent(self) -> str | None:
+        return self._inner.user_agent()
 
     @property
     def html(self) -> str:
@@ -402,6 +414,14 @@ class SessionElement:
     @property
     def inner_html(self) -> str | None:
         return self._inner.inner_html()
+
+    @property
+    def raw_text(self) -> str | None:
+        return self._inner.raw_text()
+
+    @property
+    def attrs(self) -> dict[str, str]:
+        return dict(self._inner.attrs())
 
     def attr(self, name: str) -> str | None:
         return self._inner.attr(name)

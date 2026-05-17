@@ -413,6 +413,11 @@ impl PySessionPage {
         py.detach(move || page.title()).map_err(Into::into)
     }
 
+    fn user_agent(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let page = self.inner.clone();
+        py.detach(move || page.user_agent()).map_err(Into::into)
+    }
+
     fn set_user_agent(&self, py: Python<'_>, user_agent: Option<String>) -> PyResult<()> {
         let page = self.inner.clone();
         py.detach(move || page.set_user_agent(user_agent))?;
@@ -477,6 +482,14 @@ impl PySessionElement {
 
     fn inner_html(&self) -> PyResult<Option<String>> {
         self.inner.inner_html().map_err(Into::into)
+    }
+
+    fn raw_text(&self) -> PyResult<Option<String>> {
+        self.inner.raw_text().map_err(Into::into)
+    }
+
+    fn attrs(&self) -> PyResult<Vec<(String, String)>> {
+        self.inner.attrs().map_err(Into::into)
     }
 
     fn attr(&self, name: &str) -> PyResult<Option<String>> {
@@ -712,6 +725,11 @@ impl PyWebPage {
     fn title(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.inner.clone();
         py.detach(move || page.title()).map_err(Into::into)
+    }
+
+    fn user_agent(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let page = self.inner.clone();
+        py.detach(move || page.user_agent()).map_err(Into::into)
     }
 
     fn status_code(&self, py: Python<'_>) -> PyResult<Option<u16>> {

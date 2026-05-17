@@ -132,6 +132,10 @@ impl SessionPage {
         Ok(self.first_text(&body, "title")?)
     }
 
+    pub fn user_agent(&self) -> OpenPageResult<Option<String>> {
+        Ok(self.lock_state()?.user_agent.clone())
+    }
+
     pub fn root(&self) -> OpenPageResult<SessionElement> {
         let body = self.body_arc()?;
         snapshot_root_arc(body)
@@ -251,6 +255,24 @@ impl SessionElement {
 
     pub fn inner_html(&self) -> OpenPageResult<Option<String>> {
         self.with_element(|element| Ok(Some(element.inner_html())))
+    }
+
+    pub fn raw_text(&self) -> OpenPageResult<Option<String>> {
+        self.with_element(|element| {
+            let text = element.text().collect::<String>();
+            Ok(Some(text).filter(|value| !value.is_empty()))
+        })
+    }
+
+    pub fn attrs(&self) -> OpenPageResult<Vec<(String, String)>> {
+        self.with_element(|element| {
+            Ok(element
+                .value()
+                .attrs
+                .iter()
+                .map(|(name, value)| (name.local.to_string(), value.to_string()))
+                .collect())
+        })
     }
 
     pub fn attr(&self, name: &str) -> OpenPageResult<Option<String>> {
@@ -632,6 +654,9 @@ mod tests {
             first_item.attr("data-kind").expect("item attr"),
             Some("a".to_string())
         );
+        let attrs = first_item.attrs().expect("item attrs");
+        assert!(attrs.contains(&("class".to_string(), "item".to_string())));
+        assert!(attrs.contains(&("data-kind".to_string(), "a".to_string())));
     }
 
     #[test]
@@ -662,6 +687,7 @@ mod tests {
         assert_eq!(children.len(), 2);
         assert_eq!(children[0].text().expect("first child text"), Some("alpha".to_string()));
         assert_eq!(children[1].text().expect("second child text"), Some("beta".to_string()));
+        assert_eq!(submit.raw_text().expect("submit raw text"), Some("Go".to_string()));
     }
 
     #[test]

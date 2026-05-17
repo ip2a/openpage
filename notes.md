@@ -76,10 +76,12 @@
   - launch browser
   - open page
   - read `url`, `title`, `html`
+  - read browser/session `user_agent`
   - read session-backed `status_code` from `WebPage` in session mode
   - query elements
   - nested snapshot queries from browser/session/html snapshots
   - snapshot root lookup plus `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters`
+  - snapshot node metadata `tag / inner_html / raw_text / attrs`
   - input, click, clear
   - run JS
   - screenshot
@@ -102,5 +104,5 @@
 
 ## Next audit focus
 - The snapshot DOM core now covers the main relative-navigation family in Rust.
-- The next parity gap inside this area is richer node metadata and convenience surfaces such as `attrs`, `raw_text`, and more reference-style helpers.
-- After that, the highest-value surfaces are session/browser response metadata and browser-only subsystems such as listener/download.
+- The next parity gap inside this area is the remaining reference-style helpers around paths, comments, and richer locator modes.
+- After that, the highest-value surfaces are session/browser response metadata such as `raw_data`, `encoding`, `cookies()`, and browser-only subsystems such as listener/download.

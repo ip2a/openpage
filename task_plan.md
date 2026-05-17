@@ -37,6 +37,7 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Prioritize the snapshot DOM core next: strengthen `SessionElement` traversal before starting new browser-only subsystems like listener/download.
 - Snapshot traversal MVP is now in Rust: root lookup plus `parent / children / prev / next` and node metadata are exposed through the same Python thin wrappers.
 - Snapshot traversal family is now broader in Rust: `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters` all execute in the Rust core and Python forwards to them.
+- Snapshot metadata and shared response metadata have started moving down too: `tag / inner_html / raw_text / attrs / user_agent / WebPage.status_code` now come from the Rust core.
 
 ## Errors Encountered
 - `uvx` was not on the reduced PATH inside scripted commands; resolved by using `uv tool run maturin`.
@@ -50,4 +51,4 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Public `httpbin` endpoints can occasionally return a transient non-success status; verification now retries those requests in tests/examples instead of treating one external blip as a core regression.
 
 ## Status
-**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, `WebPage.status_code` and the main snapshot traversal family are now on the shared Rust/Python surface, and the next focused gap is richer metadata/convenience parity plus broader response/listener/download coverage.
+**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, traversal plus several metadata surfaces now come from Rust, and the next focused gap is deeper response/session parity (`raw_data`, `encoding`, `cookies`) plus broader listener/download coverage.

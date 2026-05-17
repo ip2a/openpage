@@ -247,6 +247,13 @@ impl WebPage {
         }
     }
 
+    pub fn user_agent(&self) -> OpenPageResult<Option<String>> {
+        match self.mode()? {
+            WebMode::Driver => Ok(Some(self.driver.user_agent()?)),
+            WebMode::Session => self.session.user_agent(),
+        }
+    }
+
     pub fn html(&self) -> OpenPageResult<String> {
         match self.mode()? {
             WebMode::Driver => self.driver.html(),
