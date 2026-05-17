@@ -1135,6 +1135,14 @@ impl PyListenerResponse {
     fn mime_type(&self) -> String {
         self.inner.mime_type.clone()
     }
+
+    fn body(&self) -> Option<String> {
+        self.inner.body.clone()
+    }
+
+    fn body_base64(&self) -> bool {
+        self.inner.body_base64
+    }
 }
 
 #[pymethods]

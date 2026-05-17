@@ -275,6 +275,10 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 assert response is not None
                 self.assertEqual(response.status, 200)
                 self.assertEqual(response.mime_type, "application/json")
+                self.assertFalse(response.body_base64)
+                self.assertIsNotNone(response.body)
+                assert response.body is not None
+                self.assertIn('"received"', response.body)
 
                 content_type = (
                     packet.request.headers.get("Content-Type")

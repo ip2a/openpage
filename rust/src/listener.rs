@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use chromiumoxide::cdp::browser_protocol::network::{
     EventLoadingFailed, EventLoadingFinished, EventRequestWillBeSent, EventResponseReceived,
-    Headers, ResourceType, Response,
+    GetResponseBodyParams, Headers, ResourceType, Response,
 };
 use chromiumoxide::page::Page as OxPage;
 use futures::StreamExt;
@@ -30,6 +30,8 @@ pub struct ListenerResponse {
     pub status_text: String,
     pub headers: HashMap<String, String>,
     pub mime_type: String,
+    pub body: Option<String>,
+    pub body_base64: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -150,6 +152,9 @@ struct PendingPacket {
     request: ListenerRequest,
     response: Option<ListenerResponse>,
     resource_type: Option<String>,
+    finished: bool,
+    response_body: Option<String>,
+    response_body_base64: bool,
 }
 
 impl PendingPacket {
@@ -164,6 +169,9 @@ impl PendingPacket {
             },
             response: None,
             resource_type: event.r#type.as_ref().map(resource_type_to_string),
+            finished: false,
+            response_body: None,
+            response_body_base64: false,
         }
     }
 
@@ -414,7 +422,7 @@ async fn run_listener(page: OxPage, shared: Arc<ListenerShared>) -> OpenPageResu
                 None => break,
             },
             event = finished_events.next() => match event {
-                Some(event) => on_loading_finished(&shared, &event)?,
+                Some(event) => on_loading_finished(&shared, &page, &event).await?,
                 None => break,
             },
             event = failed_events.next() => match event {
@@ -485,24 +493,58 @@ fn on_response_received(
         .lock()
         .map_err(|_| OpenPageError::BrowserOperation("listener state lock poisoned".to_string()))?;
     if let Some(packet) = state.inflight.get_mut(&request_id) {
-        packet.response = Some(listener_response_from_cdp(&event.response));
+        let mut response = listener_response_from_cdp(&event.response);
+        if let Some(body) = &packet.response_body {
+            response.body = Some(body.clone());
+            response.body_base64 = packet.response_body_base64;
+        }
+        packet.response = Some(response);
         packet.resource_type = Some(resource_type_to_string(&event.r#type));
+    }
+    let should_finalize = state
+        .inflight
+        .get(&request_id)
+        .is_some_and(|packet| packet.finished && packet.response.is_some());
+    if should_finalize {
+        if let Some(packet) = state.inflight.remove(&request_id) {
+            state.queue.push_back(packet.into_packet(None));
+            shared.condvar.notify_all();
+        }
     }
     Ok(())
 }
 
-fn on_loading_finished(
+async fn on_loading_finished(
     shared: &Arc<ListenerShared>,
+    page: &OxPage,
     event: &EventLoadingFinished,
 ) -> OpenPageResult<()> {
     let request_id = event.request_id.as_ref().to_string();
+    let response_body = fetch_response_body(page, event).await;
     let mut state = shared
         .state
         .lock()
         .map_err(|_| OpenPageError::BrowserOperation("listener state lock poisoned".to_string()))?;
-    if let Some(packet) = state.inflight.remove(&request_id) {
-        state.queue.push_back(packet.into_packet(None));
-        shared.condvar.notify_all();
+    if let Some(packet) = state.inflight.get_mut(&request_id) {
+        packet.finished = true;
+        if let Some((body, body_base64)) = response_body {
+            packet.response_body = Some(body.clone());
+            packet.response_body_base64 = body_base64;
+            if let Some(response) = packet.response.as_mut() {
+                response.body = Some(body);
+                response.body_base64 = body_base64;
+            }
+        }
+    }
+    let should_finalize = state
+        .inflight
+        .get(&request_id)
+        .is_some_and(|packet| packet.response.is_some());
+    if should_finalize {
+        if let Some(packet) = state.inflight.remove(&request_id) {
+            state.queue.push_back(packet.into_packet(None));
+            shared.condvar.notify_all();
+        }
     }
     Ok(())
 }
@@ -594,7 +636,20 @@ fn listener_response_from_cdp(response: &Response) -> ListenerResponse {
         status_text: response.status_text.clone(),
         headers: headers_to_map(&response.headers),
         mime_type: response.mime_type.clone(),
+        body: None,
+        body_base64: false,
     }
+}
+
+async fn fetch_response_body(
+    page: &OxPage,
+    event: &EventLoadingFinished,
+) -> Option<(String, bool)> {
+    let response = page
+        .execute(GetResponseBodyParams::new(event.request_id.clone()))
+        .await
+        .ok()?;
+    Some((response.result.body, response.result.base64_encoded))
 }
 
 #[cfg(test)]

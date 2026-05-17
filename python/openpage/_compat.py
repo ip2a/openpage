@@ -656,6 +656,14 @@ class ListenerResponse:
     def mime_type(self) -> str:
         return self._inner.mime_type()
 
+    @property
+    def body(self) -> str | None:
+        return self._inner.body()
+
+    @property
+    def body_base64(self) -> bool:
+        return self._inner.body_base64()
+
 
 class ListenerFailInfo:
     def __init__(self, inner: _openpage_rs.ListenerFailInfo) -> None:

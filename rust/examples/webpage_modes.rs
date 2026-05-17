@@ -5,16 +5,23 @@ use std::time::Duration;
 use openpage_rs::{LaunchOptions, SessionOptions, WebMode, WebPage};
 
 fn ensure_get(page: &WebPage, url: &str) -> Result<(), Box<dyn std::error::Error>> {
-    for attempt in 0..3 {
-        if page.get(url)? {
-            return Ok(());
+    let mut last_error = None;
+    for attempt in 0..5 {
+        match page.get(url) {
+            Ok(true) => return Ok(()),
+            Ok(false) => last_error = Some("returned false".to_string()),
+            Err(err) => last_error = Some(err.to_string()),
         }
-        if attempt < 2 {
+        if attempt < 4 {
             sleep(Duration::from_secs(1));
         }
     }
 
-    Err(Error::other(format!("GET {url} failed after 3 attempts")).into())
+    Err(Error::other(format!(
+        "GET {url} failed after 5 attempts: {}",
+        last_error.unwrap_or_else(|| "unknown error".to_string())
+    ))
+    .into())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

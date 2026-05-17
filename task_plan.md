@@ -42,6 +42,7 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Session response metadata has moved further down as well: `raw_data` and `encoding` now come from the Rust core and Python only forwards them.
 - Browser download-path configuration now comes from Rust too: launch options and runtime setters call CDP `Browser.setDownloadBehavior`, Python only forwards the path, and download completion waiting is handled in Rust instead of Python-side polling loops.
 - Browser-side listener coverage now has a Rust-owned first pass too: page-scoped request/response/failure packet capture plus `start / wait / clear / stop` live in the Rust core, and Python only exposes thin compatibility wrappers around those objects.
+- Listener coverage has now moved one layer deeper as well: matched browser packets now capture response bodies in Rust before Python sees them.
 - Browser download handling has moved further down too: a Rust-owned download tracker now consumes CDP browser download events, exposes mission state, and keeps Python as a thin wrapper over mission inspection and waiting.
 
 ## Errors Encountered
@@ -73,10 +74,10 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
   - `WebPage` orchestration lives in Rust
   - snapshot traversal and selected metadata live in Rust
   - cookie sync plus `cookies()` / `raw_data` / `encoding` exposure now live in Rust
-  - page-scoped network listener now lives in Rust and is reachable from both `ChromiumPage` and driver-mode `WebPage`
+  - page-scoped network listener now lives in Rust, captures response bodies, and is reachable from both `ChromiumPage` and driver-mode `WebPage`
   - browser download-path configuration, event-driven download missions, download waiting, and local file download now live in Rust
 - Still missing before the goal can be considered complete:
-  - fuller parity inside browser subsystems such as listener response bodies / extra info / interception-style controls and richer download-manager policies
+  - fuller parity inside browser subsystems such as listener extra info / interception-style controls and richer download-manager policies
   - a stronger completion pass against the remaining compatibility surface
 
 ## Status

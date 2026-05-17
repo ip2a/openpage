@@ -144,10 +144,10 @@ This first version is intentionally browser-first:
   - `post_json`
   - browser/session mode switching
   - current-URL cookie sync between browser and session
-  - page-scoped network listener with `start / wait / clear / stop`
+  - page-scoped network listener with `start / wait / clear / stop` plus response body capture
   - browser download-path configuration plus event-driven download missions and `wait_for_download()`
 - Not yet implemented:
-  - fuller network listener parity such as response bodies, extra info, and interception-style controls
+  - fuller network listener parity such as extra info and interception-style controls
   - fuller download-manager parity such as rename/skip policies and richer per-tab controls
   - full setter/wait/state parity with the reference project
 
@@ -168,6 +168,7 @@ Current integration checks cover:
 - `WebPage` session -> browser cookie sync
 - `cookies()` access from browser, session, and `WebPage`
 - page-scoped network listener capture from both `ChromiumPage` and driver-mode `WebPage`
+- listener response body capture for matched browser requests
 - event-driven download mission tracking from both `ChromiumPage` and driver-mode `WebPage`
 - session-backed `raw_data` and `encoding` from Rust across `SessionPage` and `WebPage`
 - local browser download flow through a configured download path and Rust-side `wait_for_download()`
