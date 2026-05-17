@@ -248,100 +248,77 @@ class WebPage:
         session_or_options: SessionOptions | None = None,
     ) -> None:
         del timeout
-        self._driver_page = ChromiumPage(chromium_options)
-        self._session_page = SessionPage(session_or_options)
-        self._mode = mode.lower()
-        if self._mode not in {"d", "s"}:
-            raise ValueError("mode must be 'd' or 's'")
+        chromium_options = chromium_options or ChromiumOptions()
+        session_options = session_or_options or SessionOptions()
+        self._inner = _openpage_rs.WebPage.create(
+            mode=mode.lower(),
+            browser_path=chromium_options.browser_path,
+            headless=chromium_options.headless_mode,
+            user_data_dir=chromium_options.user_data_path,
+            width=chromium_options.width,
+            height=chromium_options.height,
+            no_sandbox=chromium_options.no_sandbox_mode,
+            timeout_secs=session_options.timeout_secs,
+            user_agent=session_options.user_agent,
+        )
 
     @property
     def mode(self) -> str:
-        return self._mode
+        return self._inner.mode()
 
     def change_mode(self, mode: str | None = None, go: bool = True, copy_cookies: bool = True) -> None:
-        target_mode = mode.lower() if mode is not None else ("s" if self._mode == "d" else "d")
-        if target_mode not in {"d", "s"}:
-            raise ValueError("mode must be 'd' or 's'")
-        if target_mode == self._mode:
-            return
-
-        if go:
-            if target_mode == "s" and copy_cookies:
-                self.cookies_to_session()
-            elif target_mode == "d" and copy_cookies:
-                self.cookies_to_browser()
-
-            if target_mode == "s" and self._driver_page.url:
-                self._session_page.get(self._driver_page.url)
-            elif target_mode == "d" and self._session_page.url:
-                self._driver_page.get(self._session_page.url)
-        else:
-            if target_mode == "s" and copy_cookies:
-                self.cookies_to_session()
-            elif target_mode == "d" and copy_cookies:
-                self.cookies_to_browser()
-
-        self._mode = target_mode
-
-    @property
-    def _current(self) -> Page | SessionPage:
-        return self._driver_page if self._mode == "d" else self._session_page
+        normalized = mode.lower() if mode is not None else None
+        self._inner.change_mode(normalized, go, copy_cookies)
 
     def get(self, url: str) -> bool:
-        return self._current.get(url)
+        return self._inner.get(url)
 
     @property
     def url(self) -> str | None:
-        return self._current.url
+        return self._inner.url()
 
     @property
     def title(self) -> str | None:
-        return self._current.title
+        return self._inner.title()
 
     @property
     def html(self) -> str:
-        return self._current.html
+        return self._inner.html()
 
     @property
     def json(self) -> Any | None:
-        return None if self._mode == "d" else self._session_page.json
+        raw = self._inner.json()
+        return json.loads(raw) if raw is not None else None
 
     def ele(self, locator: str) -> Any:
-        return self._current.ele(locator)
+        return _wrap_compat_element(self._inner.find(locator))
 
     def eles(self, locator: str) -> list[Any]:
-        return self._current.eles(locator)
+        return [_wrap_compat_element(item) for item in self._inner.find_all(locator)]
 
     def run_js(self, expression: str) -> Any:
-        if self._mode != "d":
-            raise RuntimeError("run_js() is only available in driver mode")
-        return self._driver_page.run_js(expression)
+        return json.loads(self._inner.run_js(expression))
+
+    @property
+    def tabs_count(self) -> int:
+        return self._inner.tabs_count()
+
+    @property
+    def tab_ids(self) -> list[str]:
+        return self._inner.tab_ids()
 
     def post(self, url: str, payload: dict[str, Any] | None = None) -> bool:
-        if self._mode == "d":
-            self.cookies_to_session()
-        return self._session_page.post(url, payload)
+        payload_json = json.dumps(payload) if payload is not None else None
+        return self._inner.post_json(url, payload_json)
 
     def cookies_to_session(self, copy_user_agent: bool = True) -> None:
-        if not self._driver_page.url:
-            return
-        cookie_header = self._driver_page._inner.cookie_header()
-        if cookie_header:
-            self._session_page._set_cookie_header(self._driver_page.url, cookie_header)
-        if copy_user_agent:
-            self._session_page.set_user_agent(self._driver_page._inner.user_agent())
+        self._inner.cookies_to_session(copy_user_agent)
 
     def cookies_to_browser(self) -> None:
-        if not self._session_page.url:
-            return
-        cookie_header = self._session_page._cookie_header(self._session_page.url)
-        if cookie_header:
-            if not self._driver_page.url.startswith(("http://", "https://")):
-                self._driver_page.get(self._session_page.url)
-            self._driver_page._inner.set_cookie_header(self._session_page.url, cookie_header)
+        self._inner.cookies_to_browser()
 
     def quit(self) -> None:
-        self._driver_page.quit()
+        self._inner.quit()
 
 
 class Element:
@@ -398,3 +375,11 @@ class SessionElement:
 
     def attr(self, name: str) -> str | None:
         return self._inner.attr(name)
+
+
+def _wrap_compat_element(inner: Any) -> Any:
+    if isinstance(inner, _openpage_rs.Element):
+        return Element(inner)
+    if isinstance(inner, _openpage_rs.SessionElement):
+        return SessionElement(inner)
+    return inner

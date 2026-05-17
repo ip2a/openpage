@@ -33,14 +33,14 @@ That boundary was useful for getting the browser core green first. The current s
 
 - `SessionPage`
 - `SessionElement`
-- Python-level `WebPage`
+- Rust-native `WebPage`
 - current-URL cookie sync between browser and session
 
 The architectural decision did not change:
 
-- `WebPage` is still not treated as a primitive Rust-native core object.
+- `WebPage` is implemented in Rust as orchestration over Rust browser/session primitives.
 - Rust owns the execution primitives for browser and session work.
-- Python still owns the compatibility-oriented orchestration layer.
+- Python owns the thin compatibility wrappers and object adaptation layer.
 
 ## Python binding behavior
 
@@ -57,3 +57,4 @@ The architectural decision did not change:
 - Python integration tests pass.
 - `SessionPage` works against external HTML and JSON endpoints.
 - `WebPage` mode switching and cookie sync pass integration tests.
+- Python `WebPage` now forwards to a Rust `WebPage` core instead of keeping the mode logic in Python.

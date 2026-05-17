@@ -30,8 +30,8 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Keep the target shape as `Rust core owns execution + Python owns import surface and selected compatibility wrappers`.
 - Ship a browser-first first release: `Browser / ChromiumOptions / ChromiumPage / Page / Element`.
 - Use `chromiumoxide` as the current Rust Chromium/CDP backbone and expose it through PyO3.
-- Expand to `SessionPage` and Python-level `WebPage` only after the browser core is already green.
-- Keep `WebPage` as a compatibility/orchestration object rather than forcing it into the first Rust-native core boundary.
+- Expand to `SessionPage` first, then move `WebPage` orchestration into Rust after the browser core is already green.
+- Keep `WebPage` implemented as orchestration over Rust browser/session primitives instead of inventing a separate third transport.
 
 ## Errors Encountered
 - `uvx` was not on the reduced PATH inside scripted commands; resolved by using `uv tool run maturin`.
@@ -44,4 +44,4 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Parallel browser launches can fight over Chromium's default temp profile lock; verification now treats browser examples/tests as serial checks.
 
 ## Status
-**Currently in Phase 6** - auditing the expanded browser + session implementation, documenting residual gaps, and deciding the next Rust-owned capability layer beyond the now-green `SessionPage` / `WebPage` flow.
+**Currently in Phase 6** - auditing the expanded browser + session implementation now that `WebPage` also lives in Rust, and identifying the remaining parity gaps beyond the green core flow.

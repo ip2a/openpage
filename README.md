@@ -14,13 +14,14 @@
   - browser launch/connect lifecycle
   - CDP-backed page and element operations
   - requests-backed session fetching and snapshot parsing
+  - `WebPage` mode orchestration across browser and session
   - locator parsing
   - cookie header transfer primitives for browser/session sync
   - screenshots, PDF, DOM querying, JS execution
 - Python owns:
   - compatibility-oriented wrappers
   - `ChromiumPage` convenience surface
-  - `SessionPage` and `WebPage` orchestration surface
+  - object wrappers and JSON/result adaptation
   - examples and integration tests
 
 ## Local development
@@ -96,3 +97,4 @@ Current integration checks cover:
 - session flow against `https://example.com` and `https://httpbin.org/json`
 - `WebPage` browser -> session cookie sync
 - `WebPage` session -> browser cookie sync
+- Python `WebPage` thin-wrapper flow over the Rust `WebPage` core

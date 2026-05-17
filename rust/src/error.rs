@@ -14,6 +14,8 @@ pub enum OpenPageError {
     ElementNotFound(String),
     #[error("unsupported locator syntax: {0}")]
     UnsupportedLocator(String),
+    #[error("unsupported operation: {0}")]
+    UnsupportedOperation(String),
     #[error("javascript evaluation failed: {0}")]
     JavaScript(String),
     #[error("http operation failed: {0}")]

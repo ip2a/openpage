@@ -45,7 +45,7 @@
 - `chromiumoxide` is the most pragmatic current backbone for a Rust-owned Chromium/CDP core.
 - `cdp-protocol` is the right long-term direction if `openpage` later wants to own more of the protocol and transport stack.
 - First release should be browser-first, not `WebPage`-first.
-- `WebPage` is compatibility sugar and orchestration, not the right first Rust-native boundary.
+- `WebPage` was not the right first Rust-native boundary, but it is now implemented in Rust on top of the stabilized browser/session primitives.
 - `SessionElement` is semantically a snapshot object, not a live handle.
 - `WebPage` compatibility floor is mode switching plus current-context cookie sync.
 
@@ -58,6 +58,7 @@
   - `SessionOptions`
   - `SessionPage`
   - `SessionElement`
+  - `WebPage`
   - locator parsing for CSS / `tag:` / `t:` / `@name=value` / `xpath:`
   - browser/session cookie header transfer primitives
 - Python wrappers:
@@ -69,7 +70,7 @@
   - `SessionOptions`
   - `SessionPage`
   - `SessionElement`
-  - `WebPage`
+  - `WebPage` thin wrapper over the Rust core
 - Verified operations:
   - launch browser
   - open page
