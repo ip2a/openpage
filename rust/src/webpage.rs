@@ -302,6 +302,13 @@ impl WebPage {
         }
     }
 
+    pub fn snapshot_root(&self) -> OpenPageResult<SessionElement> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.snapshot_root(),
+            WebMode::Session => self.session.root(),
+        }
+    }
+
     pub fn run_js(&self, expression: &str) -> OpenPageResult<Value> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(

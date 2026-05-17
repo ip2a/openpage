@@ -79,6 +79,7 @@
   - read session-backed `status_code` from `WebPage` in session mode
   - query elements
   - nested snapshot queries from browser/session/html snapshots
+  - snapshot root lookup plus `parent / children / prev / next`
   - input, click, clear
   - run JS
   - screenshot
@@ -100,6 +101,6 @@
 - `cargo run --manifest-path rust/Cargo.toml --example webpage_modes`
 
 ## Next audit focus
-- Highest-leverage parity gap is no longer the Python wrapper surface; it is the Rust snapshot DOM core behind `SessionElement`.
-- `SessionElement` should evolve from `html + selector + index` lookup handles into traversable snapshot nodes that can support `parent / children / prev / next`.
-- That work will raise `SessionPage.s_ele()` and `WebPage.s_ele()` together without moving logic back into Python.
+- The snapshot DOM core is now partially in place with traversable node identity in Rust.
+- The next parity gap inside this area is the rest of the relative-navigation family: `before / after / prevs / nexts / befores / afters`.
+- After that, the highest-value surfaces are session/browser response metadata and browser-only subsystems such as listener/download.

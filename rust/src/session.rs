@@ -1,10 +1,11 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use reqwest::cookie::{CookieStore, Jar};
+use ego_tree::NodeId;
 use reqwest::blocking::{Client, ClientBuilder};
+use reqwest::cookie::{CookieStore, Jar};
 use reqwest::header::USER_AGENT;
-use scraper::{Html, Selector};
+use scraper::{ElementRef, Html, Selector};
 use serde_json::Value;
 use url::Url;
 
@@ -45,8 +46,7 @@ pub struct SessionPage {
 #[derive(Clone, Debug)]
 pub struct SessionElement {
     html: Arc<String>,
-    selector: String,
-    index: usize,
+    node_id: NodeId,
 }
 
 impl SessionPage {
@@ -129,6 +129,11 @@ impl SessionPage {
     pub fn title(&self) -> OpenPageResult<Option<String>> {
         let body = self.body_arc()?;
         Ok(self.first_text(&body, "title")?)
+    }
+
+    pub fn root(&self) -> OpenPageResult<SessionElement> {
+        let body = self.body_arc()?;
+        snapshot_root_arc(body)
     }
 
     pub fn set_user_agent(&self, user_agent: Option<String>) -> OpenPageResult<()> {
@@ -221,49 +226,76 @@ impl SessionPage {
 
 impl SessionElement {
     pub fn find(&self, locator: &str) -> OpenPageResult<SessionElement> {
-        snapshot_find(&self.current_html()?, locator)
+        find_in_scope(Arc::clone(&self.html), self.node_id, locator)
     }
 
     pub fn find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
-        snapshot_find_all(&self.current_html()?, locator)
+        find_all_in_scope(Arc::clone(&self.html), self.node_id, locator)
+    }
+
+    pub fn tag(&self) -> OpenPageResult<String> {
+        self.with_element(|element| Ok(element.value().name().to_string()))
     }
 
     pub fn text(&self) -> OpenPageResult<Option<String>> {
-        let html = Html::parse_document(&self.html);
-        let selector = self.selector()?;
-        Ok(html
-            .select(&selector)
-            .nth(self.index)
-            .map(|node| node.text().collect::<String>().trim().to_string())
-            .filter(|text| !text.is_empty()))
+        self.with_element(|element| {
+            let text = element.text().collect::<String>().trim().to_string();
+            Ok(Some(text).filter(|value| !value.is_empty()))
+        })
     }
 
     pub fn html(&self) -> OpenPageResult<Option<String>> {
-        let html = Html::parse_document(&self.html);
-        let selector = self.selector()?;
-        Ok(html.select(&selector).nth(self.index).map(|node| node.html()))
+        self.with_element(|element| Ok(Some(element.html())))
+    }
+
+    pub fn inner_html(&self) -> OpenPageResult<Option<String>> {
+        self.with_element(|element| Ok(Some(element.inner_html())))
     }
 
     pub fn attr(&self, name: &str) -> OpenPageResult<Option<String>> {
-        let html = Html::parse_document(&self.html);
-        let selector = self.selector()?;
-        Ok(html
-            .select(&selector)
-            .nth(self.index)
-            .and_then(|node| node.value().attr(name).map(ToString::to_string)))
+        self.with_element(|element| Ok(element.attr(name).map(ToString::to_string)))
     }
 
-    fn selector(&self) -> OpenPageResult<Selector> {
-        Selector::parse(&self.selector).map_err(|err| OpenPageError::ElementNotFound(err.to_string()))
+    pub fn parent(&self) -> OpenPageResult<SessionElement> {
+        self.with_element(|element| {
+            nearest_parent_element(element)
+                .map(|parent| session_element_from_ref(&self.html, parent))
+                .ok_or_else(|| OpenPageError::ElementNotFound("parent element not found".to_string()))
+        })
     }
 
-    fn current_html(&self) -> OpenPageResult<String> {
-        let html = Html::parse_document(&self.html);
-        let selector = self.selector()?;
-        html.select(&selector)
-            .nth(self.index)
-            .map(|node| node.html())
-            .ok_or_else(|| OpenPageError::ElementNotFound(self.selector.clone()))
+    pub fn children(&self) -> OpenPageResult<Vec<SessionElement>> {
+        self.with_element(|element| {
+            Ok(element
+                .child_elements()
+                .map(|child| session_element_from_ref(&self.html, child))
+                .collect())
+        })
+    }
+
+    pub fn prev(&self) -> OpenPageResult<SessionElement> {
+        self.with_element(|element| {
+            previous_element(element)
+                .map(|prev| session_element_from_ref(&self.html, prev))
+                .ok_or_else(|| OpenPageError::ElementNotFound("previous element not found".to_string()))
+        })
+    }
+
+    pub fn next(&self) -> OpenPageResult<SessionElement> {
+        self.with_element(|element| {
+            next_element(element)
+                .map(|next| session_element_from_ref(&self.html, next))
+                .ok_or_else(|| OpenPageError::ElementNotFound("next element not found".to_string()))
+        })
+    }
+
+    fn with_element<T, F>(&self, f: F) -> OpenPageResult<T>
+    where
+        F: FnOnce(ElementRef<'_>) -> OpenPageResult<T>,
+    {
+        let document = Html::parse_document(self.html.as_ref());
+        let element = element_from_document(&document, self.node_id)?;
+        f(element)
     }
 }
 
@@ -277,6 +309,10 @@ fn selector_from_locator(locator: &str) -> OpenPageResult<String> {
     }
 }
 
+pub fn snapshot_root(html: &str) -> OpenPageResult<SessionElement> {
+    snapshot_root_arc(Arc::new(html.to_string()))
+}
+
 pub fn snapshot_find(html: &str, locator: &str) -> OpenPageResult<SessionElement> {
     snapshot_find_arc(Arc::new(html.to_string()), locator)
 }
@@ -285,39 +321,111 @@ pub fn snapshot_find_all(html: &str, locator: &str) -> OpenPageResult<Vec<Sessio
     snapshot_find_all_arc(Arc::new(html.to_string()), locator)
 }
 
+fn snapshot_root_arc(html: Arc<String>) -> OpenPageResult<SessionElement> {
+    let parsed = Html::parse_document(html.as_ref());
+    Ok(session_element_from_ref(&html, parsed.root_element()))
+}
+
 fn snapshot_find_arc(html: Arc<String>, locator: &str) -> OpenPageResult<SessionElement> {
-    let selector = selector_from_locator(locator)?;
-    let parsed = Html::parse_document(&html);
-    let selector_obj =
-        Selector::parse(&selector).map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
-    if parsed.select(&selector_obj).next().is_none() {
-        return Err(OpenPageError::ElementNotFound(locator.to_string()));
-    }
-    Ok(SessionElement {
-        html,
-        selector,
-        index: 0,
-    })
+    let parsed = Html::parse_document(html.as_ref());
+    let selector = parse_selector(locator)?;
+    parsed
+        .select(&selector)
+        .next()
+        .map(|element| session_element_from_ref(&html, element))
+        .ok_or_else(|| OpenPageError::ElementNotFound(locator.to_string()))
 }
 
 fn snapshot_find_all_arc(html: Arc<String>, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
-    let selector = selector_from_locator(locator)?;
-    let parsed = Html::parse_document(&html);
-    let selector_obj =
-        Selector::parse(&selector).map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
-    let count = parsed.select(&selector_obj).count();
-    Ok((0..count)
-        .map(|index| SessionElement {
-            html: Arc::clone(&html),
-            selector: selector.clone(),
-            index,
-        })
+    let parsed = Html::parse_document(html.as_ref());
+    let selector = parse_selector(locator)?;
+    Ok(parsed
+        .select(&selector)
+        .map(|element| session_element_from_ref(&html, element))
         .collect())
+}
+
+fn find_in_scope(html: Arc<String>, scope_id: NodeId, locator: &str) -> OpenPageResult<SessionElement> {
+    let parsed = Html::parse_document(html.as_ref());
+    let scope = element_from_document(&parsed, scope_id)?;
+    let selector = parse_selector(locator)?;
+    scope
+        .select(&selector)
+        .next()
+        .map(|element| session_element_from_ref(&html, element))
+        .ok_or_else(|| OpenPageError::ElementNotFound(locator.to_string()))
+}
+
+fn find_all_in_scope(
+    html: Arc<String>,
+    scope_id: NodeId,
+    locator: &str,
+) -> OpenPageResult<Vec<SessionElement>> {
+    let parsed = Html::parse_document(html.as_ref());
+    let scope = element_from_document(&parsed, scope_id)?;
+    let selector = parse_selector(locator)?;
+    Ok(scope
+        .select(&selector)
+        .map(|element| session_element_from_ref(&html, element))
+        .collect())
+}
+
+fn parse_selector(locator: &str) -> OpenPageResult<Selector> {
+    let selector = selector_from_locator(locator)?;
+    Selector::parse(&selector).map_err(|err| OpenPageError::ElementNotFound(err.to_string()))
+}
+
+fn session_element_from_ref(html: &Arc<String>, element: ElementRef<'_>) -> SessionElement {
+    SessionElement {
+        html: Arc::clone(html),
+        node_id: element.id(),
+    }
+}
+
+fn element_from_document<'a>(document: &'a Html, node_id: NodeId) -> OpenPageResult<ElementRef<'a>> {
+    document
+        .tree
+        .get(node_id)
+        .and_then(ElementRef::wrap)
+        .ok_or_else(|| OpenPageError::ElementNotFound("snapshot node no longer exists".to_string()))
+}
+
+fn nearest_parent_element(element: ElementRef<'_>) -> Option<ElementRef<'_>> {
+    let mut current = element.parent();
+    while let Some(node) = current {
+        if let Some(parent) = ElementRef::wrap(node) {
+            return Some(parent);
+        }
+        current = node.parent();
+    }
+    None
+}
+
+fn previous_element(element: ElementRef<'_>) -> Option<ElementRef<'_>> {
+    let mut current = element.prev_sibling();
+    while let Some(node) = current {
+        if let Some(prev) = ElementRef::wrap(node) {
+            return Some(prev);
+        }
+        current = node.prev_sibling();
+    }
+    None
+}
+
+fn next_element(element: ElementRef<'_>) -> Option<ElementRef<'_>> {
+    let mut current = element.next_sibling();
+    while let Some(node) = current {
+        if let Some(next) = ElementRef::wrap(node) {
+            return Some(next);
+        }
+        current = node.next_sibling();
+    }
+    None
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{snapshot_find, snapshot_find_all};
+    use super::{snapshot_find, snapshot_find_all, snapshot_root};
 
     const HTML: &str = r#"
 <!doctype html>
@@ -325,6 +433,9 @@ mod tests {
   <body>
     <section id="root">
       <h1>OpenPage</h1>
+      <input id="name" value="openpage" />
+      <button id="submit">Go</button>
+      <div id="out"></div>
       <ul class="items">
         <li class="item" data-kind="a">alpha</li>
         <li class="item" data-kind="b">beta</li>
@@ -341,6 +452,7 @@ mod tests {
         let first_item = root.find(".item").expect("nested item should exist");
 
         assert_eq!(heading.text().expect("heading text"), Some("OpenPage".to_string()));
+        assert_eq!(heading.tag().expect("heading tag"), "h1".to_string());
         assert_eq!(
             first_item.attr("data-kind").expect("item attr"),
             Some("a".to_string())
@@ -358,5 +470,22 @@ mod tests {
 
         let top_level = snapshot_find_all(HTML, ".item").expect("top-level items should exist");
         assert_eq!(top_level.len(), 2);
+    }
+
+    #[test]
+    fn snapshot_traversal_supports_root_parent_siblings_and_children() {
+        let root = snapshot_root(HTML).expect("document root should exist");
+        let submit = root.find("#submit").expect("submit should exist");
+        let items = root.find(".items").expect("items list should exist");
+
+        assert_eq!(root.tag().expect("root tag"), "html".to_string());
+        assert_eq!(submit.parent().expect("submit parent").tag().expect("parent tag"), "section");
+        assert_eq!(submit.next().expect("next sibling").attr("id").expect("next id"), Some("out".to_string()));
+        assert_eq!(submit.prev().expect("prev sibling").attr("id").expect("prev id"), Some("name".to_string()));
+
+        let children = items.children().expect("direct children");
+        assert_eq!(children.len(), 2);
+        assert_eq!(children[0].text().expect("first child text"), Some("alpha".to_string()));
+        assert_eq!(children[1].text().expect("second child text"), Some("beta".to_string()));
     }
 }

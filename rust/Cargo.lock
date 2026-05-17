@@ -995,6 +995,7 @@ name = "openpage_rs"
 version = "0.1.0"
 dependencies = [
  "chromiumoxide",
+ "ego-tree",
  "futures",
  "pyo3",
  "reqwest",

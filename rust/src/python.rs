@@ -255,6 +255,12 @@ impl PyPage {
             .collect()
     }
 
+    fn snapshot_root(&self, py: Python<'_>) -> PyResult<Py<PySessionElement>> {
+        let page = self.page()?.clone();
+        let element = py.detach(move || page.snapshot_root())?;
+        Py::new(py, PySessionElement { inner: element })
+    }
+
     fn user_agent(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.page()?.clone();
         py.detach(move || page.user_agent()).map_err(Into::into)
@@ -447,16 +453,30 @@ impl PySessionPage {
             .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
     }
+
+    fn root(&self, py: Python<'_>) -> PyResult<Py<PySessionElement>> {
+        let page = self.inner.clone();
+        let element = py.detach(move || page.root())?;
+        Py::new(py, PySessionElement { inner: element })
+    }
 }
 
 #[pymethods]
 impl PySessionElement {
+    fn tag(&self) -> PyResult<String> {
+        self.inner.tag().map_err(Into::into)
+    }
+
     fn text(&self) -> PyResult<Option<String>> {
         self.inner.text().map_err(Into::into)
     }
 
     fn html(&self) -> PyResult<Option<String>> {
         self.inner.html().map_err(Into::into)
+    }
+
+    fn inner_html(&self) -> PyResult<Option<String>> {
+        self.inner.inner_html().map_err(Into::into)
     }
 
     fn attr(&self, name: &str) -> PyResult<Option<String>> {
@@ -474,6 +494,41 @@ impl PySessionElement {
             .into_iter()
             .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
+    }
+
+    fn parent(&self, py: Python<'_>) -> PyResult<Py<PySessionElement>> {
+        Py::new(
+            py,
+            PySessionElement {
+                inner: self.inner.parent()?,
+            },
+        )
+    }
+
+    fn children(&self, py: Python<'_>) -> PyResult<Vec<Py<PySessionElement>>> {
+        self.inner
+            .children()?
+            .into_iter()
+            .map(|inner| Py::new(py, PySessionElement { inner }))
+            .collect()
+    }
+
+    fn prev(&self, py: Python<'_>) -> PyResult<Py<PySessionElement>> {
+        Py::new(
+            py,
+            PySessionElement {
+                inner: self.inner.prev()?,
+            },
+        )
+    }
+
+    fn next(&self, py: Python<'_>) -> PyResult<Py<PySessionElement>> {
+        Py::new(
+            py,
+            PySessionElement {
+                inner: self.inner.next()?,
+            },
+        )
     }
 }
 
@@ -607,6 +662,12 @@ impl PyWebPage {
             .into_iter()
             .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
+    }
+
+    fn snapshot_root(&self, py: Python<'_>) -> PyResult<Py<PySessionElement>> {
+        let page = self.inner.clone();
+        let element = py.detach(move || page.snapshot_root())?;
+        Py::new(py, PySessionElement { inner: element })
     }
 
     fn run_js(&self, py: Python<'_>, expression: &str) -> PyResult<String> {

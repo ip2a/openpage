@@ -124,7 +124,9 @@ class Page:
     def evaluate(self, expression: str) -> Any:
         return self.run_js(expression)
 
-    def s_ele(self, locator: str) -> "SessionElement":
+    def s_ele(self, locator: str | None = None) -> "SessionElement":
+        if locator is None:
+            return SessionElement(self._inner.snapshot_root())
         return SessionElement(self._inner.snapshot_find(locator))
 
     def s_eles(self, locator: str) -> list["SessionElement"]:
@@ -232,7 +234,9 @@ class SessionPage:
     def eles(self, locator: str) -> list["SessionElement"]:
         return [SessionElement(item) for item in self._inner.find_all(locator)]
 
-    def s_ele(self, locator: str) -> "SessionElement":
+    def s_ele(self, locator: str | None = None) -> "SessionElement":
+        if locator is None:
+            return SessionElement(self._inner.root())
         return self.ele(locator)
 
     def s_eles(self, locator: str) -> list["SessionElement"]:
@@ -306,7 +310,9 @@ class WebPage:
     def eles(self, locator: str) -> list[Any]:
         return [_wrap_compat_element(item) for item in self._inner.find_all(locator)]
 
-    def s_ele(self, locator: str) -> "SessionElement":
+    def s_ele(self, locator: str | None = None) -> "SessionElement":
+        if locator is None:
+            return SessionElement(self._inner.snapshot_root())
         return SessionElement(self._inner.snapshot_find(locator))
 
     def s_eles(self, locator: str) -> list["SessionElement"]:
@@ -382,12 +388,20 @@ class SessionElement:
         self._inner = inner
 
     @property
+    def tag(self) -> str:
+        return self._inner.tag()
+
+    @property
     def text(self) -> str | None:
         return self._inner.text()
 
     @property
     def html(self) -> str | None:
         return self._inner.html()
+
+    @property
+    def inner_html(self) -> str | None:
+        return self._inner.inner_html()
 
     def attr(self, name: str) -> str | None:
         return self._inner.attr(name)
@@ -398,7 +412,21 @@ class SessionElement:
     def eles(self, locator: str) -> list["SessionElement"]:
         return [SessionElement(item) for item in self._inner.find_all(locator)]
 
-    def s_ele(self, locator: str) -> "SessionElement":
+    def parent(self) -> "SessionElement":
+        return SessionElement(self._inner.parent())
+
+    def children(self) -> list["SessionElement"]:
+        return [SessionElement(item) for item in self._inner.children()]
+
+    def prev(self) -> "SessionElement":
+        return SessionElement(self._inner.prev())
+
+    def next(self) -> "SessionElement":
+        return SessionElement(self._inner.next())
+
+    def s_ele(self, locator: str | None = None) -> "SessionElement":
+        if locator is None:
+            return self
         return self.ele(locator)
 
     def s_eles(self, locator: str) -> list["SessionElement"]:

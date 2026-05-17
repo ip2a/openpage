@@ -17,6 +17,7 @@ python-module = ["dep:pyo3", "pyo3/extension-module"]
 
 [dependencies]
 chromiumoxide = "0.9.1"
+ego-tree = "0.10.0"
 futures = "0.3.31"
 pyo3 = { version = "0.28.3", optional = true }
 reqwest = { version = "0.13.3", default-features = false, features = ["blocking", "cookies", "json", "rustls"] }

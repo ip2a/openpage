@@ -14,6 +14,7 @@
   - browser launch/connect lifecycle
   - CDP-backed page and element operations
   - requests-backed session fetching and snapshot parsing
+  - snapshot DOM node identity and relative traversal for session-backed elements
   - `WebPage` mode orchestration across browser and session
   - locator parsing
   - cookie header transfer primitives for browser/session sync
@@ -105,13 +106,14 @@ This first version is intentionally browser-first:
   - basic tab info
   - `get / ele / eles / run_js / click / input / clear / screenshot / pdf`
   - snapshot `s_ele / s_eles` queries for browser, session, and `WebPage`
+  - snapshot root lookup plus `parent / children / prev / next / tag / inner_html`
   - `post_json`
   - browser/session mode switching
   - current-URL cookie sync between browser and session
 - Not yet implemented:
   - advanced network listener parity
   - download manager parity
-  - richer session-element traversal parity
+  - full session-element traversal parity (`before / after / prevs / nexts / befores / afters`)
   - full setter/wait/state parity with the reference project
 
 ## Verification
