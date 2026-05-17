@@ -3,9 +3,11 @@ pub mod element;
 pub mod error;
 pub mod locator;
 pub mod page;
-pub mod python;
 pub mod session;
 pub mod webpage;
+
+#[cfg(feature = "python-module")]
+pub mod python;
 
 pub use browser::{Browser, LaunchOptions};
 pub use element::Element;
@@ -15,8 +17,10 @@ pub use page::Page;
 pub use session::{SessionElement, SessionOptions, SessionPage};
 pub use webpage::{WebElement, WebMode, WebPage};
 
+#[cfg(feature = "python-module")]
 use pyo3::prelude::*;
 
+#[cfg(feature = "python-module")]
 #[pymodule]
 fn openpage_rs(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     python::register(m)

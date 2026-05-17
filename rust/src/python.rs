@@ -239,6 +239,22 @@ impl PyPage {
             .map_err(|err| OpenPageError::Serialization(err.to_string()).into())
     }
 
+    fn snapshot_find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PySessionElement>> {
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        let element = py.detach(move || page.snapshot_find(&locator))?;
+        Py::new(py, PySessionElement { inner: element })
+    }
+
+    fn snapshot_find_all(&self, py: Python<'_>, locator: &str) -> PyResult<Vec<Py<PySessionElement>>> {
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.snapshot_find_all(&locator))?
+            .into_iter()
+            .map(|inner| Py::new(py, PySessionElement { inner }))
+            .collect()
+    }
+
     fn user_agent(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.page()?.clone();
         py.detach(move || page.user_agent()).map_err(Into::into)
@@ -446,6 +462,19 @@ impl PySessionElement {
     fn attr(&self, name: &str) -> PyResult<Option<String>> {
         self.inner.attr(name).map_err(Into::into)
     }
+
+    fn find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PySessionElement>> {
+        let element = self.inner.find(locator)?;
+        Py::new(py, PySessionElement { inner: element })
+    }
+
+    fn find_all(&self, py: Python<'_>, locator: &str) -> PyResult<Vec<Py<PySessionElement>>> {
+        self.inner
+            .find_all(locator)?
+            .into_iter()
+            .map(|inner| Py::new(py, PySessionElement { inner }))
+            .collect()
+    }
 }
 
 #[pymethods]
@@ -556,6 +585,22 @@ impl PyWebPage {
         py.detach(move || page.find_all(&locator))?
             .into_iter()
             .map(|element| wrap_web_element(py, element))
+            .collect()
+    }
+
+    fn snapshot_find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PySessionElement>> {
+        let page = self.inner.clone();
+        let locator = locator.to_string();
+        let element = py.detach(move || page.snapshot_find(&locator))?;
+        Py::new(py, PySessionElement { inner: element })
+    }
+
+    fn snapshot_find_all(&self, py: Python<'_>, locator: &str) -> PyResult<Vec<Py<PySessionElement>>> {
+        let page = self.inner.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.snapshot_find_all(&locator))?
+            .into_iter()
+            .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
     }
 

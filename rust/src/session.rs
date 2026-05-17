@@ -159,35 +159,13 @@ impl SessionPage {
     }
 
     pub fn find(&self, locator: &str) -> OpenPageResult<SessionElement> {
-        let selector = selector_from_locator(locator)?;
         let body = self.body_arc()?;
-        let html = Html::parse_document(&body);
-        let selector_obj =
-            Selector::parse(&selector).map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
-        if html.select(&selector_obj).next().is_none() {
-            return Err(OpenPageError::ElementNotFound(locator.to_string()));
-        }
-        Ok(SessionElement {
-            html: body,
-            selector,
-            index: 0,
-        })
+        snapshot_find_arc(body, locator)
     }
 
     pub fn find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
-        let selector = selector_from_locator(locator)?;
         let body = self.body_arc()?;
-        let html = Html::parse_document(&body);
-        let selector_obj =
-            Selector::parse(&selector).map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
-        let count = html.select(&selector_obj).count();
-        Ok((0..count)
-            .map(|index| SessionElement {
-                html: Arc::clone(&body),
-                selector: selector.clone(),
-                index,
-            })
-            .collect())
+        snapshot_find_all_arc(body, locator)
     }
 
     fn first_text(&self, body: &Arc<String>, selector: &str) -> OpenPageResult<Option<String>> {
@@ -242,6 +220,14 @@ impl SessionPage {
 }
 
 impl SessionElement {
+    pub fn find(&self, locator: &str) -> OpenPageResult<SessionElement> {
+        snapshot_find(&self.current_html()?, locator)
+    }
+
+    pub fn find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+        snapshot_find_all(&self.current_html()?, locator)
+    }
+
     pub fn text(&self) -> OpenPageResult<Option<String>> {
         let html = Html::parse_document(&self.html);
         let selector = self.selector()?;
@@ -270,6 +256,15 @@ impl SessionElement {
     fn selector(&self) -> OpenPageResult<Selector> {
         Selector::parse(&self.selector).map_err(|err| OpenPageError::ElementNotFound(err.to_string()))
     }
+
+    fn current_html(&self) -> OpenPageResult<String> {
+        let html = Html::parse_document(&self.html);
+        let selector = self.selector()?;
+        html.select(&selector)
+            .nth(self.index)
+            .map(|node| node.html())
+            .ok_or_else(|| OpenPageError::ElementNotFound(self.selector.clone()))
+    }
 }
 
 fn selector_from_locator(locator: &str) -> OpenPageResult<String> {
@@ -279,5 +274,89 @@ fn selector_from_locator(locator: &str) -> OpenPageResult<String> {
         LocatorKind::XPath => Err(OpenPageError::UnsupportedLocator(
             "xpath is not implemented for SessionPage".to_string(),
         )),
+    }
+}
+
+pub fn snapshot_find(html: &str, locator: &str) -> OpenPageResult<SessionElement> {
+    snapshot_find_arc(Arc::new(html.to_string()), locator)
+}
+
+pub fn snapshot_find_all(html: &str, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+    snapshot_find_all_arc(Arc::new(html.to_string()), locator)
+}
+
+fn snapshot_find_arc(html: Arc<String>, locator: &str) -> OpenPageResult<SessionElement> {
+    let selector = selector_from_locator(locator)?;
+    let parsed = Html::parse_document(&html);
+    let selector_obj =
+        Selector::parse(&selector).map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
+    if parsed.select(&selector_obj).next().is_none() {
+        return Err(OpenPageError::ElementNotFound(locator.to_string()));
+    }
+    Ok(SessionElement {
+        html,
+        selector,
+        index: 0,
+    })
+}
+
+fn snapshot_find_all_arc(html: Arc<String>, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+    let selector = selector_from_locator(locator)?;
+    let parsed = Html::parse_document(&html);
+    let selector_obj =
+        Selector::parse(&selector).map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
+    let count = parsed.select(&selector_obj).count();
+    Ok((0..count)
+        .map(|index| SessionElement {
+            html: Arc::clone(&html),
+            selector: selector.clone(),
+            index,
+        })
+        .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{snapshot_find, snapshot_find_all};
+
+    const HTML: &str = r#"
+<!doctype html>
+<html>
+  <body>
+    <section id="root">
+      <h1>OpenPage</h1>
+      <ul class="items">
+        <li class="item" data-kind="a">alpha</li>
+        <li class="item" data-kind="b">beta</li>
+      </ul>
+    </section>
+  </body>
+</html>
+"#;
+
+    #[test]
+    fn snapshot_find_supports_nested_queries() {
+        let root = snapshot_find(HTML, "#root").expect("root should exist");
+        let heading = root.find("h1").expect("nested heading should exist");
+        let first_item = root.find(".item").expect("nested item should exist");
+
+        assert_eq!(heading.text().expect("heading text"), Some("OpenPage".to_string()));
+        assert_eq!(
+            first_item.attr("data-kind").expect("item attr"),
+            Some("a".to_string())
+        );
+    }
+
+    #[test]
+    fn snapshot_find_all_keeps_match_order() {
+        let root = snapshot_find(HTML, "#root").expect("root should exist");
+        let items = root.find_all(".item").expect("items should exist");
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].text().expect("first item text"), Some("alpha".to_string()));
+        assert_eq!(items[1].text().expect("second item text"), Some("beta".to_string()));
+
+        let top_level = snapshot_find_all(HTML, ".item").expect("top-level items should exist");
+        assert_eq!(top_level.len(), 2);
     }
 }

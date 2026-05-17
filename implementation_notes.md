@@ -6,9 +6,11 @@ This file is reserved for architecture notes, verification checkpoints, and any 
 
 - Rust crate name: `openpage_rs`
 - Python package name: `openpage`
+- Rust crate default shape: pure Rust `rlib`
+- PyO3 bindings: optional `python-module` feature
 - Local development flow:
   1. `uv venv python/.venv`
-  2. `uv tool run maturin develop --manifest-path rust/Cargo.toml --uv`
+  2. `uv tool run maturin develop --manifest-path rust/Cargo.toml --features python-module --uv`
   3. `uv pip install --python python/.venv/bin/python -e python`
 
 Python wrappers import the compiled extension as a top-level module:
@@ -50,6 +52,8 @@ The architectural decision did not change:
 ## Verification checkpoints reached
 
 - Rust code compiles with `cargo check`.
+- Rust unit tests compile and pass with `cargo test`.
+- Rust example runs directly without the Python feature.
 - PyO3 extension builds and installs into `python/.venv`.
 - `import openpage_rs` succeeds.
 - `import openpage` succeeds after editable install of `python/`.
@@ -58,3 +62,4 @@ The architectural decision did not change:
 - `SessionPage` works against external HTML and JSON endpoints.
 - `WebPage` mode switching and cookie sync pass integration tests.
 - Python `WebPage` now forwards to a Rust `WebPage` core instead of keeping the mode logic in Python.
+- Python snapshot queries now route through Rust and support nested `SessionElement` lookups.

@@ -32,6 +32,8 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Use `chromiumoxide` as the current Rust Chromium/CDP backbone and expose it through PyO3.
 - Expand to `SessionPage` first, then move `WebPage` orchestration into Rust after the browser core is already green.
 - Keep `WebPage` implemented as orchestration over Rust browser/session primitives instead of inventing a separate third transport.
+- Make `pyo3` optional so the same crate can be used as a direct Rust library and as the Python extension backend.
+- Treat snapshot querying as a Rust-core capability and keep Python `s_ele / s_eles` as wrappers over Rust results.
 
 ## Errors Encountered
 - `uvx` was not on the reduced PATH inside scripted commands; resolved by using `uv tool run maturin`.
@@ -42,6 +44,7 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - `SessionElement` cannot safely return references into a temporary parsed DOM; session lookups now resolve values within each method call.
 - PyO3 methods were holding the interpreter lock during blocking Rust work; critical browser/session calls now use `py.detach(...)`.
 - Parallel browser launches can fight over Chromium's default temp profile lock; verification now treats browser examples/tests as serial checks.
+- Public `httpbin` endpoints can occasionally return a transient non-success status; verification now retries those requests in tests/examples instead of treating one external blip as a core regression.
 
 ## Status
-**Currently in Phase 6** - auditing the expanded browser + session implementation now that `WebPage` also lives in Rust, and identifying the remaining parity gaps beyond the green core flow.
+**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green; remaining work is focused on closing the largest parity gaps such as listener/download/state coverage beyond the verified core flows.

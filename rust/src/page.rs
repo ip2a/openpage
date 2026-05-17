@@ -13,6 +13,7 @@ use url::Url;
 use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::{Locator, LocatorKind};
+use crate::session::{SessionElement, snapshot_find, snapshot_find_all};
 
 #[derive(Clone, Debug)]
 pub struct Page {
@@ -182,6 +183,14 @@ impl Page {
 
     pub fn run_js(&self, script: &str) -> OpenPageResult<Value> {
         self.evaluate(script)
+    }
+
+    pub fn snapshot_find(&self, locator: &str) -> OpenPageResult<SessionElement> {
+        snapshot_find(&self.html()?, locator)
+    }
+
+    pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+        snapshot_find_all(&self.html()?, locator)
     }
 
     pub fn user_agent(&self) -> OpenPageResult<String> {

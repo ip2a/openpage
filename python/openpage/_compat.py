@@ -124,11 +124,11 @@ class Page:
     def evaluate(self, expression: str) -> Any:
         return self.run_js(expression)
 
-    def s_ele(self, locator: str) -> "Element":
-        return self.ele(locator)
+    def s_ele(self, locator: str) -> "SessionElement":
+        return SessionElement(self._inner.snapshot_find(locator))
 
-    def s_eles(self, locator: str) -> list["Element"]:
-        return self.eles(locator)
+    def s_eles(self, locator: str) -> list["SessionElement"]:
+        return [SessionElement(item) for item in self._inner.snapshot_find_all(locator)]
 
     def wait_for(self, locator: str, timeout: float = 10.0) -> "Element":
         return Element(self._inner.wait_for(locator, int(timeout * 1000)))
@@ -232,6 +232,12 @@ class SessionPage:
     def eles(self, locator: str) -> list["SessionElement"]:
         return [SessionElement(item) for item in self._inner.find_all(locator)]
 
+    def s_ele(self, locator: str) -> "SessionElement":
+        return self.ele(locator)
+
+    def s_eles(self, locator: str) -> list["SessionElement"]:
+        return self.eles(locator)
+
     def _cookie_header(self, url: str) -> str | None:
         return self._inner.cookie_header(url)
 
@@ -295,6 +301,12 @@ class WebPage:
 
     def eles(self, locator: str) -> list[Any]:
         return [_wrap_compat_element(item) for item in self._inner.find_all(locator)]
+
+    def s_ele(self, locator: str) -> "SessionElement":
+        return SessionElement(self._inner.snapshot_find(locator))
+
+    def s_eles(self, locator: str) -> list["SessionElement"]:
+        return [SessionElement(item) for item in self._inner.snapshot_find_all(locator)]
 
     def run_js(self, expression: str) -> Any:
         return json.loads(self._inner.run_js(expression))
@@ -375,6 +387,18 @@ class SessionElement:
 
     def attr(self, name: str) -> str | None:
         return self._inner.attr(name)
+
+    def ele(self, locator: str) -> "SessionElement":
+        return SessionElement(self._inner.find(locator))
+
+    def eles(self, locator: str) -> list["SessionElement"]:
+        return [SessionElement(item) for item in self._inner.find_all(locator)]
+
+    def s_ele(self, locator: str) -> "SessionElement":
+        return self.ele(locator)
+
+    def s_eles(self, locator: str) -> list["SessionElement"]:
+        return self.eles(locator)
 
 
 def _wrap_compat_element(inner: Any) -> Any:

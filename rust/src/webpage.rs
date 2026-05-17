@@ -281,6 +281,20 @@ impl WebPage {
         }
     }
 
+    pub fn snapshot_find(&self, locator: &str) -> OpenPageResult<SessionElement> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.snapshot_find(locator),
+            WebMode::Session => self.session.find(locator),
+        }
+    }
+
+    pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.snapshot_find_all(locator),
+            WebMode::Session => self.session.find_all(locator),
+        }
+    }
+
     pub fn run_js(&self, expression: &str) -> OpenPageResult<Value> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(

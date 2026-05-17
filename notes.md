@@ -48,6 +48,7 @@
 - `WebPage` was not the right first Rust-native boundary, but it is now implemented in Rust on top of the stabilized browser/session primitives.
 - `SessionElement` is semantically a snapshot object, not a live handle.
 - `WebPage` compatibility floor is mode switching plus current-context cookie sync.
+- The crate can now compile as a pure Rust library without `pyo3`; Python bindings are feature-gated behind `python-module`.
 
 ## Current implemented surface
 - Rust core:
@@ -76,6 +77,7 @@
   - open page
   - read `url`, `title`, `html`
   - query elements
+  - nested snapshot queries from browser/session/html snapshots
   - input, click, clear
   - run JS
   - screenshot
@@ -88,6 +90,10 @@
 
 ## Verified commands
 - `cargo check` in `rust/`
+- `cargo test` in `rust/`
+- `cargo check --features python-module` in `rust/`
 - `bash scripts/dev_install.sh`
 - `bash scripts/run_checks.sh`
 - `python/.venv/bin/python python/examples/basic_usage.py`
+- `python/.venv/bin/python python/examples/webpage_modes.py`
+- `cargo run --manifest-path rust/Cargo.toml --example webpage_modes`
