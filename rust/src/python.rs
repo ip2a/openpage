@@ -139,6 +139,28 @@ impl PyBrowser {
         py.detach(move || browser.version()).map_err(Into::into)
     }
 
+    fn is_alive(&self, py: Python<'_>) -> PyResult<bool> {
+        let browser = self.inner.clone();
+        py.detach(move || browser.is_alive()).map_err(Into::into)
+    }
+
+    fn is_headless(&self) -> PyResult<bool> {
+        Ok(self.inner.is_headless())
+    }
+
+    #[pyo3(signature = (current_tab_id=None, timeout_ms=10000))]
+    fn wait_for_new_tab(
+        &self,
+        py: Python<'_>,
+        current_tab_id: Option<&str>,
+        timeout_ms: u64,
+    ) -> PyResult<Option<String>> {
+        let browser = self.inner.clone();
+        let current_tab_id = current_tab_id.map(str::to_string);
+        py.detach(move || browser.wait_for_new_tab(current_tab_id.as_deref(), timeout_ms))
+            .map_err(Into::into)
+    }
+
     fn download_path(&self) -> PyResult<Option<String>> {
         self.inner.download_path().map_err(Into::into)
     }
@@ -176,6 +198,31 @@ impl PyBrowser {
         py.detach(move || browser.last_download())?
             .map(|inner| Py::new(py, PyDownloadMission { inner }))
             .transpose()
+    }
+
+    #[pyo3(signature = (timeout_ms=10000, cancel_it=false))]
+    fn wait_for_download_begin(
+        &self,
+        py: Python<'_>,
+        timeout_ms: u64,
+        cancel_it: bool,
+    ) -> PyResult<Option<Py<PyDownloadMission>>> {
+        let browser = self.inner.clone();
+        py.detach(move || browser.wait_for_download_begin(timeout_ms, cancel_it))?
+            .map(|inner| Py::new(py, PyDownloadMission { inner }))
+            .transpose()
+    }
+
+    #[pyo3(signature = (timeout_ms=10000, cancel_if_timeout=true))]
+    fn wait_for_downloads_done(
+        &self,
+        py: Python<'_>,
+        timeout_ms: u64,
+        cancel_if_timeout: bool,
+    ) -> PyResult<bool> {
+        let browser = self.inner.clone();
+        py.detach(move || browser.wait_for_downloads_done(timeout_ms, cancel_if_timeout))
+            .map_err(Into::into)
     }
 
     fn tabs_count(&self, py: Python<'_>) -> PyResult<usize> {
@@ -354,6 +401,11 @@ impl PyPage {
         py.detach(move || page.is_loading()).map_err(Into::into)
     }
 
+    fn is_alive(&self, py: Python<'_>) -> PyResult<bool> {
+        let page = self.page()?.clone();
+        py.detach(move || page.is_alive()).map_err(Into::into)
+    }
+
     #[pyo3(signature = (text, exclude=false, timeout_ms=10000))]
     fn wait_for_url_change(
         &self,
@@ -379,6 +431,20 @@ impl PyPage {
         let page = self.page()?.clone();
         let text = text.to_string();
         py.detach(move || page.wait_for_title_change(&text, exclude, timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000))]
+    fn wait_for_load_start(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
+        let page = self.page()?.clone();
+        py.detach(move || page.wait_for_load_start(timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000))]
+    fn wait_for_doc_loaded(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
+        let page = self.page()?.clone();
+        py.detach(move || page.wait_for_doc_loaded(timeout_ms))
             .map_err(Into::into)
     }
 
@@ -512,6 +578,25 @@ impl PyElement {
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_until_deleted(&self, timeout_ms: u64) -> PyResult<bool> {
         self.inner.wait_until_deleted(timeout_ms).map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000))]
+    fn wait_until_clickable(&self, timeout_ms: u64) -> PyResult<bool> {
+        self.inner
+            .wait_until_clickable(timeout_ms)
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000))]
+    fn wait_until_has_rect(&self, timeout_ms: u64) -> PyResult<bool> {
+        self.inner.wait_until_has_rect(timeout_ms).map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000))]
+    fn wait_until_disabled_or_deleted(&self, timeout_ms: u64) -> PyResult<bool> {
+        self.inner
+            .wait_until_disabled_or_deleted(timeout_ms)
+            .map_err(Into::into)
     }
 
     fn find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PyElement>> {

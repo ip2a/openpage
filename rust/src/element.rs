@@ -204,6 +204,24 @@ impl Element {
         self.wait_until(timeout_ms, |element| element.is_alive().map(|value| !value), true)
     }
 
+    pub fn wait_until_clickable(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        self.wait_until(timeout_ms, |element| element.is_clickable(), false)
+    }
+
+    pub fn wait_until_has_rect(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        self.wait_until(timeout_ms, |element| element.has_rect(), false)
+    }
+
+    pub fn wait_until_disabled_or_deleted(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        self.wait_until(
+            timeout_ms,
+            |element| {
+                Ok(!element.is_enabled().unwrap_or(false) || !element.is_alive().unwrap_or(false))
+            },
+            true,
+        )
+    }
+
     pub fn find(&self, locator: &str) -> OpenPageResult<Element> {
         let locator = Locator::parse(locator)?;
         self.runtime.block_on(async {

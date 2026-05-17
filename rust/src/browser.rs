@@ -49,6 +49,7 @@ struct BrowserState {
     browser: Mutex<OxBrowser>,
     downloads: DownloadStore,
     download_path: StdMutex<Option<PathBuf>>,
+    headless: bool,
     _download_task: tokio::task::JoinHandle<()>,
     _handler_task: tokio::task::JoinHandle<()>,
 }
@@ -84,6 +85,7 @@ impl Browser {
                 browser: Mutex::new(browser),
                 downloads,
                 download_path: StdMutex::new(configured_download_path.clone()),
+                headless: options.headless,
                 _download_task: download_task,
                 _handler_task: handler_task,
             }),
@@ -159,6 +161,40 @@ impl Browser {
                 .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
             Ok(version.product)
         })
+    }
+
+    pub fn is_alive(&self) -> OpenPageResult<bool> {
+        Ok(self.version().is_ok())
+    }
+
+    pub fn is_headless(&self) -> bool {
+        self.inner.headless
+    }
+
+    pub fn wait_for_new_tab(
+        &self,
+        current_tab_id: Option<&str>,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<String>> {
+        let baseline = self.tab_ids()?;
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        loop {
+            let current = self.tab_ids()?;
+            if let Some(new_id) = current.iter().find(|id| !baseline.iter().any(|seen| seen == *id)) {
+                return Ok(Some(new_id.clone()));
+            }
+            if let Some(curr_tab) = current_tab_id {
+                if let Some(last) = current.last() {
+                    if last != curr_tab && !baseline.is_empty() {
+                        return Ok(Some(last.clone()));
+                    }
+                }
+            }
+            if Instant::now() >= deadline {
+                return Ok(None);
+            }
+            sleep(Duration::from_millis(50));
+        }
     }
 
     pub fn download_path(&self) -> OpenPageResult<Option<String>> {
@@ -246,6 +282,45 @@ impl Browser {
                 resolve_download_path(&info, &download_dir, None, timeout_ms, Some(&baseline))
             }
         }
+    }
+
+    pub fn wait_for_download_begin(
+        &self,
+        timeout_ms: u64,
+        cancel_it: bool,
+    ) -> OpenPageResult<Option<DownloadMission>> {
+        let started_before = self.inner.downloads.started_len()?;
+        let info = match self
+            .inner
+            .downloads
+            .wait_for_begin_after(started_before, timeout_ms)
+        {
+            Ok(info) => info,
+            Err(OpenPageError::Timeout(_)) => return Ok(None),
+            Err(err) => return Err(err),
+        };
+        let mission = DownloadMission::new(self.clone(), info.guid.clone());
+        if cancel_it {
+            mission.cancel()?;
+        }
+        Ok(Some(mission))
+    }
+
+    pub fn wait_for_downloads_done(
+        &self,
+        timeout_ms: u64,
+        cancel_if_timeout: bool,
+    ) -> OpenPageResult<bool> {
+        let done = self.inner.downloads.wait_until_idle(timeout_ms)?;
+        if done {
+            return Ok(true);
+        }
+        if cancel_if_timeout {
+            for guid in self.inner.downloads.running_ids()? {
+                let _ = self.cancel_download(&guid);
+            }
+        }
+        Ok(false)
     }
 
     pub fn cancel_download(&self, guid: &str) -> OpenPageResult<()> {

@@ -156,6 +156,33 @@ impl DownloadStore {
             })
     }
 
+    pub(crate) fn started_len(&self) -> OpenPageResult<usize> {
+        self.shared
+            .state
+            .lock()
+            .map(|state| state.order.len())
+            .map_err(|_| {
+                OpenPageError::BrowserOperation("download state lock poisoned".to_string())
+            })
+    }
+
+    pub(crate) fn running_ids(&self) -> OpenPageResult<Vec<String>> {
+        self.shared
+            .state
+            .lock()
+            .map(|state| {
+                state
+                    .missions
+                    .values()
+                    .filter(|mission| mission.state == DownloadState::Running)
+                    .map(|mission| mission.guid.clone())
+                    .collect()
+            })
+            .map_err(|_| {
+                OpenPageError::BrowserOperation("download state lock poisoned".to_string())
+            })
+    }
+
     pub(crate) fn wait_for_name(
         &self,
         filename: &str,
@@ -194,6 +221,66 @@ impl DownloadStore {
                 .and_then(|guid| state.missions.get(guid))
                 .cloned()
         })
+    }
+
+    pub(crate) fn wait_for_begin_after(
+        &self,
+        started_before: usize,
+        timeout_ms: u64,
+    ) -> OpenPageResult<DownloadInfo> {
+        self.wait_for(timeout_ms, |state| {
+            state
+                .order
+                .get(started_before)
+                .and_then(|guid| state.missions.get(guid))
+                .cloned()
+        })
+    }
+
+    pub(crate) fn wait_until_idle(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+        let mut state = self.shared.state.lock().map_err(|_| {
+            OpenPageError::BrowserOperation("download state lock poisoned".to_string())
+        })?;
+
+        loop {
+            if state
+                .missions
+                .values()
+                .all(|mission| mission.state != DownloadState::Running)
+            {
+                return Ok(true);
+            }
+
+            if let Some(error) = &state.last_error {
+                return Err(OpenPageError::BrowserOperation(format!(
+                    "download tracker stopped: {error}"
+                )));
+            }
+
+            let now = Instant::now();
+            if now >= deadline {
+                return Ok(false);
+            }
+
+            let remaining = deadline.saturating_duration_since(now);
+            let result = self
+                .shared
+                .condvar
+                .wait_timeout(state, remaining)
+                .map_err(|_| {
+                    OpenPageError::BrowserOperation("download state lock poisoned".to_string())
+                })?;
+            state = result.0;
+            if result.1.timed_out() {
+                return Ok(
+                    state
+                        .missions
+                        .values()
+                        .all(|mission| mission.state != DownloadState::Running),
+                );
+            }
+        }
     }
 
     fn wait_for<F>(&self, timeout_ms: u64, predicate: F) -> OpenPageResult<DownloadInfo>

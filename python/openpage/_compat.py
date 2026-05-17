@@ -72,6 +72,8 @@ class SessionOptions:
 class Browser:
     def __init__(self, inner: _openpage_rs.Browser) -> None:
         self._inner = inner
+        self._wait: BrowserWait | None = None
+        self._states: BrowserStates | None = None
 
     @classmethod
     def launch(cls, options: ChromiumOptions | None = None) -> "Browser":
@@ -106,6 +108,18 @@ class Browser:
         return self._inner.version()
 
     @property
+    def wait(self) -> "BrowserWait":
+        if self._wait is None:
+            self._wait = BrowserWait(self)
+        return self._wait
+
+    @property
+    def states(self) -> "BrowserStates":
+        if self._states is None:
+            self._states = BrowserStates(self)
+        return self._states
+
+    @property
     def download_path(self) -> str | None:
         return self._inner.download_path()
 
@@ -124,6 +138,43 @@ class Browser:
 
     def close(self) -> None:
         self._inner.close()
+
+
+class BrowserWait:
+    def __init__(self, browser: Browser) -> None:
+        self._browser = browser
+
+    def new_tab(self, timeout: float = 10.0, curr_tab: str | None = None) -> str | bool:
+        target_id = self._browser._inner.wait_for_new_tab(curr_tab, int(timeout * 1000))
+        return False if target_id is None else target_id
+
+    def download_begin(
+        self,
+        timeout: float = 10.0,
+        cancel_it: bool = False,
+    ) -> "DownloadMission | bool":
+        mission = self._browser._inner.wait_for_download_begin(int(timeout * 1000), cancel_it)
+        return False if mission is None else DownloadMission(mission)
+
+    def downloads_done(
+        self,
+        timeout: float = 10.0,
+        cancel_if_timeout: bool = True,
+    ) -> bool:
+        return self._browser._inner.wait_for_downloads_done(int(timeout * 1000), cancel_if_timeout)
+
+
+class BrowserStates:
+    def __init__(self, browser: Browser) -> None:
+        self._browser = browser
+
+    @property
+    def is_alive(self) -> bool:
+        return self._browser._inner.is_alive()
+
+    @property
+    def is_headless(self) -> bool:
+        return self._browser._inner.is_headless()
 
 
 class Page:
@@ -324,6 +375,12 @@ class PageWait:
     ) -> "Page | bool":
         return self._page if self._page._inner.wait_for_title_change(text, exclude, int(timeout * 1000)) else False
 
+    def load_start(self, timeout: float = 10.0) -> bool:
+        return self._page._inner.wait_for_load_start(int(timeout * 1000))
+
+    def doc_loaded(self, timeout: float = 10.0) -> bool:
+        return self._page._inner.wait_for_doc_loaded(int(timeout * 1000))
+
 
 class PageStates:
     def __init__(self, page: Page) -> None:
@@ -336,6 +393,10 @@ class PageStates:
     @property
     def is_loading(self) -> bool:
         return self._page._inner.is_loading()
+
+    @property
+    def is_alive(self) -> bool:
+        return self._page._inner.is_alive()
 
 
 class SessionPage:
@@ -914,6 +975,19 @@ class ElementWait:
 
     def deleted(self, timeout: float = 10.0) -> "Element | bool":
         return self._element if self._element._inner.wait_until_deleted(int(timeout * 1000)) else False
+
+    def clickable(self, timeout: float = 10.0) -> "Element | bool":
+        return self._element if self._element._inner.wait_until_clickable(int(timeout * 1000)) else False
+
+    def has_rect(self, timeout: float = 10.0) -> "Element | bool":
+        return self._element if self._element._inner.wait_until_has_rect(int(timeout * 1000)) else False
+
+    def disabled_or_deleted(self, timeout: float = 10.0) -> "Element | bool":
+        return (
+            self._element
+            if self._element._inner.wait_until_disabled_or_deleted(int(timeout * 1000))
+            else False
+        )
 
 
 class SessionElement:

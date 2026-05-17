@@ -15,6 +15,7 @@ from urllib.parse import quote
 from openpage import Browser
 from openpage import ChromiumOptions
 from openpage import ChromiumPage
+from openpage import DownloadMission
 from openpage import SessionPage
 from openpage import SessionOptions
 from openpage import WebPage
@@ -154,6 +155,39 @@ def serve_download_site():
         server.server_close()
 
 
+@contextmanager
+def serve_load_site():
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path == "/":
+                payload = b"""<!doctype html><html><body><h1>Start</h1></body></html>"""
+            elif self.path == "/slow":
+                time.sleep(0.3)
+                payload = b"""<!doctype html><html><head><title>Slow Page</title></head><body><h1>Slow</h1></body></html>"""
+            else:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format: str, *args: object) -> None:
+            del format, args
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
 def assert_get_ok(page: SessionPage | WebPage, url: str, attempts: int = 3) -> None:
     last_status: int | str | None = None
     for attempt in range(attempts):
@@ -209,6 +243,8 @@ class OpenPageIntegrationTest(unittest.TestCase):
     def test_browser_level_api_and_screenshot(self) -> None:
         browser = Browser.launch(ChromiumOptions())
         try:
+            self.assertTrue(browser.states.is_alive)
+            self.assertTrue(browser.states.is_headless)
             page = browser.new_page(data_url())
             self.assertGreaterEqual(browser.tabs_count, 1)
             self.assertIn(page.tab_id, browser.tab_ids)
@@ -220,11 +256,33 @@ class OpenPageIntegrationTest(unittest.TestCase):
         finally:
             browser.close()
 
+    def test_browser_waits_for_new_tab(self) -> None:
+        page = ChromiumPage(ChromiumOptions())
+        try:
+            self.assertTrue(page.get(data_url()))
+            current_tab = page.tab_id
+            new_tab_url = "data:text/html," + quote("<h1>new-tab</h1>")
+            thread = threading.Thread(
+                target=lambda: (time.sleep(0.2), page.browser.new_page(new_tab_url)),
+                daemon=True,
+            )
+            thread.start()
+            new_tab = page.browser.wait.new_tab(timeout=2.0, curr_tab=current_tab)
+            thread.join(timeout=5)
+            self.assertNotEqual(new_tab, False)
+            assert isinstance(new_tab, str)
+            new_page = page.get_tab(new_tab)
+            self.assertTrue(new_page.wait.doc_loaded(timeout=2.0))
+            self.assertIn("new-tab", new_page.html)
+        finally:
+            page.quit()
+
     def test_page_wait_and_element_states(self) -> None:
         page = ChromiumPage(ChromiumOptions())
         try:
             self.assertTrue(page.get(data_url()))
             self.assertEqual(page.states.ready_state, "complete")
+            self.assertTrue(page.states.is_alive)
             self.assertFalse(page.states.is_loading)
 
             name = page.ele("#name")
@@ -238,6 +296,8 @@ class OpenPageIntegrationTest(unittest.TestCase):
             self.assertTrue(submit.states.is_clickable)
             self.assertIsNot(page.wait.ele_displayed("#submit", timeout=1.0), False)
             self.assertIs(submit.wait.displayed(timeout=1.0), submit)
+            self.assertIs(submit.wait.clickable(timeout=1.0), submit)
+            self.assertIs(submit.wait.has_rect(timeout=1.0), submit)
 
             page.run_js(
                 """
@@ -247,6 +307,7 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 """
             )
             self.assertIsNot(submit.wait.disabled(timeout=1.0), False)
+            self.assertIsNot(submit.wait.disabled_or_deleted(timeout=1.0), False)
             self.assertIsNot(submit.wait.enabled(timeout=2.0), False)
 
             page.run_js(
@@ -277,6 +338,18 @@ class OpenPageIntegrationTest(unittest.TestCase):
             self.assertFalse(doomed.states.is_alive)
         finally:
             page.quit()
+
+    def test_page_wait_detects_load_start_and_doc_loaded(self) -> None:
+        with serve_load_site() as base_url:
+            page = ChromiumPage(ChromiumOptions())
+            try:
+                self.assertTrue(page.get(base_url))
+                page.run_js(f"setTimeout(() => {{ location.href = {base_url!r} + 'slow'; }}, 0)")
+                self.assertTrue(page.wait.load_start(timeout=2.0))
+                self.assertTrue(page.wait.doc_loaded(timeout=3.0))
+                self.assertEqual(page.title, "Slow Page")
+            finally:
+                page.quit()
 
     def test_download_path_supports_file_downloads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -314,6 +387,20 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 missions = page.download_missions()
                 self.assertGreaterEqual(len(missions), 1)
                 self.assertEqual(missions[-1].guid, mission.guid)
+            finally:
+                page.quit()
+
+    def test_browser_waits_for_download_begin_and_completion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir, serve_download_site() as base_url:
+            page = ChromiumPage(ChromiumOptions().set_download_path(tmp_dir))
+            try:
+                self.assertTrue(page.get(base_url))
+                page.ele("#download").click()
+                mission = page.browser.wait.download_begin(timeout=5.0)
+                self.assertNotEqual(mission, False)
+                assert isinstance(mission, DownloadMission)
+                self.assertEqual(mission.suggested_filename, "openpage.txt")
+                self.assertTrue(page.browser.wait.downloads_done(timeout=10.0))
             finally:
                 page.quit()
 

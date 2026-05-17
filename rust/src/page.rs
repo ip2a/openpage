@@ -227,6 +227,12 @@ impl Page {
         Ok(self.ready_state()? != "complete")
     }
 
+    pub fn is_alive(&self) -> OpenPageResult<bool> {
+        self.runtime.block_on(async {
+            Ok(self.inner.url().await.is_ok())
+        })
+    }
+
     pub fn wait_for_url_change(
         &self,
         text: &str,
@@ -257,6 +263,38 @@ impl Page {
                 value.contains(text)
             })
         })
+    }
+
+    pub fn wait_for_load_start(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        let timeout = Duration::from_millis(timeout_ms.max(1));
+        let deadline = Instant::now() + timeout;
+        loop {
+            match self.ready_state() {
+                Ok(state) if state != "complete" => return Ok(true),
+                Ok(_) => {}
+                Err(_) => return Ok(true),
+            }
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            sleep(Duration::from_millis(50));
+        }
+    }
+
+    pub fn wait_for_doc_loaded(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        let timeout = Duration::from_millis(timeout_ms.max(1));
+        let deadline = Instant::now() + timeout;
+        loop {
+            match self.ready_state() {
+                Ok(state) if state == "complete" => return Ok(true),
+                Ok(_) => {}
+                Err(_) => {}
+            }
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            sleep(Duration::from_millis(50));
+        }
     }
 
     pub fn cookie_header(&self) -> OpenPageResult<Option<String>> {
