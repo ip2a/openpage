@@ -7,6 +7,7 @@ use crate::browser::{Browser, LaunchOptions};
 use crate::element::Element;
 use crate::error::OpenPageError;
 use crate::page::Page;
+use crate::session::{SessionElement, SessionOptions, SessionPage};
 
 impl From<OpenPageError> for PyErr {
     fn from(value: OpenPageError) -> Self {
@@ -29,11 +30,22 @@ pub struct PyElement {
     inner: Element,
 }
 
+#[pyclass(module = "openpage_rs", name = "SessionPage")]
+pub struct PySessionPage {
+    inner: SessionPage,
+}
+
+#[pyclass(module = "openpage_rs", name = "SessionElement")]
+pub struct PySessionElement {
+    inner: SessionElement,
+}
+
 #[pymethods]
 impl PyBrowser {
     #[staticmethod]
     #[pyo3(signature = (browser_path=None, headless=true, user_data_dir=None, width=1280, height=900, no_sandbox=false))]
     fn launch(
+        py: Python<'_>,
         browser_path: Option<String>,
         headless: bool,
         user_data_dir: Option<String>,
@@ -49,43 +61,52 @@ impl PyBrowser {
             height,
             no_sandbox,
         };
-        Ok(Self {
-            inner: Browser::launch(options)?,
-        })
+        let inner = py.detach(move || Browser::launch(options))?;
+        Ok(Self { inner })
     }
 
     #[pyo3(signature = (url=None))]
     fn new_page(&self, py: Python<'_>, url: Option<&str>) -> PyResult<Py<PyPage>> {
+        let browser = self.inner.clone();
+        let url = url.map(str::to_string);
+        let page = py.detach(move || browser.new_page(url.as_deref()))?;
         Py::new(
             py,
             PyPage {
-                inner: Some(self.inner.new_page(url)?),
+                inner: Some(page),
             },
         )
     }
 
-    fn close(&self) -> PyResult<()> {
-        self.inner.close()?;
+    fn close(&self, py: Python<'_>) -> PyResult<()> {
+        let browser = self.inner.clone();
+        py.detach(move || browser.close())?;
         Ok(())
     }
 
-    fn version(&self) -> PyResult<String> {
-        self.inner.version().map_err(Into::into)
+    fn version(&self, py: Python<'_>) -> PyResult<String> {
+        let browser = self.inner.clone();
+        py.detach(move || browser.version()).map_err(Into::into)
     }
 
-    fn tabs_count(&self) -> PyResult<usize> {
-        self.inner.tabs_count().map_err(Into::into)
+    fn tabs_count(&self, py: Python<'_>) -> PyResult<usize> {
+        let browser = self.inner.clone();
+        py.detach(move || browser.tabs_count()).map_err(Into::into)
     }
 
-    fn tab_ids(&self) -> PyResult<Vec<String>> {
-        self.inner.tab_ids().map_err(Into::into)
+    fn tab_ids(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        let browser = self.inner.clone();
+        py.detach(move || browser.tab_ids()).map_err(Into::into)
     }
 
     fn get_page(&self, py: Python<'_>, target_id: &str) -> PyResult<Py<PyPage>> {
+        let browser = self.inner.clone();
+        let target_id = target_id.to_string();
+        let page = py.detach(move || browser.get_page(&target_id))?;
         Py::new(
             py,
             PyPage {
-                inner: Some(self.inner.get_page(target_id)?),
+                inner: Some(page),
             },
         )
     }
@@ -93,98 +114,146 @@ impl PyBrowser {
 
 #[pymethods]
 impl PyPage {
-    fn goto(&self, url: &str) -> PyResult<()> {
-        self.page()?.goto(url)?;
+    fn goto(&self, py: Python<'_>, url: &str) -> PyResult<()> {
+        let page = self.page()?.clone();
+        let url = url.to_string();
+        py.detach(move || page.goto(&url))?;
         Ok(())
     }
 
-    fn url(&self) -> PyResult<String> {
-        self.page()?.url().map_err(Into::into)
+    fn url(&self, py: Python<'_>) -> PyResult<String> {
+        let page = self.page()?.clone();
+        py.detach(move || page.url()).map_err(Into::into)
     }
 
-    fn title(&self) -> PyResult<String> {
-        self.page()?.title().map_err(Into::into)
+    fn title(&self, py: Python<'_>) -> PyResult<String> {
+        let page = self.page()?.clone();
+        py.detach(move || page.title()).map_err(Into::into)
     }
 
     fn target_id(&self) -> PyResult<String> {
         Ok(self.page()?.target_id())
     }
 
-    fn html(&self) -> PyResult<String> {
-        self.page()?.html().map_err(Into::into)
+    fn html(&self, py: Python<'_>) -> PyResult<String> {
+        let page = self.page()?.clone();
+        py.detach(move || page.html()).map_err(Into::into)
     }
 
-    fn evaluate(&self, expression: &str) -> PyResult<String> {
-        let value = self.page()?.evaluate(expression)?;
+    fn evaluate(&self, py: Python<'_>, expression: &str) -> PyResult<String> {
+        let page = self.page()?.clone();
+        let expression = expression.to_string();
+        let value = py.detach(move || page.evaluate(&expression))?;
         serde_json::to_string(&value)
             .map_err(|err| OpenPageError::Serialization(err.to_string()).into())
     }
 
     #[pyo3(signature = (locator, timeout_ms=10000))]
     fn wait_for(&self, py: Python<'_>, locator: &str, timeout_ms: u64) -> PyResult<Py<PyElement>> {
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        let element = py.detach(move || page.wait_for(&locator, timeout_ms))?;
         Py::new(
             py,
             PyElement {
-                inner: self.page()?.wait_for(locator, timeout_ms)?,
+                inner: element,
             },
         )
     }
 
     fn find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PyElement>> {
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        let element = py.detach(move || page.find(&locator))?;
         Py::new(
             py,
             PyElement {
-                inner: self.page()?.find(locator)?,
+                inner: element,
             },
         )
     }
 
     fn find_all(&self, py: Python<'_>, locator: &str) -> PyResult<Vec<Py<PyElement>>> {
-        self.page()?
-            .find_all(locator)?
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.find_all(&locator))?
             .into_iter()
             .map(|inner| Py::new(py, PyElement { inner }))
             .collect()
     }
 
-    fn click(&self, locator: &str) -> PyResult<()> {
-        self.page()?.click(locator)?;
+    fn click(&self, py: Python<'_>, locator: &str) -> PyResult<()> {
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.click(&locator))?;
         Ok(())
     }
 
-    fn fill(&self, locator: &str, text: &str) -> PyResult<()> {
-        self.page()?.fill(locator, text)?;
+    fn fill(&self, py: Python<'_>, locator: &str, text: &str) -> PyResult<()> {
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        let text = text.to_string();
+        py.detach(move || page.fill(&locator, &text))?;
         Ok(())
     }
 
-    fn text(&self, locator: &str) -> PyResult<Option<String>> {
-        self.page()?.text(locator).map_err(Into::into)
+    fn text(&self, py: Python<'_>, locator: &str) -> PyResult<Option<String>> {
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.text(&locator)).map_err(Into::into)
     }
 
-    fn attr(&self, locator: &str, name: &str) -> PyResult<Option<String>> {
-        self.page()?.attr(locator, name).map_err(Into::into)
+    fn attr(&self, py: Python<'_>, locator: &str, name: &str) -> PyResult<Option<String>> {
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        let name = name.to_string();
+        py.detach(move || page.attr(&locator, &name)).map_err(Into::into)
     }
 
     #[pyo3(signature = (path, full_page=true))]
-    fn save_screenshot(&self, path: &str, full_page: bool) -> PyResult<()> {
-        self.page()?.save_screenshot(path, full_page)?;
+    fn save_screenshot(&self, py: Python<'_>, path: &str, full_page: bool) -> PyResult<()> {
+        let page = self.page()?.clone();
+        let path = path.to_string();
+        py.detach(move || page.save_screenshot(&path, full_page))?;
         Ok(())
     }
 
-    fn save_pdf(&self, path: &str) -> PyResult<()> {
-        self.page()?.save_pdf(path)?;
+    fn save_pdf(&self, py: Python<'_>, path: &str) -> PyResult<()> {
+        let page = self.page()?.clone();
+        let path = path.to_string();
+        py.detach(move || page.save_pdf(&path))?;
         Ok(())
     }
 
-    fn run_js(&self, expression: &str) -> PyResult<String> {
-        let value = self.page()?.run_js(expression)?;
+    fn run_js(&self, py: Python<'_>, expression: &str) -> PyResult<String> {
+        let page = self.page()?.clone();
+        let expression = expression.to_string();
+        let value = py.detach(move || page.run_js(&expression))?;
         serde_json::to_string(&value)
             .map_err(|err| OpenPageError::Serialization(err.to_string()).into())
     }
 
-    fn close(&mut self) -> PyResult<()> {
+    fn user_agent(&self, py: Python<'_>) -> PyResult<String> {
+        let page = self.page()?.clone();
+        py.detach(move || page.user_agent()).map_err(Into::into)
+    }
+
+    fn cookie_header(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let page = self.page()?.clone();
+        py.detach(move || page.cookie_header()).map_err(Into::into)
+    }
+
+    fn set_cookie_header(&self, py: Python<'_>, url: &str, cookie_header: &str) -> PyResult<()> {
+        let page = self.page()?.clone();
+        let url = url.to_string();
+        let cookie_header = cookie_header.to_string();
+        py.detach(move || page.set_cookie_header(&url, &cookie_header))?;
+        Ok(())
+    }
+
+    fn close(&mut self, py: Python<'_>) -> PyResult<()> {
         if let Some(page) = self.inner.take() {
-            page.close()?;
+            py.detach(move || page.close())?;
         }
         Ok(())
     }
@@ -253,6 +322,126 @@ impl PyElement {
     }
 }
 
+#[pymethods]
+impl PySessionPage {
+    #[staticmethod]
+    #[pyo3(signature = (timeout_secs=15, user_agent=None))]
+    fn create(py: Python<'_>, timeout_secs: u64, user_agent: Option<String>) -> PyResult<Self> {
+        let options = SessionOptions {
+            timeout_secs,
+            user_agent,
+        };
+        let inner = py.detach(move || SessionPage::new(options))?;
+        Ok(Self { inner })
+    }
+
+    fn get(&self, py: Python<'_>, url: &str) -> PyResult<bool> {
+        let page = self.inner.clone();
+        let url = url.to_string();
+        py.detach(move || page.get(&url)).map_err(Into::into)
+    }
+
+    #[pyo3(signature = (url, payload_json=None))]
+    fn post_json(&self, py: Python<'_>, url: &str, payload_json: Option<&str>) -> PyResult<bool> {
+        let payload = payload_json
+            .map(|value| serde_json::from_str(value))
+            .transpose()
+            .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
+        let page = self.inner.clone();
+        let url = url.to_string();
+        py.detach(move || page.post_json(&url, payload))
+            .map_err(Into::into)
+    }
+
+    fn url(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let page = self.inner.clone();
+        py.detach(move || page.url()).map_err(Into::into)
+    }
+
+    fn status_code(&self, py: Python<'_>) -> PyResult<Option<u16>> {
+        let page = self.inner.clone();
+        py.detach(move || page.status_code()).map_err(Into::into)
+    }
+
+    fn html(&self, py: Python<'_>) -> PyResult<String> {
+        let page = self.inner.clone();
+        py.detach(move || page.html()).map_err(Into::into)
+    }
+
+    fn json(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let page = self.inner.clone();
+        py.detach(move || page.json())
+            .and_then(|value| {
+                value
+                    .map(|value| serde_json::to_string(&value))
+                    .transpose()
+                    .map_err(|err| OpenPageError::Serialization(err.to_string()))
+            })
+            .map_err(Into::into)
+    }
+
+    fn title(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let page = self.inner.clone();
+        py.detach(move || page.title()).map_err(Into::into)
+    }
+
+    fn set_user_agent(&self, py: Python<'_>, user_agent: Option<String>) -> PyResult<()> {
+        let page = self.inner.clone();
+        py.detach(move || page.set_user_agent(user_agent))?;
+        Ok(())
+    }
+
+    fn cookie_header(&self, py: Python<'_>, url: &str) -> PyResult<Option<String>> {
+        let page = self.inner.clone();
+        let url = url.to_string();
+        py.detach(move || page.cookie_header(&url)).map_err(Into::into)
+    }
+
+    fn set_cookie_header(
+        &self,
+        py: Python<'_>,
+        url: &str,
+        cookie_header: &str,
+    ) -> PyResult<()> {
+        let page = self.inner.clone();
+        let url = url.to_string();
+        let cookie_header = cookie_header.to_string();
+        py.detach(move || page.set_cookie_header(&url, &cookie_header))?;
+        Ok(())
+    }
+
+    fn find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PySessionElement>> {
+        let page = self.inner.clone();
+        let locator = locator.to_string();
+        let element = py.detach(move || page.find(&locator))?;
+        Py::new(py, PySessionElement { inner: element })
+    }
+
+    fn find_all(&self, py: Python<'_>, locator: &str) -> PyResult<Vec<Py<PySessionElement>>> {
+        let page = self.inner.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.find_all(&locator))?
+            .into_iter()
+            .map(|inner| Py::new(py, PySessionElement { inner }))
+            .collect()
+    }
+}
+
+#[pymethods]
+impl PySessionElement {
+    fn text(&self) -> PyResult<Option<String>> {
+        self.inner.text().map_err(Into::into)
+    }
+
+    fn html(&self) -> PyResult<Option<String>> {
+        self.inner.html().map_err(Into::into)
+    }
+
+    fn attr(&self, name: &str) -> PyResult<Option<String>> {
+        self.inner.attr(name).map_err(Into::into)
+    }
+}
+
 impl PyPage {
     fn page(&self) -> PyResult<&Page> {
         self.inner
@@ -265,5 +454,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBrowser>()?;
     m.add_class::<PyPage>()?;
     m.add_class::<PyElement>()?;
+    m.add_class::<PySessionPage>()?;
+    m.add_class::<PySessionElement>()?;
     Ok(())
 }

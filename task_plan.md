@@ -30,13 +30,18 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Keep the target shape as `Rust core owns execution + Python owns import surface and selected compatibility wrappers`.
 - Ship a browser-first first release: `Browser / ChromiumOptions / ChromiumPage / Page / Element`.
 - Use `chromiumoxide` as the current Rust Chromium/CDP backbone and expose it through PyO3.
-- Keep `WebPage` and `SessionPage` out of the first runnable implementation rather than faking incomplete parity.
+- Expand to `SessionPage` and Python-level `WebPage` only after the browser core is already green.
+- Keep `WebPage` as a compatibility/orchestration object rather than forcing it into the first Rust-native core boundary.
 
 ## Errors Encountered
 - `uvx` was not on the reduced PATH inside scripted commands; resolved by using `uv tool run maturin`.
 - Direct `./scripts/*.sh` execution is unreliable on this mounted path; verified `bash scripts/*.sh` instead.
 - `TargetId` requires `TargetId::new(StringLike)` and `as_ref()` instead of direct `From<&str>` / `to_string()`.
 - Browser tab count is not guaranteed to start at `1`; tests now assert capability rather than a fragile initial state.
+- `reqwest 0.13.3` uses the `rustls` feature name instead of `rustls-tls`.
+- `SessionElement` cannot safely return references into a temporary parsed DOM; session lookups now resolve values within each method call.
+- PyO3 methods were holding the interpreter lock during blocking Rust work; critical browser/session calls now use `py.detach(...)`.
+- Parallel browser launches can fight over Chromium's default temp profile lock; verification now treats browser examples/tests as serial checks.
 
 ## Status
-**Currently in Phase 6** - auditing the current browser-first implementation against the user's requirements and identifying the next missing capability layer.
+**Currently in Phase 6** - auditing the expanded browser + session implementation, documenting residual gaps, and deciding the next Rust-owned capability layer beyond the now-green `SessionPage` / `WebPage` flow.

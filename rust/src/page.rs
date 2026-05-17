@@ -4,9 +4,11 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use chromiumoxide::cdp::browser_protocol::page::{CaptureScreenshotFormat, PrintToPdfParams};
+use chromiumoxide::cdp::browser_protocol::network::CookieParam;
 use chromiumoxide::page::{Page as OxPage, ScreenshotParams};
 use serde_json::Value;
 use tokio::runtime::Runtime;
+use url::Url;
 
 use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
@@ -182,6 +184,52 @@ impl Page {
         self.evaluate(script)
     }
 
+    pub fn user_agent(&self) -> OpenPageResult<String> {
+        match self.evaluate("navigator.userAgent")? {
+            Value::String(value) => Ok(value),
+            value => Err(OpenPageError::JavaScript(format!(
+                "navigator.userAgent did not return a string: {value}"
+            ))),
+        }
+    }
+
+    pub fn cookie_header(&self) -> OpenPageResult<Option<String>> {
+        self.runtime.block_on(async {
+            let cookies = self
+                .inner
+                .get_cookies()
+                .await
+                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            if cookies.is_empty() {
+                return Ok(None);
+            }
+
+            Ok(Some(
+                cookies
+                    .into_iter()
+                    .map(|cookie| format!("{}={}", cookie.name, cookie.value))
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            ))
+        })
+    }
+
+    pub fn set_cookie_header(&self, url: &str, cookie_header: &str) -> OpenPageResult<()> {
+        let url = Url::parse(url).map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+        let cookies = cookie_header_to_params(&url, cookie_header);
+        if cookies.is_empty() {
+            return Ok(());
+        }
+
+        self.runtime.block_on(async {
+            self.inner
+                .set_cookies(cookies)
+                .await
+                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            Ok(())
+        })
+    }
+
     pub fn close(self) -> OpenPageResult<()> {
         self.runtime.block_on(async {
             self.inner
@@ -191,4 +239,18 @@ impl Page {
             Ok(())
         })
     }
+}
+
+fn cookie_header_to_params(url: &Url, cookie_header: &str) -> Vec<CookieParam> {
+    cookie_header
+        .split(';')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .filter_map(|item| {
+            let (name, value) = item.split_once('=')?;
+            let mut cookie = CookieParam::new(name.trim(), value.trim());
+            cookie.url = Some(url.to_string());
+            Some(cookie)
+        })
+        .collect()
 }

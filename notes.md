@@ -46,6 +46,8 @@
 - `cdp-protocol` is the right long-term direction if `openpage` later wants to own more of the protocol and transport stack.
 - First release should be browser-first, not `WebPage`-first.
 - `WebPage` is compatibility sugar and orchestration, not the right first Rust-native boundary.
+- `SessionElement` is semantically a snapshot object, not a live handle.
+- `WebPage` compatibility floor is mode switching plus current-context cookie sync.
 
 ## Current implemented surface
 - Rust core:
@@ -53,13 +55,21 @@
   - `Browser`
   - `Page`
   - `Element`
+  - `SessionOptions`
+  - `SessionPage`
+  - `SessionElement`
   - locator parsing for CSS / `tag:` / `t:` / `@name=value` / `xpath:`
+  - browser/session cookie header transfer primitives
 - Python wrappers:
   - `ChromiumOptions`
   - `Browser`
   - `Page`
   - `ChromiumPage`
   - `Element`
+  - `SessionOptions`
+  - `SessionPage`
+  - `SessionElement`
+  - `WebPage`
 - Verified operations:
   - launch browser
   - open page
@@ -70,6 +80,10 @@
   - screenshot
   - PDF save API
   - tab ids / count lookup
+  - session HTML fetch and JSON fetch
+  - `WebPage` browser -> session cookie sync
+  - `WebPage` session -> browser cookie sync
+  - Python bindings detach from the interpreter during blocking Rust work
 
 ## Verified commands
 - `cargo check` in `rust/`

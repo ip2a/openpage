@@ -16,6 +16,8 @@ pub enum OpenPageError {
     UnsupportedLocator(String),
     #[error("javascript evaluation failed: {0}")]
     JavaScript(String),
+    #[error("http operation failed: {0}")]
+    Http(String),
     #[error("io error: {0}")]
     Io(String),
     #[error("timeout waiting for locator: {0}")]

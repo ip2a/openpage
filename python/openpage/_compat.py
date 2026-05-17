@@ -38,6 +38,20 @@ class ChromiumOptions:
         return self
 
 
+@dataclass
+class SessionOptions:
+    timeout_secs: int = 15
+    user_agent: str | None = None
+
+    def set_timeout(self, timeout_secs: int) -> "SessionOptions":
+        self.timeout_secs = timeout_secs
+        return self
+
+    def set_user_agent(self, user_agent: str) -> "SessionOptions":
+        self.user_agent = user_agent
+        return self
+
+
 class Browser:
     def __init__(self, inner: _openpage_rs.Browser) -> None:
         self._inner = inner
@@ -173,6 +187,163 @@ class ChromiumPage(Page):
         return self.browser.get_page(target_id)
 
 
+class SessionPage:
+    def __init__(self, session_or_options: SessionOptions | None = None) -> None:
+        options = session_or_options or SessionOptions()
+        self._inner = _openpage_rs.SessionPage.create(
+            timeout_secs=options.timeout_secs,
+            user_agent=options.user_agent,
+        )
+
+    def get(self, url: str) -> bool:
+        return self._inner.get(url)
+
+    def post(self, url: str, payload: dict[str, Any] | None = None) -> bool:
+        payload_json = json.dumps(payload) if payload is not None else None
+        return self._inner.post_json(url, payload_json)
+
+    @property
+    def url(self) -> str | None:
+        return self._inner.url()
+
+    @property
+    def status_code(self) -> int | None:
+        return self._inner.status_code()
+
+    @property
+    def html(self) -> str:
+        return self._inner.html()
+
+    @property
+    def json(self) -> Any | None:
+        raw = self._inner.json()
+        return json.loads(raw) if raw is not None else None
+
+    @property
+    def title(self) -> str | None:
+        return self._inner.title()
+
+    def set_user_agent(self, user_agent: str | None) -> None:
+        self._inner.set_user_agent(user_agent)
+
+    def ele(self, locator: str) -> "SessionElement":
+        return SessionElement(self._inner.find(locator))
+
+    def eles(self, locator: str) -> list["SessionElement"]:
+        return [SessionElement(item) for item in self._inner.find_all(locator)]
+
+    def _cookie_header(self, url: str) -> str | None:
+        return self._inner.cookie_header(url)
+
+    def _set_cookie_header(self, url: str, cookie_header: str) -> None:
+        self._inner.set_cookie_header(url, cookie_header)
+
+
+class WebPage:
+    def __init__(
+        self,
+        mode: str = "d",
+        timeout: float | None = None,
+        chromium_options: ChromiumOptions | None = None,
+        session_or_options: SessionOptions | None = None,
+    ) -> None:
+        del timeout
+        self._driver_page = ChromiumPage(chromium_options)
+        self._session_page = SessionPage(session_or_options)
+        self._mode = mode.lower()
+        if self._mode not in {"d", "s"}:
+            raise ValueError("mode must be 'd' or 's'")
+
+    @property
+    def mode(self) -> str:
+        return self._mode
+
+    def change_mode(self, mode: str | None = None, go: bool = True, copy_cookies: bool = True) -> None:
+        target_mode = mode.lower() if mode is not None else ("s" if self._mode == "d" else "d")
+        if target_mode not in {"d", "s"}:
+            raise ValueError("mode must be 'd' or 's'")
+        if target_mode == self._mode:
+            return
+
+        if go:
+            if target_mode == "s" and copy_cookies:
+                self.cookies_to_session()
+            elif target_mode == "d" and copy_cookies:
+                self.cookies_to_browser()
+
+            if target_mode == "s" and self._driver_page.url:
+                self._session_page.get(self._driver_page.url)
+            elif target_mode == "d" and self._session_page.url:
+                self._driver_page.get(self._session_page.url)
+        else:
+            if target_mode == "s" and copy_cookies:
+                self.cookies_to_session()
+            elif target_mode == "d" and copy_cookies:
+                self.cookies_to_browser()
+
+        self._mode = target_mode
+
+    @property
+    def _current(self) -> Page | SessionPage:
+        return self._driver_page if self._mode == "d" else self._session_page
+
+    def get(self, url: str) -> bool:
+        return self._current.get(url)
+
+    @property
+    def url(self) -> str | None:
+        return self._current.url
+
+    @property
+    def title(self) -> str | None:
+        return self._current.title
+
+    @property
+    def html(self) -> str:
+        return self._current.html
+
+    @property
+    def json(self) -> Any | None:
+        return None if self._mode == "d" else self._session_page.json
+
+    def ele(self, locator: str) -> Any:
+        return self._current.ele(locator)
+
+    def eles(self, locator: str) -> list[Any]:
+        return self._current.eles(locator)
+
+    def run_js(self, expression: str) -> Any:
+        if self._mode != "d":
+            raise RuntimeError("run_js() is only available in driver mode")
+        return self._driver_page.run_js(expression)
+
+    def post(self, url: str, payload: dict[str, Any] | None = None) -> bool:
+        if self._mode == "d":
+            self.cookies_to_session()
+        return self._session_page.post(url, payload)
+
+    def cookies_to_session(self, copy_user_agent: bool = True) -> None:
+        if not self._driver_page.url:
+            return
+        cookie_header = self._driver_page._inner.cookie_header()
+        if cookie_header:
+            self._session_page._set_cookie_header(self._driver_page.url, cookie_header)
+        if copy_user_agent:
+            self._session_page.set_user_agent(self._driver_page._inner.user_agent())
+
+    def cookies_to_browser(self) -> None:
+        if not self._session_page.url:
+            return
+        cookie_header = self._session_page._cookie_header(self._session_page.url)
+        if cookie_header:
+            if not self._driver_page.url.startswith(("http://", "https://")):
+                self._driver_page.get(self._session_page.url)
+            self._driver_page._inner.set_cookie_header(self._session_page.url, cookie_header)
+
+    def quit(self) -> None:
+        self._driver_page.quit()
+
+
 class Element:
     def __init__(self, inner: _openpage_rs.Element) -> None:
         self._inner = inner
@@ -211,3 +382,19 @@ class Element:
 
     def save_screenshot(self, path: str) -> None:
         self._inner.save_screenshot(path)
+
+
+class SessionElement:
+    def __init__(self, inner: _openpage_rs.SessionElement) -> None:
+        self._inner = inner
+
+    @property
+    def text(self) -> str | None:
+        return self._inner.text()
+
+    @property
+    def html(self) -> str | None:
+        return self._inner.html()
+
+    def attr(self, name: str) -> str | None:
+        return self._inner.attr(name)

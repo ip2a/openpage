@@ -8,6 +8,9 @@ from urllib.parse import quote
 from openpage import Browser
 from openpage import ChromiumOptions
 from openpage import ChromiumPage
+from openpage import SessionPage
+from openpage import SessionOptions
+from openpage import WebPage
 
 
 HTML = """
@@ -60,6 +63,34 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 self.assertGreater(shot.stat().st_size, 0)
         finally:
             browser.close()
+
+    def test_session_page_flow(self) -> None:
+        page = SessionPage(SessionOptions())
+        self.assertTrue(page.get("https://example.com"))
+        self.assertEqual(page.title, "Example Domain")
+        self.assertEqual(page.ele("h1").text, "Example Domain")
+        self.assertEqual(page.status_code, 200)
+
+        self.assertTrue(page.get("https://httpbin.org/json"))
+        self.assertIn("slideshow", page.json)
+
+    def test_webpage_mode_switch_and_cookie_sync(self) -> None:
+        page = WebPage(mode="d", chromium_options=ChromiumOptions())
+        try:
+            self.assertEqual(page.mode, "d")
+            self.assertTrue(page.get("https://httpbin.org/cookies/set?token=browser"))
+            self.assertTrue(page.get("https://httpbin.org/cookies"))
+            page.change_mode("s", go=True, copy_cookies=True)
+            self.assertEqual(page.mode, "s")
+            self.assertEqual(page.json["cookies"]["token"], "browser")
+
+            self.assertTrue(page.get("https://httpbin.org/cookies/set?token=session"))
+            self.assertTrue(page.get("https://httpbin.org/cookies"))
+            page.change_mode("d", go=True, copy_cookies=True)
+            self.assertEqual(page.mode, "d")
+            self.assertIn('"token": "session"', page.ele("body").text or "")
+        finally:
+            page.quit()
 
 
 if __name__ == "__main__":
