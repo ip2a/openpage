@@ -40,7 +40,7 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Snapshot metadata and shared response metadata have started moving down too: `tag / inner_html / raw_text / attrs / user_agent / WebPage.status_code` now come from the Rust core.
 - `cookies()` is now part of that same shared-metadata move: browser, session, and `WebPage` expose Rust-owned cookie data and Python only adapts the result shape.
 - Session response metadata has moved further down as well: `raw_data` and `encoding` now come from the Rust core and Python only forwards them.
-- Browser download-path configuration now comes from Rust too: launch options and runtime setters call CDP `Browser.setDownloadBehavior`, and Python only forwards the path.
+- Browser download-path configuration now comes from Rust too: launch options and runtime setters call CDP `Browser.setDownloadBehavior`, Python only forwards the path, and download completion waiting is handled in Rust instead of Python-side polling loops.
 
 ## Errors Encountered
 - `uvx` was not on the reduced PATH inside scripted commands; resolved by using `uv tool run maturin`.
@@ -69,10 +69,10 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
   - `WebPage` orchestration lives in Rust
   - snapshot traversal and selected metadata live in Rust
   - cookie sync plus `cookies()` / `raw_data` / `encoding` exposure now live in Rust
-  - browser download-path configuration and local file download now live in Rust
+  - browser download-path configuration, download waiting, and local file download now live in Rust
 - Still missing before the goal can be considered complete:
   - more of the reference browser subsystems such as listener and fuller download management
   - a stronger completion pass against the remaining compatibility surface
 
 ## Status
-**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, `cookies()` plus session `raw_data` / `encoding` and basic browser download-path control now live in the Rust core, and the next focused gap is broader browser-side core coverage such as listener and fuller download management plus the remaining compatibility audit.
+**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, `cookies()` plus session `raw_data` / `encoding` and basic browser download-path control/waiting now live in the Rust core, and the next focused gap is broader browser-side core coverage such as listener and fuller download management plus the remaining compatibility audit.

@@ -18,7 +18,7 @@
   - `WebPage` mode orchestration across browser and session
   - locator parsing
   - cookie header transfer primitives plus `cookies()` exposure for browser/session sync
-  - browser download-path configuration through CDP
+  - browser download-path configuration and download waiting through CDP-backed Rust logic
   - screenshots, PDF, DOM querying, JS execution
 - Python owns:
   - compatibility-oriented wrappers
@@ -113,7 +113,7 @@ This first version is intentionally browser-first:
   - `post_json`
   - browser/session mode switching
   - current-URL cookie sync between browser and session
-  - browser download-path configuration plus basic file downloads
+  - browser download-path configuration plus basic file downloads and `wait_for_download()`
 - Not yet implemented:
   - advanced network listener parity
   - full download manager parity
@@ -136,7 +136,7 @@ Current integration checks cover:
 - `WebPage` session -> browser cookie sync
 - `cookies()` access from browser, session, and `WebPage`
 - session-backed `raw_data` and `encoding` from Rust across `SessionPage` and `WebPage`
-- local browser download flow through a configured download path
+- local browser download flow through a configured download path and Rust-side `wait_for_download()`
 - Python `WebPage` thin-wrapper flow over the Rust `WebPage` core
 - direct Python examples
 - direct Rust `webpage_modes` example

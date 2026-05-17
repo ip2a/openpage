@@ -116,12 +116,7 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 self.assertEqual(page.download_path, tmp_dir)
                 self.assertTrue(page.get(download_data_url()))
                 page.ele("#download").click()
-
-                for _ in range(50):
-                    if target.exists():
-                        break
-                    time.sleep(0.1)
-
+                self.assertEqual(page.wait_for_download("openpage.txt"), str(target))
                 self.assertTrue(target.exists())
                 self.assertEqual(target.read_text(), "openpage-download")
             finally:

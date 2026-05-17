@@ -109,6 +109,19 @@ impl PyBrowser {
         Ok(())
     }
 
+    #[pyo3(signature = (filename=None, timeout_ms=10000))]
+    fn wait_for_download(
+        &self,
+        py: Python<'_>,
+        filename: Option<&str>,
+        timeout_ms: u64,
+    ) -> PyResult<String> {
+        let browser = self.inner.clone();
+        let filename = filename.map(str::to_string);
+        py.detach(move || browser.wait_for_download(filename.as_deref(), timeout_ms))
+            .map_err(Into::into)
+    }
+
     fn tabs_count(&self, py: Python<'_>) -> PyResult<usize> {
         let browser = self.inner.clone();
         py.detach(move || browser.tabs_count()).map_err(Into::into)
@@ -750,6 +763,19 @@ impl PyWebPage {
         let path = path.to_string();
         py.detach(move || page.set_download_path(&path))?;
         Ok(())
+    }
+
+    #[pyo3(signature = (filename=None, timeout_ms=10000))]
+    fn wait_for_download(
+        &self,
+        py: Python<'_>,
+        filename: Option<&str>,
+        timeout_ms: u64,
+    ) -> PyResult<String> {
+        let page = self.inner.clone();
+        let filename = filename.map(str::to_string);
+        py.detach(move || page.wait_for_download(filename.as_deref(), timeout_ms))
+            .map_err(Into::into)
     }
 
     fn get(&self, py: Python<'_>, url: &str) -> PyResult<bool> {

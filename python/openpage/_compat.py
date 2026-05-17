@@ -100,6 +100,9 @@ class Browser:
     def set_download_path(self, path: str) -> None:
         self._inner.set_download_path(path)
 
+    def wait_for_download(self, filename: str | None = None, timeout: float = 10.0) -> str:
+        return self._inner.wait_for_download(filename, int(timeout * 1000))
+
     def close(self) -> None:
         self._inner.close()
 
@@ -217,6 +220,9 @@ class ChromiumPage(Page):
 
     def set_download_path(self, path: str) -> None:
         self.browser.set_download_path(path)
+
+    def wait_for_download(self, filename: str | None = None, timeout: float = 10.0) -> str:
+        return self.browser.wait_for_download(filename, timeout)
 
 
 class SessionPage:
@@ -412,6 +418,9 @@ class WebPage:
 
     def set_download_path(self, path: str) -> None:
         self._inner.set_download_path(path)
+
+    def wait_for_download(self, filename: str | None = None, timeout: float = 10.0) -> str:
+        return self._inner.wait_for_download(filename, int(timeout * 1000))
 
     def quit(self) -> None:
         self._inner.quit()

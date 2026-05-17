@@ -171,6 +171,10 @@ impl WebPage {
         self.browser.set_download_path(path)
     }
 
+    pub fn wait_for_download(&self, filename: Option<&str>, timeout_ms: u64) -> OpenPageResult<String> {
+        self.browser.wait_for_download(filename, timeout_ms)
+    }
+
     pub fn change_mode(
         &self,
         mode: Option<WebMode>,

@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 
 use chromiumoxide::browser::{Browser as OxBrowser, BrowserConfig};
 use chromiumoxide::cdp::browser_protocol::browser::{
@@ -188,6 +190,42 @@ impl Browser {
         Ok(())
     }
 
+    pub fn wait_for_download(
+        &self,
+        filename: Option<&str>,
+        timeout_ms: u64,
+    ) -> OpenPageResult<String> {
+        let download_dir = self
+            .download_path()?
+            .map(PathBuf::from)
+            .ok_or_else(|| OpenPageError::UnsupportedOperation("download path is not configured".to_string()))?;
+        let baseline = if filename.is_none() {
+            read_visible_downloads(&download_dir)?
+        } else {
+            Vec::new()
+        };
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+
+        loop {
+            if let Some(filename) = filename {
+                let target = download_dir.join(filename);
+                if target.exists() {
+                    return Ok(target.to_string_lossy().into_owned());
+                }
+            } else {
+                let current = read_visible_downloads(&download_dir)?;
+                if let Some(path) = current.into_iter().find(|path| !baseline.iter().any(|seen| seen == path)) {
+                    return Ok(path.to_string_lossy().into_owned());
+                }
+            }
+
+            if Instant::now() >= deadline {
+                return Err(OpenPageError::Timeout("download did not complete in time".to_string()));
+            }
+            sleep(Duration::from_millis(100));
+        }
+    }
+
     pub fn close(&self) -> OpenPageResult<()> {
         self.inner.runtime.block_on(async {
             let mut browser = self.inner.browser.lock().await;
@@ -225,4 +263,25 @@ fn build_browser_config(options: &LaunchOptions) -> OpenPageResult<BrowserConfig
     builder
         .build()
         .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))
+}
+
+fn read_visible_downloads(dir: &Path) -> OpenPageResult<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(dir).map_err(|err| OpenPageError::BrowserOperation(err.to_string()))? {
+        let entry = entry.map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        if path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("crdownload"))
+        {
+            continue;
+        }
+        files.push(path);
+    }
+    files.sort();
+    Ok(files)
 }
