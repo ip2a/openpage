@@ -3,7 +3,8 @@ use std::sync::{Arc, Condvar, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 
 use chromiumoxide::cdp::browser_protocol::network::{
-    EventLoadingFailed, EventLoadingFinished, EventRequestWillBeSent, EventResponseReceived,
+    EventLoadingFailed, EventLoadingFinished, EventRequestWillBeSent,
+    EventRequestWillBeSentExtraInfo, EventResponseReceived, EventResponseReceivedExtraInfo,
     GetResponseBodyParams, Headers, ResourceType, Response,
 };
 use chromiumoxide::page::Page as OxPage;
@@ -21,6 +22,12 @@ pub struct ListenerRequest {
     pub method: String,
     pub headers: HashMap<String, String>,
     pub post_data: Option<String>,
+    pub extra_info: Option<ListenerRequestExtraInfo>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ListenerRequestExtraInfo {
+    pub headers: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -32,6 +39,14 @@ pub struct ListenerResponse {
     pub mime_type: String,
     pub body: Option<String>,
     pub body_base64: bool,
+    pub extra_info: Option<ListenerResponseExtraInfo>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ListenerResponseExtraInfo {
+    pub headers: HashMap<String, String>,
+    pub status_code: i64,
+    pub headers_text: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -155,6 +170,7 @@ struct PendingPacket {
     finished: bool,
     response_body: Option<String>,
     response_body_base64: bool,
+    awaiting_response_extra_info: bool,
 }
 
 impl PendingPacket {
@@ -166,12 +182,14 @@ impl PendingPacket {
                 method: event.request.method.clone(),
                 headers: headers_to_map(&event.request.headers),
                 post_data: None,
+                extra_info: None,
             },
             response: None,
             resource_type: event.r#type.as_ref().map(resource_type_to_string),
             finished: false,
             response_body: None,
             response_body_base64: false,
+            awaiting_response_extra_info: false,
         }
     }
 
@@ -193,6 +211,8 @@ impl PendingPacket {
 struct ListenerState {
     queue: VecDeque<ListenerPacket>,
     inflight: HashMap<String, PendingPacket>,
+    request_extra_infos: HashMap<String, ListenerRequestExtraInfo>,
+    response_extra_infos: HashMap<String, ListenerResponseExtraInfo>,
     filters: ListenerFilters,
     listening: bool,
     task: Option<JoinHandle<()>>,
@@ -204,6 +224,8 @@ impl Default for ListenerState {
         Self {
             queue: VecDeque::new(),
             inflight: HashMap::new(),
+            request_extra_infos: HashMap::new(),
+            response_extra_infos: HashMap::new(),
             filters: ListenerFilters::default(),
             listening: false,
             task: None,
@@ -257,6 +279,8 @@ impl Listener {
 
         state.queue.clear();
         state.inflight.clear();
+        state.request_extra_infos.clear();
+        state.response_extra_infos.clear();
         state.last_error = None;
         state.filters = filters;
 
@@ -359,6 +383,8 @@ impl Listener {
         })?;
         state.queue.clear();
         state.inflight.clear();
+        state.request_extra_infos.clear();
+        state.response_extra_infos.clear();
         self.shared.condvar.notify_all();
         Ok(())
     }
@@ -370,6 +396,8 @@ impl Listener {
             })?;
             state.queue.clear();
             state.inflight.clear();
+            state.request_extra_infos.clear();
+            state.response_extra_infos.clear();
             state.last_error = None;
             state.listening = false;
             state.task.take()
@@ -402,6 +430,14 @@ async fn run_listener(page: OxPage, shared: Arc<ListenerShared>) -> OpenPageResu
         .event_listener::<EventResponseReceived>()
         .await
         .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+    let mut request_extra_events = page
+        .event_listener::<EventRequestWillBeSentExtraInfo>()
+        .await
+        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+    let mut response_extra_events = page
+        .event_listener::<EventResponseReceivedExtraInfo>()
+        .await
+        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
     let mut finished_events = page
         .event_listener::<EventLoadingFinished>()
         .await
@@ -419,6 +455,14 @@ async fn run_listener(page: OxPage, shared: Arc<ListenerShared>) -> OpenPageResu
             },
             event = response_events.next() => match event {
                 Some(event) => on_response_received(&shared, &event)?,
+                None => break,
+            },
+            event = request_extra_events.next() => match event {
+                Some(event) => on_request_will_be_sent_extra_info(&shared, &event)?,
+                None => break,
+            },
+            event = response_extra_events.next() => match event {
+                Some(event) => on_response_received_extra_info(&shared, &event)?,
                 None => break,
             },
             event = finished_events.next() => match event {
@@ -466,20 +510,44 @@ fn on_request_will_be_sent(
     if let Some(redirect_response) = &event.redirect_response {
         if let Some(mut pending) = state.inflight.remove(&request_id) {
             pending.response = Some(listener_response_from_cdp(redirect_response));
-            state.queue.push_back(pending.into_packet(None));
+            finalize_if_ready(&mut state, &request_id, pending);
             shared.condvar.notify_all();
         }
     }
 
     if let Some(matched_target) = matched_target {
-        state.inflight.insert(
-            request_id,
-            PendingPacket::from_request(event, matched_target),
-        );
+        let mut packet = PendingPacket::from_request(event, matched_target);
+        if let Some(extra_info) = state.request_extra_infos.remove(&request_id) {
+            apply_request_extra_info(&mut packet, extra_info);
+        }
+        if let Some(extra_info) = state.response_extra_infos.remove(&request_id) {
+            apply_response_extra_info(&mut packet, extra_info);
+        }
+        state.inflight.insert(request_id, packet);
     } else {
         state.inflight.remove(&request_id);
+        state.request_extra_infos.remove(&request_id);
+        state.response_extra_infos.remove(&request_id);
     }
 
+    Ok(())
+}
+
+fn on_request_will_be_sent_extra_info(
+    shared: &Arc<ListenerShared>,
+    event: &EventRequestWillBeSentExtraInfo,
+) -> OpenPageResult<()> {
+    let request_id = event.request_id.as_ref().to_string();
+    let extra_info = listener_request_extra_info_from_cdp(event);
+    let mut state = shared
+        .state
+        .lock()
+        .map_err(|_| OpenPageError::BrowserOperation("listener state lock poisoned".to_string()))?;
+    if let Some(packet) = state.inflight.get_mut(&request_id) {
+        apply_request_extra_info(packet, extra_info);
+    } else {
+        state.request_extra_infos.insert(request_id, extra_info);
+    }
     Ok(())
 }
 
@@ -494,22 +562,43 @@ fn on_response_received(
         .map_err(|_| OpenPageError::BrowserOperation("listener state lock poisoned".to_string()))?;
     if let Some(packet) = state.inflight.get_mut(&request_id) {
         let mut response = listener_response_from_cdp(&event.response);
+        let has_existing_extra_info = preserve_existing_response_extra_info(packet, &mut response);
         if let Some(body) = &packet.response_body {
             response.body = Some(body.clone());
             response.body_base64 = packet.response_body_base64;
         }
         packet.response = Some(response);
         packet.resource_type = Some(resource_type_to_string(&event.r#type));
+        packet.awaiting_response_extra_info = event.has_extra_info && !has_existing_extra_info;
     }
-    let should_finalize = state
-        .inflight
-        .get(&request_id)
-        .is_some_and(|packet| packet.finished && packet.response.is_some());
-    if should_finalize {
-        if let Some(packet) = state.inflight.remove(&request_id) {
-            state.queue.push_back(packet.into_packet(None));
-            shared.condvar.notify_all();
-        }
+    let should_finalize = take_ready_packet(&mut state, &request_id);
+    if let Some(packet) = should_finalize {
+        state.queue.push_back(packet.into_packet(None));
+        shared.condvar.notify_all();
+    }
+    Ok(())
+}
+
+fn on_response_received_extra_info(
+    shared: &Arc<ListenerShared>,
+    event: &EventResponseReceivedExtraInfo,
+) -> OpenPageResult<()> {
+    let request_id = event.request_id.as_ref().to_string();
+    let extra_info = listener_response_extra_info_from_cdp(event);
+    let mut state = shared
+        .state
+        .lock()
+        .map_err(|_| OpenPageError::BrowserOperation("listener state lock poisoned".to_string()))?;
+    if let Some(packet) = state.inflight.get_mut(&request_id) {
+        apply_response_extra_info(packet, extra_info);
+    } else {
+        state.response_extra_infos.insert(request_id.clone(), extra_info);
+    }
+
+    let should_finalize = take_ready_packet(&mut state, &request_id);
+    if let Some(packet) = should_finalize {
+        state.queue.push_back(packet.into_packet(None));
+        shared.condvar.notify_all();
     }
     Ok(())
 }
@@ -536,15 +625,10 @@ async fn on_loading_finished(
             }
         }
     }
-    let should_finalize = state
-        .inflight
-        .get(&request_id)
-        .is_some_and(|packet| packet.response.is_some());
-    if should_finalize {
-        if let Some(packet) = state.inflight.remove(&request_id) {
-            state.queue.push_back(packet.into_packet(None));
-            shared.condvar.notify_all();
-        }
+    let should_finalize = take_ready_packet(&mut state, &request_id);
+    if let Some(packet) = should_finalize {
+        state.queue.push_back(packet.into_packet(None));
+        shared.condvar.notify_all();
     }
     Ok(())
 }
@@ -638,6 +722,106 @@ fn listener_response_from_cdp(response: &Response) -> ListenerResponse {
         mime_type: response.mime_type.clone(),
         body: None,
         body_base64: false,
+        extra_info: None,
+    }
+}
+
+fn listener_request_extra_info_from_cdp(
+    event: &EventRequestWillBeSentExtraInfo,
+) -> ListenerRequestExtraInfo {
+    ListenerRequestExtraInfo {
+        headers: headers_to_map(&event.headers),
+    }
+}
+
+fn listener_response_extra_info_from_cdp(
+    event: &EventResponseReceivedExtraInfo,
+) -> ListenerResponseExtraInfo {
+    ListenerResponseExtraInfo {
+        headers: headers_to_map(&event.headers),
+        status_code: event.status_code,
+        headers_text: event.headers_text.clone(),
+    }
+}
+
+fn apply_request_extra_info(packet: &mut PendingPacket, extra_info: ListenerRequestExtraInfo) {
+    merge_headers(&mut packet.request.headers, &extra_info.headers);
+    packet.request.extra_info = Some(extra_info);
+}
+
+fn apply_response_extra_info(packet: &mut PendingPacket, extra_info: ListenerResponseExtraInfo) {
+    if let Some(response) = packet.response.as_mut() {
+        merge_headers(&mut response.headers, &extra_info.headers);
+        response.extra_info = Some(extra_info.clone());
+        response.status = extra_info.status_code;
+    }
+    packet.awaiting_response_extra_info = false;
+    if packet.response.is_none() {
+        packet.response = Some(ListenerResponse {
+            url: packet.request.url.clone(),
+            status: extra_info.status_code,
+            status_text: String::new(),
+            headers: extra_info.headers.clone(),
+            mime_type: String::new(),
+            body: None,
+            body_base64: false,
+            extra_info: Some(extra_info),
+        });
+    }
+}
+
+fn preserve_existing_response_extra_info(
+    packet: &PendingPacket,
+    response: &mut ListenerResponse,
+) -> bool {
+    let Some(extra_info) = packet
+        .response
+        .as_ref()
+        .and_then(|existing| existing.extra_info.clone())
+    else {
+        return false;
+    };
+
+    merge_headers(&mut response.headers, &extra_info.headers);
+    response.status = extra_info.status_code;
+    response.extra_info = Some(extra_info);
+    true
+}
+
+fn response_ready(packet: &PendingPacket) -> bool {
+    packet.response.is_some() && !packet.awaiting_response_extra_info
+}
+
+fn merge_headers(base: &mut HashMap<String, String>, extra: &HashMap<String, String>) {
+    let mut existing = base
+        .keys()
+        .map(|key| key.to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+    for (key, value) in extra {
+        let normalized = key.to_ascii_lowercase();
+        if existing.insert(normalized) {
+            base.insert(key.clone(), value.clone());
+        }
+    }
+}
+
+fn finalize_if_ready(state: &mut ListenerState, request_id: &str, packet: PendingPacket) {
+    if response_ready(&packet) || !packet.awaiting_response_extra_info {
+        state.queue.push_back(packet.into_packet(None));
+    } else {
+        state.inflight.insert(request_id.to_string(), packet);
+    }
+}
+
+fn take_ready_packet(state: &mut ListenerState, request_id: &str) -> Option<PendingPacket> {
+    let is_ready = state
+        .inflight
+        .get(request_id)
+        .is_some_and(|packet| packet.finished && response_ready(packet));
+    if is_ready {
+        state.inflight.remove(request_id)
+    } else {
+        None
     }
 }
 
@@ -654,7 +838,13 @@ async fn fetch_response_body(
 
 #[cfg(test)]
 mod tests {
-    use super::{ListenerFilters, headers_to_map};
+    use std::collections::HashMap;
+
+    use super::{
+        ListenerFilters, ListenerRequest, ListenerResponse, ListenerResponseExtraInfo,
+        PendingPacket, apply_response_extra_info, headers_to_map,
+        preserve_existing_response_extra_info,
+    };
     use chromiumoxide::cdp::browser_protocol::network::Headers;
 
     #[test]
@@ -689,6 +879,58 @@ mod tests {
         assert_eq!(
             filters.matches("http://127.0.0.1/other", "POST", Some("Fetch"),),
             None
+        );
+    }
+
+    #[test]
+    fn response_received_preserves_earlier_extra_info() {
+        let mut packet = PendingPacket {
+            matched_target: None,
+            request: ListenerRequest {
+                url: "http://127.0.0.1/api/data".to_string(),
+                method: "POST".to_string(),
+                headers: HashMap::new(),
+                post_data: None,
+                extra_info: None,
+            },
+            response: None,
+            resource_type: None,
+            finished: false,
+            response_body: None,
+            response_body_base64: false,
+            awaiting_response_extra_info: false,
+        };
+        let extra_info = ListenerResponseExtraInfo {
+            headers: HashMap::from([("X-OpenPage-Response".to_string(), "enabled".to_string())]),
+            status_code: 200,
+            headers_text: None,
+        };
+        apply_response_extra_info(&mut packet, extra_info.clone());
+
+        let mut response = ListenerResponse {
+            url: packet.request.url.clone(),
+            status: 200,
+            status_text: "OK".to_string(),
+            headers: HashMap::from([("Content-Type".to_string(), "application/json".to_string())]),
+            mime_type: "application/json".to_string(),
+            body: None,
+            body_base64: false,
+            extra_info: None,
+        };
+
+        let has_extra_info = preserve_existing_response_extra_info(&packet, &mut response);
+        assert!(has_extra_info);
+        assert_eq!(response.status, 200);
+        assert_eq!(
+            response.headers.get("X-OpenPage-Response"),
+            Some(&"enabled".to_string())
+        );
+        assert_eq!(
+            response
+                .extra_info
+                .as_ref()
+                .and_then(|info| info.headers.get("X-OpenPage-Response")),
+            Some(&"enabled".to_string())
         );
     }
 }

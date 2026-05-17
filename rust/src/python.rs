@@ -10,7 +10,8 @@ use crate::download::DownloadMission;
 use crate::element::Element;
 use crate::error::OpenPageError;
 use crate::listener::{
-    Listener, ListenerFailInfo, ListenerPacket, ListenerRequest, ListenerResponse,
+    Listener, ListenerFailInfo, ListenerPacket, ListenerRequest, ListenerRequestExtraInfo,
+    ListenerResponse, ListenerResponseExtraInfo,
 };
 use crate::page::Page;
 use crate::session::{CookieEntry, SessionElement, SessionOptions, SessionPage};
@@ -67,9 +68,19 @@ pub struct PyListenerRequest {
     inner: ListenerRequest,
 }
 
+#[pyclass(module = "openpage_rs", name = "ListenerRequestExtraInfo")]
+pub struct PyListenerRequestExtraInfo {
+    inner: ListenerRequestExtraInfo,
+}
+
 #[pyclass(module = "openpage_rs", name = "ListenerResponse")]
 pub struct PyListenerResponse {
     inner: ListenerResponse,
+}
+
+#[pyclass(module = "openpage_rs", name = "ListenerResponseExtraInfo")]
+pub struct PyListenerResponseExtraInfo {
+    inner: ListenerResponseExtraInfo,
 }
 
 #[pyclass(module = "openpage_rs", name = "ListenerFailInfo")]
@@ -1112,6 +1123,21 @@ impl PyListenerRequest {
     fn post_data(&self) -> Option<String> {
         self.inner.post_data.clone()
     }
+
+    fn extra_info(&self, py: Python<'_>) -> PyResult<Option<Py<PyListenerRequestExtraInfo>>> {
+        self.inner
+            .extra_info
+            .clone()
+            .map(|inner| Py::new(py, PyListenerRequestExtraInfo { inner }))
+            .transpose()
+    }
+}
+
+#[pymethods]
+impl PyListenerRequestExtraInfo {
+    fn headers(&self) -> Vec<(String, String)> {
+        header_tuples(&self.inner.headers)
+    }
 }
 
 #[pymethods]
@@ -1142,6 +1168,29 @@ impl PyListenerResponse {
 
     fn body_base64(&self) -> bool {
         self.inner.body_base64
+    }
+
+    fn extra_info(&self, py: Python<'_>) -> PyResult<Option<Py<PyListenerResponseExtraInfo>>> {
+        self.inner
+            .extra_info
+            .clone()
+            .map(|inner| Py::new(py, PyListenerResponseExtraInfo { inner }))
+            .transpose()
+    }
+}
+
+#[pymethods]
+impl PyListenerResponseExtraInfo {
+    fn headers(&self) -> Vec<(String, String)> {
+        header_tuples(&self.inner.headers)
+    }
+
+    fn status_code(&self) -> i64 {
+        self.inner.status_code
+    }
+
+    fn headers_text(&self) -> Option<String> {
+        self.inner.headers_text.clone()
     }
 }
 
@@ -1249,7 +1298,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyListener>()?;
     m.add_class::<PyListenerPacket>()?;
     m.add_class::<PyListenerRequest>()?;
+    m.add_class::<PyListenerRequestExtraInfo>()?;
     m.add_class::<PyListenerResponse>()?;
+    m.add_class::<PyListenerResponseExtraInfo>()?;
     m.add_class::<PyListenerFailInfo>()?;
     m.add_class::<PyDownloadMission>()?;
     Ok(())

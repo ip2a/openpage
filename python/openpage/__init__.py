@@ -7,7 +7,9 @@ from ._compat import Listener
 from ._compat import ListenerFailInfo
 from ._compat import ListenerPacket
 from ._compat import ListenerRequest
+from ._compat import ListenerRequestExtraInfo
 from ._compat import ListenerResponse
+from ._compat import ListenerResponseExtraInfo
 from ._compat import Page
 from ._compat import SessionElement
 from ._compat import SessionOptions
@@ -24,7 +26,9 @@ __all__ = [
     "ListenerFailInfo",
     "ListenerPacket",
     "ListenerRequest",
+    "ListenerRequestExtraInfo",
     "ListenerResponse",
+    "ListenerResponseExtraInfo",
     "Page",
     "SessionElement",
     "SessionOptions",

@@ -63,6 +63,7 @@
   - locator parsing for CSS / `tag:` / `t:` / `@name=value` / `xpath:`
   - browser/session cookie header transfer primitives
   - page-scoped network listener with Rust-owned packet queueing, filter matching, and response body capture
+  - request/response extra info exposure through the same Rust listener core
   - browser download-path configuration, mission tracking, cancel/wait support, and wait-for-download helper
 - Python wrappers:
   - `ChromiumOptions`
@@ -87,6 +88,7 @@
   - download a local file through a Rust-configured browser download path and wait for it from Rust
   - capture completed browser network packets from both `ChromiumPage` and driver-mode `WebPage`
   - capture listener response bodies for matched browser requests
+  - capture listener response extra info for matched browser requests
   - capture browser download missions from both `ChromiumPage` and driver-mode `WebPage`
   - query elements
   - nested snapshot queries from browser/session/html snapshots
@@ -118,6 +120,6 @@
 - `cookies()` has now moved into the Rust core and Python only adapts the returned objects.
 - Session response metadata `raw_data` and `encoding` now lives in Rust as well.
 - Basic browser download enablement and wait-for-download now lives in Rust too.
-- Listener now has response body capture in Rust, but it still lacks fuller reference-style parity such as extra-info merging and interception controls.
+- Listener now has response body capture and extra-info merging in Rust, but it still lacks fuller reference-style parity such as interception controls.
 - Download management now has a first Rust-owned pass as well, but it still lacks richer reference-style policies such as rename/skip/overwrite coordination and broader per-tab controls.
 - The next highest-value surfaces are fuller listener/download parity, then the remaining reference-style convenience and parity helpers.

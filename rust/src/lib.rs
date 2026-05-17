@@ -15,7 +15,10 @@ pub use browser::{Browser, LaunchOptions};
 pub use download::{DownloadInfo, DownloadMission, DownloadState};
 pub use element::Element;
 pub use error::{OpenPageError, OpenPageResult};
-pub use listener::{Listener, ListenerFailInfo, ListenerPacket, ListenerRequest, ListenerResponse};
+pub use listener::{
+    Listener, ListenerFailInfo, ListenerPacket, ListenerRequest, ListenerRequestExtraInfo,
+    ListenerResponse, ListenerResponseExtraInfo,
+};
 pub use locator::{Locator, LocatorKind};
 pub use page::Page;
 pub use session::{CookieEntry, SessionElement, SessionOptions, SessionPage};

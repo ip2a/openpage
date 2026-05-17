@@ -56,7 +56,7 @@ LISTENER_HTML = """
 <!doctype html>
 <html>
 <body>
-  <button id="trigger" onclick='fetch("/api/data", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name: "openpage"})}).then(r => r.json()).then(() => { document.getElementById("out").textContent = "done"; })'>Send</button>
+  <button id="trigger" onclick='fetch("/api/data", {method: "POST", headers: {"Content-Type": "application/json", "X-OpenPage-Request": "enabled"}, body: JSON.stringify({name: "openpage"})}).then(r => r.json()).then(() => { document.getElementById("out").textContent = "done"; })'>Send</button>
   <div id="out"></div>
 </body>
 </html>
@@ -96,6 +96,7 @@ def serve_listener_site():
             payload = json.dumps({"received": body}).encode("utf-8")
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "application/json")
+            self.send_header("X-OpenPage-Response", "enabled")
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
@@ -285,6 +286,23 @@ class OpenPageIntegrationTest(unittest.TestCase):
                     or packet.request.headers.get("content-type")
                 )
                 self.assertEqual(content_type, "application/json")
+
+                request_extra_info = packet.request.extra_info
+                if request_extra_info is not None:
+                    self.assertEqual(
+                        request_extra_info.headers.get("X-OpenPage-Request"),
+                        "enabled",
+                    )
+
+                response_extra_info = response.extra_info
+                self.assertIsNotNone(response_extra_info)
+                assert response_extra_info is not None
+                self.assertEqual(response_extra_info.status_code, 200)
+                self.assertEqual(
+                    response_extra_info.headers.get("X-OpenPage-Response"),
+                    "enabled",
+                )
+                self.assertIsNotNone(response_extra_info.headers_text)
             finally:
                 listener.stop()
                 page.quit()
