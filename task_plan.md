@@ -85,4 +85,4 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
   - a stronger completion pass against the remaining compatibility surface
 
 ## Status
-**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, browser/session/`WebPage` download tracking and listener coverage both have Rust-owned extra-info-aware paths, and the remaining gaps are interception/download-policy parity plus the final compatibility audit against the broader reference surface.
+**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, browser/page/element wait-state coverage is deeper in Rust, and the remaining gaps are stronger `WebPage.wait/states` parity, more stable new-tab semantics, interception/download-policy parity, and the final compatibility audit against the broader reference surface.
