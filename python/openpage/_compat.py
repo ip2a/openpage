@@ -223,6 +223,14 @@ class SessionPage:
         return self._inner.status_code()
 
     @property
+    def raw_data(self) -> bytes:
+        return self._inner.raw_data()
+
+    @property
+    def encoding(self) -> str | None:
+        return self._inner.encoding()
+
+    @property
     def html(self) -> str:
         return self._inner.html()
 
@@ -318,6 +326,14 @@ class WebPage:
     @property
     def html(self) -> str:
         return self._inner.html()
+
+    @property
+    def raw_data(self) -> bytes:
+        return self._inner.raw_data()
+
+    @property
+    def encoding(self) -> str | None:
+        return self._inner.encoding()
 
     @property
     def status_code(self) -> int | None:

@@ -261,6 +261,20 @@ impl WebPage {
         }
     }
 
+    pub fn raw_data(&self) -> OpenPageResult<Vec<u8>> {
+        match self.mode()? {
+            WebMode::Driver => Ok(Vec::new()),
+            WebMode::Session => self.session.raw_data(),
+        }
+    }
+
+    pub fn encoding(&self) -> OpenPageResult<Option<String>> {
+        match self.mode()? {
+            WebMode::Driver => Ok(None),
+            WebMode::Session => self.session.encoding(),
+        }
+    }
+
     pub fn status_code(&self) -> OpenPageResult<Option<u16>> {
         match self.mode()? {
             WebMode::Driver => Ok(None),

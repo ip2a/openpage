@@ -109,9 +109,13 @@ class OpenPageIntegrationTest(unittest.TestCase):
         self.assertEqual(page.s_ele("h1").raw_text, "Example Domain")
         self.assertEqual(page.user_agent, "openpage-test-agent")
         self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Example Domain", page.raw_data)
+        self.assertEqual(page.encoding, "utf-8")
 
         assert_get_ok(page, "https://httpbin.org/json")
         self.assertIn("slideshow", page.json)
+        self.assertIn(b"slideshow", page.raw_data)
+        self.assertEqual(page.encoding, "utf-8")
 
     def test_webpage_mode_switch_and_cookie_sync(self) -> None:
         page = WebPage(mode="d", chromium_options=ChromiumOptions())
@@ -125,6 +129,8 @@ class OpenPageIntegrationTest(unittest.TestCase):
             self.assertTrue(page.user_agent)
             self.assertEqual(page.json["cookies"]["token"], "browser")
             self.assertIn({"name": "token", "value": "browser", "domain": "httpbin.org"}, page.cookies())
+            self.assertIn(b"browser", page.raw_data)
+            self.assertEqual(page.encoding, "utf-8")
 
             assert_get_ok(page, "https://httpbin.org/cookies/set?token=session")
             assert_get_ok(page, "https://httpbin.org/cookies")
@@ -134,6 +140,8 @@ class OpenPageIntegrationTest(unittest.TestCase):
             self.assertTrue(page.user_agent)
             self.assertIn('"token": "session"', page.ele("body").text or "")
             self.assertIn({"name": "token", "value": "session", "domain": "httpbin.org"}, page.cookies())
+            self.assertEqual(page.raw_data, b"")
+            self.assertIsNone(page.encoding)
         finally:
             page.quit()
 

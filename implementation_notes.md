@@ -44,7 +44,7 @@ The architectural decision did not change:
 - Rust owns the execution primitives for browser and session work.
 - Python owns the thin compatibility wrappers and object adaptation layer.
 - Snapshot `SessionElement` nodes now carry Rust-side node identity, which made root/child/children/parent/prev/next/before/after traversal possible without moving DOM logic back into Python.
-- Shared metadata access is moving down with the same rule: Python now reads `user_agent`, `status_code`, `cookies()`, `raw_text`, and `attrs` from Rust rather than re-deriving them locally.
+- Shared metadata access is moving down with the same rule: Python now reads `user_agent`, `status_code`, `cookies()`, `raw_data`, `encoding`, `raw_text`, and `attrs` from Rust rather than re-deriving them locally.
 
 ## Python binding behavior
 
@@ -65,4 +65,4 @@ The architectural decision did not change:
 - `WebPage` mode switching and cookie sync pass integration tests.
 - Python `WebPage` now forwards to a Rust `WebPage` core instead of keeping the mode logic in Python.
 - Python snapshot queries now route through Rust and support nested `SessionElement` lookups.
-- Snapshot traversal now covers root lookup plus `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters`, `WebPage.status_code` exposes session-mode HTTP status from the shared Rust core, and `cookies()` is exposed from the same Rust core across browser/session/`WebPage`.
+- Snapshot traversal now covers root lookup plus `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters`, `WebPage.status_code` exposes session-mode HTTP status from the shared Rust core, `cookies()` is exposed from the same Rust core across browser/session/`WebPage`, and session response metadata `raw_data` / `encoding` is now stored and exposed from Rust too.

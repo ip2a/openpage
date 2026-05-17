@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
+use pyo3::types::PyBytes;
 
 use crate::browser::{Browser, LaunchOptions};
 use crate::element::Element;
@@ -398,6 +399,17 @@ impl PySessionPage {
         py.detach(move || page.status_code()).map_err(Into::into)
     }
 
+    fn raw_data(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
+        let page = self.inner.clone();
+        let raw = py.detach(move || page.raw_data())?;
+        Ok(PyBytes::new(py, &raw).into())
+    }
+
+    fn encoding(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let page = self.inner.clone();
+        py.detach(move || page.encoding()).map_err(Into::into)
+    }
+
     fn html(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.inner.clone();
         py.detach(move || page.html()).map_err(Into::into)
@@ -761,6 +773,17 @@ impl PyWebPage {
     fn html(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.inner.clone();
         py.detach(move || page.html()).map_err(Into::into)
+    }
+
+    fn raw_data(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
+        let page = self.inner.clone();
+        let raw = py.detach(move || page.raw_data())?;
+        Ok(PyBytes::new(py, &raw).into())
+    }
+
+    fn encoding(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let page = self.inner.clone();
+        py.detach(move || page.encoding()).map_err(Into::into)
     }
 
     fn json(&self, py: Python<'_>) -> PyResult<Option<String>> {

@@ -108,7 +108,7 @@ This first version is intentionally browser-first:
   - snapshot `s_ele / s_eles` queries for browser, session, and `WebPage`
   - snapshot root lookup plus `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters`
   - snapshot node metadata `tag / inner_html / raw_text / attrs`
-  - shared metadata `user_agent / status_code / cookies()`
+  - shared metadata `user_agent / status_code / cookies() / raw_data / encoding`
   - `post_json`
   - browser/session mode switching
   - current-URL cookie sync between browser and session
@@ -133,6 +133,7 @@ Current integration checks cover:
 - `WebPage` browser -> session cookie sync
 - `WebPage` session -> browser cookie sync
 - `cookies()` access from browser, session, and `WebPage`
+- session-backed `raw_data` and `encoding` from Rust across `SessionPage` and `WebPage`
 - Python `WebPage` thin-wrapper flow over the Rust `WebPage` core
 - direct Python examples
 - direct Rust `webpage_modes` example

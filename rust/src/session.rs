@@ -2,10 +2,11 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use encoding_rs::Encoding;
 use ego_tree::NodeId;
 use reqwest::blocking::{Client, ClientBuilder};
 use reqwest::cookie::{CookieStore, Jar};
-use reqwest::header::USER_AGENT;
+use reqwest::header::{CONTENT_TYPE, USER_AGENT};
 use scraper::{ElementRef, Html, Selector};
 use serde_json::Value;
 use url::Url;
@@ -35,7 +36,9 @@ struct SessionState {
     user_agent: Option<String>,
     url: Option<String>,
     status_code: Option<u16>,
+    encoding: Option<String>,
     body: Option<Arc<String>>,
+    raw_data: Option<Arc<Vec<u8>>>,
     json: Option<Value>,
 }
 
@@ -75,7 +78,9 @@ impl SessionPage {
                 user_agent: options.user_agent,
                 url: None,
                 status_code: None,
+                encoding: None,
                 body: None,
+                raw_data: None,
                 json: None,
             })),
         })
@@ -128,6 +133,19 @@ impl SessionPage {
             .as_ref()
             .map(|body| body.as_ref().clone())
             .unwrap_or_default())
+    }
+
+    pub fn raw_data(&self) -> OpenPageResult<Vec<u8>> {
+        Ok(self
+            .lock_state()?
+            .raw_data
+            .as_ref()
+            .map(|body| body.as_ref().clone())
+            .unwrap_or_default())
+    }
+
+    pub fn encoding(&self) -> OpenPageResult<Option<String>> {
+        Ok(self.lock_state()?.encoding.clone())
     }
 
     pub fn json(&self) -> OpenPageResult<Option<Value>> {
@@ -228,9 +246,17 @@ impl SessionPage {
     fn store_response(&self, requested_url: &str, response: reqwest::blocking::Response) -> OpenPageResult<bool> {
         let final_url = response.url().to_string();
         let status = response.status().as_u16();
-        let text = response
-            .text()
-            .map_err(|err| OpenPageError::Http(format!("{err:?}")))?;
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+        let raw_data = response
+            .bytes()
+            .map_err(|err| OpenPageError::Http(format!("{err:?}")))?
+            .to_vec();
+        let encoding = detect_body_encoding(content_type.as_deref(), &raw_data);
+        let text = decode_body(&raw_data, encoding.as_deref());
         let parsed_json = serde_json::from_str::<Value>(&text).ok();
 
         let mut state = self.lock_state()?;
@@ -240,7 +266,9 @@ impl SessionPage {
             final_url
         });
         state.status_code = Some(status);
+        state.encoding = encoding;
         state.body = Some(Arc::new(text));
+        state.raw_data = Some(Arc::new(raw_data));
         state.json = parsed_json;
         Ok((200..400).contains(&status))
     }
@@ -456,6 +484,40 @@ pub fn cookies_from_header(url: &str, cookie_header: &str) -> OpenPageResult<Vec
             })
         })
         .collect())
+}
+
+fn detect_body_encoding(content_type: Option<&str>, body: &[u8]) -> Option<String> {
+    if let Some(content_type) = content_type {
+        for part in content_type.split(';').skip(1) {
+            let trimmed = part.trim();
+            let Some((name, value)) = trimmed.split_once('=') else {
+                continue;
+            };
+            if name.trim().eq_ignore_ascii_case("charset") {
+                let value = value.trim().trim_matches('"').trim_matches('\'');
+                if !value.is_empty() {
+                    return Some(value.to_ascii_lowercase());
+                }
+            }
+        }
+    }
+
+    if std::str::from_utf8(body).is_ok() {
+        return Some("utf-8".to_string());
+    }
+
+    None
+}
+
+fn decode_body(body: &[u8], encoding: Option<&str>) -> String {
+    if let Some(encoding) = encoding {
+        if let Some(decoder) = Encoding::for_label(encoding.as_bytes()) {
+            let (text, _, _) = decoder.decode(body);
+            return text.into_owned();
+        }
+    }
+
+    String::from_utf8_lossy(body).into_owned()
 }
 
 pub fn snapshot_root(html: &str) -> OpenPageResult<SessionElement> {
