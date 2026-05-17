@@ -14,6 +14,7 @@
   - browser launch/connect lifecycle
   - CDP-backed page and element operations
   - page-scoped network listener lifecycle and packet capture
+  - browser download mission tracking and wait/cancel flow
   - requests-backed session fetching and snapshot parsing
   - snapshot DOM node identity and relative traversal for session-backed elements
   - `WebPage` mode orchestration across browser and session
@@ -106,6 +107,20 @@ print(packet.method, packet.url, packet.response.status)
 page.quit()
 ```
 
+## Download Tracking Usage
+
+```python
+from openpage import ChromiumOptions, ChromiumPage
+
+page = ChromiumPage(ChromiumOptions().set_download_path("/tmp/openpage-downloads"))
+page.get("http://127.0.0.1:8000/")
+page.ele("#download").click()
+path = page.wait_for_download("openpage.txt", timeout=10)
+mission = page.last_download()
+print(path, mission.state, mission.final_path)
+page.quit()
+```
+
 ## Status
 
 This first version is intentionally browser-first:
@@ -130,10 +145,10 @@ This first version is intentionally browser-first:
   - browser/session mode switching
   - current-URL cookie sync between browser and session
   - page-scoped network listener with `start / wait / clear / stop`
-  - browser download-path configuration plus basic file downloads and `wait_for_download()`
+  - browser download-path configuration plus event-driven download missions and `wait_for_download()`
 - Not yet implemented:
   - fuller network listener parity such as response bodies, extra info, and interception-style controls
-  - full download manager parity
+  - fuller download-manager parity such as rename/skip policies and richer per-tab controls
   - full setter/wait/state parity with the reference project
 
 ## Verification
@@ -153,6 +168,7 @@ Current integration checks cover:
 - `WebPage` session -> browser cookie sync
 - `cookies()` access from browser, session, and `WebPage`
 - page-scoped network listener capture from both `ChromiumPage` and driver-mode `WebPage`
+- event-driven download mission tracking from both `ChromiumPage` and driver-mode `WebPage`
 - session-backed `raw_data` and `encoding` from Rust across `SessionPage` and `WebPage`
 - local browser download flow through a configured download path and Rust-side `wait_for_download()`
 - Python `WebPage` thin-wrapper flow over the Rust `WebPage` core

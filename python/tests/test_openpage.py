@@ -43,6 +43,15 @@ DOWNLOAD_HTML = """
 </html>
 """
 
+HTTP_DOWNLOAD_HTML = """
+<!doctype html>
+<html>
+<body>
+  <a id="download" href="/download">Download</a>
+</body>
+</html>
+"""
+
 LISTENER_HTML = """
 <!doctype html>
 <html>
@@ -90,6 +99,45 @@ def serve_listener_site():
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
+
+        def log_message(self, format: str, *args: object) -> None:
+            del format, args
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+
+@contextmanager
+def serve_download_site():
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path == "/":
+                payload = HTTP_DOWNLOAD_HTML.encode("utf-8")
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+
+            if self.path == "/download":
+                payload = b"openpage-download"
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Disposition", 'attachment; filename="openpage.txt"')
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+
+            self.send_error(HTTPStatus.NOT_FOUND)
 
         def log_message(self, format: str, *args: object) -> None:
             del format, args
@@ -178,6 +226,31 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 self.assertEqual(page.wait_for_download("openpage.txt"), str(target))
                 self.assertTrue(target.exists())
                 self.assertEqual(target.read_text(), "openpage-download")
+            finally:
+                page.quit()
+
+    def test_download_missions_track_http_downloads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir, serve_download_site() as base_url:
+            page = ChromiumPage(ChromiumOptions().set_download_path(tmp_dir))
+            target = Path(tmp_dir) / "openpage.txt"
+            try:
+                self.assertTrue(page.get(base_url))
+                page.ele("#download").click()
+
+                self.assertEqual(page.wait_for_download("openpage.txt"), str(target))
+                mission = page.last_download()
+                self.assertIsNotNone(mission)
+                assert mission is not None
+                self.assertEqual(mission.suggested_filename, "openpage.txt")
+                self.assertEqual(mission.state, "completed")
+                self.assertTrue(mission.is_done)
+                self.assertGreaterEqual(mission.received_bytes, len(b"openpage-download"))
+                self.assertEqual(mission.wait(timeout=5.0), str(target))
+                self.assertEqual(mission.final_path, str(target))
+
+                missions = page.download_missions()
+                self.assertGreaterEqual(len(missions), 1)
+                self.assertEqual(missions[-1].guid, mission.guid)
             finally:
                 page.quit()
 
@@ -287,6 +360,30 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 self.assertEqual(response.status, 200)
             finally:
                 listener.stop()
+                page.quit()
+
+    def test_webpage_download_missions_use_browser_core(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir, serve_download_site() as base_url:
+            page = WebPage(
+                mode="d",
+                chromium_options=ChromiumOptions().set_download_path(tmp_dir),
+            )
+            target = Path(tmp_dir) / "openpage.txt"
+            try:
+                self.assertTrue(page.get(base_url))
+                page.ele("#download").click()
+                self.assertEqual(page.wait_for_download("openpage.txt"), str(target))
+
+                mission = page.last_download()
+                self.assertIsNotNone(mission)
+                assert mission is not None
+                self.assertEqual(mission.state, "completed")
+                self.assertEqual(mission.final_path, str(target))
+
+                missions = page.download_missions()
+                self.assertGreaterEqual(len(missions), 1)
+                self.assertEqual(missions[-1].guid, mission.guid)
+            finally:
                 page.quit()
 
 

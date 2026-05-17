@@ -1,6 +1,7 @@
 from ._compat import Browser
 from ._compat import ChromiumOptions
 from ._compat import ChromiumPage
+from ._compat import DownloadMission
 from ._compat import Element
 from ._compat import Listener
 from ._compat import ListenerFailInfo
@@ -17,6 +18,7 @@ __all__ = [
     "Browser",
     "ChromiumOptions",
     "ChromiumPage",
+    "DownloadMission",
     "Element",
     "Listener",
     "ListenerFailInfo",

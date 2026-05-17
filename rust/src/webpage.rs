@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::Value;
 
 use crate::browser::{Browser, LaunchOptions};
+use crate::download::DownloadMission;
 use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::listener::Listener;
@@ -178,6 +179,14 @@ impl WebPage {
         timeout_ms: u64,
     ) -> OpenPageResult<String> {
         self.browser.wait_for_download(filename, timeout_ms)
+    }
+
+    pub fn download_missions(&self) -> OpenPageResult<Vec<DownloadMission>> {
+        self.browser.download_missions()
+    }
+
+    pub fn last_download(&self) -> OpenPageResult<Option<DownloadMission>> {
+        self.browser.last_download()
     }
 
     pub fn listener(&self) -> Listener {

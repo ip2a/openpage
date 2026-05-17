@@ -42,6 +42,7 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Session response metadata has moved further down as well: `raw_data` and `encoding` now come from the Rust core and Python only forwards them.
 - Browser download-path configuration now comes from Rust too: launch options and runtime setters call CDP `Browser.setDownloadBehavior`, Python only forwards the path, and download completion waiting is handled in Rust instead of Python-side polling loops.
 - Browser-side listener coverage now has a Rust-owned first pass too: page-scoped request/response/failure packet capture plus `start / wait / clear / stop` live in the Rust core, and Python only exposes thin compatibility wrappers around those objects.
+- Browser download handling has moved further down too: a Rust-owned download tracker now consumes CDP browser download events, exposes mission state, and keeps Python as a thin wrapper over mission inspection and waiting.
 
 ## Errors Encountered
 - `uvx` was not on the reduced PATH inside scripted commands; resolved by using `uv tool run maturin`.
@@ -55,6 +56,7 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Public `httpbin` endpoints can occasionally return a transient non-success status; verification now retries those requests in tests/examples instead of treating one external blip as a core regression.
 - `run_checks.sh` originally trusted whatever Rust extension was already installed in `python/.venv`; it now rebuilds and reinstalls the local extension first so Python verification cannot pass against stale artifacts.
 - The first listener implementation hit a borrow-checker conflict when draining timed-out packets; resolved by capturing the queue length before the mutable drain call.
+- The first download-tracker implementation needed to keep event-driven state while preserving the existing `wait_for_download()` API; resolved by making CDP events primary and filesystem checks a compatibility fallback when Chrome does not report a final path.
 
 ## Completion Audit
 - Required root layout:
@@ -72,10 +74,10 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
   - snapshot traversal and selected metadata live in Rust
   - cookie sync plus `cookies()` / `raw_data` / `encoding` exposure now live in Rust
   - page-scoped network listener now lives in Rust and is reachable from both `ChromiumPage` and driver-mode `WebPage`
-  - browser download-path configuration, download waiting, and local file download now live in Rust
+  - browser download-path configuration, event-driven download missions, download waiting, and local file download now live in Rust
 - Still missing before the goal can be considered complete:
-  - fuller parity inside browser subsystems such as listener response bodies / extra info / interception-style controls and fuller download management
+  - fuller parity inside browser subsystems such as listener response bodies / extra info / interception-style controls and richer download-manager policies
   - a stronger completion pass against the remaining compatibility surface
 
 ## Status
-**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, browser/session/`WebPage` listener coverage now has a Rust-owned first pass, and the remaining gaps are fuller listener/download parity plus the final compatibility audit against the broader reference surface.
+**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, browser/session/`WebPage` download tracking and listener coverage both have Rust-owned first passes, and the remaining gaps are fuller listener/download parity plus the final compatibility audit against the broader reference surface.

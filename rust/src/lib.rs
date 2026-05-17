@@ -1,4 +1,5 @@
 pub mod browser;
+pub mod download;
 pub mod element;
 pub mod error;
 pub mod listener;
@@ -11,6 +12,7 @@ pub mod webpage;
 pub mod python;
 
 pub use browser::{Browser, LaunchOptions};
+pub use download::{DownloadInfo, DownloadMission, DownloadState};
 pub use element::Element;
 pub use error::{OpenPageError, OpenPageResult};
 pub use listener::{Listener, ListenerFailInfo, ListenerPacket, ListenerRequest, ListenerResponse};

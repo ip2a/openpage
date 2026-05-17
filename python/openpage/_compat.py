@@ -115,6 +115,13 @@ class Browser:
     def wait_for_download(self, filename: str | None = None, timeout: float = 10.0) -> str:
         return self._inner.wait_for_download(filename, int(timeout * 1000))
 
+    def download_missions(self) -> list["DownloadMission"]:
+        return [DownloadMission(item) for item in self._inner.download_missions()]
+
+    def last_download(self) -> "DownloadMission | None":
+        mission = self._inner.last_download()
+        return None if mission is None else DownloadMission(mission)
+
     def close(self) -> None:
         self._inner.close()
 
@@ -242,6 +249,12 @@ class ChromiumPage(Page):
 
     def wait_for_download(self, filename: str | None = None, timeout: float = 10.0) -> str:
         return self.browser.wait_for_download(filename, timeout)
+
+    def download_missions(self) -> list["DownloadMission"]:
+        return self.browser.download_missions()
+
+    def last_download(self) -> "DownloadMission | None":
+        return self.browser.last_download()
 
 
 class SessionPage:
@@ -448,8 +461,64 @@ class WebPage:
     def wait_for_download(self, filename: str | None = None, timeout: float = 10.0) -> str:
         return self._inner.wait_for_download(filename, int(timeout * 1000))
 
+    def download_missions(self) -> list["DownloadMission"]:
+        return [DownloadMission(item) for item in self._inner.download_missions()]
+
+    def last_download(self) -> "DownloadMission | None":
+        mission = self._inner.last_download()
+        return None if mission is None else DownloadMission(mission)
+
     def quit(self) -> None:
         self._inner.quit()
+
+
+class DownloadMission:
+    def __init__(self, inner: _openpage_rs.DownloadMission) -> None:
+        self._inner = inner
+
+    def __repr__(self) -> str:
+        return (
+            f'<DownloadMission guid="{self.guid}" state="{self.state}" '
+            f'name="{self.suggested_filename}">'
+        )
+
+    @property
+    def guid(self) -> str:
+        return self._inner.guid()
+
+    @property
+    def url(self) -> str:
+        return self._inner.url()
+
+    @property
+    def suggested_filename(self) -> str:
+        return self._inner.suggested_filename()
+
+    @property
+    def state(self) -> str:
+        return self._inner.state()
+
+    @property
+    def received_bytes(self) -> int:
+        return self._inner.received_bytes()
+
+    @property
+    def total_bytes(self) -> int | None:
+        return self._inner.total_bytes()
+
+    @property
+    def final_path(self) -> str | None:
+        return self._inner.final_path()
+
+    @property
+    def is_done(self) -> bool:
+        return self._inner.is_done()
+
+    def wait(self, timeout: float = 10.0) -> str:
+        return self._inner.wait(int(timeout * 1000))
+
+    def cancel(self) -> None:
+        self._inner.cancel()
 
 
 class Listener:

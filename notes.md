@@ -63,7 +63,7 @@
   - locator parsing for CSS / `tag:` / `t:` / `@name=value` / `xpath:`
   - browser/session cookie header transfer primitives
   - page-scoped network listener with Rust-owned packet queueing and filter matching
-  - browser download-path configuration and wait-for-download helper
+  - browser download-path configuration, mission tracking, cancel/wait support, and wait-for-download helper
 - Python wrappers:
   - `ChromiumOptions`
   - `Browser`
@@ -75,6 +75,7 @@
   - `SessionElement`
   - `WebPage` thin wrapper over the Rust core
   - `Listener` / `ListenerPacket` thin wrappers over the Rust listener core
+  - `DownloadMission` thin wrapper over the Rust download tracker
 - Verified operations:
   - launch browser
   - open page
@@ -85,6 +86,7 @@
   - read session-backed `raw_data` and `encoding`
   - download a local file through a Rust-configured browser download path and wait for it from Rust
   - capture completed browser network packets from both `ChromiumPage` and driver-mode `WebPage`
+  - capture browser download missions from both `ChromiumPage` and driver-mode `WebPage`
   - query elements
   - nested snapshot queries from browser/session/html snapshots
   - snapshot root lookup plus `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters`
@@ -116,4 +118,5 @@
 - Session response metadata `raw_data` and `encoding` now lives in Rust as well.
 - Basic browser download enablement and wait-for-download now lives in Rust too.
 - Listener now has a first Rust-owned pass, but it still lacks fuller reference-style parity such as response body capture, extra-info merging, and interception controls.
-- The next highest-value surface after that is fuller download management, then the remaining reference-style convenience and parity helpers.
+- Download management now has a first Rust-owned pass as well, but it still lacks richer reference-style policies such as rename/skip/overwrite coordination and broader per-tab controls.
+- The next highest-value surfaces are fuller listener/download parity, then the remaining reference-style convenience and parity helpers.

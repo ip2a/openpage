@@ -5,13 +5,16 @@ use std::time::{Duration, Instant};
 
 use chromiumoxide::browser::{Browser as OxBrowser, BrowserConfig};
 use chromiumoxide::cdp::browser_protocol::browser::{
-    SetDownloadBehaviorBehavior, SetDownloadBehaviorParams,
+    CancelDownloadParams, SetDownloadBehaviorBehavior, SetDownloadBehaviorParams,
 };
 use chromiumoxide::cdp::browser_protocol::target::TargetId;
 use futures::StreamExt;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
+use crate::download::{
+    DownloadInfo, DownloadMission, DownloadState, DownloadStore, attach_download_store,
+};
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::Page;
 
@@ -44,7 +47,9 @@ impl Default for LaunchOptions {
 struct BrowserState {
     runtime: Arc<Runtime>,
     browser: Mutex<OxBrowser>,
+    downloads: DownloadStore,
     download_path: StdMutex<Option<PathBuf>>,
+    _download_task: tokio::task::JoinHandle<()>,
     _handler_task: tokio::task::JoinHandle<()>,
 }
 
@@ -71,12 +76,15 @@ impl Browser {
                 }
             }
         });
+        let (downloads, download_task) = attach_download_store(Arc::clone(&runtime), &browser)?;
 
         let browser = Self {
             inner: Arc::new(BrowserState {
                 runtime,
                 browser: Mutex::new(browser),
+                downloads,
                 download_path: StdMutex::new(configured_download_path.clone()),
+                _download_task: download_task,
                 _handler_task: handler_task,
             }),
         };
@@ -197,6 +205,24 @@ impl Browser {
         Ok(())
     }
 
+    pub fn download_missions(&self) -> OpenPageResult<Vec<DownloadMission>> {
+        Ok(self
+            .inner
+            .downloads
+            .mission_ids()?
+            .into_iter()
+            .map(|guid| DownloadMission::new(self.clone(), guid))
+            .collect())
+    }
+
+    pub fn last_download(&self) -> OpenPageResult<Option<DownloadMission>> {
+        Ok(self
+            .inner
+            .downloads
+            .last_guid()?
+            .map(|guid| DownloadMission::new(self.clone(), guid)))
+    }
+
     pub fn wait_for_download(
         &self,
         filename: Option<&str>,
@@ -205,36 +231,33 @@ impl Browser {
         let download_dir = self.download_path()?.map(PathBuf::from).ok_or_else(|| {
             OpenPageError::UnsupportedOperation("download path is not configured".to_string())
         })?;
-        let baseline = if filename.is_none() {
-            read_visible_downloads(&download_dir)?
-        } else {
-            Vec::new()
-        };
-        let deadline = Instant::now() + Duration::from_millis(timeout_ms);
-
-        loop {
-            if let Some(filename) = filename {
-                let target = download_dir.join(filename);
-                if target.exists() {
-                    return Ok(target.to_string_lossy().into_owned());
-                }
-            } else {
-                let current = read_visible_downloads(&download_dir)?;
-                if let Some(path) = current
-                    .into_iter()
-                    .find(|path| !baseline.iter().any(|seen| seen == path))
-                {
-                    return Ok(path.to_string_lossy().into_owned());
-                }
+        match filename {
+            Some(filename) => {
+                let info = self.inner.downloads.wait_for_name(filename, timeout_ms)?;
+                resolve_download_path(&info, &download_dir, Some(filename), timeout_ms, None)
             }
-
-            if Instant::now() >= deadline {
-                return Err(OpenPageError::Timeout(
-                    "download did not complete in time".to_string(),
-                ));
+            None => {
+                let completed_before = self.inner.downloads.completed_len()?;
+                let baseline = read_visible_downloads(&download_dir)?;
+                let info = self
+                    .inner
+                    .downloads
+                    .wait_for_next_after(completed_before, timeout_ms)?;
+                resolve_download_path(&info, &download_dir, None, timeout_ms, Some(&baseline))
             }
-            sleep(Duration::from_millis(100));
         }
+    }
+
+    pub fn cancel_download(&self, guid: &str) -> OpenPageResult<()> {
+        let guid = guid.to_string();
+        self.inner.runtime.block_on(async {
+            let browser = self.inner.browser.lock().await;
+            browser
+                .execute(CancelDownloadParams::new(guid))
+                .await
+                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+            Ok(())
+        })
     }
 
     pub fn close(&self) -> OpenPageResult<()> {
@@ -247,6 +270,22 @@ impl Browser {
             let _ = browser.wait().await;
             Ok(())
         })
+    }
+
+    pub(crate) fn download_info(&self, guid: &str) -> OpenPageResult<DownloadInfo> {
+        self.inner.downloads.info(guid)
+    }
+
+    pub(crate) fn wait_for_download_guid(
+        &self,
+        guid: &str,
+        timeout_ms: u64,
+    ) -> OpenPageResult<String> {
+        let download_dir = self.download_path()?.map(PathBuf::from).ok_or_else(|| {
+            OpenPageError::UnsupportedOperation("download path is not configured".to_string())
+        })?;
+        let info = self.inner.downloads.wait_for_guid(guid, timeout_ms)?;
+        resolve_download_path(&info, &download_dir, None, timeout_ms, None)
     }
 }
 
@@ -274,6 +313,52 @@ fn build_browser_config(options: &LaunchOptions) -> OpenPageResult<BrowserConfig
     builder
         .build()
         .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))
+}
+
+fn resolve_download_path(
+    info: &DownloadInfo,
+    download_dir: &Path,
+    filename: Option<&str>,
+    timeout_ms: u64,
+    baseline: Option<&[PathBuf]>,
+) -> OpenPageResult<String> {
+    if info.state == DownloadState::Canceled {
+        return Err(OpenPageError::BrowserOperation(format!(
+            "download `{}` was canceled",
+            info.guid
+        )));
+    }
+
+    if let Some(path) = &info.final_path {
+        return Ok(path.clone());
+    }
+
+    let preferred_name = filename.unwrap_or(&info.suggested_filename);
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+
+    loop {
+        let preferred_path = download_dir.join(preferred_name);
+        if preferred_path.exists() {
+            return Ok(preferred_path.to_string_lossy().into_owned());
+        }
+
+        if let Some(baseline) = baseline {
+            let current = read_visible_downloads(download_dir)?;
+            if let Some(path) = current
+                .into_iter()
+                .find(|path| !baseline.iter().any(|seen| seen == path))
+            {
+                return Ok(path.to_string_lossy().into_owned());
+            }
+        }
+
+        if Instant::now() >= deadline {
+            return Err(OpenPageError::Timeout(
+                "download did not complete in time".to_string(),
+            ));
+        }
+        sleep(Duration::from_millis(100));
+    }
 }
 
 fn read_visible_downloads(dir: &Path) -> OpenPageResult<Vec<PathBuf>> {

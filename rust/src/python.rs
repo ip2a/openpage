@@ -6,6 +6,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
 use crate::browser::{Browser, LaunchOptions};
+use crate::download::DownloadMission;
 use crate::element::Element;
 use crate::error::OpenPageError;
 use crate::listener::{
@@ -76,6 +77,11 @@ pub struct PyListenerFailInfo {
     inner: ListenerFailInfo,
 }
 
+#[pyclass(module = "openpage_rs", name = "DownloadMission")]
+pub struct PyDownloadMission {
+    inner: DownloadMission,
+}
+
 #[pymethods]
 impl PyBrowser {
     #[staticmethod]
@@ -144,6 +150,21 @@ impl PyBrowser {
         let filename = filename.map(str::to_string);
         py.detach(move || browser.wait_for_download(filename.as_deref(), timeout_ms))
             .map_err(Into::into)
+    }
+
+    fn download_missions(&self, py: Python<'_>) -> PyResult<Vec<Py<PyDownloadMission>>> {
+        let browser = self.inner.clone();
+        py.detach(move || browser.download_missions())?
+            .into_iter()
+            .map(|inner| Py::new(py, PyDownloadMission { inner }))
+            .collect()
+    }
+
+    fn last_download(&self, py: Python<'_>) -> PyResult<Option<Py<PyDownloadMission>>> {
+        let browser = self.inner.clone();
+        py.detach(move || browser.last_download())?
+            .map(|inner| Py::new(py, PyDownloadMission { inner }))
+            .transpose()
     }
 
     fn tabs_count(&self, py: Python<'_>) -> PyResult<usize> {
@@ -801,6 +822,21 @@ impl PyWebPage {
             .map_err(Into::into)
     }
 
+    fn download_missions(&self, py: Python<'_>) -> PyResult<Vec<Py<PyDownloadMission>>> {
+        let page = self.inner.clone();
+        py.detach(move || page.download_missions())?
+            .into_iter()
+            .map(|inner| Py::new(py, PyDownloadMission { inner }))
+            .collect()
+    }
+
+    fn last_download(&self, py: Python<'_>) -> PyResult<Option<Py<PyDownloadMission>>> {
+        let page = self.inner.clone();
+        py.detach(move || page.last_download())?
+            .map(|inner| Py::new(py, PyDownloadMission { inner }))
+            .transpose()
+    }
+
     fn listener(&self, py: Python<'_>) -> PyResult<Py<PyListener>> {
         let listener = self.inner.listener();
         Py::new(py, PyListener { inner: listener })
@@ -1116,6 +1152,54 @@ impl PyListenerFailInfo {
     }
 }
 
+#[pymethods]
+impl PyDownloadMission {
+    fn guid(&self) -> String {
+        self.inner.guid()
+    }
+
+    fn url(&self) -> PyResult<String> {
+        self.inner.url().map_err(Into::into)
+    }
+
+    fn suggested_filename(&self) -> PyResult<String> {
+        self.inner.suggested_filename().map_err(Into::into)
+    }
+
+    fn state(&self) -> PyResult<String> {
+        self.inner.state().map_err(Into::into)
+    }
+
+    fn received_bytes(&self) -> PyResult<u64> {
+        self.inner.received_bytes().map_err(Into::into)
+    }
+
+    fn total_bytes(&self) -> PyResult<Option<u64>> {
+        self.inner.total_bytes().map_err(Into::into)
+    }
+
+    fn final_path(&self) -> PyResult<Option<String>> {
+        self.inner.final_path().map_err(Into::into)
+    }
+
+    fn is_done(&self) -> PyResult<bool> {
+        self.inner.is_done().map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000))]
+    fn wait(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<String> {
+        let mission = self.inner.clone();
+        py.detach(move || mission.wait(timeout_ms))
+            .map_err(Into::into)
+    }
+
+    fn cancel(&self, py: Python<'_>) -> PyResult<()> {
+        let mission = self.inner.clone();
+        py.detach(move || mission.cancel())?;
+        Ok(())
+    }
+}
+
 impl PyPage {
     fn page(&self) -> PyResult<&Page> {
         self.inner
@@ -1159,5 +1243,6 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyListenerRequest>()?;
     m.add_class::<PyListenerResponse>()?;
     m.add_class::<PyListenerFailInfo>()?;
+    m.add_class::<PyDownloadMission>()?;
     Ok(())
 }
