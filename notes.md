@@ -1,0 +1,78 @@
+# Notes: openpage build log
+
+## Current repository facts
+- Root now contains a real `openpage` project with:
+  - `rust/`
+  - `python/`
+  - `scripts/`
+  - planning/docs files
+- Git repository has been initialized locally.
+- Toolchain present:
+  - `rustc 1.94.1`
+  - `cargo 1.94.1`
+  - `Python 3.14.4`
+  - `uv 0.9.24`
+
+## Reference project observations
+- Reference API shape is centered around:
+  - `ChromiumPage`
+  - `SessionPage`
+  - `WebPage`
+  - `ChromiumOptions`
+  - `SessionOptions`
+- Strongest Rust replacement candidates are:
+  - CDP transport and connection lifecycle
+  - event dispatch
+  - network listener
+  - download manager
+- Python-specific semantics worth preserving selectively:
+  - Page / Element object model
+  - convenience wrappers
+  - configuration ergonomics
+
+## Constraints from user
+- Root must contain `python/` and `rust/`
+- Python should use locally built Rust artifacts
+- Result should be directly runnable and verifiable without further user input
+- Do not stop early; keep auditing completion against concrete evidence
+
+## Working direction
+- Create a Rust crate that exposes a PyO3 extension module.
+- Make Python package import the extension and provide a thin API.
+- Preserve key names inspired by the reference project while not pretending to fully reimplement all of DrissionPage in one pass.
+
+## Architecture conclusions from parallel research
+- `chromiumoxide` is the most pragmatic current backbone for a Rust-owned Chromium/CDP core.
+- `cdp-protocol` is the right long-term direction if `openpage` later wants to own more of the protocol and transport stack.
+- First release should be browser-first, not `WebPage`-first.
+- `WebPage` is compatibility sugar and orchestration, not the right first Rust-native boundary.
+
+## Current implemented surface
+- Rust core:
+  - `LaunchOptions`
+  - `Browser`
+  - `Page`
+  - `Element`
+  - locator parsing for CSS / `tag:` / `t:` / `@name=value` / `xpath:`
+- Python wrappers:
+  - `ChromiumOptions`
+  - `Browser`
+  - `Page`
+  - `ChromiumPage`
+  - `Element`
+- Verified operations:
+  - launch browser
+  - open page
+  - read `url`, `title`, `html`
+  - query elements
+  - input, click, clear
+  - run JS
+  - screenshot
+  - PDF save API
+  - tab ids / count lookup
+
+## Verified commands
+- `cargo check` in `rust/`
+- `bash scripts/dev_install.sh`
+- `bash scripts/run_checks.sh`
+- `python/.venv/bin/python python/examples/basic_usage.py`

@@ -1,0 +1,16 @@
+.DS_Store
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.so
+*.dylib
+*.dll
+*.egg-info/
+.venv/
+python/.venv/
+python/.mypy_cache/
+python/.coverage
+rust/target/
+
