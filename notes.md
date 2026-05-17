@@ -78,6 +78,7 @@
   - read `url`, `title`, `html`
   - read browser/session `user_agent`
   - read session-backed `status_code` from `WebPage` in session mode
+  - read browser/session/`WebPage` `cookies()`
   - query elements
   - nested snapshot queries from browser/session/html snapshots
   - snapshot root lookup plus `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters`
@@ -105,4 +106,5 @@
 ## Next audit focus
 - The snapshot DOM core now covers the main relative-navigation family in Rust.
 - The next parity gap inside this area is the remaining reference-style helpers around paths, comments, and richer locator modes.
-- After that, the highest-value surfaces are session/browser response metadata such as `raw_data`, `encoding`, `cookies()`, and browser-only subsystems such as listener/download.
+- `cookies()` has now moved into the Rust core and Python only adapts the returned objects.
+- The next highest-value surfaces are session/browser response metadata such as `raw_data` and `encoding`, then browser-only subsystems such as listener/download.

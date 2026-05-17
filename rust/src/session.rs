@@ -44,6 +44,13 @@ pub struct SessionPage {
     inner: Arc<Mutex<SessionState>>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CookieEntry {
+    pub name: String,
+    pub value: String,
+    pub domain: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub struct SessionElement {
     html: Arc<String>,
@@ -134,6 +141,16 @@ impl SessionPage {
 
     pub fn user_agent(&self) -> OpenPageResult<Option<String>> {
         Ok(self.lock_state()?.user_agent.clone())
+    }
+
+    pub fn cookies(&self) -> OpenPageResult<Vec<CookieEntry>> {
+        let Some(url) = self.url()? else {
+            return Ok(Vec::new());
+        };
+        let Some(cookie_header) = self.cookie_header(&url)? else {
+            return Ok(Vec::new());
+        };
+        cookies_from_header(&url, &cookie_header)
     }
 
     pub fn root(&self) -> OpenPageResult<SessionElement> {
@@ -421,6 +438,24 @@ fn selector_from_locator(locator: &str) -> OpenPageResult<String> {
             "xpath is not implemented for SessionPage".to_string(),
         )),
     }
+}
+
+pub fn cookies_from_header(url: &str, cookie_header: &str) -> OpenPageResult<Vec<CookieEntry>> {
+    let parsed = Url::parse(url).map_err(|err| OpenPageError::Http(err.to_string()))?;
+    let domain = parsed.domain().map(ToString::to_string);
+    Ok(cookie_header
+        .split(';')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .filter_map(|item| {
+            let (name, value) = item.split_once('=')?;
+            Some(CookieEntry {
+                name: name.trim().to_string(),
+                value: value.trim().to_string(),
+                domain: domain.clone(),
+            })
+        })
+        .collect())
 }
 
 pub fn snapshot_root(html: &str) -> OpenPageResult<SessionElement> {

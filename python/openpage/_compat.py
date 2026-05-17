@@ -122,6 +122,12 @@ class Page:
     def user_agent(self) -> str:
         return self._inner.user_agent()
 
+    def cookies(self) -> list[dict[str, str | None]]:
+        return [
+            {"name": name, "value": value, "domain": domain}
+            for name, value, domain in self._inner.cookies()
+        ]
+
     def run_js(self, expression: str) -> Any:
         return json.loads(self._inner.evaluate(expression))
 
@@ -236,6 +242,12 @@ class SessionPage:
     def set_user_agent(self, user_agent: str | None) -> None:
         self._inner.set_user_agent(user_agent)
 
+    def cookies(self) -> list[dict[str, str | None]]:
+        return [
+            {"name": name, "value": value, "domain": domain}
+            for name, value, domain in self._inner.cookies()
+        ]
+
     def ele(self, locator: str) -> "SessionElement":
         return SessionElement(self._inner.find(locator))
 
@@ -340,6 +352,12 @@ class WebPage:
     @property
     def tab_ids(self) -> list[str]:
         return self._inner.tab_ids()
+
+    def cookies(self) -> list[dict[str, str | None]]:
+        return [
+            {"name": name, "value": value, "domain": domain}
+            for name, value, domain in self._inner.cookies()
+        ]
 
     def post(self, url: str, payload: dict[str, Any] | None = None) -> bool:
         payload_json = json.dumps(payload) if payload is not None else None

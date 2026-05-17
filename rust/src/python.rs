@@ -7,7 +7,7 @@ use crate::browser::{Browser, LaunchOptions};
 use crate::element::Element;
 use crate::error::OpenPageError;
 use crate::page::Page;
-use crate::session::{SessionElement, SessionOptions, SessionPage};
+use crate::session::{CookieEntry, SessionElement, SessionOptions, SessionPage};
 use crate::webpage::{WebElement, WebMode, WebPage};
 
 impl From<OpenPageError> for PyErr {
@@ -271,6 +271,13 @@ impl PyPage {
         py.detach(move || page.cookie_header()).map_err(Into::into)
     }
 
+    fn cookies(&self, py: Python<'_>) -> PyResult<Vec<(String, String, Option<String>)>> {
+        let page = self.page()?.clone();
+        py.detach(move || page.cookies())
+            .map(cookie_entries_to_tuples)
+            .map_err(Into::into)
+    }
+
     fn set_cookie_header(&self, py: Python<'_>, url: &str, cookie_header: &str) -> PyResult<()> {
         let page = self.page()?.clone();
         let url = url.to_string();
@@ -428,6 +435,13 @@ impl PySessionPage {
         let page = self.inner.clone();
         let url = url.to_string();
         py.detach(move || page.cookie_header(&url)).map_err(Into::into)
+    }
+
+    fn cookies(&self, py: Python<'_>) -> PyResult<Vec<(String, String, Option<String>)>> {
+        let page = self.inner.clone();
+        py.detach(move || page.cookies())
+            .map(cookie_entries_to_tuples)
+            .map_err(Into::into)
     }
 
     fn set_cookie_header(
@@ -737,6 +751,13 @@ impl PyWebPage {
         py.detach(move || page.status_code()).map_err(Into::into)
     }
 
+    fn cookies(&self, py: Python<'_>) -> PyResult<Vec<(String, String, Option<String>)>> {
+        let page = self.inner.clone();
+        py.detach(move || page.cookies())
+            .map(cookie_entries_to_tuples)
+            .map_err(Into::into)
+    }
+
     fn html(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.inner.clone();
         py.detach(move || page.html()).map_err(Into::into)
@@ -847,6 +868,13 @@ fn wrap_web_element(py: Python<'_>, element: WebElement) -> PyResult<Py<PyAny>> 
         WebElement::Browser(inner) => Ok(Py::new(py, PyElement { inner })?.into_any()),
         WebElement::Session(inner) => Ok(Py::new(py, PySessionElement { inner })?.into_any()),
     }
+}
+
+fn cookie_entries_to_tuples(entries: Vec<CookieEntry>) -> Vec<(String, String, Option<String>)> {
+    entries
+        .into_iter()
+        .map(|entry| (entry.name, entry.value, entry.domain))
+        .collect()
 }
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {

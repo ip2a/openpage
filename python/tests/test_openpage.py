@@ -124,6 +124,7 @@ class OpenPageIntegrationTest(unittest.TestCase):
             self.assertEqual(page.status_code, 200)
             self.assertTrue(page.user_agent)
             self.assertEqual(page.json["cookies"]["token"], "browser")
+            self.assertIn({"name": "token", "value": "browser", "domain": "httpbin.org"}, page.cookies())
 
             assert_get_ok(page, "https://httpbin.org/cookies/set?token=session")
             assert_get_ok(page, "https://httpbin.org/cookies")
@@ -132,6 +133,7 @@ class OpenPageIntegrationTest(unittest.TestCase):
             self.assertIsNone(page.status_code)
             self.assertTrue(page.user_agent)
             self.assertIn('"token": "session"', page.ele("body").text or "")
+            self.assertIn({"name": "token", "value": "session", "domain": "httpbin.org"}, page.cookies())
         finally:
             page.quit()
 

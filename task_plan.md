@@ -38,6 +38,7 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Snapshot traversal MVP is now in Rust: root lookup plus `parent / children / prev / next` and node metadata are exposed through the same Python thin wrappers.
 - Snapshot traversal family is now broader in Rust: `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters` all execute in the Rust core and Python forwards to them.
 - Snapshot metadata and shared response metadata have started moving down too: `tag / inner_html / raw_text / attrs / user_agent / WebPage.status_code` now come from the Rust core.
+- `cookies()` is now part of that same shared-metadata move: browser, session, and `WebPage` expose Rust-owned cookie data and Python only adapts the result shape.
 
 ## Errors Encountered
 - `uvx` was not on the reduced PATH inside scripted commands; resolved by using `uv tool run maturin`.
@@ -50,5 +51,25 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Parallel browser launches can fight over Chromium's default temp profile lock; verification now treats browser examples/tests as serial checks.
 - Public `httpbin` endpoints can occasionally return a transient non-success status; verification now retries those requests in tests/examples instead of treating one external blip as a core regression.
 
+## Completion Audit
+- Required root layout:
+  - `python/` and `rust/` exist and are the two user-facing code roots.
+- Rust-core plus Python-thin-wrapper shape:
+  - Rust owns browser/CDP/session/snapshot/`WebPage` execution.
+  - Python imports the local Rust artifact and mostly forwards to it.
+- Local build and link path:
+  - `rust/` builds as pure Rust and as an optional `python-module`.
+  - `python/` imports `openpage_rs` locally through the editable development flow.
+- Concrete verified behavior:
+  - browser flow works end to end
+  - session flow works end to end
+  - `WebPage` orchestration lives in Rust
+  - snapshot traversal and selected metadata live in Rust
+  - cookie sync and `cookies()` exposure now live in Rust
+- Still missing before the goal can be considered complete:
+  - broader response parity such as `raw_data` and `encoding`
+  - more of the reference browser subsystems such as listener/download
+  - a stronger completion pass against the remaining compatibility surface
+
 ## Status
-**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, traversal plus several metadata surfaces now come from Rust, and the next focused gap is deeper response/session parity (`raw_data`, `encoding`, `cookies`) plus broader listener/download coverage.
+**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, `cookies()` has joined the Rust-owned shared metadata surface, and the next focused gap is deeper response/session parity (`raw_data`, `encoding`) plus broader listener/download coverage.

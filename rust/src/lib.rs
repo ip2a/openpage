@@ -14,7 +14,7 @@ pub use element::Element;
 pub use error::{OpenPageError, OpenPageResult};
 pub use locator::{Locator, LocatorKind};
 pub use page::Page;
-pub use session::{SessionElement, SessionOptions, SessionPage};
+pub use session::{CookieEntry, SessionElement, SessionOptions, SessionPage};
 pub use webpage::{WebElement, WebMode, WebPage};
 
 #[cfg(feature = "python-module")]

@@ -6,7 +6,7 @@ use serde_json::Value;
 use crate::browser::{Browser, LaunchOptions};
 use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
-use crate::session::{SessionElement, SessionOptions, SessionPage};
+use crate::session::{CookieEntry, SessionElement, SessionOptions, SessionPage};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WebMode {
@@ -265,6 +265,13 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => Ok(None),
             WebMode::Session => self.session.status_code(),
+        }
+    }
+
+    pub fn cookies(&self) -> OpenPageResult<Vec<CookieEntry>> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.cookies(),
+            WebMode::Session => self.session.cookies(),
         }
     }
 

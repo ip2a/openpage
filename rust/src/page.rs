@@ -13,7 +13,7 @@ use url::Url;
 use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::{Locator, LocatorKind};
-use crate::session::{SessionElement, snapshot_find, snapshot_find_all, snapshot_root};
+use crate::session::{CookieEntry, SessionElement, cookies_from_header, snapshot_find, snapshot_find_all, snapshot_root};
 
 #[derive(Clone, Debug)]
 pub struct Page {
@@ -225,6 +225,17 @@ impl Page {
                     .join("; "),
             ))
         })
+    }
+
+    pub fn cookies(&self) -> OpenPageResult<Vec<CookieEntry>> {
+        let url = self.url()?;
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            return Ok(Vec::new());
+        }
+        let Some(cookie_header) = self.cookie_header()? else {
+            return Ok(Vec::new());
+        };
+        cookies_from_header(&url, &cookie_header)
     }
 
     pub fn set_cookie_header(&self, url: &str, cookie_header: &str) -> OpenPageResult<()> {

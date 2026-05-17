@@ -17,7 +17,7 @@
   - snapshot DOM node identity and relative traversal for session-backed elements
   - `WebPage` mode orchestration across browser and session
   - locator parsing
-  - cookie header transfer primitives for browser/session sync
+  - cookie header transfer primitives plus `cookies()` exposure for browser/session sync
   - screenshots, PDF, DOM querying, JS execution
 - Python owns:
   - compatibility-oriented wrappers
@@ -108,7 +108,7 @@ This first version is intentionally browser-first:
   - snapshot `s_ele / s_eles` queries for browser, session, and `WebPage`
   - snapshot root lookup plus `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters`
   - snapshot node metadata `tag / inner_html / raw_text / attrs`
-  - shared metadata `user_agent / status_code`
+  - shared metadata `user_agent / status_code / cookies()`
   - `post_json`
   - browser/session mode switching
   - current-URL cookie sync between browser and session
@@ -132,6 +132,7 @@ Current integration checks cover:
 - session flow against `https://example.com` and `https://httpbin.org/json`
 - `WebPage` browser -> session cookie sync
 - `WebPage` session -> browser cookie sync
+- `cookies()` access from browser, session, and `WebPage`
 - Python `WebPage` thin-wrapper flow over the Rust `WebPage` core
 - direct Python examples
 - direct Rust `webpage_modes` example
