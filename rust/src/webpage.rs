@@ -254,6 +254,13 @@ impl WebPage {
         }
     }
 
+    pub fn status_code(&self) -> OpenPageResult<Option<u16>> {
+        match self.mode()? {
+            WebMode::Driver => Ok(None),
+            WebMode::Session => self.session.status_code(),
+        }
+    }
+
     pub fn json(&self) -> OpenPageResult<Option<Value>> {
         match self.mode()? {
             WebMode::Driver => Ok(None),

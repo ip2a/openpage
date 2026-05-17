@@ -555,6 +555,11 @@ impl PyWebPage {
         py.detach(move || page.title()).map_err(Into::into)
     }
 
+    fn status_code(&self, py: Python<'_>) -> PyResult<Option<u16>> {
+        let page = self.inner.clone();
+        py.detach(move || page.status_code()).map_err(Into::into)
+    }
+
     fn html(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.inner.clone();
         py.detach(move || page.html()).map_err(Into::into)

@@ -292,6 +292,10 @@ class WebPage:
         return self._inner.html()
 
     @property
+    def status_code(self) -> int | None:
+        return self._inner.status_code()
+
+    @property
     def json(self) -> Any | None:
         raw = self._inner.json()
         return json.loads(raw) if raw is not None else None

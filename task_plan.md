@@ -34,6 +34,7 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Keep `WebPage` implemented as orchestration over Rust browser/session primitives instead of inventing a separate third transport.
 - Make `pyo3` optional so the same crate can be used as a direct Rust library and as the Python extension backend.
 - Treat snapshot querying as a Rust-core capability and keep Python `s_ele / s_eles` as wrappers over Rust results.
+- Prioritize the snapshot DOM core next: strengthen `SessionElement` traversal before starting new browser-only subsystems like listener/download.
 
 ## Errors Encountered
 - `uvx` was not on the reduced PATH inside scripted commands; resolved by using `uv tool run maturin`.
@@ -47,4 +48,4 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Public `httpbin` endpoints can occasionally return a transient non-success status; verification now retries those requests in tests/examples instead of treating one external blip as a core regression.
 
 ## Status
-**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green; remaining work is focused on closing the largest parity gaps such as listener/download/state coverage beyond the verified core flows.
+**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, `WebPage.status_code` now exists on the shared Rust/Python surface, and the next focused gap is snapshot DOM traversal (`parent/children/prev/next`) rather than new browser-only subsystems.

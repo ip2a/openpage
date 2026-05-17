@@ -38,7 +38,7 @@ def assert_get_ok(page: SessionPage | WebPage, url: str, attempts: int = 3) -> N
     for attempt in range(attempts):
         if page.get(url):
             return
-        last_status = page.status_code
+        last_status = getattr(page, "status_code", None)
         if attempt + 1 < attempts:
             time.sleep(1.0)
     raise AssertionError(f"GET {url} failed after {attempts} attempts, last status={last_status}")
@@ -101,12 +101,14 @@ class OpenPageIntegrationTest(unittest.TestCase):
             assert_get_ok(page, "https://httpbin.org/cookies")
             page.change_mode("s", go=True, copy_cookies=True)
             self.assertEqual(page.mode, "s")
+            self.assertEqual(page.status_code, 200)
             self.assertEqual(page.json["cookies"]["token"], "browser")
 
             assert_get_ok(page, "https://httpbin.org/cookies/set?token=session")
             assert_get_ok(page, "https://httpbin.org/cookies")
             page.change_mode("d", go=True, copy_cookies=True)
             self.assertEqual(page.mode, "d")
+            self.assertIsNone(page.status_code)
             self.assertIn('"token": "session"', page.ele("body").text or "")
         finally:
             page.quit()

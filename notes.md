@@ -76,6 +76,7 @@
   - launch browser
   - open page
   - read `url`, `title`, `html`
+  - read session-backed `status_code` from `WebPage` in session mode
   - query elements
   - nested snapshot queries from browser/session/html snapshots
   - input, click, clear
@@ -97,3 +98,8 @@
 - `python/.venv/bin/python python/examples/basic_usage.py`
 - `python/.venv/bin/python python/examples/webpage_modes.py`
 - `cargo run --manifest-path rust/Cargo.toml --example webpage_modes`
+
+## Next audit focus
+- Highest-leverage parity gap is no longer the Python wrapper surface; it is the Rust snapshot DOM core behind `SessionElement`.
+- `SessionElement` should evolve from `html + selector + index` lookup handles into traversable snapshot nodes that can support `parent / children / prev / next`.
+- That work will raise `SessionPage.s_ele()` and `WebPage.s_ele()` together without moving logic back into Python.
