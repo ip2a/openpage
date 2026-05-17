@@ -294,6 +294,7 @@ class OpenPageIntegrationTest(unittest.TestCase):
             self.assertTrue(submit.states.has_rect)
             self.assertTrue(submit.states.is_in_viewport)
             self.assertTrue(submit.states.is_clickable)
+            self.assertTrue(page.wait.eles_loaded(["#submit", "#name"], timeout=1.0))
             self.assertIsNot(page.wait.ele_displayed("#submit", timeout=1.0), False)
             self.assertIs(submit.wait.displayed(timeout=1.0), submit)
             self.assertIs(submit.wait.clickable(timeout=1.0), submit)
@@ -322,6 +323,18 @@ class OpenPageIntegrationTest(unittest.TestCase):
             temp = page.ele("#temp")
             self.assertTrue(temp.states.is_displayed)
             self.assertIsNot(page.wait.ele_hidden(temp, timeout=2.0), False)
+
+            page.run_js(
+                """
+                setTimeout(() => {
+                    const later = document.createElement('div');
+                    later.id = 'later';
+                    later.textContent = 'later';
+                    document.body.appendChild(later);
+                }, 150);
+                """
+            )
+            self.assertTrue(page.wait.eles_loaded(["#missing", "#later"], timeout=2.0, any_one=True))
 
             page.run_js(
                 """

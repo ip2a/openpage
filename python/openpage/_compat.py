@@ -381,6 +381,15 @@ class PageWait:
     def doc_loaded(self, timeout: float = 10.0) -> bool:
         return self._page._inner.wait_for_doc_loaded(int(timeout * 1000))
 
+    def eles_loaded(
+        self,
+        locators: str | list[str] | tuple[str, ...] | set[str],
+        timeout: float = 10.0,
+        any_one: bool = False,
+    ) -> bool:
+        values = [locators] if isinstance(locators, str) else list(locators)
+        return self._page._inner.wait_for_elements_loaded(values, int(timeout * 1000), any_one)
+
 
 class PageStates:
     def __init__(self, page: Page) -> None:

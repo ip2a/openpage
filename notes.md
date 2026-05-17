@@ -88,7 +88,7 @@
   - read session-backed `raw_data` and `encoding`
   - read browser/page/element states from Rust-backed browser objects
   - wait for browser new-tab/download begin/download done from Rust
-  - wait for page title/url/load changes and element displayed/hidden/enabled/deleted/clickable states from Rust
+  - wait for page title/url/load changes, locator presence, and element displayed/hidden/enabled/deleted/clickable states from Rust
   - download a local file through a Rust-configured browser download path and wait for it from Rust
   - capture completed browser network packets from both `ChromiumPage` and driver-mode `WebPage`
   - capture listener response bodies for matched browser requests

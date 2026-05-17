@@ -144,6 +144,31 @@ impl Page {
         }
     }
 
+    pub fn wait_for_elements_loaded(
+        &self,
+        locators: &[String],
+        any_one: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<bool> {
+        let timeout = Duration::from_millis(timeout_ms.max(1));
+        let deadline = Instant::now() + timeout;
+        loop {
+            let mut matched = 0usize;
+            for locator in locators {
+                if !self.find_all(locator)?.is_empty() {
+                    matched += 1;
+                }
+            }
+            if (!any_one && matched == locators.len()) || (any_one && matched > 0) {
+                return Ok(true);
+            }
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            sleep(Duration::from_millis(50));
+        }
+    }
+
     pub fn click(&self, locator: &str) -> OpenPageResult<()> {
         self.wait_for(locator, 10_000)?.click()
     }

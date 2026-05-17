@@ -434,6 +434,19 @@ impl PyPage {
             .map_err(Into::into)
     }
 
+    #[pyo3(signature = (locators, timeout_ms=10000, any_one=false))]
+    fn wait_for_elements_loaded(
+        &self,
+        py: Python<'_>,
+        locators: Vec<String>,
+        timeout_ms: u64,
+        any_one: bool,
+    ) -> PyResult<bool> {
+        let page = self.page()?.clone();
+        py.detach(move || page.wait_for_elements_loaded(&locators, any_one, timeout_ms))
+            .map_err(Into::into)
+    }
+
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_for_load_start(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
         let page = self.page()?.clone();

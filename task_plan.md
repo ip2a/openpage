@@ -44,7 +44,7 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Browser-side listener coverage now has a Rust-owned first pass too: page-scoped request/response/failure packet capture plus `start / wait / clear / stop` live in the Rust core, and Python only exposes thin compatibility wrappers around those objects.
 - Listener coverage has now moved one layer deeper as well: matched browser packets now capture response bodies in Rust before Python sees them.
 - Listener extra info is now part of that same Rust-owned path too: request/response extra headers are merged in Rust, response extra metadata is exposed through PyO3, and Python only wraps those objects.
-- Browser-backed wait/state helpers have started moving down too: page title/url change checks and element state polling now execute in Rust, while Python only exposes `wait` and `states` objects.
+- Browser-backed wait/state helpers have started moving down too: page title/url/load checks, locator presence waits, and element state polling now execute in Rust, while Python only exposes `wait` and `states` objects.
 - Browser-level wait/state coverage has moved further down as well: new-tab waiting, download begin/done waiting, and browser/page alive/headless checks now execute in Rust and Python only forwards them.
 - Browser download handling has moved further down too: a Rust-owned download tracker now consumes CDP browser download events, exposes mission state, and keeps Python as a thin wrapper over mission inspection and waiting.
 
