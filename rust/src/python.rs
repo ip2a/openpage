@@ -709,6 +709,25 @@ impl PySessionPage {
         py.detach(move || page.user_agent()).map_err(Into::into)
     }
 
+    fn is_alive(&self, py: Python<'_>) -> PyResult<bool> {
+        let page = self.inner.clone();
+        py.detach(move || page.is_alive()).map_err(Into::into)
+    }
+
+    fn is_loading(&self, py: Python<'_>) -> PyResult<bool> {
+        let page = self.inner.clone();
+        py.detach(move || page.is_loading()).map_err(Into::into)
+    }
+
+    fn ready_state(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let page = self.inner.clone();
+        py.detach(move || page.ready_state()).map_err(Into::into)
+    }
+
+    fn is_headless(&self) -> PyResult<bool> {
+        Ok(self.inner.is_headless())
+    }
+
     fn set_user_agent(&self, py: Python<'_>, user_agent: Option<String>) -> PyResult<()> {
         let page = self.inner.clone();
         py.detach(move || page.set_user_agent(user_agent))?;
@@ -1043,6 +1062,44 @@ impl PyWebPage {
             .transpose()
     }
 
+    #[pyo3(signature = (current_tab_id=None, timeout_ms=10000))]
+    fn wait_for_new_tab(
+        &self,
+        py: Python<'_>,
+        current_tab_id: Option<&str>,
+        timeout_ms: u64,
+    ) -> PyResult<Option<String>> {
+        let page = self.inner.clone();
+        let current_tab_id = current_tab_id.map(str::to_string);
+        py.detach(move || page.wait_for_new_tab(current_tab_id.as_deref(), timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000, cancel_it=false))]
+    fn wait_for_download_begin(
+        &self,
+        py: Python<'_>,
+        timeout_ms: u64,
+        cancel_it: bool,
+    ) -> PyResult<Option<Py<PyDownloadMission>>> {
+        let page = self.inner.clone();
+        py.detach(move || page.wait_for_download_begin(timeout_ms, cancel_it))?
+            .map(|inner| Py::new(py, PyDownloadMission { inner }))
+            .transpose()
+    }
+
+    #[pyo3(signature = (timeout_ms=10000, cancel_if_timeout=true))]
+    fn wait_for_downloads_done(
+        &self,
+        py: Python<'_>,
+        timeout_ms: u64,
+        cancel_if_timeout: bool,
+    ) -> PyResult<bool> {
+        let page = self.inner.clone();
+        py.detach(move || page.wait_for_downloads_done(timeout_ms, cancel_if_timeout))
+            .map_err(Into::into)
+    }
+
     fn listener(&self, py: Python<'_>) -> PyResult<Py<PyListener>> {
         let listener = self.inner.listener();
         Py::new(py, PyListener { inner: listener })
@@ -1121,6 +1178,25 @@ impl PyWebPage {
             .map_err(Into::into)
     }
 
+    fn is_alive(&self, py: Python<'_>) -> PyResult<bool> {
+        let page = self.inner.clone();
+        py.detach(move || page.is_alive()).map_err(Into::into)
+    }
+
+    fn is_loading(&self, py: Python<'_>) -> PyResult<bool> {
+        let page = self.inner.clone();
+        py.detach(move || page.is_loading()).map_err(Into::into)
+    }
+
+    fn ready_state(&self, py: Python<'_>) -> PyResult<Option<String>> {
+        let page = self.inner.clone();
+        py.detach(move || page.ready_state()).map_err(Into::into)
+    }
+
+    fn is_headless(&self) -> PyResult<bool> {
+        Ok(self.inner.is_headless())
+    }
+
     fn find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PyAny>> {
         let page = self.inner.clone();
         let locator = locator.to_string();
@@ -1169,6 +1245,61 @@ impl PyWebPage {
         let value = py.detach(move || page.run_js(&expression))?;
         serde_json::to_string(&value)
             .map_err(|err| OpenPageError::Serialization(err.to_string()).into())
+    }
+
+    #[pyo3(signature = (text, exclude=false, timeout_ms=10000))]
+    fn wait_for_url_change(
+        &self,
+        py: Python<'_>,
+        text: &str,
+        exclude: bool,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.inner.clone();
+        let text = text.to_string();
+        py.detach(move || page.wait_for_url_change(&text, exclude, timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (text, exclude=false, timeout_ms=10000))]
+    fn wait_for_title_change(
+        &self,
+        py: Python<'_>,
+        text: &str,
+        exclude: bool,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.inner.clone();
+        let text = text.to_string();
+        py.detach(move || page.wait_for_title_change(&text, exclude, timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000))]
+    fn wait_for_load_start(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
+        let page = self.inner.clone();
+        py.detach(move || page.wait_for_load_start(timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (timeout_ms=10000))]
+    fn wait_for_doc_loaded(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
+        let page = self.inner.clone();
+        py.detach(move || page.wait_for_doc_loaded(timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (locators, timeout_ms=10000, any_one=false))]
+    fn wait_for_elements_loaded(
+        &self,
+        py: Python<'_>,
+        locators: Vec<String>,
+        timeout_ms: u64,
+        any_one: bool,
+    ) -> PyResult<bool> {
+        let page = self.inner.clone();
+        py.detach(move || page.wait_for_elements_loaded(&locators, any_one, timeout_ms))
+            .map_err(Into::into)
     }
 
     #[pyo3(signature = (mode=None, go=true, copy_cookies=true))]

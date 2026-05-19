@@ -542,6 +542,56 @@ class OpenPageIntegrationTest(unittest.TestCase):
             finally:
                 page.quit()
 
+    def test_webpage_wait_and_states_in_driver_mode(self) -> None:
+        with serve_load_site() as base_url:
+            page = WebPage(mode="d")
+            try:
+                self.assertTrue(page.get(base_url))
+                self.assertTrue(page.states.is_alive)
+                self.assertTrue(page.states.is_headless)
+                self.assertEqual(page.states.ready_state, "complete")
+                self.assertFalse(page.states.is_loading)
+                self.assertTrue(page.wait.eles_loaded(["h1"], timeout=1.0))
+
+                page.run_js(
+                    """
+                    setTimeout(() => {
+                        document.title = 'openpage changed';
+                        history.replaceState({}, '', '/changed');
+                    }, 150);
+                    """
+                )
+                self.assertIs(page.wait.title_change("openpage changed", timeout=2.0), page)
+                self.assertIs(page.wait.url_change("/changed", timeout=2.0), page)
+
+                page.run_js(f"setTimeout(() => {{ location.href = {base_url!r} + 'slow'; }}, 0)")
+                self.assertTrue(page.wait.load_start(timeout=2.0))
+                self.assertTrue(page.wait.doc_loaded(timeout=3.0))
+                self.assertEqual(page.title, "Slow Page")
+                self.assertIn("Slow", page.html)
+            finally:
+                page.quit()
+
+    def test_webpage_wait_and_states_in_session_mode(self) -> None:
+        with serve_load_site() as base_url:
+            page = WebPage(mode="d")
+            try:
+                self.assertTrue(page.get(base_url))
+                page.change_mode("s", go=True, copy_cookies=False)
+                self.assertEqual(page.mode, "s")
+                self.assertTrue(page.states.is_alive)
+                self.assertTrue(page.states.is_headless)
+                self.assertIsNone(page.states.ready_state)
+                self.assertFalse(page.states.is_loading)
+                self.assertFalse(page.wait.load_start(timeout=0.1))
+                self.assertTrue(page.wait.doc_loaded(timeout=0.1))
+                self.assertTrue(page.wait.eles_loaded(["h1"], timeout=1.0))
+                self.assertTrue(page.wait.eles_loaded(["#missing", "h1"], timeout=1.0, any_one=True))
+                self.assertFalse(page.wait.eles_loaded(["#missing"], timeout=0.1))
+                self.assertEqual(page.ele("h1").text, "Start")
+            finally:
+                page.quit()
+
     def test_webpage_listener_uses_driver_page(self) -> None:
         with serve_listener_site() as base_url:
             page = WebPage(mode="d")
@@ -585,6 +635,23 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 missions = page.download_missions()
                 self.assertGreaterEqual(len(missions), 1)
                 self.assertEqual(missions[-1].guid, mission.guid)
+            finally:
+                page.quit()
+
+    def test_webpage_waits_for_download_begin_and_completion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir, serve_download_site() as base_url:
+            page = WebPage(
+                mode="d",
+                chromium_options=ChromiumOptions().set_download_path(tmp_dir),
+            )
+            try:
+                self.assertTrue(page.get(base_url))
+                page.ele("#download").click()
+                mission = page.wait.download_begin(timeout=5.0)
+                self.assertNotEqual(mission, False)
+                assert isinstance(mission, DownloadMission)
+                self.assertEqual(mission.suggested_filename, "openpage.txt")
+                self.assertTrue(page.wait.all_downloads_done(timeout=10.0))
             finally:
                 page.quit()
 

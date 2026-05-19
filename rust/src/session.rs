@@ -161,6 +161,22 @@ impl SessionPage {
         Ok(self.lock_state()?.user_agent.clone())
     }
 
+    pub fn is_alive(&self) -> OpenPageResult<bool> {
+        Ok(true)
+    }
+
+    pub fn is_loading(&self) -> OpenPageResult<bool> {
+        Ok(false)
+    }
+
+    pub fn ready_state(&self) -> OpenPageResult<Option<String>> {
+        Ok(None)
+    }
+
+    pub fn is_headless(&self) -> bool {
+        false
+    }
+
     pub fn cookies(&self) -> OpenPageResult<Vec<CookieEntry>> {
         let Some(url) = self.url()? else {
             return Ok(Vec::new());

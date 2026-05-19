@@ -1,5 +1,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -326,6 +328,128 @@ impl WebPage {
         }
     }
 
+    pub fn is_alive(&self) -> OpenPageResult<bool> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.is_alive(),
+            WebMode::Session => Ok(true),
+        }
+    }
+
+    pub fn is_loading(&self) -> OpenPageResult<bool> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.is_loading(),
+            WebMode::Session => Ok(false),
+        }
+    }
+
+    pub fn ready_state(&self) -> OpenPageResult<Option<String>> {
+        match self.mode()? {
+            WebMode::Driver => Ok(Some(self.driver.ready_state()?)),
+            WebMode::Session => Ok(None),
+        }
+    }
+
+    pub fn is_headless(&self) -> bool {
+        self.browser.is_headless()
+    }
+
+    pub fn wait_for_new_tab(
+        &self,
+        current_tab_id: Option<&str>,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<String>> {
+        self.browser.wait_for_new_tab(current_tab_id, timeout_ms)
+    }
+
+    pub fn wait_for_download_begin(
+        &self,
+        timeout_ms: u64,
+        cancel_it: bool,
+    ) -> OpenPageResult<Option<DownloadMission>> {
+        self.browser.wait_for_download_begin(timeout_ms, cancel_it)
+    }
+
+    pub fn wait_for_downloads_done(
+        &self,
+        timeout_ms: u64,
+        cancel_if_timeout: bool,
+    ) -> OpenPageResult<bool> {
+        self.browser
+            .wait_for_downloads_done(timeout_ms, cancel_if_timeout)
+    }
+
+    pub fn wait_for_url_change(
+        &self,
+        text: &str,
+        exclude: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<bool> {
+        self.wait_for_change(timeout_ms, |page| {
+            let value = page.url()?;
+            Ok(value
+                .as_ref()
+                .is_some_and(|value| if exclude { !value.contains(text) } else { value.contains(text) }))
+        })
+    }
+
+    pub fn wait_for_title_change(
+        &self,
+        text: &str,
+        exclude: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<bool> {
+        self.wait_for_change(timeout_ms, |page| {
+            let value = page.title()?;
+            Ok(value
+                .as_ref()
+                .is_some_and(|value| if exclude { !value.contains(text) } else { value.contains(text) }))
+        })
+    }
+
+    pub fn wait_for_load_start(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.wait_for_load_start(timeout_ms),
+            WebMode::Session => Ok(false),
+        }
+    }
+
+    pub fn wait_for_doc_loaded(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.wait_for_doc_loaded(timeout_ms),
+            WebMode::Session => Ok(true),
+        }
+    }
+
+    pub fn wait_for_elements_loaded(
+        &self,
+        locators: &[String],
+        any_one: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<bool> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.wait_for_elements_loaded(locators, any_one, timeout_ms),
+            WebMode::Session => {
+                let timeout = Duration::from_millis(timeout_ms.max(1));
+                let deadline = Instant::now() + timeout;
+                loop {
+                    let mut matched = 0usize;
+                    for locator in locators {
+                        if !self.session.find_all(locator)?.is_empty() {
+                            matched += 1;
+                        }
+                    }
+                    if (!any_one && matched == locators.len()) || (any_one && matched > 0) {
+                        return Ok(true);
+                    }
+                    if Instant::now() >= deadline {
+                        return Ok(false);
+                    }
+                    sleep(Duration::from_millis(50));
+                }
+            }
+        }
+    }
+
     pub fn find(&self, locator: &str) -> OpenPageResult<WebElement> {
         match self.mode()? {
             WebMode::Driver => self.driver.find(locator).map(WebElement::Browser),
@@ -409,6 +533,23 @@ impl WebPage {
 
     pub fn quit(&self) -> OpenPageResult<()> {
         self.browser.close()
+    }
+
+    fn wait_for_change<F>(&self, timeout_ms: u64, mut predicate: F) -> OpenPageResult<bool>
+    where
+        F: FnMut(&Self) -> OpenPageResult<bool>,
+    {
+        let timeout = Duration::from_millis(timeout_ms.max(1));
+        let deadline = Instant::now() + timeout;
+        loop {
+            if predicate(self)? {
+                return Ok(true);
+            }
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            sleep(Duration::from_millis(50));
+        }
     }
 
     fn set_mode(&self, mode: WebMode) -> OpenPageResult<()> {

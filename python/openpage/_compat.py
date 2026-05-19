@@ -510,10 +510,24 @@ class WebPage:
             user_agent=session_options.user_agent,
         )
         self._listener: Listener | None = None
+        self._wait: WebPageWait | None = None
+        self._states: WebPageStates | None = None
 
     @property
     def mode(self) -> str:
         return self._inner.mode()
+
+    @property
+    def wait(self) -> "WebPageWait":
+        if self._wait is None:
+            self._wait = WebPageWait(self)
+        return self._wait
+
+    @property
+    def states(self) -> "WebPageStates":
+        if self._states is None:
+            self._states = WebPageStates(self)
+        return self._states
 
     def change_mode(self, mode: str | None = None, go: bool = True, copy_cookies: bool = True) -> None:
         normalized = mode.lower() if mode is not None else None
@@ -621,6 +635,82 @@ class WebPage:
 
     def quit(self) -> None:
         self._inner.quit()
+
+
+class WebPageWait:
+    def __init__(self, page: WebPage) -> None:
+        self._page = page
+
+    def new_tab(self, timeout: float = 10.0, curr_tab: str | None = None) -> str | bool:
+        target_id = self._page._inner.wait_for_new_tab(curr_tab, int(timeout * 1000))
+        return False if target_id is None else target_id
+
+    def all_downloads_done(
+        self,
+        timeout: float = 10.0,
+        cancel_if_timeout: bool = True,
+    ) -> bool:
+        return self._page._inner.wait_for_downloads_done(int(timeout * 1000), cancel_if_timeout)
+
+    def download_begin(
+        self,
+        timeout: float = 10.0,
+        cancel_it: bool = False,
+    ) -> "DownloadMission | bool":
+        mission = self._page._inner.wait_for_download_begin(int(timeout * 1000), cancel_it)
+        return False if mission is None else DownloadMission(mission)
+
+    def url_change(
+        self,
+        text: str,
+        exclude: bool = False,
+        timeout: float = 10.0,
+    ) -> "WebPage | bool":
+        return self._page if self._page._inner.wait_for_url_change(text, exclude, int(timeout * 1000)) else False
+
+    def title_change(
+        self,
+        text: str,
+        exclude: bool = False,
+        timeout: float = 10.0,
+    ) -> "WebPage | bool":
+        return self._page if self._page._inner.wait_for_title_change(text, exclude, int(timeout * 1000)) else False
+
+    def load_start(self, timeout: float = 10.0) -> bool:
+        return self._page._inner.wait_for_load_start(int(timeout * 1000))
+
+    def doc_loaded(self, timeout: float = 10.0) -> bool:
+        return self._page._inner.wait_for_doc_loaded(int(timeout * 1000))
+
+    def eles_loaded(
+        self,
+        locators: str | list[str] | tuple[str, ...] | set[str],
+        timeout: float = 10.0,
+        any_one: bool = False,
+    ) -> bool:
+        values = [locators] if isinstance(locators, str) else list(locators)
+        return self._page._inner.wait_for_elements_loaded(values, int(timeout * 1000), any_one)
+
+
+class WebPageStates:
+    def __init__(self, page: WebPage) -> None:
+        self._page = page
+
+    @property
+    def is_alive(self) -> bool:
+        return self._page._inner.is_alive()
+
+    @property
+    def is_loading(self) -> bool:
+        return self._page._inner.is_loading()
+
+    @property
+    def ready_state(self) -> str | None:
+        return self._page._inner.ready_state()
+
+    @property
+    def is_headless(self) -> bool:
+        return self._page._inner.is_headless()
 
 
 class DownloadMission:
