@@ -47,6 +47,7 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
 - Browser-backed wait/state helpers have started moving down too: page title/url/load checks, locator presence waits, and element state polling now execute in Rust, while Python only exposes `wait` and `states` objects.
 - Browser-level wait/state coverage has moved further down as well: new-tab waiting, download begin/done waiting, and browser/page alive/headless checks now execute in Rust and Python only forwards them.
 - Browser download handling has moved further down too: a Rust-owned download tracker now consumes CDP browser download events, exposes mission state, and keeps Python as a thin wrapper over mission inspection and waiting.
+- `WebPage.wait` and `WebPage.states` properties are now implemented in Rust and exposed through Python thin wrappers, covering driver/session mode uniformly for alive/loading/headless/ready_state checks and new-tab/download-begin/downloads-done/url-change/title-change/load-start/doc-loaded/element-loaded waits.
 
 ## Errors Encountered
 - `uvx` was not on the reduced PATH inside scripted commands; resolved by using `uv tool run maturin`.
@@ -81,8 +82,10 @@ Build a runnable `openpage` project with `python/` and `rust/` directories, wher
   - page-scoped network listener now lives in Rust, captures response bodies and response extra info, and is reachable from both `ChromiumPage` and driver-mode `WebPage`
   - browser download-path configuration, event-driven download missions, download waiting, and local file download now live in Rust
 - Still missing before the goal can be considered complete:
-  - fuller parity inside browser subsystems such as interception-style controls and richer download-manager policies
+  - page-level element-state waits (e.g. `wait.ele_displayed/hidden/enabled/clickable`) via locator instead of element handle
+  - listener interception-style controls (request/response modification, blocking)
+  - richer download-manager policies (rename/skip/overwrite coordination, per-tab controls)
   - a stronger completion pass against the remaining compatibility surface
 
 ## Status
-**Currently in Phase 6** - the pure-Rust crate path and Python thin-wrapper path are both green, browser/page/element wait-state coverage is deeper in Rust, and the remaining gaps are stronger `WebPage.wait/states` parity, more stable new-tab semantics, interception/download-policy parity, and the final compatibility audit against the broader reference surface.
+**Currently in Phase 6** - `WebPage.wait/states` parity is now green and committed. The remaining gaps are page-level element-state waits, listener interception controls, richer download policies, and the final compatibility audit. Next focus: add page-level element-state waits (`ele_displayed`, `ele_hidden`, `ele_enabled`, `ele_deleted`, `ele_clickable`) to `Page`, `WebPage`, and Python wrappers so users can wait by locator without first fetching an element handle.

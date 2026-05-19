@@ -331,33 +331,70 @@ class PageWait:
         loc_or_ele: str | "Element",
         timeout: float = 10.0,
     ) -> "Element | bool":
-        try:
-            ele = loc_or_ele if isinstance(loc_or_ele, Element) else self._page.ele(loc_or_ele, timeout)
-        except Exception:
-            return False
-        return ele.wait.displayed(timeout)
+        if isinstance(loc_or_ele, Element):
+            return loc_or_ele.wait.displayed(timeout)
+        if self._page._inner.wait_for_ele_displayed(loc_or_ele, int(timeout * 1000)):
+            try:
+                return self._page.ele(loc_or_ele)
+            except Exception:
+                return True
+        return False
 
     def ele_hidden(
         self,
         loc_or_ele: str | "Element",
         timeout: float = 10.0,
     ) -> "Element | bool":
-        try:
-            ele = loc_or_ele if isinstance(loc_or_ele, Element) else self._page.ele(loc_or_ele, timeout)
-        except Exception:
-            return False
-        return ele.wait.hidden(timeout)
+        if isinstance(loc_or_ele, Element):
+            return loc_or_ele.wait.hidden(timeout)
+        if self._page._inner.wait_for_ele_hidden(loc_or_ele, int(timeout * 1000)):
+            try:
+                return self._page.ele(loc_or_ele)
+            except Exception:
+                return True
+        return False
 
     def ele_deleted(
         self,
         loc_or_ele: str | "Element",
         timeout: float = 10.0,
     ) -> "Element | bool":
-        try:
-            ele = loc_or_ele if isinstance(loc_or_ele, Element) else self._page.ele(loc_or_ele, timeout)
-        except Exception:
-            return False
-        return ele.wait.deleted(timeout)
+        if isinstance(loc_or_ele, Element):
+            return loc_or_ele.wait.deleted(timeout)
+        if self._page._inner.wait_for_ele_deleted(loc_or_ele, int(timeout * 1000)):
+            try:
+                return self._page.ele(loc_or_ele)
+            except Exception:
+                return True
+        return False
+
+    def ele_enabled(
+        self,
+        loc_or_ele: str | "Element",
+        timeout: float = 10.0,
+    ) -> "Element | bool":
+        if isinstance(loc_or_ele, Element):
+            return loc_or_ele.wait.enabled(timeout)
+        if self._page._inner.wait_for_ele_enabled(loc_or_ele, int(timeout * 1000)):
+            try:
+                return self._page.ele(loc_or_ele)
+            except Exception:
+                return True
+        return False
+
+    def ele_clickable(
+        self,
+        loc_or_ele: str | "Element",
+        timeout: float = 10.0,
+    ) -> "Element | bool":
+        if isinstance(loc_or_ele, Element):
+            return loc_or_ele.wait.clickable(timeout)
+        if self._page._inner.wait_for_ele_clickable(loc_or_ele, int(timeout * 1000)):
+            try:
+                return self._page.ele(loc_or_ele)
+            except Exception:
+                return True
+        return False
 
     def url_change(
         self,
@@ -690,6 +727,46 @@ class WebPageWait:
     ) -> bool:
         values = [locators] if isinstance(locators, str) else list(locators)
         return self._page._inner.wait_for_elements_loaded(values, int(timeout * 1000), any_one)
+
+    def ele_displayed(self, locator: str, timeout: float = 10.0) -> Any:
+        if self._page._inner.wait_for_ele_displayed(locator, int(timeout * 1000)):
+            try:
+                return self._page.ele(locator)
+            except Exception:
+                return True
+        return False
+
+    def ele_hidden(self, locator: str, timeout: float = 10.0) -> Any:
+        if self._page._inner.wait_for_ele_hidden(locator, int(timeout * 1000)):
+            try:
+                return self._page.ele(locator)
+            except Exception:
+                return True
+        return False
+
+    def ele_enabled(self, locator: str, timeout: float = 10.0) -> Any:
+        if self._page._inner.wait_for_ele_enabled(locator, int(timeout * 1000)):
+            try:
+                return self._page.ele(locator)
+            except Exception:
+                return True
+        return False
+
+    def ele_deleted(self, locator: str, timeout: float = 10.0) -> Any:
+        if self._page._inner.wait_for_ele_deleted(locator, int(timeout * 1000)):
+            try:
+                return self._page.ele(locator)
+            except Exception:
+                return True
+        return False
+
+    def ele_clickable(self, locator: str, timeout: float = 10.0) -> Any:
+        if self._page._inner.wait_for_ele_clickable(locator, int(timeout * 1000)):
+            try:
+                return self._page.ele(locator)
+            except Exception:
+                return True
+        return False
 
 
 class WebPageStates:

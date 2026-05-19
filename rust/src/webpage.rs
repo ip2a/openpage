@@ -450,6 +450,76 @@ impl WebPage {
         }
     }
 
+    pub fn wait_for_ele_displayed(&self, locator: &str, timeout_ms: u64) -> OpenPageResult<bool> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.wait_for_ele_displayed(locator, timeout_ms),
+            WebMode::Session => self.session_wait_for_element(locator, timeout_ms, |ele| {
+                Ok(ele.attr("disabled")?.is_none())
+            }),
+        }
+    }
+
+    pub fn wait_for_ele_hidden(&self, locator: &str, timeout_ms: u64) -> OpenPageResult<bool> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.wait_for_ele_hidden(locator, timeout_ms),
+            WebMode::Session => match self.session.find(locator) {
+                Ok(_) => Ok(false),
+                Err(_) => Ok(true),
+            },
+        }
+    }
+
+    pub fn wait_for_ele_enabled(&self, locator: &str, timeout_ms: u64) -> OpenPageResult<bool> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.wait_for_ele_enabled(locator, timeout_ms),
+            WebMode::Session => self.session_wait_for_element(locator, timeout_ms, |ele| {
+                Ok(ele.attr("disabled")?.is_none())
+            }),
+        }
+    }
+
+    pub fn wait_for_ele_deleted(&self, locator: &str, timeout_ms: u64) -> OpenPageResult<bool> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.wait_for_ele_deleted(locator, timeout_ms),
+            WebMode::Session => self.session_wait_for_element(locator, timeout_ms, |_ele| {
+                Ok(self.session.find(locator).is_err())
+            }),
+        }
+    }
+
+    pub fn wait_for_ele_clickable(&self, locator: &str, timeout_ms: u64) -> OpenPageResult<bool> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.wait_for_ele_clickable(locator, timeout_ms),
+            WebMode::Session => self.session_wait_for_element(locator, timeout_ms, |ele| {
+                Ok(ele.attr("disabled")?.is_none())
+            }),
+        }
+    }
+
+    fn session_wait_for_element<F>(
+        &self,
+        locator: &str,
+        timeout_ms: u64,
+        check: F,
+    ) -> OpenPageResult<bool>
+    where
+        F: Fn(&SessionElement) -> OpenPageResult<bool>,
+    {
+        let timeout = Duration::from_millis(timeout_ms.max(1));
+        let deadline = Instant::now() + timeout;
+        loop {
+            match self.session.find(locator) {
+                Ok(ele) => return check(&ele),
+                Err(_) => {
+                    sleep(Duration::from_millis(50));
+                    if Instant::now() >= deadline {
+                        return Ok(false);
+                    }
+                }
+            }
+        }
+    }
+
     pub fn find(&self, locator: &str) -> OpenPageResult<WebElement> {
         match self.mode()? {
             WebMode::Driver => self.driver.find(locator).map(WebElement::Browser),

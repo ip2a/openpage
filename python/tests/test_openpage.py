@@ -296,6 +296,8 @@ class OpenPageIntegrationTest(unittest.TestCase):
             self.assertTrue(submit.states.is_clickable)
             self.assertTrue(page.wait.eles_loaded(["#submit", "#name"], timeout=1.0))
             self.assertIsNot(page.wait.ele_displayed("#submit", timeout=1.0), False)
+            self.assertIsNot(page.wait.ele_enabled("#submit", timeout=1.0), False)
+            self.assertIsNot(page.wait.ele_clickable("#submit", timeout=1.0), False)
             self.assertIs(submit.wait.displayed(timeout=1.0), submit)
             self.assertIs(submit.wait.clickable(timeout=1.0), submit)
             self.assertIs(submit.wait.has_rect(timeout=1.0), submit)
@@ -310,6 +312,7 @@ class OpenPageIntegrationTest(unittest.TestCase):
             self.assertIsNot(submit.wait.disabled(timeout=1.0), False)
             self.assertIsNot(submit.wait.disabled_or_deleted(timeout=1.0), False)
             self.assertIsNot(submit.wait.enabled(timeout=2.0), False)
+            self.assertIsNot(page.wait.ele_enabled("#submit", timeout=2.0), False)
 
             page.run_js(
                 """
@@ -347,6 +350,7 @@ class OpenPageIntegrationTest(unittest.TestCase):
             )
             doomed = page.ele("#doomed")
             self.assertTrue(doomed.states.is_alive)
+            self.assertIsNot(page.wait.ele_deleted("#doomed", timeout=2.0), False)
             self.assertIsNot(doomed.wait.deleted(timeout=2.0), False)
             self.assertFalse(doomed.states.is_alive)
         finally:
@@ -552,6 +556,10 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 self.assertEqual(page.states.ready_state, "complete")
                 self.assertFalse(page.states.is_loading)
                 self.assertTrue(page.wait.eles_loaded(["h1"], timeout=1.0))
+                self.assertIsNot(page.wait.ele_displayed("h1", timeout=1.0), False)
+                self.assertIsNot(page.wait.ele_enabled("h1", timeout=1.0), False)
+                self.assertIsNot(page.wait.ele_clickable("h1", timeout=1.0), False)
+                self.assertFalse(page.wait.ele_deleted("#missing", timeout=0.1))
 
                 page.run_js(
                     """
@@ -588,6 +596,10 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 self.assertTrue(page.wait.eles_loaded(["h1"], timeout=1.0))
                 self.assertTrue(page.wait.eles_loaded(["#missing", "h1"], timeout=1.0, any_one=True))
                 self.assertFalse(page.wait.eles_loaded(["#missing"], timeout=0.1))
+                self.assertIsNot(page.wait.ele_displayed("h1", timeout=1.0), False)
+                self.assertIsNot(page.wait.ele_enabled("h1", timeout=1.0), False)
+                self.assertFalse(page.wait.ele_hidden("h1", timeout=0.1))
+                self.assertFalse(page.wait.ele_deleted("#missing", timeout=0.1))
                 self.assertEqual(page.ele("h1").text, "Start")
             finally:
                 page.quit()

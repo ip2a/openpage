@@ -169,6 +169,57 @@ impl Page {
         }
     }
 
+    pub fn wait_for_ele_displayed(&self, locator: &str, timeout_ms: u64) -> OpenPageResult<bool> {
+        self.wait_for_ele_state(locator, timeout_ms, |ele, remaining| {
+            ele.wait_until_displayed(remaining)
+        })
+    }
+
+    pub fn wait_for_ele_hidden(&self, locator: &str, timeout_ms: u64) -> OpenPageResult<bool> {
+        self.wait_for_ele_state(locator, timeout_ms, |ele, remaining| {
+            ele.wait_until_hidden(remaining)
+        })
+    }
+
+    pub fn wait_for_ele_enabled(&self, locator: &str, timeout_ms: u64) -> OpenPageResult<bool> {
+        self.wait_for_ele_state(locator, timeout_ms, |ele, remaining| {
+            ele.wait_until_enabled(remaining)
+        })
+    }
+
+    pub fn wait_for_ele_deleted(&self, locator: &str, timeout_ms: u64) -> OpenPageResult<bool> {
+        self.wait_for_ele_state(locator, timeout_ms, |ele, remaining| {
+            ele.wait_until_deleted(remaining)
+        })
+    }
+
+    pub fn wait_for_ele_clickable(&self, locator: &str, timeout_ms: u64) -> OpenPageResult<bool> {
+        self.wait_for_ele_state(locator, timeout_ms, |ele, remaining| {
+            ele.wait_until_clickable(remaining)
+        })
+    }
+
+    fn wait_for_ele_state<F>(&self, locator: &str, timeout_ms: u64, wait_fn: F) -> OpenPageResult<bool>
+    where
+        F: FnOnce(&Element, u64) -> OpenPageResult<bool>,
+    {
+        let timeout = Duration::from_millis(timeout_ms.max(1));
+        let deadline = Instant::now() + timeout;
+        let element = loop {
+            match self.find(locator) {
+                Ok(ele) => break ele,
+                Err(_) => {
+                    sleep(Duration::from_millis(50));
+                    if Instant::now() >= deadline {
+                        return Ok(false);
+                    }
+                }
+            }
+        };
+        let remaining = deadline.saturating_duration_since(Instant::now()).as_millis() as u64;
+        wait_fn(&element, remaining.max(1))
+    }
+
     pub fn click(&self, locator: &str) -> OpenPageResult<()> {
         self.wait_for(locator, 10_000)?.click()
     }

@@ -447,6 +447,71 @@ impl PyPage {
             .map_err(Into::into)
     }
 
+    #[pyo3(signature = (locator, timeout_ms=10000))]
+    fn wait_for_ele_displayed(
+        &self,
+        py: Python<'_>,
+        locator: &str,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.wait_for_ele_displayed(&locator, timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (locator, timeout_ms=10000))]
+    fn wait_for_ele_hidden(
+        &self,
+        py: Python<'_>,
+        locator: &str,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.wait_for_ele_hidden(&locator, timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (locator, timeout_ms=10000))]
+    fn wait_for_ele_enabled(
+        &self,
+        py: Python<'_>,
+        locator: &str,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.wait_for_ele_enabled(&locator, timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (locator, timeout_ms=10000))]
+    fn wait_for_ele_deleted(
+        &self,
+        py: Python<'_>,
+        locator: &str,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.wait_for_ele_deleted(&locator, timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (locator, timeout_ms=10000))]
+    fn wait_for_ele_clickable(
+        &self,
+        py: Python<'_>,
+        locator: &str,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.page()?.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.wait_for_ele_clickable(&locator, timeout_ms))
+            .map_err(Into::into)
+    }
+
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_for_load_start(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
         let page = self.page()?.clone();
@@ -1299,6 +1364,71 @@ impl PyWebPage {
     ) -> PyResult<bool> {
         let page = self.inner.clone();
         py.detach(move || page.wait_for_elements_loaded(&locators, any_one, timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (locator, timeout_ms=10000))]
+    fn wait_for_ele_displayed(
+        &self,
+        py: Python<'_>,
+        locator: &str,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.inner.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.wait_for_ele_displayed(&locator, timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (locator, timeout_ms=10000))]
+    fn wait_for_ele_hidden(
+        &self,
+        py: Python<'_>,
+        locator: &str,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.inner.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.wait_for_ele_hidden(&locator, timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (locator, timeout_ms=10000))]
+    fn wait_for_ele_enabled(
+        &self,
+        py: Python<'_>,
+        locator: &str,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.inner.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.wait_for_ele_enabled(&locator, timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (locator, timeout_ms=10000))]
+    fn wait_for_ele_deleted(
+        &self,
+        py: Python<'_>,
+        locator: &str,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.inner.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.wait_for_ele_deleted(&locator, timeout_ms))
+            .map_err(Into::into)
+    }
+
+    #[pyo3(signature = (locator, timeout_ms=10000))]
+    fn wait_for_ele_clickable(
+        &self,
+        py: Python<'_>,
+        locator: &str,
+        timeout_ms: u64,
+    ) -> PyResult<bool> {
+        let page = self.inner.clone();
+        let locator = locator.to_string();
+        py.detach(move || page.wait_for_ele_clickable(&locator, timeout_ms))
             .map_err(Into::into)
     }
 
