@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::io::{self, Write};
 use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex as StdMutex};
+use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use chromiumoxide::browser::Browser as OxBrowser;
@@ -20,14 +22,16 @@ pub enum DownloadState {
     Running,
     Completed,
     Canceled,
+    Skipped,
 }
 
 impl DownloadState {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Running => "running",
-            Self::Completed => "completed",
+            Self::Completed => "done",
             Self::Canceled => "canceled",
+            Self::Skipped => "skipped",
         }
     }
 }
@@ -35,6 +39,7 @@ impl DownloadState {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DownloadInfo {
     pub guid: String,
+    pub frame_id: String,
     pub url: String,
     pub suggested_filename: String,
     pub state: DownloadState,
@@ -54,6 +59,10 @@ impl DownloadMission {
         Self { browser, guid }
     }
 
+    pub fn id(&self) -> String {
+        self.guid()
+    }
+
     pub fn guid(&self) -> String {
         self.guid.clone()
     }
@@ -62,8 +71,24 @@ impl DownloadMission {
         Ok(self.info()?.url)
     }
 
+    pub fn tab_id(&self) -> OpenPageResult<String> {
+        self.browser.download_tab_id(&self.guid)
+    }
+
+    pub fn folder(&self) -> OpenPageResult<String> {
+        self.browser.download_folder(&self.guid)
+    }
+
+    pub fn name(&self) -> OpenPageResult<String> {
+        self.suggested_filename()
+    }
+
     pub fn suggested_filename(&self) -> OpenPageResult<String> {
         Ok(self.info()?.suggested_filename)
+    }
+
+    pub fn tmp_path(&self) -> OpenPageResult<String> {
+        self.browser.download_tmp_path(&self.guid)
     }
 
     pub fn state(&self) -> OpenPageResult<String> {
@@ -78,6 +103,16 @@ impl DownloadMission {
         Ok(self.info()?.total_bytes)
     }
 
+    pub fn rate(&self) -> OpenPageResult<Option<f64>> {
+        let info = self.info()?;
+        Ok(match info.total_bytes {
+            Some(total_bytes) if total_bytes > 0 => {
+                Some(((info.received_bytes as f64 / total_bytes as f64) * 10000.0).round() / 100.0)
+            }
+            _ => None,
+        })
+    }
+
     pub fn final_path(&self) -> OpenPageResult<Option<String>> {
         Ok(self.info()?.final_path)
     }
@@ -86,8 +121,19 @@ impl DownloadMission {
         Ok(self.info()?.state != DownloadState::Running)
     }
 
-    pub fn wait(&self, timeout_ms: u64) -> OpenPageResult<String> {
-        self.browser.wait_for_download_guid(&self.guid, timeout_ms)
+    pub fn wait(
+        &self,
+        show: bool,
+        timeout_ms: Option<u64>,
+        cancel_if_timeout: bool,
+    ) -> OpenPageResult<Option<String>> {
+        if !show {
+            return self
+                .browser
+                .wait_for_download_guid(&self.guid, timeout_ms, cancel_if_timeout);
+        }
+
+        self.wait_with_output(timeout_ms, cancel_if_timeout)
     }
 
     pub fn cancel(&self) -> OpenPageResult<()> {
@@ -96,6 +142,65 @@ impl DownloadMission {
 
     pub(crate) fn info(&self) -> OpenPageResult<DownloadInfo> {
         self.browser.download_info(&self.guid)
+    }
+
+    fn wait_with_output(
+        &self,
+        timeout_ms: Option<u64>,
+        cancel_if_timeout: bool,
+    ) -> OpenPageResult<Option<String>> {
+        println!("url: {}", self.url()?);
+        println!("name: {}", self.name()?);
+        println!("folder: {}", self.folder()?);
+
+        let deadline =
+            timeout_ms.map(|timeout_ms| Instant::now() + Duration::from_millis(timeout_ms));
+        loop {
+            let info = self.info()?;
+            if info.state != DownloadState::Running {
+                break;
+            }
+
+            if let Some(rate) = download_rate(&info) {
+                print!("\r{rate}% ");
+            }
+            io::stdout().flush()?;
+
+            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                if cancel_if_timeout {
+                    let _ = self.cancel();
+                }
+                println!();
+                return Ok(None);
+            }
+
+            sleep(Duration::from_millis(200));
+        }
+
+        let info = self.info()?;
+        let result = self
+            .browser
+            .wait_for_download_guid(&self.guid, Some(0), false)?;
+        match info.state {
+            DownloadState::Completed => {
+                print!("\r100% ");
+                if let Some(path) = result.as_deref() {
+                    println!("{path}");
+                } else {
+                    println!();
+                }
+            }
+            DownloadState::Canceled => println!("download canceled"),
+            DownloadState::Skipped => {
+                if let Some(path) = result.as_deref() {
+                    println!("skipped {path}");
+                } else {
+                    println!("skipped");
+                }
+            }
+            DownloadState::Running => println!(),
+        }
+        Ok(result)
     }
 }
 
@@ -209,6 +314,31 @@ impl DownloadStore {
         })
     }
 
+    pub(crate) fn wait_for_guid_forever(&self, guid: &str) -> OpenPageResult<DownloadInfo> {
+        self.wait_forever(|state| match state.missions.get(guid) {
+            Some(mission) if mission.state != DownloadState::Running => Some(mission.clone()),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn set_finalized(
+        &self,
+        guid: &str,
+        state: DownloadState,
+        final_path: String,
+    ) -> OpenPageResult<()> {
+        let mut store = self.shared.state.lock().map_err(|_| {
+            OpenPageError::BrowserOperation("download state lock poisoned".to_string())
+        })?;
+        let mission = store.missions.get_mut(guid).ok_or_else(|| {
+            OpenPageError::BrowserOperation(format!("download `{guid}` was not found"))
+        })?;
+        mission.state = state;
+        mission.final_path = Some(final_path);
+        self.shared.condvar.notify_all();
+        Ok(())
+    }
+
     pub(crate) fn wait_for_next_after(
         &self,
         completed_before: usize,
@@ -235,6 +365,110 @@ impl DownloadStore {
                 .and_then(|guid| state.missions.get(guid))
                 .cloned()
         })
+    }
+
+    pub(crate) fn wait_for_begin_after_in_frames(
+        &self,
+        started_before: usize,
+        frame_ids: &[String],
+        timeout_ms: u64,
+    ) -> OpenPageResult<DownloadInfo> {
+        self.wait_for(timeout_ms, |state| {
+            state
+                .order
+                .iter()
+                .skip(started_before)
+                .filter_map(|guid| state.missions.get(guid))
+                .find(|mission| {
+                    frame_ids
+                        .iter()
+                        .any(|frame_id| frame_id == &mission.frame_id)
+                })
+                .cloned()
+        })
+    }
+
+    pub(crate) fn running_ids_in_frames(
+        &self,
+        frame_ids: &[String],
+    ) -> OpenPageResult<Vec<String>> {
+        self.shared
+            .state
+            .lock()
+            .map(|state| {
+                state
+                    .missions
+                    .values()
+                    .filter(|mission| {
+                        mission.state == DownloadState::Running
+                            && frame_ids
+                                .iter()
+                                .any(|frame_id| frame_id == &mission.frame_id)
+                    })
+                    .map(|mission| mission.guid.clone())
+                    .collect()
+            })
+            .map_err(|_| {
+                OpenPageError::BrowserOperation("download state lock poisoned".to_string())
+            })
+    }
+
+    pub(crate) fn wait_until_idle_in_frames(
+        &self,
+        frame_ids: &[String],
+        timeout_ms: u64,
+    ) -> OpenPageResult<bool> {
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+        let mut state = self.shared.state.lock().map_err(|_| {
+            OpenPageError::BrowserOperation("download state lock poisoned".to_string())
+        })?;
+
+        loop {
+            if state
+                .missions
+                .values()
+                .filter(|mission| {
+                    frame_ids
+                        .iter()
+                        .any(|frame_id| frame_id == &mission.frame_id)
+                })
+                .all(|mission| mission.state != DownloadState::Running)
+            {
+                return Ok(true);
+            }
+
+            if let Some(error) = &state.last_error {
+                return Err(OpenPageError::BrowserOperation(format!(
+                    "download tracker stopped: {error}"
+                )));
+            }
+
+            let now = Instant::now();
+            if now >= deadline {
+                return Ok(false);
+            }
+
+            let remaining = deadline.saturating_duration_since(now);
+            let result = self
+                .shared
+                .condvar
+                .wait_timeout(state, remaining)
+                .map_err(|_| {
+                    OpenPageError::BrowserOperation("download state lock poisoned".to_string())
+                })?;
+            state = result.0;
+            if result.1.timed_out() {
+                return Ok(state
+                    .missions
+                    .values()
+                    .filter(|mission| {
+                        frame_ids
+                            .iter()
+                            .any(|frame_id| frame_id == &mission.frame_id)
+                    })
+                    .all(|mission| mission.state != DownloadState::Running));
+            }
+        }
     }
 
     pub(crate) fn wait_until_idle(&self, timeout_ms: u64) -> OpenPageResult<bool> {
@@ -273,12 +507,10 @@ impl DownloadStore {
                 })?;
             state = result.0;
             if result.1.timed_out() {
-                return Ok(
-                    state
-                        .missions
-                        .values()
-                        .all(|mission| mission.state != DownloadState::Running),
-                );
+                return Ok(state
+                    .missions
+                    .values()
+                    .all(|mission| mission.state != DownloadState::Running));
             }
         }
     }
@@ -324,6 +556,31 @@ impl DownloadStore {
                     "download did not complete in time".to_string(),
                 ));
             }
+        }
+    }
+
+    fn wait_forever<F>(&self, predicate: F) -> OpenPageResult<DownloadInfo>
+    where
+        F: Fn(&DownloadManagerState) -> Option<DownloadInfo>,
+    {
+        let mut state = self.shared.state.lock().map_err(|_| {
+            OpenPageError::BrowserOperation("download state lock poisoned".to_string())
+        })?;
+
+        loop {
+            if let Some(info) = predicate(&state) {
+                return Ok(info);
+            }
+
+            if let Some(error) = &state.last_error {
+                return Err(OpenPageError::BrowserOperation(format!(
+                    "download tracker stopped: {error}"
+                )));
+            }
+
+            state = self.shared.condvar.wait(state).map_err(|_| {
+                OpenPageError::BrowserOperation("download state lock poisoned".to_string())
+            })?;
         }
     }
 }
@@ -417,6 +674,7 @@ fn on_download_will_begin(
         .entry(event.guid.clone())
         .or_insert_with(|| DownloadInfo {
             guid: event.guid.clone(),
+            frame_id: event.frame_id.as_ref().to_string(),
             url: event.url.clone(),
             suggested_filename: event.suggested_filename.clone(),
             state: DownloadState::Running,
@@ -424,6 +682,7 @@ fn on_download_will_begin(
             total_bytes: None,
             final_path: None,
         });
+    mission.frame_id = event.frame_id.as_ref().to_string();
     mission.url = event.url.clone();
     mission.suggested_filename = event.suggested_filename.clone();
     if !state.order.iter().any(|guid| guid == &event.guid) {
@@ -447,6 +706,7 @@ fn on_download_progress(
         .entry(event.guid.clone())
         .or_insert_with(|| DownloadInfo {
             guid: event.guid.clone(),
+            frame_id: String::new(),
             url: String::new(),
             suggested_filename: event.guid.clone(),
             state: DownloadState::Running,
@@ -496,4 +756,13 @@ fn filename_matches(mission: &DownloadInfo, filename: &str) -> bool {
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| name == filename)
         })
+}
+
+fn download_rate(info: &DownloadInfo) -> Option<f64> {
+    match info.total_bytes {
+        Some(total_bytes) if total_bytes > 0 => {
+            Some(((info.received_bytes as f64 / total_bytes as f64) * 10000.0).round() / 100.0)
+        }
+        _ => None,
+    }
 }

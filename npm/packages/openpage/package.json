@@ -1,0 +1,31 @@
+{
+  "name": "openpage",
+  "version": "0.1.0",
+  "description": "openpage CLI entry package; loads a prebuilt binary per platform",
+  "author": "ip2a <ooooofish@126.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ip2a/openpage"
+  },
+  "bin": {
+    "openpage": "bin/openpage.js"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "optionalDependencies": {
+    "openpage-bin-darwin-arm64": "0.1.0",
+    "openpage-bin-darwin-x64": "0.1.0",
+    "openpage-bin-linux-x64-gnu": "0.1.0",
+    "openpage-bin-linux-arm64-gnu": "0.1.0",
+    "openpage-bin-win32-x64-msvc": "0.1.0"
+  },
+  "keywords": [
+    "browser",
+    "automation",
+    "cdp",
+    "openpage"
+  ]
+}

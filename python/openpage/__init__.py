@@ -1,8 +1,11 @@
 from ._compat import Browser
+from ._compat import Console
+from ._compat import ConsoleMessage
 from ._compat import ChromiumOptions
 from ._compat import ChromiumPage
 from ._compat import DownloadMission
 from ._compat import Element
+from ._compat import Keys
 from ._compat import Listener
 from ._compat import ListenerFailInfo
 from ._compat import ListenerPacket
@@ -18,10 +21,13 @@ from ._compat import WebPage
 
 __all__ = [
     "Browser",
+    "Console",
+    "ConsoleMessage",
     "ChromiumOptions",
     "ChromiumPage",
     "DownloadMission",
     "Element",
+    "Keys",
     "Listener",
     "ListenerFailInfo",
     "ListenerPacket",

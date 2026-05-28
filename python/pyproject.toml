@@ -9,9 +9,10 @@ description = "Python thin wrappers for the openpage Rust browser automation cor
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
-  { name = "OpenPage" }
+  { name = "ip2a", email = "ooooofish@126.com" }
 ]
 dependencies = []
+license = { text = "MIT" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["openpage"]

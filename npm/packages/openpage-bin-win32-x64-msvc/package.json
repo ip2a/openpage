@@ -1,0 +1,21 @@
+{
+  "name": "openpage-bin-win32-x64-msvc",
+  "version": "0.1.0",
+  "description": "openpage platform package (win32 x64)",
+  "author": "ip2a <ooooofish@126.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ip2a/openpage"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin",
+    "README.md"
+  ]
+}

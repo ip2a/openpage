@@ -1,0 +1,656 @@
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::{Arc, Condvar, Mutex as StdMutex};
+use std::time::{Duration, Instant};
+
+use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
+use chromiumoxide::cdp::browser_protocol::fetch::{
+    ContinueRequestParams, EventRequestPaused, FailRequestParams, FulfillRequestParams, HeaderEntry,
+};
+use chromiumoxide::cdp::browser_protocol::network::{ErrorReason, Headers, ResourceType};
+use chromiumoxide::page::Page as OxPage;
+use futures::StreamExt;
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+use tokio::runtime::Runtime;
+use tokio::task::JoinHandle;
+
+use crate::error::{OpenPageError, OpenPageResult};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct InterceptedRequestInfo {
+    pub request_id: String,
+    pub frame_id: String,
+    pub url: String,
+    pub method: String,
+    pub headers: HashMap<String, String>,
+    pub resource_type: String,
+    pub has_post_data: bool,
+    pub post_data_entries: usize,
+}
+
+#[derive(Clone, Debug)]
+enum TargetMatcher {
+    All,
+    Substrings(Vec<String>),
+    Regexes(Vec<Regex>),
+}
+
+#[derive(Clone, Debug)]
+struct InterceptFilters {
+    targets: TargetMatcher,
+    methods: Option<HashSet<String>>,
+    resource_types: Option<HashSet<String>>,
+}
+
+impl Default for InterceptFilters {
+    fn default() -> Self {
+        Self {
+            targets: TargetMatcher::All,
+            methods: None,
+            resource_types: None,
+        }
+    }
+}
+
+impl InterceptFilters {
+    fn new(
+        targets: Option<Vec<String>>,
+        is_regex: bool,
+        methods: Option<Vec<String>>,
+        resource_types: Option<Vec<String>>,
+    ) -> OpenPageResult<Self> {
+        let targets = match targets {
+            None => TargetMatcher::All,
+            Some(targets) if targets.is_empty() => TargetMatcher::All,
+            Some(targets) if is_regex => {
+                let mut compiled = Vec::with_capacity(targets.len());
+                for pattern in targets {
+                    compiled.push(Regex::new(&pattern).map_err(|err| {
+                        OpenPageError::BrowserOperation(format!(
+                            "invalid intercept regex `{pattern}`: {err}"
+                        ))
+                    })?);
+                }
+                TargetMatcher::Regexes(compiled)
+            }
+            Some(targets) => TargetMatcher::Substrings(targets),
+        };
+
+        Ok(Self {
+            targets,
+            methods: normalize_set(methods),
+            resource_types: normalize_set(resource_types),
+        })
+    }
+
+    fn matches(&self, url: &str, method: &str, resource_type: &str) -> bool {
+        if self
+            .methods
+            .as_ref()
+            .is_some_and(|methods| !methods.contains(&method.to_ascii_uppercase()))
+        {
+            return false;
+        }
+        if self.resource_types.as_ref().is_some_and(|resource_types| {
+            !resource_types.contains(&resource_type.to_ascii_uppercase())
+        }) {
+            return false;
+        }
+        match &self.targets {
+            TargetMatcher::All => true,
+            TargetMatcher::Substrings(targets) => {
+                targets.iter().any(|target| url.contains(target.as_str()))
+            }
+            TargetMatcher::Regexes(patterns) => {
+                patterns.iter().any(|pattern| pattern.is_match(url))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct InterceptState {
+    queue: VecDeque<InterceptedRequestInfo>,
+    pending_request_ids: HashSet<String>,
+    filters: InterceptFilters,
+    listening: bool,
+    paused: bool,
+    task: Option<JoinHandle<()>>,
+    last_error: Option<String>,
+}
+
+#[derive(Debug)]
+struct InterceptShared {
+    state: StdMutex<InterceptState>,
+    condvar: Condvar,
+}
+
+impl InterceptShared {
+    fn new() -> Self {
+        Self {
+            state: StdMutex::new(InterceptState::default()),
+            condvar: Condvar::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Interceptor {
+    runtime: Arc<Runtime>,
+    page: OxPage,
+    shared: Arc<InterceptShared>,
+}
+
+#[derive(Clone, Debug)]
+pub struct InterceptedRequest {
+    runtime: Arc<Runtime>,
+    page: OxPage,
+    shared: Arc<InterceptShared>,
+    info: InterceptedRequestInfo,
+}
+
+impl Interceptor {
+    pub fn new(runtime: Arc<Runtime>, page: OxPage) -> Self {
+        let shared = Arc::new(InterceptShared::new());
+        let interceptor = Self {
+            runtime: Arc::clone(&runtime),
+            page: page.clone(),
+            shared: Arc::clone(&shared),
+        };
+        let shared_for_task = Arc::clone(&shared);
+        let handle = runtime.spawn(async move {
+            if let Err(err) = run_interceptor(page, Arc::clone(&shared_for_task)).await {
+                let _ = set_interceptor_stopped(&shared_for_task, Some(err.to_string()));
+            } else {
+                let _ = set_interceptor_stopped(&shared_for_task, None);
+            }
+        });
+        if let Ok(mut state) = interceptor.shared.state.lock() {
+            state.task = Some(handle);
+        }
+        interceptor
+    }
+
+    pub fn start(
+        &self,
+        targets: Option<Vec<String>>,
+        is_regex: bool,
+        methods: Option<Vec<String>>,
+        resource_types: Option<Vec<String>>,
+    ) -> OpenPageResult<()> {
+        let filters = InterceptFilters::new(targets, is_regex, methods, resource_types)?;
+        let mut state = self.shared.state.lock().map_err(|_| {
+            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+        })?;
+
+        state.queue.clear();
+        state.pending_request_ids.clear();
+        state.last_error = None;
+        state.filters = filters;
+
+        if state.task.is_none() {
+            return Err(interceptor_not_running_error(&state));
+        }
+        if state.listening {
+            state.listening = true;
+            self.shared.condvar.notify_all();
+            return Ok(());
+        }
+        state.listening = true;
+        self.shared.condvar.notify_all();
+        Ok(())
+    }
+
+    pub fn wait(&self, timeout_ms: Option<u64>) -> OpenPageResult<Option<InterceptedRequest>> {
+        let deadline = timeout_ms.map(|timeout| Instant::now() + Duration::from_millis(timeout));
+        let mut state = self.shared.state.lock().map_err(|_| {
+            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+        })?;
+
+        if state.task.is_none() {
+            return Err(interceptor_not_running_error(&state));
+        }
+        if !state.listening {
+            return Err(OpenPageError::BrowserOperation(
+                "interceptor is not active; call start() first".to_string(),
+            ));
+        }
+
+        loop {
+            if let Some(info) = state.queue.pop_front() {
+                return Ok(Some(InterceptedRequest {
+                    runtime: Arc::clone(&self.runtime),
+                    page: self.page.clone(),
+                    shared: Arc::clone(&self.shared),
+                    info,
+                }));
+            }
+
+            if state.task.is_none() {
+                return Err(interceptor_not_running_error(&state));
+            }
+            if !state.listening {
+                return Err(OpenPageError::BrowserOperation(
+                    "interceptor stopped while waiting".to_string(),
+                ));
+            }
+
+            match deadline {
+                None => {
+                    state = self.shared.condvar.wait(state).map_err(|_| {
+                        OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+                    })?;
+                }
+                Some(deadline) => {
+                    let now = Instant::now();
+                    if now >= deadline {
+                        return Ok(None);
+                    }
+                    let wait_for = deadline.saturating_duration_since(now);
+                    let result =
+                        self.shared
+                            .condvar
+                            .wait_timeout(state, wait_for)
+                            .map_err(|_| {
+                                OpenPageError::BrowserOperation(
+                                    "intercept state lock poisoned".to_string(),
+                                )
+                            })?;
+                    state = result.0;
+                    if result.1.timed_out() {
+                        return Ok(None);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn stop(&self) -> OpenPageResult<()> {
+        let pending_ids = {
+            let mut state = self.shared.state.lock().map_err(|_| {
+                OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+            })?;
+            let ids = state
+                .pending_request_ids
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>();
+            state.queue.clear();
+            state.pending_request_ids.clear();
+            state.last_error = None;
+            state.listening = false;
+            ids
+        };
+
+        for request_id in pending_ids {
+            let _ = continue_request(
+                &self.runtime,
+                &self.page,
+                &request_id,
+                None,
+                None,
+                None,
+                None,
+            );
+        }
+
+        self.shared.condvar.notify_all();
+        Ok(())
+    }
+
+    pub fn is_listening(&self) -> OpenPageResult<bool> {
+        self.shared
+            .state
+            .lock()
+            .map(|state| state.listening)
+            .map_err(|_| {
+                OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+            })
+    }
+
+    pub fn pause(&self) -> OpenPageResult<()> {
+        let mut state = self.shared.state.lock().map_err(|_| {
+            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+        })?;
+        state.paused = true;
+        Ok(())
+    }
+
+    pub fn resume(&self) -> OpenPageResult<()> {
+        let mut state = self.shared.state.lock().map_err(|_| {
+            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+        })?;
+        state.paused = false;
+        self.shared.condvar.notify_all();
+        Ok(())
+    }
+
+    pub fn is_paused(&self) -> OpenPageResult<bool> {
+        self.shared
+            .state
+            .lock()
+            .map(|state| state.paused)
+            .map_err(|_| {
+                OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+            })
+    }
+}
+
+impl InterceptedRequest {
+    pub fn request_id(&self) -> String {
+        self.info.request_id.clone()
+    }
+
+    pub fn frame_id(&self) -> String {
+        self.info.frame_id.clone()
+    }
+
+    pub fn url(&self) -> String {
+        self.info.url.clone()
+    }
+
+    pub fn method(&self) -> String {
+        self.info.method.clone()
+    }
+
+    pub fn headers(&self) -> HashMap<String, String> {
+        self.info.headers.clone()
+    }
+
+    pub fn resource_type(&self) -> String {
+        self.info.resource_type.clone()
+    }
+
+    pub fn has_post_data(&self) -> bool {
+        self.info.has_post_data
+    }
+
+    pub fn post_data_entries(&self) -> usize {
+        self.info.post_data_entries
+    }
+
+    pub fn continue_request(
+        &self,
+        url: Option<&str>,
+        method: Option<&str>,
+        headers: Option<HashMap<String, String>>,
+        post_data: Option<&str>,
+    ) -> OpenPageResult<()> {
+        with_pending_request(&self.shared, &self.info.request_id, || {
+            continue_request(
+                &self.runtime,
+                &self.page,
+                &self.info.request_id,
+                url,
+                method,
+                headers,
+                post_data,
+            )
+        })
+    }
+
+    pub fn fail(&self, reason: ErrorReason) -> OpenPageResult<()> {
+        with_pending_request(&self.shared, &self.info.request_id, || {
+            let request_id = self.info.request_id.clone();
+            self.runtime.block_on(async {
+                self.page
+                    .execute(FailRequestParams::new(request_id, reason))
+                    .await
+                    .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+                Ok(())
+            })
+        })
+    }
+
+    pub fn fulfill(
+        &self,
+        response_code: i64,
+        body: Option<&[u8]>,
+        headers: Option<HashMap<String, String>>,
+        response_phrase: Option<&str>,
+    ) -> OpenPageResult<()> {
+        with_pending_request(&self.shared, &self.info.request_id, || {
+            let request_id = self.info.request_id.clone();
+            let response_headers = headers.map(header_entries_from_map);
+            let body = body.map(|value| BASE64_STANDARD.encode(value));
+            let response_phrase = response_phrase.map(ToOwned::to_owned);
+            self.runtime.block_on(async {
+                let mut params = FulfillRequestParams::builder()
+                    .request_id(request_id)
+                    .response_code(response_code);
+                if let Some(response_headers) = response_headers {
+                    params = params.response_headers(response_headers);
+                }
+                if let Some(body) = body {
+                    params = params.body(body);
+                }
+                if let Some(response_phrase) = response_phrase {
+                    params = params.response_phrase(response_phrase);
+                }
+                self.page
+                    .execute(params.build().map_err(OpenPageError::BrowserOperation)?)
+                    .await
+                    .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+                Ok(())
+            })
+        })
+    }
+}
+
+async fn run_interceptor(page: OxPage, shared: Arc<InterceptShared>) -> OpenPageResult<()> {
+    let mut paused_events = page
+        .event_listener::<EventRequestPaused>()
+        .await
+        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+
+    while let Some(event) = paused_events.next().await {
+        on_request_paused(&page, &shared, &event).await?;
+    }
+
+    Ok(())
+}
+
+async fn on_request_paused(
+    page: &OxPage,
+    shared: &Arc<InterceptShared>,
+    event: &EventRequestPaused,
+) -> OpenPageResult<()> {
+    if event.response_status_code.is_some() {
+        page.execute(ContinueRequestParams::new(event.request_id.clone()))
+            .await
+            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        return Ok(());
+    }
+
+    let info = {
+        let state = shared.state.lock().map_err(|_| {
+            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+        })?;
+        if !state.listening || state.paused {
+            None
+        } else {
+            let resource_type = resource_type_to_string(&event.resource_type);
+            let matches =
+                state
+                    .filters
+                    .matches(&event.request.url, &event.request.method, &resource_type);
+            if !matches {
+                None
+            } else {
+                Some(InterceptedRequestInfo {
+                    request_id: event.request_id.as_ref().to_string(),
+                    frame_id: event.frame_id.as_ref().to_string(),
+                    url: event.request.url.clone(),
+                    method: event.request.method.clone(),
+                    headers: headers_to_map(&event.request.headers),
+                    resource_type,
+                    has_post_data: event.request.has_post_data.unwrap_or(false),
+                    post_data_entries: event
+                        .request
+                        .post_data_entries
+                        .as_ref()
+                        .map(|items| items.len())
+                        .unwrap_or(0),
+                })
+            }
+        }
+    };
+
+    let Some(info) = info else {
+        page.execute(ContinueRequestParams::new(event.request_id.clone()))
+            .await
+            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        return Ok(());
+    };
+
+    let is_listening = {
+        let state = shared.state.lock().map_err(|_| {
+            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+        })?;
+        state.listening
+    };
+    if !is_listening {
+        page.execute(ContinueRequestParams::new(event.request_id.clone()))
+            .await
+            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        return Ok(());
+    }
+    let mut state = shared.state.lock().map_err(|_| {
+        OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+    })?;
+    state.pending_request_ids.insert(info.request_id.clone());
+    state.queue.push_back(info);
+    shared.condvar.notify_all();
+    Ok(())
+}
+
+fn continue_request(
+    runtime: &Arc<Runtime>,
+    page: &OxPage,
+    request_id: &str,
+    url: Option<&str>,
+    method: Option<&str>,
+    headers: Option<HashMap<String, String>>,
+    post_data: Option<&str>,
+) -> OpenPageResult<()> {
+    let request_id = request_id.to_string();
+    let url = url.map(ToOwned::to_owned);
+    let method = method.map(ToOwned::to_owned);
+    let headers = headers.map(header_entries_from_map);
+    let post_data = post_data.map(|value| BASE64_STANDARD.encode(value.as_bytes()));
+    runtime.block_on(async {
+        let mut params = ContinueRequestParams::builder().request_id(request_id);
+        if let Some(url) = url {
+            params = params.url(url);
+        }
+        if let Some(method) = method {
+            params = params.method(method);
+        }
+        if let Some(headers) = headers {
+            params = params.headers(headers);
+        }
+        if let Some(post_data) = post_data {
+            params = params.post_data(post_data);
+        }
+        page.execute(params.build().map_err(OpenPageError::BrowserOperation)?)
+            .await
+            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        Ok(())
+    })
+}
+
+fn with_pending_request<F>(
+    shared: &Arc<InterceptShared>,
+    request_id: &str,
+    action: F,
+) -> OpenPageResult<()>
+where
+    F: FnOnce() -> OpenPageResult<()>,
+{
+    {
+        let mut state = shared.state.lock().map_err(|_| {
+            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+        })?;
+        if !state.pending_request_ids.remove(request_id) {
+            return Err(OpenPageError::BrowserOperation(format!(
+                "intercepted request `{request_id}` is no longer pending"
+            )));
+        }
+    }
+
+    match action() {
+        Ok(()) => {
+            shared.condvar.notify_all();
+            Ok(())
+        }
+        Err(err) => {
+            let mut state = shared.state.lock().map_err(|_| {
+                OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+            })?;
+            state.pending_request_ids.insert(request_id.to_string());
+            shared.condvar.notify_all();
+            Err(err)
+        }
+    }
+}
+
+fn set_interceptor_stopped(
+    shared: &Arc<InterceptShared>,
+    error: Option<String>,
+) -> OpenPageResult<()> {
+    let mut state = shared.state.lock().map_err(|_| {
+        OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
+    })?;
+    state.listening = false;
+    state.pending_request_ids.clear();
+    state.task = None;
+    state.last_error = error;
+    shared.condvar.notify_all();
+    Ok(())
+}
+
+fn interceptor_not_running_error(state: &InterceptState) -> OpenPageError {
+    if let Some(error) = &state.last_error {
+        OpenPageError::BrowserOperation(format!("interceptor is not running: {error}"))
+    } else {
+        OpenPageError::BrowserOperation("interceptor is not running".to_string())
+    }
+}
+
+fn normalize_set(values: Option<Vec<String>>) -> Option<HashSet<String>> {
+    values.map(|values| {
+        values
+            .into_iter()
+            .map(|value| value.to_ascii_uppercase())
+            .collect()
+    })
+}
+
+fn headers_to_map(headers: &Headers) -> HashMap<String, String> {
+    let Some(object) = headers.inner().as_object() else {
+        return HashMap::new();
+    };
+
+    object
+        .iter()
+        .map(|(key, value)| {
+            let value = match value {
+                serde_json::Value::String(value) => value.clone(),
+                _ => value.to_string(),
+            };
+            (key.clone(), value)
+        })
+        .collect()
+}
+
+fn header_entries_from_map(headers: HashMap<String, String>) -> Vec<HeaderEntry> {
+    headers
+        .into_iter()
+        .map(|(name, value)| HeaderEntry::new(name, value))
+        .collect()
+}
+
+fn resource_type_to_string(value: &ResourceType) -> String {
+    value.as_ref().to_string()
+}

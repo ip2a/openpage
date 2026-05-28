@@ -3,6 +3,13 @@ name = "openpage_rs"
 version = "0.1.0"
 edition = "2024"
 description = "openpage Rust browser automation core with PyO3 bindings"
+authors = ["ip2a <ooooofish@126.com>"]
+license = "MIT"
+repository = "https://github.com/ip2a/openpage"
+readme = "README.md"
+keywords = ["browser", "automation", "cdp", "python", "pyo3"]
+categories = ["api-bindings", "command-line-utilities"]
+default-run = "openpage"
 
 [lib]
 name = "openpage_rs"
@@ -15,17 +22,25 @@ python-source = "../python"
 default = []
 python-module = ["dep:pyo3", "pyo3/extension-module"]
 
+[build-dependencies]
+pyo3-build-config = "0.28.3"
+
 [dependencies]
+base64 = "0.22.1"
 chromiumoxide = "0.9.1"
+clap = { version = "4.6.1", features = ["derive"] }
+cookie_store = "0.22.1"
 encoding_rs = "0.8.35"
 ego-tree = "0.10.0"
 futures = "0.3.31"
+image = { version = "0.25.10", default-features = false, features = ["gif", "jpeg"] }
 pyo3 = { version = "0.28.3", optional = true }
 reqwest = { version = "0.13.3", default-features = false, features = ["blocking", "cookies", "json", "rustls"] }
 regex = "1.12.2"
 scraper = "0.24.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
+skyscraper = "0.7.0"
 thiserror = "2.0.17"
 tokio = { version = "1.48.0", features = ["rt-multi-thread", "macros", "sync", "time"] }
 url = "2.5.7"
