@@ -1324,3 +1324,36 @@
 - Interpretation:
   - the active guidance is now consistent with the active runtime behavior
   - the outer-shell/browser-path story is cleaner for future sessions and agents
+
+
+## Local truth refresh (2026-05-30, runtime config alignment pass)
+- This pass tightened the remaining mismatch between doctor and runtime launch behavior.
+- Motivation:
+  - doctor already derived browser-path truth from `LaunchOptions::from_ini(None)` plus env override
+  - raw TCP `webpage.create` still started from bare `LaunchOptions::default()`
+  - that meant doctor and runtime could disagree about which browser executable/config path was actually in play
+- Landed changes:
+  - `rust/src/cli/serve.rs`
+    - `webpage.create` now starts from `LaunchOptions::from_ini(None)?`
+    - request parameters only override fields when actually present
+    - this preserves config defaults instead of wiping them with `None`
+  - docs updated:
+    - `README.md`
+    - `skills/openpage-test/references/install.md`
+    - `skills/openpage-test/references/cli-smoke.md`
+- Verification plan/evidence:
+  - `cargo check --manifest-path rust/Cargo.toml`
+    - passed
+  - `OPENPAGE_BROWSER_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" OPENPAGE_HOME=/tmp/openpage-runtime-align cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start --session align --replace --headless https://example.com`
+    - passed
+  - same env override + `title --session align`
+    - returned `Example Domain`
+  - same env override + `browser stop --session align`
+    - passed
+  - without env override:
+    - `OPENPAGE_HOME=/tmp/openpage-runtime-align-noenv cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start --session align-noenv --replace --headless https://example.com`
+    - failed with `error.kind=\"browser_operation\"`
+    - message showed underlying browser launch failure caused by the unresolved configured executable
+- Interpretation:
+  - this reduces one more source of “two truths” in the outer shell
+  - it does not touch CDP, DOM, element lookup, or interaction internals

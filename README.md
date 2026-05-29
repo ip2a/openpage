@@ -231,6 +231,12 @@ For runtime JSON failures, the active CLI/daemon shell now emits stable
 - active healthy daemon sessions
 - incomplete daemon sidecars that still point to a live daemon
 - stale daemon sidecars cleaned during the audit
+
+Runtime launch now uses the same launch-config chain as `doctor`:
+
+- base `LaunchOptions` come from `rust/configs.ini` or project-local `dp_configs.ini`
+- `OPENPAGE_BROWSER_PATH` can override the browser executable for the current process
+- explicit CLI / daemon request parameters still win over config defaults
 - browser executable/config and optional live launch smoke
 - machine-readable summary counts plus actionable `warn_ids` / `fail_ids` / `info_ids` / `fixable_ids`
 

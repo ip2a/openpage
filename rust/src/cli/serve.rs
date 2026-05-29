@@ -239,14 +239,22 @@ impl ServeRuntime {
                 "existing": true
             }));
         }
-        let mut launch = LaunchOptions::default();
+        let mut launch = LaunchOptions::from_ini(None)?;
         launch.headless = optional_bool(params, "headless").unwrap_or(true);
-        launch.browser_path = optional_string(params, "browser_path").map(Into::into);
-        launch.download_path = optional_string(params, "download_path").map(Into::into);
-        launch.user_data_dir = optional_string(params, "user_data_dir").map(Into::into);
+        if let Some(path) = optional_string(params, "browser_path") {
+            launch.browser_path = Some(path.into());
+        }
+        if let Some(path) = optional_string(params, "download_path") {
+            launch.download_path = Some(path.into());
+        }
+        if let Some(path) = optional_string(params, "user_data_dir") {
+            launch.user_data_dir = Some(path.into());
+        }
         launch.width = optional_u64(params, "width").unwrap_or(1280) as u32;
         launch.height = optional_u64(params, "height").unwrap_or(900) as u32;
-        launch.no_sandbox = optional_bool(params, "no_sandbox").unwrap_or(false);
+        if let Some(no_sandbox) = optional_bool(params, "no_sandbox") {
+            launch.no_sandbox = no_sandbox;
+        }
         if let Some(load_mode) = optional_str(params, "load_mode") {
             launch.load_mode = LoadMode::parse(load_mode)?;
         }

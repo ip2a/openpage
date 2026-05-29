@@ -31,6 +31,8 @@ Latest recheck on `2026-05-30`:
   - `openpage doctor --quick` passes
   - full `openpage doctor` passes, including the live headless launch smoke
   - `browser start --headless https://example.com -> title -> browser stop` also passes without editing repo defaults
+- runtime browser creation now uses the same launch-config chain as `doctor`, so browser-start behavior and doctor browser-path checks should agree unless an explicit CLI/request override is passed
+- on this machine, without `OPENPAGE_BROWSER_PATH`, `browser start --headless https://example.com` now fails with the same browser-path problem that `doctor` reports, which is the intended alignment
 
 Interpretation:
 

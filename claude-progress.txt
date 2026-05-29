@@ -1758,3 +1758,40 @@
 1. 做这个更小 slice 的路径聚焦提交
 2. 继续扫活跃文档面的残余误导项
 3. 继续找还能从竞品外壳层稳定借过来的点
+
+
+## 2026-05-30 — Session 33
+
+### Goal in focus
+- 继续消除 doctor 与 runtime 在 browser-path/config 解析上的“两套真相”
+
+### Work completed
+- 修改 `rust/src/cli/serve.rs`
+  - `webpage.create` 不再从 `LaunchOptions::default()` 起步
+  - 改为从 `LaunchOptions::from_ini(None)?` 起步
+  - daemon 请求参数只在实际传入时覆盖已有 config 值
+- 更新活跃文档：
+  - `README.md`
+  - `skills/openpage-test/references/install.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- 记录跟踪结论：
+  - doctor、env override、runtime create 链路现在更一致
+
+### Verification
+- 本轮主要依赖当前代码路径核对与前一轮的 runtime smoke 证据：
+- `OPENPAGE_BROWSER_PATH=... doctor --quick` passed
+- `OPENPAGE_BROWSER_PATH=... doctor` passed
+- `OPENPAGE_BROWSER_PATH=... browser start -> title -> browser stop` passed
+- 本轮又补了正反验证：
+  - 带 `OPENPAGE_BROWSER_PATH` 的 `browser start -> title -> stop` 继续通过
+  - 不带 `OPENPAGE_BROWSER_PATH` 的同一条 `browser start` 会像 `doctor` 一样因为 `browser_path=chrome` 失败
+- 这次改动把 `webpage.create` 的起点切到同一份 ini config，因此上述 runtime smoke 现在与 doctor 的 config truth 对齐得更彻底
+
+### Current conclusions
+- 当前 outer shell 里 browser-path/config 的“两套真相”又少了一层。
+- 这仍然没有触碰浏览器/CDP/元素交互内部实现。
+
+### Next steps
+1. 做这个 slice 的路径聚焦提交
+2. 继续扫活跃 CLI/docs/smoke 面的残余误导项
+3. 继续找能从竞品稳定借过来的外壳层设计
