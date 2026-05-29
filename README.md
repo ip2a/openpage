@@ -160,7 +160,7 @@ Long-lived agent control over the NDJSON TCP daemon:
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --session agent
 ```
 
-Named one-command-at-a-time browser control:
+Daemon-backed one-command-at-a-time browser control:
 
 ```bash
 OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start --session agent --headless
@@ -170,6 +170,36 @@ OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin open
 OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- title --session agent
 OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- js document.title --session agent
 OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser stop --session agent
+```
+
+Batch multiple commands in one invocation:
+
+```bash
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- batch \
+  "browser start https://example.com --headless" \
+  "title" \
+  "browser stop"
+
+printf '%s' '[
+  ["browser", "start", "https://example.com", "--headless", "--session", "agent2"],
+  ["title", "--session", "agent2"],
+  ["browser", "stop", "--session", "agent2"]
+]' | OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- batch
+```
+
+Diagnose the local CLI environment:
+
+```bash
+cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick
+cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor
+```
+
+Agent-friendly output shaping for large page payloads:
+
+```bash
+OPENPAGE_CONTENT_BOUNDARIES=1 \
+OPENPAGE_MAX_OUTPUT_CHARS=2000 \
+cargo run --manifest-path rust/Cargo.toml --bin openpage -- html --session agent
 ```
 
 ## Status

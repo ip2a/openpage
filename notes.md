@@ -308,3 +308,42 @@
 - Conclusion:
   - code/help is ahead of README
   - next doc pass should sync README to the current CLI surface before marking verification complete
+
+## Borrowed non-CDP design audit update (2026-05-29, doctor pass)
+- OpenPage now has a minimal `doctor` command as a borrowed outer-shell design
+- Scope intentionally kept small:
+  - `doctor --quick`
+  - `doctor`
+  - JSON-only output, matching the current CLI's machine-oriented style
+  - no destructive `--fix` path yet
+- Checks implemented:
+  - Environment:
+    - `OPENPAGE_HOME`
+    - daemon sidecar directory
+  - Daemon:
+    - sidecar session discovery without cleanup
+    - per-session `alive/ready/port/pid/version` via existing `daemon_status()`
+  - Browser:
+    - config load through `LaunchOptions::from_ini(None)`
+    - optional live headless launch smoke through the existing `LaunchOptions` + `Browser::launch` path
+- Batch intentionally rejects nested `doctor`, just like nested `serve`
+- Real local findings from `doctor --quick` / `doctor`:
+  - `OPENPAGE_HOME` currently resolves to `/Users/yuuu/.openpage`
+  - daemon sidecars currently live in `/Users/yuuu/.openpage/daemon`
+  - currently observed live sessions:
+    - `cli-more-states-2`
+    - `cli-state-queries`
+    - `human-flow`
+  - launch config currently loads from:
+    - `/Volumes/data0/data4work/2026_5/openpage/rust/configs.ini`
+  - loaded browser config currently says:
+    - `browser_path=chrome`
+    - `headless=false`
+    - `auto_port=false`
+  - full launch smoke currently fails with:
+    - `browser launch failed: No such file or directory (os error 2)`
+  - this is now surfaced more explicitly as:
+    - `Headless browser launch failed with browser_path=chrome: ...`
+- Interpretation:
+  - the CLI/daemon path is healthy
+  - the current local browser-launch issue is environmental/configurational, not a protocol-regression signal

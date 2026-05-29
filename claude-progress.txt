@@ -364,3 +364,80 @@
 1. 做 `doctor` 最小版，只读检查即可
 2. 再审一轮 README / skills / CLI 帮助和实现是否一致
 3. 评估是否能做一个干净的 git checkpoint
+
+## 2026-05-29 — Session 6
+
+### Goal in focus
+- 继续落地竞品的非-CDP 外层设计
+- 本轮聚焦 `doctor` 最小版，同时补 README 与当前 CLI surface 的一致性
+
+### Work completed
+- 审计当前浏览器启动真相源，确认 `doctor` 不会引入外部实现：
+  - `LaunchOptions`
+  - `Browser::launch`
+  - `Browser::close`
+  - `daemon_status()`
+- 新增 `rust/src/cli/doctor.rs`
+  - `doctor --quick`
+  - `doctor`
+  - JSON-only 输出
+  - checks:
+    - Environment
+    - Daemon
+    - Browser config
+    - Browser live launch smoke（`--quick` 时跳过）
+- 改造 `rust/src/cli/args.rs`
+  - 新增 `Command::Doctor(DoctorArgs)`
+  - 新增 `DoctorArgs { --quick }`
+- 改造 `rust/src/cli/mod.rs`
+  - 顶层分发 `doctor::run(args)`，返回显式 exit code
+- 改造 `rust/src/cli/oneshot.rs`
+  - `run_single()` 明确把 `Command::Doctor(_)` 标为 unreachable
+  - batch 显式拒绝嵌套 `doctor`
+- 新增解析测试：
+  - `parses_doctor`
+  - `parses_doctor_quick`
+- 同步 README：
+  - 增加 `batch` 使用示例
+  - 增加 `doctor` 使用示例
+  - 增加 `OPENPAGE_CONTENT_BOUNDARIES` / `OPENPAGE_MAX_OUTPUT_CHARS` 示例
+
+### Verification
+- `cargo check --manifest-path rust/Cargo.toml`
+- `cargo test --manifest-path rust/Cargo.toml parses_doctor -- --nocapture`
+- 旧直连路径 grep 仍为空：
+  - `rg -n "open_page\\(|load_session\\(|Browser::connect\\(|do_start_browser\\(" rust/src/cli`
+- 真实 CLI smoke：
+  - `openpage doctor --quick`
+  - `openpage doctor`
+
+### Current local findings
+- `OPENPAGE_HOME` 当前解析到：
+  - `/Users/yuuu/.openpage`
+- daemon sidecar 目录：
+  - `/Users/yuuu/.openpage/daemon`
+- 当前 live sessions：
+  - `cli-more-states-2`
+  - `cli-state-queries`
+  - `human-flow`
+- 当前 launch config 来源：
+  - `/Volumes/data0/data4work/2026_5/openpage/rust/configs.ini`
+- 当前 loaded browser config：
+  - `browser_path=chrome`
+  - `headless=false`
+  - `auto_port=false`
+- 当前 full doctor 的关键失败点：
+  - `Headless browser launch failed with browser_path=chrome: browser launch failed: No such file or directory (os error 2)`
+
+### Current conclusions
+- `doctor` 已作为第三个明确的非-CDP 借鉴项落地：
+  - output 治理
+  - batch
+  - doctor
+- 当前本地环境中，CLI/daemon 协议路径是健康的。
+- 当前本地浏览器启动问题更像是环境/配置问题，而不是协议路径回退。
+
+### Next steps
+1. 继续做 README / skills / 帮助 / 文档一致性补齐
+2. 继续评估 daemon 基础设施还要不要补更完整的 inventory / cleanup / maybe idle timeout 暴露
+3. 做新的 checkpoint commit

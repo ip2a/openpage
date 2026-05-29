@@ -109,6 +109,7 @@ fn run_single(command: Command) -> OpenPageResult<()> {
         Command::Cookies(command) => run_cookies(command),
         Command::Tab(command) => run_tab(command),
         Command::Frame(command) => run_frame(command),
+        Command::Doctor(_) => unreachable!("doctor is handled by cli::doctor"),
         Command::Batch(_) => unreachable!("batch is handled by oneshot::run"),
         Command::Serve(_) => unreachable!("serve is handled by cli::serve"),
     }
@@ -775,6 +776,9 @@ fn parse_batch_command(command_args: &[String]) -> OpenPageResult<Command> {
     })?;
 
     match cli.command {
+        Command::Doctor(_) => Err(OpenPageError::UnsupportedOperation(
+            "batch cannot execute `doctor`; run `openpage doctor` separately".to_string(),
+        )),
         Command::Batch(_) => Err(OpenPageError::UnsupportedOperation(
             "batch cannot execute nested batch commands".to_string(),
         )),
@@ -1720,6 +1724,16 @@ mod tests {
     #[test]
     fn parses_batch_without_commands() {
         Cli::try_parse_from(["openpage", "batch", "--bail"]).unwrap();
+    }
+
+    #[test]
+    fn parses_doctor() {
+        Cli::try_parse_from(["openpage", "doctor"]).unwrap();
+    }
+
+    #[test]
+    fn parses_doctor_quick() {
+        Cli::try_parse_from(["openpage", "doctor", "--quick"]).unwrap();
     }
 
     #[test]

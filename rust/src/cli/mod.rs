@@ -2,6 +2,7 @@ pub mod args;
 pub mod connection;
 pub mod protocol;
 
+mod doctor;
 mod oneshot;
 mod serve;
 
@@ -42,6 +43,20 @@ where
     match cli.command {
         Command::Serve(args) => match serve::run(args) {
             Ok(()) => Ok(0),
+            Err(err) => {
+                println!(
+                    "{}",
+                    protocol::format_output_json(&protocol::simple_error(
+                        "openpage",
+                        err.to_string()
+                    ))
+                    .map_err(|err| OpenPageError::Serialization(err.to_string()))?
+                );
+                Ok(1)
+            }
+        },
+        Command::Doctor(args) => match doctor::run(args) {
+            Ok(code) => Ok(code),
             Err(err) => {
                 println!(
                     "{}",

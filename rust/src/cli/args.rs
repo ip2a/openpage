@@ -170,6 +170,8 @@ pub enum Command {
     /// Manage frames
     #[command(subcommand)]
     Frame(FrameCommand),
+    /// Diagnose the local OpenPage CLI environment
+    Doctor(DoctorArgs),
     /// Execute multiple commands in one invocation
     Batch(BatchArgs),
     /// Start the long-lived NDJSON daemon
@@ -689,4 +691,11 @@ pub struct BatchArgs {
     pub bail: bool,
     /// Quoted commands to execute. If omitted, reads JSON from stdin as an array of argv arrays.
     pub commands: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct DoctorArgs {
+    /// Skip the live browser launch smoke test
+    #[arg(long)]
+    pub quick: bool,
 }
