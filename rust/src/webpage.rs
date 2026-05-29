@@ -1787,6 +1787,15 @@ impl WebElement {
         }
     }
 
+    pub fn submit(&self) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(element) => element.submit(),
+            Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
+                "submit() is only available in driver mode".to_string(),
+            )),
+        }
+    }
+
     pub fn clear_with_mode(&self, by_js: bool) -> OpenPageResult<()> {
         match self {
             Self::Browser(element) => element.clear_with_mode(by_js),
@@ -3197,6 +3206,15 @@ impl WebPage {
         self.driver.save_screenshot(path, full_page)
     }
 
+    pub fn save_pdf(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "save_pdf() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.save_pdf(path)
+    }
+
     pub fn screenshot_bytes(
         &self,
         full_page: bool,
@@ -3269,6 +3287,96 @@ impl WebPage {
             ));
         }
         self.driver.forward(steps)
+    }
+
+    pub fn scroll_to_top(&self) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "scroll_to_top() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.scroll_to_top()
+    }
+
+    pub fn scroll_to_bottom(&self) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "scroll_to_bottom() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.scroll_to_bottom()
+    }
+
+    pub fn scroll_to_half(&self) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "scroll_to_half() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.scroll_to_half()
+    }
+
+    pub fn scroll_to_rightmost(&self) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "scroll_to_rightmost() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.scroll_to_rightmost()
+    }
+
+    pub fn scroll_to_leftmost(&self) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "scroll_to_leftmost() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.scroll_to_leftmost()
+    }
+
+    pub fn scroll_to_location(&self, x: f64, y: f64) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "scroll_to_location() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.scroll_to_location(x, y)
+    }
+
+    pub fn scroll_up(&self, pixels: f64) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "scroll_up() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.scroll_up(pixels)
+    }
+
+    pub fn scroll_down(&self, pixels: f64) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "scroll_down() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.scroll_down(pixels)
+    }
+
+    pub fn scroll_left(&self, pixels: f64) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "scroll_left() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.scroll_left(pixels)
+    }
+
+    pub fn scroll_right(&self, pixels: f64) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "scroll_right() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.scroll_right(pixels)
     }
 
     pub fn raw_data(&self) -> OpenPageResult<Vec<u8>> {
@@ -3416,6 +3524,10 @@ impl WebPage {
         timeout_ms: u64,
     ) -> OpenPageResult<Option<String>> {
         self.driver.handle_alert(accept, prompt_text, timeout_ms)
+    }
+
+    pub fn alert_text(&self) -> OpenPageResult<Option<String>> {
+        self.driver.alert_text()
     }
 
     pub fn set_next_alert_action(
@@ -3979,6 +4091,15 @@ impl WebPage {
             ));
         }
         self.driver.run_js(expression)
+    }
+
+    pub fn stop_loading(&self) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "stop_loading() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.stop_loading()
     }
 
     pub fn execute_cdp<T>(&self, command: T) -> OpenPageResult<T::Response>

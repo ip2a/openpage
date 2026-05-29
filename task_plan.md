@@ -1,91 +1,53 @@
-# Task Plan: openpage Rust Core + Python Thin API
+# Task Plan: OpenPage CLI 唯一 TCP 协议迁移与竞品设计借鉴
 
 ## Goal
-Build a runnable `openpage` project with `python/` and `rust/` directories, where the browser automation core is implemented in Rust and Python primarily exposes thin API wrappers over the Rust implementation.
-
-## Deliverables
-- [x] Root has `python/` and `rust/`
-- [x] Rust crate builds a Python extension locally
-- [x] Python package imports and uses the local Rust artifact
-- [x] Core browser automation flow works end-to-end against Chromium CDP
-- [x] Python API is usable and intentionally aligned with Rust API
-- [x] Tests/examples pass locally
-- [x] Docs explain architecture, local build, and usage
+把 OpenPage 当前 CLI 收敛到 **唯一稳定的 TCP daemon 协议路径**，删除或停用旧的废弃通信方式；保留 OpenPage 自己的元素定位、交互逻辑和 CDP 封装；同时尽量吸收 `agent-browser` 中对 OpenPage 友好的 **非-CDP 设计**（daemon 基础设施、sidecar 元数据、重试、优雅退出、AI 优先快照/输出等）。
 
 ## Phases
-- [x] Phase 1: Plan, repo setup, and architecture boundary
-- [x] Phase 2: Scaffold Rust core, Python package, and local build flow
-- [x] Phase 3: Implement browser core in Rust
-- [x] Phase 4: Expose Python thin wrappers and compatibility-oriented API
-- [x] Phase 5: Add tests, examples, verification scripts, and docs
-- [ ] Phase 6: Audit against user requirements and finalize
+- [x] Phase 1: 审计当前 OpenPage CLI / daemon / protocol / session 现状
+- [x] Phase 2: 建立长期任务跟踪文件与迁移清单
+- [x] Phase 3: 统一协议设计，确定唯一 TCP daemon 路径与待删除旧路径
+- [ ] Phase 4: 引入 daemon 基础设施（connection、sidecar、重试、优雅退出）
+- [ ] Phase 5: 将 CLI 命令逐步收敛到唯一协议路径
+- [ ] Phase 6: 引入可借鉴的非-CDP 设计（AI 快照/输出等）
+- [ ] Phase 7: 清理文档、删除废弃入口、完成验证与 git 整理
 
 ## Key Questions
-1. What is the smallest complete core feature set that makes `openpage` genuinely usable?
-2. Which parts should live only in Rust versus thin Python compatibility sugar?
-3. Which Rust CDP ecosystem pieces are stable enough to depend on directly?
+1. 当前本地代码里，真正同时存在的通信方式有哪些？
+2. 哪些入口是“主路径”，哪些已经是废弃或临时路径？
+3. 如果统一到 TCP，现有 `oneshot.rs`、`serve.rs`、`protocol.rs` 分别要承担什么职责？
+4. 哪些 `agent-browser` 设计可以直接借，而不会污染 OpenPage 现有 CDP/元素交互实现？
 
 ## Decisions Made
-- Use a persistent planning file workflow because this is a long, multi-stage build.
-- Keep the target shape as `Rust core owns execution + Python owns import surface and selected compatibility wrappers`.
-- Ship a browser-first first release: `Browser / ChromiumOptions / ChromiumPage / Page / Element`.
-- Use `chromiumoxide` as the current Rust Chromium/CDP backbone and expose it through PyO3.
-- Expand to `SessionPage` first, then move `WebPage` orchestration into Rust after the browser core is already green.
-- Keep `WebPage` implemented as orchestration over Rust browser/session primitives instead of inventing a separate third transport.
-- Make `pyo3` optional so the same crate can be used as a direct Rust library and as the Python extension backend.
-- Treat snapshot querying as a Rust-core capability and keep Python `s_ele / s_eles` as wrappers over Rust results.
-- Prioritize the snapshot DOM core next: strengthen `SessionElement` traversal before starting new browser-only subsystems like listener/download.
-- Snapshot traversal MVP is now in Rust: root lookup plus `parent / children / prev / next` and node metadata are exposed through the same Python thin wrappers.
-- Snapshot traversal family is now broader in Rust: `child / children / parent / prev / next / before / after / prevs / nexts / befores / afters` all execute in the Rust core and Python forwards to them.
-- Snapshot metadata and shared response metadata have started moving down too: `tag / inner_html / raw_text / attrs / user_agent / WebPage.status_code` now come from the Rust core.
-- `cookies()` is now part of that same shared-metadata move: browser, session, and `WebPage` expose Rust-owned cookie data and Python only adapts the result shape.
-- Session response metadata has moved further down as well: `raw_data` and `encoding` now come from the Rust core and Python only forwards them.
-- Browser download-path configuration now comes from Rust too: launch options and runtime setters call CDP `Browser.setDownloadBehavior`, Python only forwards the path, and download completion waiting is handled in Rust instead of Python-side polling loops.
-- Browser-side listener coverage now has a Rust-owned first pass too: page-scoped request/response/failure packet capture plus `start / wait / clear / stop` live in the Rust core, and Python only exposes thin compatibility wrappers around those objects.
-- Listener coverage has now moved one layer deeper as well: matched browser packets now capture response bodies in Rust before Python sees them.
-- Listener extra info is now part of that same Rust-owned path too: request/response extra headers are merged in Rust, response extra metadata is exposed through PyO3, and Python only wraps those objects.
-- Browser-backed wait/state helpers have started moving down too: page title/url/load checks, locator presence waits, and element state polling now execute in Rust, while Python only exposes `wait` and `states` objects.
-- Browser-level wait/state coverage has moved further down as well: new-tab waiting, download begin/done waiting, and browser/page alive/headless checks now execute in Rust and Python only forwards them.
-- Browser download handling has moved further down too: a Rust-owned download tracker now consumes CDP browser download events, exposes mission state, and keeps Python as a thin wrapper over mission inspection and waiting.
-- `WebPage.wait` and `WebPage.states` properties are now implemented in Rust and exposed through Python thin wrappers, covering driver/session mode uniformly for alive/loading/headless/ready_state checks and new-tab/download-begin/downloads-done/url-change/title-change/load-start/doc-loaded/element-loaded waits.
+- 以 **TCP daemon** 作为唯一协议方向，不再把 stdio 当成长期主路径。
+- 不引入 `agent-browser` 的动作执行层、CDP 封装、元素定位实现。
+- 优先借鉴外围基础设施：`connection.rs`、daemon sidecar、请求重试、优雅退出、AI 友好的输出/快照形态。
+- 在迁移完成前，先做“现状审计 + 文件化追踪”，避免一边实现一边失去全局状态。
+- 第一批代码先补 daemon 基础设施，不先碰 OpenPage 自己的 CDP/元素/交互内部逻辑。
+
+## Evidence Collected
+- `rust/src/cli/args.rs` 的 `ServeArgs` 已移除 `stdio`
+- `rust/src/cli/serve.rs` 已只保留 TCP daemon 路径
+- `README.md` 与 `skills/openpage-test/*` 已改为 TCP daemon 表述
+- `rust/src/cli/oneshot.rs` 大量命令仍直接走 `load_session()` / `open_page()` / `Browser::connect()`
+- `rust/src/cli/protocol.rs` 已经具备较清晰的 NDJSON request/response 结构
+
+## Current Audit Summary
+- **活跃公开协议入口已收敛到 TCP daemon**：stdio 已从代码和活跃文档中移除。
+- **TCP 还不是唯一执行真相源**：仍有未迁移的 `oneshot.rs` 命令直接连接浏览器。
+- **现有协议结构可保留**：`protocol.rs` 的 `Request/Response` 边界清晰，不需要照搬竞品的 `action` 风格。
+- **最缺的是 connection 层**：当前缺少 daemon 发现、sidecar、自动拉起、版本校验、请求重试。
+- **第一批基础设施已接入**：新增 `rust/src/cli/connection.rs`，并让 TCP `serve` 写入 `.port/.pid/.version` sidecar。
+- **第一批命令已迁移**：`browser start/stop/status`、`goto`、`url`、`title`、`html`、`snapshot`、`screenshot`、`click`、`fill`、`focus`、`clear`、`submit`、`check`、`uncheck`、`text`、`attr`、`is-*`、`find/find_all/count`、`wait-visible/hidden/enabled/disabled/deleted/clickable` 已走 daemon 路径。
+- **本轮又迁移一批 page/element/page-state 命令**：`scroll`、`back`、`forward`、`reload`、`stop-loading`、`js`、`download`、`intercept start/stop/status`、`alert accept/dismiss/text`、`hover`、`press`、`select`、`upload`、`drag`、`drag-to`、`drag-to-point`、`active-element`、`wait-for-url`、`wait-for-title`、`wait-for-function`、`wait-for-text`、`pdf`、`storage get/set`、`cookies get/set/delete/clear` 已走 daemon 路径。
+- **connection 层已补强**：`ensure_daemon()` 现在会校验 `.version`，在版本不匹配时杀掉旧 daemon 并重启；daemon 启动 stderr 也会落到 `OPENPAGE_HOME/daemon/<session>.log`，启动失败时直接回传日志路径或内容。
+- **AI-first ref 链路已打通**：`snapshot -> @e1 -> click` 已通过 daemon 实测通过。
+- **剩余旧直连路径已缩小**：当前主要还剩 `drag-in`、`wait`（通用条件版）、`click-to-download`、`click-to-upload`、`click-for-new-tab`、`tab *`、`frame *` 以及支撑它们的旧 session/browser 直连辅助函数。
 
 ## Errors Encountered
-- `uvx` was not on the reduced PATH inside scripted commands; resolved by using `uv tool run maturin`.
-- Direct `./scripts/*.sh` execution is unreliable on this mounted path; verified `bash scripts/*.sh` instead.
-- `TargetId` requires `TargetId::new(StringLike)` and `as_ref()` instead of direct `From<&str>` / `to_string()`.
-- Browser tab count is not guaranteed to start at `1`; tests now assert capability rather than a fragile initial state.
-- `reqwest 0.13.3` uses the `rustls` feature name instead of `rustls-tls`.
-- `SessionElement` cannot safely return references into a temporary parsed DOM; session lookups now resolve values within each method call.
-- PyO3 methods were holding the interpreter lock during blocking Rust work; critical browser/session calls now use `py.detach(...)`.
-- Parallel browser launches can fight over Chromium's default temp profile lock; verification now treats browser examples/tests as serial checks.
-- Public `httpbin` endpoints can occasionally return a transient non-success status; verification now retries those requests in tests/examples instead of treating one external blip as a core regression.
-- `run_checks.sh` originally trusted whatever Rust extension was already installed in `python/.venv`; it now rebuilds and reinstalls the local extension first so Python verification cannot pass against stale artifacts.
-- The first listener implementation hit a borrow-checker conflict when draining timed-out packets; resolved by capturing the queue length before the mutable drain call.
-- The first download-tracker implementation needed to keep event-driven state while preserving the existing `wait_for_download()` API; resolved by making CDP events primary and filesystem checks a compatibility fallback when Chrome does not report a final path.
-
-## Completion Audit
-- Required root layout:
-  - `python/` and `rust/` exist and are the two user-facing code roots.
-- Rust-core plus Python-thin-wrapper shape:
-  - Rust owns browser/CDP/session/snapshot/`WebPage` execution.
-  - Python imports the local Rust artifact and mostly forwards to it.
-- Local build and link path:
-  - `rust/` builds as pure Rust and as an optional `python-module`.
-  - `python/` imports `openpage_rs` locally through the editable development flow.
-- Concrete verified behavior:
-  - browser flow works end to end
-  - session flow works end to end
-  - `WebPage` orchestration lives in Rust
-  - snapshot traversal and selected metadata live in Rust
-  - cookie sync plus `cookies()` / `raw_data` / `encoding` exposure now live in Rust
-  - browser-backed browser/page/element state checks and first-pass wait helpers now live in Rust
-  - page-scoped network listener now lives in Rust, captures response bodies and response extra info, and is reachable from both `ChromiumPage` and driver-mode `WebPage`
-  - browser download-path configuration, event-driven download missions, download waiting, and local file download now live in Rust
-- Still missing before the goal can be considered complete:
-  - page-level element-state waits (e.g. `wait.ele_displayed/hidden/enabled/clickable`) via locator instead of element handle
-  - listener interception-style controls (request/response modification, blocking)
-  - richer download-manager policies (rename/skip/overwrite coordination, per-tab controls)
-  - a stronger completion pass against the remaining compatibility surface
+- 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
+- `daemon.shutdown` 初始只修改了 runtime 状态，没有真正退出 TCP accept 循环；现已修正并验证 sidecar 会随优雅退出清理。
+- `back/forward` 在第一版 RPC 包装里存在导航完成前就读取 URL 的竞态；现已通过在包装层补 `wait.doc_loaded` 修正并重新验证。
 
 ## Status
-**Currently in Phase 6** - `WebPage.wait/states` parity is now green and committed. The remaining gaps are page-level element-state waits, listener interception controls, richer download policies, and the final compatibility audit. Next focus: add page-level element-state waits (`ele_displayed`, `ele_hidden`, `ele_enabled`, `ele_deleted`, `ele_clickable`) to `Page`, `WebPage`, and Python wrappers so users can wait by locator without first fetching an element handle.
+**Currently in Phase 5** - stdio 已从活跃代码和活跃文档移除；connection/serve 已补强 version restart 与启动日志；大部分 page/element/storage/cookies/alert/intercept 命令已经过 daemon 实测。下一步重点迁移仍依赖旧 session/browser 直连状态的 `drag-in`、`click-to-*`、`tab`、`frame` 与通用 `wait`。

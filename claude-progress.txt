@@ -1,0 +1,172 @@
+# Claude Progress Log
+
+## 2026-05-29 — Session 1
+
+### Goal in focus
+- 收敛 OpenPage CLI 到唯一 TCP daemon 协议路径
+- 审计当前本地现状
+- 识别能从 `agent-browser` 借鉴的非-CDP 设计
+
+### Work completed
+- 读取并采用 `karpathy-guidelines`、`long-running-agent`、`planning-with-files`
+- 审计当前 git 状态、近期提交、现有 `task_plan.md` / `notes.md`
+- 审计当前 CLI 结构：
+  - `rust/src/cli/args.rs`
+  - `rust/src/cli/mod.rs`
+  - `rust/src/cli/protocol.rs`
+  - `rust/src/cli/serve.rs`
+  - `rust/src/cli/oneshot.rs`
+- 审计 README 与相关文档中对协议入口的描述
+- 确认当前实际存在三套并行路径：
+  1. `serve --stdio`
+  2. `serve --port`
+  3. `oneshot.rs` 直连浏览器 / session 文件
+- 运行 `cargo check --manifest-path rust/Cargo.toml`，当前工作树可编译
+- 新建本轮长期任务文件：
+  - `task_plan.md`
+  - `feature_list.json`
+  - `协议迁移审计-v1.md`
+- 新增 `rust/src/cli/connection.rs`
+  - `OPENPAGE_HOME` 解析
+  - daemon sidecar 路径管理
+  - `.port/.pid/.version` 写入
+  - TCP 请求发送与重试骨架
+- 改造 `rust/src/cli/serve.rs`
+  - TCP serve 启动后写 sidecar
+  - 输出带 `session` 的监听信息
+  - 修正 `daemon.shutdown`，使其真正退出监听循环并触发 sidecar 清理
+  - 删除 stdio daemon 路径，`serve` 只保留 TCP
+  - 新增 `webpage.snapshot`
+  - 新增 `element.focus / submit / check / uncheck`
+  - 新增 `@eN` -> `[data-op-ref="eN"]` locator 归一化
+- 改造 `rust/src/cli/protocol.rs`
+  - 让 `Request/Response` 都支持序列化/反序列化，便于后续 daemon client 复用
+- 改造 `rust/src/cli/oneshot.rs`
+  - 第一批命令真实走 `connection.rs` + TCP daemon：
+    - `browser start/stop/status`
+    - `goto`, `url`, `title`, `html`
+    - `snapshot`, `screenshot`
+    - `click`, `fill`, `focus`, `clear`, `submit`, `check`, `uncheck`, `text`, `attr`
+    - `is-visible/is-enabled/is-checked/is-selected/is-alive/is-in-viewport/is-whole-in-viewport/is-covered/is-clickable`
+    - `find`, `find-all`, `count`
+    - `wait-visible/wait-hidden/wait-enabled/wait-disabled/wait-deleted/wait-clickable`
+- 更新活跃文档与测试技能：
+  - `README.md`
+  - `skills/openpage-test/SKILL.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - `skills/openpage-test/scripts/serve_baidu_smoke.sh`
+- 验证：
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - 手工启动 `serve --port 0 --session audit-smoke-2`
+  - 观察 `.port/.pid/.version` 落盘
+  - 通过 TCP 发送 `daemon.shutdown`
+  - 确认进程退出且 sidecar 被清理
+  - `browser start -> title -> url -> snapshot -> browser stop` through daemon path
+  - `snapshot -> click @e1 -> url` through daemon path on a data URL page
+  - `find @e1 -> count button -> is-clickable @e1 -> wait-visible @e1` through daemon path
+  - `bash skills/openpage-test/scripts/serve_baidu_smoke.sh`
+
+### Current conclusions
+- 当前 OpenPage 的“唯一协议”目标尚未实现。
+- 真正缺的是一个 `connection` 层，而不是再加新的动作逻辑。
+- 竞品最适合借的是 daemon/TCP 基础设施，不是它的 CDP/动作实现。
+- 当前 TCP daemon 已经成为唯一公开协议路径，但 `oneshot.rs` 仍然还有未迁移的直连命令。
+
+### Next steps
+1. 继续把剩余 `oneshot.rs` 直连命令迁到 TCP daemon
+2. 迁移剩余导航、滚动、窗口、标签页、下载、alert、storage/cookies、frame 等未收敛命令
+3. 继续扩展 AI-first snapshot/output/ref 设计
+
+## 2026-05-29 — Session 2
+
+### Goal in focus
+- 在不引入竞品 CDP / actions / element 内核实现的前提下，继续把 OpenPage CLI 收口到唯一 TCP daemon 路径
+- 优先迁移已有底层能力、且不需要重新设计浏览器内核抽象的命令
+
+### Work completed
+- 重新审计当前 `oneshot.rs` 剩余直连路径，并按命令类型拆分：
+  - 可直接 daemon 化：page/element/storage/cookies/alert/intercept 一批
+  - 暂未直接收口：`drag-in`、`click-to-*`、`tab`、`frame`、通用 `wait`
+- 补强 `rust/src/cli/connection.rs`
+  - `ensure_daemon()` 新增 `.version` 校验
+  - 版本不匹配时清理旧 daemon 并重新拉起
+  - daemon 启动 stderr 落盘到 `OPENPAGE_HOME/daemon/<session>.log`
+  - 启动失败时回传日志内容/日志路径
+  - 扩大 transient error 识别集合
+- 扩展 `rust/src/webpage.rs`
+  - 新增 `WebPage::stop_loading()`
+  - 新增 page-level scroll wrapper：`scroll_up/down/left/right`、`scroll_to_top/bottom/half/rightmost/leftmost/location`
+- 扩展 `rust/src/cli/serve.rs`
+  - 新增 `webpage.stop_loading`
+  - 新增 `page.scroll`
+  - 新增 `page.download_url`
+  - 新增 `page.key_down` / `page.key_up` / `page.type_keys` / `page.input` / `page.type` / `page.type_with_interval`
+  - 新增 cookie ops：`cookies.set/delete/clear`
+  - 新增 storage getter ops：`webpage.local_storage` / `webpage.session_storage`
+  - 新增 element ops：`click_right` / `click_middle` / `click_multi` / `hover` / `press_key` / `select` / `upload` / `scroll_into_view` / `drag` / `drag_to` / `drag_to_point`
+  - 新增 `intercept.start/stop/status`
+- 迁移 `rust/src/cli/oneshot.rs` 到 daemon 的命令：
+  - `scroll`
+  - `back` / `forward` / `reload` / `stop-loading`
+  - `right-click` / `middle-click` / `double-click`
+  - `key-down` / `key-up` / `shortcut` / `input` / `type` / `type-with-interval`
+  - `js`
+  - `download`
+  - `intercept start/stop/status`
+  - `alert accept/dismiss/text`
+  - `scroll-into-view`
+  - `hover`
+  - `press`
+  - `select`
+  - `upload`
+  - `drag` / `drag-to` / `drag-to-point`
+  - `active-element`
+  - `wait-for-url` / `wait-for-title` / `wait-for-function` / `wait-for-text`
+  - `pdf`
+  - `storage get/set`
+  - `cookies get/set/delete/clear`
+- 清理了本轮迁移产生的 dead code：
+  - 删除 `context_run_js`
+  - 删除 `context_active_element`
+- 修复竞态：
+  - `back/forward` 第一版 RPC 包装会在导航完成前读 URL
+  - 已在 wrapper 层补 `wait.doc_loaded`，重新验证通过
+
+### Verification
+- `cargo check --manifest-path rust/Cargo.toml`
+- 真实 CLI smoke（`OPENPAGE_HOME=/tmp/openpage-rpc-smoke-v2`）验证：
+  - `browser start`
+  - `scroll` + `js window.scrollY`
+  - `focus` + `type` + `js input.value`
+  - `select` + `js select.value`
+  - `click`
+  - `alert text/accept`
+  - `back` / `forward`
+  - `goto`
+  - `intercept start/status/stop`
+  - `pdf`
+  - `browser stop`
+  - `storage set/get`
+  - `cookies set/get/delete/clear`
+- 定向 smoke（`OPENPAGE_HOME=/tmp/openpage-rpc-smoke-v3`）验证：
+  - `back` 输出 URL 修复
+  - `forward` 输出 URL 修复
+  - `stop-loading`
+  - `wait-for-url`
+
+### Current conclusions
+- TCP daemon 作为**唯一公开协议**已经稳定；当前问题只剩少量仍依赖旧 session/browser 直连状态的命令。
+- 这次迁移完全复用了 OpenPage 自己的 `WebPage` / `Browser` / `Page` / `Element` 能力，没有引入竞品的 CDP 或动作层实现。
+- 当前最难收口的不是普通 page/element 命令，而是带“浏览器状态切换语义”的命令：
+  - `tab *`
+  - `frame *`
+  - `click-for-new-tab`
+  - `click-to-download`
+  - `click-to-upload`
+  - `drag-in`
+  - 通用 `wait`
+
+### Next steps
+1. 设计 daemon 内部的 tab/frame 活跃上下文，替换旧 `SessionRecord.default_target_id/default_frame_target`
+2. 收口 `tab` / `frame` / `click-to-*` / `drag-in`
+3. 再补一层非-CDP 借鉴项：daemon inventory / output truncation / batch
