@@ -116,6 +116,16 @@
 - **这条 runtime/doctor 对齐已经在本机被正反两面验证过**：
   - 带 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 时，`browser start --headless https://example.com -> title -> browser stop` 通过
   - 不带 `OPENPAGE_BROWSER_PATH` 时，同一条 `browser start` 会像 `doctor` 一样因为 `browser_path=chrome` 在本机不可解析而失败
+- **2026-05-30 本机 truth 又刷新了一次**：当前工作树里的 `rust/configs.ini` 已不是此前的 `browser_path=chrome`，而是本地脏改后的 `browser_path=/tmp/dp-browser`；因此今天重新实测时：
+  - `browser list` 返回 6 个 healthy sessions、0 incomplete、0 cleaned
+  - `doctor --quick` 的唯一 fail 仍是 `browser.executable`，但失败对象已经变成 `/tmp/dp-browser`
+  - 带 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 时，`doctor --quick` 重新转为全 pass
+- **`webpage.create` 的 session 侧默认值也已收口到同一份 ini truth**：当前 `rust/src/cli/serve.rs` 不再用 `SessionOptions::default()` 硬编码出一套 session 默认值，而是改成 `SessionOptions::from_ini(None)` 起步，仅在请求显式提供 `timeout_secs` / `user_agent` 时覆盖。这样 runtime 的 launch/session 两侧都开始共用同一份配置真相。
+- **这轮 session-config 收口已经补了直接证据**：
+  - 新增 `serve.rs` 定向单测 2 个，验证 `session_options_from_request(...)` 会保留 ini 默认值，并在请求显式给出参数时正确覆盖
+  - `cargo check --manifest-path rust/Cargo.toml` 通过
+  - `browser start --session session-config-noenv --headless https://example.com` 现在会像 `doctor` 一样因为 `/tmp/dp-browser` 失败
+  - 带 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 的 `browser start --session session-config-seq --headless https://example.com -> title -> browser stop` 通过
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
@@ -142,6 +152,8 @@
 - 给 `doctor.rs` 新增清理测试时，第一次把 `remove_legacy_session_files()` 直接写成了裸调用；由于测试在子模块里，需要改成 `super::remove_legacy_session_files()`，修正后定向单测通过。
 - 给 `browser.rs` 新增 env override 测试时，第一次把常量写成了未导入名字；已改成 `super::OPENPAGE_BROWSER_PATH_ENV`，定向单测随后通过。
 - `serve.rs` 这轮为了让 runtime 和 `doctor` 对齐，改成了从 ini 配置起步；因此在本机不带 `OPENPAGE_BROWSER_PATH` 时，`browser start` 现在会和 `doctor` 一样受 `browser_path=chrome` 影响，这不是回归，而是刻意去掉两套不一致的 browser-path 真相。
+- 2026-05-30 这轮重新取证时又发现一个“旧结论过期”问题：当前工作树里的 `rust/configs.ini` 已被本地脏改成 `browser_path=/tmp/dp-browser`，所以先前跟踪文件里写死的 `browser_path=chrome` 已不再代表今天这台机器的真实失败对象；本轮已改为把新 truth 追加记录，而不是继续复用旧说法。
+- 一次并发 smoke 把 `title --session session-config-env` 和 `browser stop --session session-config-env` 同时跑了，导致 `title` 命中了 `unknown target`；后续顺序重跑 `browser start -> title -> browser stop` 已拿到有效通过证据。
 
 ## Status
-**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 本轮最新核验里：5 条废弃 CLI surface 拒绝测试都已通过；`protocol.rs` 的错误分类 helper 单测已通过；`doctor --quick --fix` 的 legacy-session 清理单测已通过；新的 `browser_path_env_override_reads_non_empty_value` 单测已通过；`batch` runtime 失败已实测返回 `error.kind="unsupported_operation"`；raw TCP daemon 对无效 target 的 runtime 失败已实测返回 `error.kind="browser_operation"`；`cargo check` 当前也已恢复通过；本机旧 `sessions/*.json` 残留已清掉；`OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 已经可以把本机 `doctor` 和真实 `browser start` 全部拉通；而 `webpage.create` 现在也开始从同一份 ini config 起步，因此 doctor 与 runtime 的 browser-path 真相进一步收敛。本轮继续保持不碰浏览器/CDP/元素真相源，只在 JSON error 外壳、doctor 修复入口、browser-path 外壳策略、runtime config 对齐和活跃 smoke/docs 面继续收紧当前真相。下一步继续沿活跃文档面误导项与其它 machine-friendly 外壳细节做收敛。
+**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 这轮最新核验里：活跃废弃 CLI surface 拒绝测试仍然有效；`serve.rs` 新增的 session-config 定向单测 2 个已通过；`cargo check` 继续通过；当前机器上 `browser list` 是 6 healthy / 0 incomplete / 0 cleaned；默认 `doctor --quick` 和默认 `browser start` 现在都会一致地卡在本地脏改后的 `browser_path=/tmp/dp-browser`；而 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 依旧能把 `doctor --quick` 与 `browser start -> title -> browser stop` 全部拉通。也就是说，runtime 的 launch/session 两侧现在都开始从同一份 ini 真相起步，而没有重新引入旧 one-shot / CDP / 元素交互分叉。下一步继续沿活跃文档面误导项、更多 machine-friendly 外壳细节，以及 path-focused git 提交做收敛。

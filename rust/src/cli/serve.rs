@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
 use std::rc::Rc;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -262,11 +263,7 @@ impl ServeRuntime {
             launch.download_file_exists = DownloadFileExistsMode::parse(mode)?;
         }
 
-        let session = SessionOptions {
-            timeout_secs: optional_u64(params, "timeout_secs").unwrap_or(10),
-            user_agent: optional_string(params, "user_agent"),
-            ..SessionOptions::default()
-        };
+        let session = session_options_from_request(params, None)?;
 
         let page = WebPage::new(mode, launch, session)?;
         self.webpages
@@ -1438,6 +1435,20 @@ fn optional_u64(params: &Value, key: &str) -> Option<u64> {
     params.get(key).and_then(Value::as_u64)
 }
 
+fn session_options_from_request(
+    params: &Value,
+    ini_path: Option<&Path>,
+) -> OpenPageResult<SessionOptions> {
+    let mut session = SessionOptions::from_ini(ini_path)?;
+    if let Some(timeout_secs) = optional_u64(params, "timeout_secs") {
+        session.set_timeout(timeout_secs);
+    }
+    if params.get("user_agent").is_some() {
+        session.set_user_agent(optional_string(params, "user_agent"));
+    }
+    Ok(session)
+}
+
 fn optional_f64(params: &Value, key: &str) -> Option<f64> {
     params.get(key).and_then(Value::as_f64)
 }
@@ -1690,6 +1701,9 @@ fn required_string_array(params: &Value, key: &str) -> OpenPageResult<Vec<String
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn format_snapshot_text_includes_title_origin_refs_and_attrs() {
@@ -1764,6 +1778,72 @@ mod tests {
         assert_eq!(payload["html"], "<main/>");
         assert_eq!(payload["origin"], "https://example.com/path");
         assert_eq!(payload["title"], "Example");
+    }
+
+    fn make_temp_dir(label: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "openpage-serve-{label}-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[test]
+    fn session_options_from_request_uses_ini_defaults_when_params_omit_fields() {
+        let dir = make_temp_dir("session-ini-defaults");
+        let ini_path = dir.join("session.ini");
+        let mut expected = SessionOptions::default();
+        expected
+            .set_timeout(21)
+            .set_user_agent(Some("OpenPage/ServeIni".to_string()))
+            .set_download_path("downloads")
+            .set_retry(Some(4), Some(250));
+        expected
+            .save(Some(ini_path.as_path()))
+            .expect("write session options ini");
+
+        let options = session_options_from_request(&json!({}), Some(ini_path.as_path()))
+            .expect("load session options from ini");
+
+        assert_eq!(options.timeout_secs, 21);
+        assert_eq!(options.user_agent.as_deref(), Some("OpenPage/ServeIni"));
+        assert_eq!(options.download_path, std::path::PathBuf::from("downloads"));
+        assert_eq!(options.retry_times, 4);
+        assert_eq!(options.retry_interval_millis, 250);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn session_options_from_request_overrides_explicit_params() {
+        let dir = make_temp_dir("session-request-overrides");
+        let ini_path = dir.join("session.ini");
+        let mut expected = SessionOptions::default();
+        expected
+            .set_timeout(21)
+            .set_user_agent(Some("OpenPage/ServeIni".to_string()));
+        expected
+            .save(Some(ini_path.as_path()))
+            .expect("write session options ini");
+
+        let options = session_options_from_request(
+            &json!({
+                "timeout_secs": 5,
+                "user_agent": "OpenPage/Request"
+            }),
+            Some(ini_path.as_path()),
+        )
+        .expect("override session options from request");
+
+        assert_eq!(options.timeout_secs, 5);
+        assert_eq!(options.user_agent.as_deref(), Some("OpenPage/Request"));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
 

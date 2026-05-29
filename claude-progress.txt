@@ -1795,3 +1795,72 @@
 1. 做这个 slice 的路径聚焦提交
 2. 继续扫活跃 CLI/docs/smoke 面的残余误导项
 3. 继续找能从竞品稳定借过来的外壳层设计
+
+
+## 2026-05-30 — Session 34
+
+### Goal in focus
+- 继续收紧唯一 TCP daemon 外壳层真相
+- 这次聚焦 `webpage.create` 的 session 配置链，不碰浏览器/CDP/元素交互内核
+
+### Work completed
+- 重新读取并遵守：
+  - `karpathy-guidelines`
+  - `long-running-agent`
+  - `planning-with-files`
+- 重新核实当前工作树与活跃本机状态：
+  - `git status --short`
+  - `browser list`
+  - `doctor --quick`
+  - 带 `OPENPAGE_BROWSER_PATH` 的 `doctor --quick`
+- 发现本机 truth 已经变化：
+  - 当前脏工作树里的 `rust/configs.ini` 不再是早前记录的 `browser_path=chrome`
+  - 现在实际是 `browser_path=/tmp/dp-browser`
+  - 因此这轮默认 `doctor --quick` 的唯一 fail 目标也同步变成了 `/tmp/dp-browser`
+- 修改 `rust/src/cli/serve.rs`
+  - 新增 `session_options_from_request(...)`
+  - `webpage.create` 不再从 `SessionOptions::default()` 起步
+  - 改为从 `SessionOptions::from_ini(None)?` 起步
+  - 仅在请求显式给出 `timeout_secs` / `user_agent` 时覆盖
+- 为这次外壳层改动补了定向单测：
+  - ini 默认值保留测试
+  - 显式请求参数覆盖测试
+- 更新长期跟踪文件：
+  - `task_plan.md`
+  - `notes.md`
+  - `claude-progress.txt`
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml session_options_from_request_ -- --nocapture`
+  - 2 个新测试通过
+- `cargo check --manifest-path rust/Cargo.toml`
+  - 通过
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - 返回 6 healthy / 0 incomplete / 0 cleaned
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - 唯一 fail：`browser.executable`
+  - 当前失败对象：`/tmp/dp-browser`
+- `OPENPAGE_BROWSER_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - 通过
+- runtime smoke：
+  - 不带 env override：
+    - `browser start --session session-config-noenv --headless https://example.com`
+    - 失败，`error.kind=\"browser_operation\"`
+  - 带 env override：
+    - `browser start --session session-config-seq --headless https://example.com`
+    - `title --session session-config-seq`
+    - `browser stop --session session-config-seq`
+    - 全部通过，title 返回 `Example Domain`
+
+### Current conclusions
+- 当前唯一 TCP daemon 路径没有回退到旧 one-shot / stdio / 直连 browser 路线。
+- `webpage.create` 现在 launch/session 两侧都开始从同一份 ini 真相起步，进一步减少 outer shell 的“两套真相”。
+- 这次改动仍然没有碰：
+  - `rust/src/browser.rs` 的内核语义
+  - `rust/src/page.rs` / `element.rs` 的元素交互真相
+  - 任何竞品的 CDP / native / element / interaction 实现
+
+### Next steps
+1. 做 path-focused git 提交，只带这轮 `serve.rs` + 跟踪文件
+2. 继续扫活跃 docs/help/smoke 面还有没有落后于当前 `/tmp/dp-browser` 本机 truth 的描述
+3. 继续找还能安全吸收的竞品外壳层设计

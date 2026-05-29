@@ -1357,3 +1357,46 @@
 - Interpretation:
   - this reduces one more source of “two truths” in the outer shell
   - it does not touch CDP, DOM, element lookup, or interaction internals
+
+
+## Local truth refresh (2026-05-30, session config alignment pass)
+- This pass continued the same outer-shell convergence work, but on the session side of `webpage.create`.
+- Motivation:
+  - runtime launch already started from `LaunchOptions::from_ini(None)`
+  - but runtime session creation still started from `SessionOptions::default()`
+  - that left launch config and session config using different truth chains inside the same daemon entrypoint
+- Current local machine truth rechecked during this pass:
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+    - returned 6 healthy sessions
+    - 0 incomplete
+    - 0 cleaned
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - failed only at `browser.executable`
+    - unlike earlier passes, the configured executable in the current dirty worktree is now `/tmp/dp-browser`
+  - `OPENPAGE_BROWSER_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - passed
+- Landed changes:
+  - `rust/src/cli/serve.rs`
+    - added `session_options_from_request(...)`
+    - `webpage.create` now starts session config from `SessionOptions::from_ini(None)?`
+    - request params only override `timeout_secs` / `user_agent` when explicitly present
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml session_options_from_request_ -- --nocapture`
+    - passed
+    - confirmed ini defaults are preserved when request params omit those fields
+    - confirmed explicit request params still override ini values
+  - `cargo check --manifest-path rust/Cargo.toml`
+    - passed
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start --session session-config-noenv --headless https://example.com`
+    - failed with `error.kind="browser_operation"`
+    - underlying cause remained unresolved configured executable
+  - `OPENPAGE_BROWSER_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start --session session-config-seq --headless https://example.com`
+    - passed
+  - same env override + `title --session session-config-seq`
+    - returned `Example Domain`
+  - same env override + `browser stop --session session-config-seq`
+    - passed
+- Interpretation:
+  - runtime now starts both launch options and session options from the same ini/config truth
+  - this is still strictly outer-shell work
+  - it does not borrow competitor CDP, snapshot internals, element lookup, or interaction logic
