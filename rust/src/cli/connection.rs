@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+use serde::Serialize;
+
 use crate::cli::protocol::{Request, Response};
 use crate::error::{OpenPageError, OpenPageResult};
 
@@ -43,6 +45,10 @@ pub(crate) fn pid_path(session: &str) -> OpenPageResult<PathBuf> {
 
 pub(crate) fn version_path(session: &str) -> OpenPageResult<PathBuf> {
     Ok(daemon_dir()?.join(format!("{session}.version")))
+}
+
+pub(crate) fn log_path(session: &str) -> OpenPageResult<PathBuf> {
+    Ok(daemon_dir()?.join(format!("{session}.log")))
 }
 
 pub(crate) fn write_tcp_sidecars(session: &str, port: u16) -> OpenPageResult<SidecarGuard> {
@@ -99,6 +105,55 @@ fn read_pid(session: &str) -> OpenPageResult<Option<u32>> {
     }
 }
 
+pub(crate) fn read_version(session: &str) -> OpenPageResult<Option<String>> {
+    let path = version_path(session)?;
+    match fs::read_to_string(&path) {
+        Ok(content) => {
+            let version = content.trim().to_string();
+            if version.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(version))
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(OpenPageError::Io(err.to_string())),
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct DaemonSessionInfo {
+    pub session: String,
+    pub port: Option<u16>,
+    pub pid: Option<u32>,
+    pub version: Option<String>,
+    pub alive: bool,
+    pub ready: bool,
+    pub log_path: String,
+}
+
+#[cfg(unix)]
+fn is_pid_alive(pid: u32) -> bool {
+    Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+fn is_pid_alive(pid: u32) -> bool {
+    Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {pid}")])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
 fn daemon_version_matches(session: &str) -> bool {
     let Ok(path) = version_path(session) else {
         return false;
@@ -145,6 +200,55 @@ pub(crate) fn daemon_ready(session: &str) -> bool {
     };
     let socket = SocketAddr::from(([127, 0, 0, 1], port));
     TcpStream::connect_timeout(&socket, Duration::from_millis(CONNECT_TIMEOUT_MS)).is_ok()
+}
+
+pub(crate) fn daemon_status(session: &str) -> OpenPageResult<DaemonSessionInfo> {
+    let port = read_port(session)?;
+    let pid = read_pid(session)?;
+    let version = read_version(session)?;
+    let ready = daemon_ready(session);
+    let pid_alive = pid.map(is_pid_alive).unwrap_or(false);
+    Ok(DaemonSessionInfo {
+        session: session.to_string(),
+        port,
+        pid,
+        version,
+        alive: ready || pid_alive,
+        ready,
+        log_path: log_path(session)?.display().to_string(),
+    })
+}
+
+pub(crate) fn list_daemons() -> OpenPageResult<Vec<DaemonSessionInfo>> {
+    let dir = daemon_dir()?;
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut sessions = std::collections::BTreeSet::new();
+    for entry in fs::read_dir(&dir)? {
+        let entry = entry?;
+        let file_name = entry.file_name();
+        let name = file_name.to_string_lossy();
+        for suffix in [".port", ".pid", ".version"] {
+            if let Some(session) = name.strip_suffix(suffix) {
+                if !session.is_empty() {
+                    sessions.insert(session.to_string());
+                }
+            }
+        }
+    }
+
+    let mut infos = Vec::new();
+    for session in sessions {
+        let info = daemon_status(&session)?;
+        if info.alive {
+            infos.push(info);
+        } else {
+            let _ = cleanup_sidecars(&session);
+        }
+    }
+    Ok(infos)
 }
 
 pub(crate) fn ensure_daemon(session: &str) -> OpenPageResult<DaemonStatus> {

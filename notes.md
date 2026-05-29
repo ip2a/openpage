@@ -227,3 +227,84 @@
 - Important nuance from smoke:
   - `click-for-new-tab` correctly switched active tab inside daemon state.
   - The first upload smoke failed only because the test stayed on the new tab; after explicit `tab switch 2`, upload/download/drag-in all passed.
+
+## Borrowed non-CDP design audit update (2026-05-29, output governance pass)
+- `rust/src/cli/protocol.rs` already contained a first pass of output governance helpers:
+  - `OPENPAGE_CONTENT_BOUNDARIES`
+  - `OPENPAGE_MAX_OUTPUT_CHARS`
+  - top-level filtering only for `result.html` / `result.text` / `result.value`
+- Before this pass, the helpers were effectively dead code because:
+  - `rust/src/cli/oneshot.rs::print_json()` still called raw `serde_json::to_string`
+  - `rust/src/cli/mod.rs` top-level error printing also bypassed the formatter
+- This pass wired both output exits to `format_output_json()`:
+  - normal JSON results now pass through the same filter path
+  - top-level CLI errors also pass through the same serializer, though they are not boundary-wrapped because they do not contain `result.*` payloads
+- Real smoke verification with `OPENPAGE_HOME=/tmp/openpage-output-governance-smoke`:
+  - `browser start data:text/html,... --session out1 --headless`
+  - `OPENPAGE_CONTENT_BOUNDARIES=1 OPENPAGE_MAX_OUTPUT_CHARS=40 openpage html --session out1`
+  - `OPENPAGE_CONTENT_BOUNDARIES=1 OPENPAGE_MAX_OUTPUT_CHARS=12 openpage text '#a' --session out1`
+  - `OPENPAGE_CONTENT_BOUNDARIES=1 OPENPAGE_MAX_OUTPUT_CHARS=12 openpage text '#missing' --session out1`
+  - `browser stop --session out1`
+- Observed behavior:
+  - `html` output now carries `_boundary` metadata and wrapped/truncated content
+  - `text` output now carries `_boundary` metadata and wrapped/truncated content
+  - error JSON remains valid and unwrapped, which is the intended behavior for payloads without `result.html/text/value`
+
+## Compile blocker found during output-governance verification
+- `cargo check --manifest-path rust/Cargo.toml` initially failed in `rust/src/page.rs`
+- Failure:
+  - `CaptureSnapshot` result was being mapped with `.map(|result| result.data)`
+  - current type shape only allowed borrowing there, so moving the `String` out failed
+- Minimal fix applied:
+  - `.map(|result| result.data.clone())`
+- This was not part of the protocol design work itself, but it was required to restore a verifiable compile state for the current worktree
+
+## Borrowed non-CDP design audit update (2026-05-29, batch pass)
+- `agent-browser`'s next most transferable outer-shell feature after output governance was `batch`
+- OpenPage's current clap-based CLI has no global `Flags` layer, which simplified one design decision:
+  - no need to preserve global JSON/verbosity/session semantics from the competitor
+  - batch can be implemented as a plain subcommand that reuses existing per-command clap parsing
+- Current OpenPage batch shape:
+  - new `Command::Batch(BatchArgs)` in `rust/src/cli/args.rs`
+  - `BatchArgs` fields:
+    - `--bail`
+    - `commands: Vec<String>` for argument mode
+  - when `commands` is empty, stdin is read as JSON `Vec<Vec<String>>`
+- Argument mode uses `shlex::split(...)` to mirror competitor-style quoted-command behavior
+- Batch intentionally refuses:
+  - nested `batch`
+  - nested `serve`
+- Reason:
+  - keeps the execution model simple
+  - prevents batch from spawning daemon listeners or recursively recursing through command groups
+- One small outer-shell refactor was required:
+  - `rust/src/cli/oneshot.rs::run(...)` now returns an explicit exit code
+  - this avoids printing per-command error JSON and then also printing an extra top-level aggregate error JSON
+- Real smoke verification:
+  - argument mode:
+    - `batch "browser start data:text/html,... --headless" "title" "browser stop"`
+  - stdin mode:
+    - `printf '[[...],[...],[...]]' | openpage batch`
+  - bail mode:
+    - `batch --bail "serve --port 0" "browser list"`
+- Observed behavior:
+  - argument mode ran 3 commands sequentially and returned the expected title
+  - stdin mode ran 3 commands sequentially and returned the expected title
+  - `--bail` stopped on the first unsupported command and returned exit code 1
+  - no old direct CLI browser execution path reappeared; the old-path grep remained empty
+
+## CLI help vs README audit (2026-05-29, post-batch)
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- --help` now shows:
+  - `batch`
+  - `browser`
+  - the full TCP daemon-backed command surface
+- README currently already mentions:
+  - `browser list`
+  - `browser status`
+- README does **not yet** mention:
+  - `batch`
+  - `OPENPAGE_CONTENT_BOUNDARIES`
+  - `OPENPAGE_MAX_OUTPUT_CHARS`
+- Conclusion:
+  - code/help is ahead of README
+  - next doc pass should sync README to the current CLI surface before marking verification complete

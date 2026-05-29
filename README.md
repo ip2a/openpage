@@ -12,6 +12,7 @@
 
 - Rust owns:
   - browser launch/connect lifecycle
+  - isolated temporary browser profiles for default launches
   - CDP-backed page and element operations
   - page-scoped network listener lifecycle, packet capture, and extra-info merging
   - browser download mission tracking and wait/cancel flow
@@ -21,6 +22,8 @@
   - locator parsing
   - cookie header transfer primitives plus `cookies()` exposure for browser/session sync
   - browser download-path configuration and download waiting through CDP-backed Rust logic
+  - page-scoped download path and file-conflict overrides finalized in Rust per originating tab/frame
+  - page-level network blocking through CDP `Network.setBlockedURLs`
   - screenshots, PDF, DOM querying, JS execution
 - Python owns:
   - compatibility-oriented wrappers
@@ -104,6 +107,26 @@ page.get("http://127.0.0.1:8000/")
 page.ele("#trigger").click()
 packet = listener.wait(timeout=5)
 print(packet.method, packet.url, packet.response.status)
+listener.wait_silent(timeout=5, targets_only=True)
+page.quit()
+```
+
+## Interception Usage
+
+```python
+from openpage import ChromiumPage
+
+page = ChromiumPage()
+page.get("http://127.0.0.1:8000/")
+page.intercept.start(targets="/api/data", method="GET")
+page.ele("#trigger").click()
+request = page.intercept.wait(timeout=5)
+request.fulfill(
+    response_code=201,
+    body="intercepted",
+    headers={"Content-Type": "text/plain; charset=utf-8"},
+)
+page.intercept.stop()
 page.quit()
 ```
 
@@ -119,6 +142,34 @@ path = page.wait_for_download("openpage.txt", timeout=10)
 mission = page.last_download()
 print(path, mission.state, mission.final_path)
 page.quit()
+```
+
+## Rust CLI
+
+The CLI is implemented inside the Rust crate as `openpage_rs::cli`; it is not a separate package.
+Parent CLIs can embed it with `openpage_rs::cli::run_from_args(args)`. This repository also ships a
+thin debug binary:
+
+```bash
+cargo run --manifest-path rust/Cargo.toml --bin openpage -- --help
+```
+
+Long-lived agent control over the NDJSON TCP daemon:
+
+```bash
+cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --session agent
+```
+
+Named one-command-at-a-time browser control:
+
+```bash
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start --session agent --headless
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser status --session agent
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- goto https://example.com --session agent
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- title --session agent
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- js document.title --session agent
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser stop --session agent
 ```
 
 ## Status
@@ -143,14 +194,23 @@ This first version is intentionally browser-first:
   - shared metadata `user_agent / status_code / cookies() / raw_data / encoding`
   - `post_json`
   - browser/page/element state checks plus first-pass wait helpers for browser-backed objects
+  - browser/page/WebPage alert state and handling with `states.has_alert`, `handle_alert()`, and `wait.alert_closed()`
   - browser/session mode switching
   - current-URL cookie sync between browser and session
-  - page-scoped network listener with `start / wait / clear / stop`, response body capture, and extra-info exposure when Chromium emits it
+  - page-scoped network listener with `start / set_targets / wait / steps / wait_silent / pause / resume / clear / stop`, response body capture, and extra-info exposure when Chromium emits it
+  - page/WebPage request interception with `intercept.start() / wait() / continue_request() / fail() / fulfill() / stop()`
   - browser download-path configuration plus event-driven download missions and `wait_for_download()`
-- Not yet implemented:
-  - fuller network listener parity such as interception-style controls
-  - fuller download-manager parity such as rename/skip policies and richer per-tab controls
-  - full setter/wait/state parity with the reference project
+  - browser-level download file-conflict handling with `rename / overwrite / skip`
+  - page/WebPage download overrides through `set.download_path() / set.download_file_exists() / set.download_file_name()`
+  - page/WebPage `set.upload_files()` compatibility path for browser-backed file inputs
+  - page/WebPage `set.blocked_urls()` compatibility path
+  - richer element-state parity for `has_rect` corner data, covered/not-covered wait helpers, and `all_downloads_done()` compatibility alias on page waits
+  - browser-backed window controls for `set.window.max() / mini() / full() / normal() / size() / location() / hide() / show()` on `ChromiumPage` and driver-backed `WebPage`
+  - browser-backed load-mode control for `set.load_mode.normal() / eager() / none()` plus `ChromiumOptions.load_mode` defaults on `ChromiumPage` and driver-backed `WebPage`
+  - browser-backed runtime `set.user_agent()` overrides for `ChromiumPage` and driver-backed `WebPage`
+  - browser-backed `set.headers() / set.local_storage() / set.session_storage() / set.auto_handle_alert()` plus session-mode `WebPage.set.headers()`
+  - browser-backed `activate()` for `ChromiumPage` and driver-backed `WebPage`, with macOS process-frontmost verification for launched browser instances
+  - Rust CLI subcommands for the TCP daemon plus named browser sessions
 
 ## Verification
 
@@ -171,10 +231,20 @@ Current integration checks cover:
 - page-scoped network listener capture from both `ChromiumPage` and driver-mode `WebPage`
 - listener response body capture for matched browser requests
 - listener response extra info exposure for matched browser requests
+- listener `set_targets / pause / resume / wait_silent / steps` flow on browser-backed pages
+- page/WebPage request interception for rewrite, block, and fulfill flows
 - browser/page/element state/wait helpers for browser-backed objects
+- alert state tracking and handling for `ChromiumPage` and driver-backed `WebPage`
+- browser-backed load-mode control and navigation timing for `normal / eager / none`
+- browser-backed headers/storage/auto-alert setters plus session-mode `WebPage` header setters
 - event-driven download mission tracking from both `ChromiumPage` and driver-mode `WebPage`
 - session-backed `raw_data` and `encoding` from Rust across `SessionPage` and `WebPage`
 - local browser download flow through a configured download path and Rust-side `wait_for_download()`
+- page-scoped download path, file-conflict, and download-rename overrides for both `ChromiumPage` tabs and driver-mode `WebPage`
+- page/WebPage browser-backed upload-file injection through `set.upload_files()` on file inputs
+- element `states.has_rect` reference-style corner data plus waiter parity
+- browser-backed window bounds/state control with verified `normal / max / mini / full / size / location` flows
+- browser-backed window visibility and activation control with verified `hide / show / activate` flows for launched browser instances on macOS
 - Python `WebPage` thin-wrapper flow over the Rust `WebPage` core
 - direct Python examples
 - direct Rust `webpage_modes` example

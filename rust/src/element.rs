@@ -9,16 +9,17 @@ use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use chromiumoxide::cdp::browser_protocol::input::{
     DispatchKeyEventParams, DispatchKeyEventType, DispatchMouseEventParams, DispatchMouseEventType,
-    MouseButton,
+    InsertTextParams, MouseButton,
 };
 use chromiumoxide::cdp::browser_protocol::page::CaptureScreenshotFormat;
 use chromiumoxide::cdp::browser_protocol::page::GetResourceContentParams;
 use chromiumoxide::cdp::browser_protocol::{
     dom::{
-        BackendNodeId, DescribeNodeParams, GetNodeForLocationParams, RemoveAttributeParams,
-        RequestNodeParams, ResolveNodeParams, SetAttributeValueParams, SetFileInputFilesParams,
+        BackendNodeId, DescribeNodeParams, GetBoxModelParams, GetFrameOwnerParams,
+        GetNodeForLocationParams, RemoveAttributeParams, RequestNodeParams, ResolveNodeParams,
+        SetAttributeValueParams, SetFileInputFilesParams,
     },
-    page::GetFrameTreeParams,
+    page::{FrameId, GetFrameTreeParams},
 };
 use chromiumoxide::element::Element as OxElement;
 use chromiumoxide::keys;
@@ -37,7 +38,7 @@ use crate::locator::{
     Locator, LocatorBatchInput, LocatorInput, LocatorKind, LocatorMatch, collect_locator_matches,
     parse_locator_batch_input, parse_optional_locator_input,
 };
-use crate::page::{ActionsInput, Page};
+use crate::page::{ActionsInput, Frame, Page};
 use crate::session::{
     SessionElement, SessionXPathResult, snapshot_fragment_find_all_with_base_url,
     snapshot_fragment_find_with_base_url, snapshot_fragment_query_xpath_with_base_url,
@@ -249,13 +250,21 @@ impl Element {
         if self.click_option_via_select()? {
             return Ok(());
         }
-        self.runtime.block_on(async {
+        match self.runtime.block_on(async {
             self.inner
                 .click()
                 .await
                 .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            Ok(())
-        })
+            Ok::<(), OpenPageError>(())
+        }) {
+            Ok(()) => Ok(()),
+            Err(err) if err.to_string().contains("not visible") => {
+                // fallback: JS click for elements hidden by CSS but event-ready
+                self.run_js("this.click(); return true;")?;
+                Ok(())
+            }
+            Err(err) => Err(err),
+        }
     }
 
     fn click_option_via_select(&self) -> OpenPageResult<bool> {
@@ -351,8 +360,8 @@ impl Element {
             self.focus_or_click()?;
         }
         self.runtime.block_on(async {
-            self.inner
-                .type_str(text)
+            self.page
+                .execute(InsertTextParams::new(text.to_string()))
                 .await
                 .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
             Ok(())
@@ -1581,6 +1590,10 @@ impl Element {
         let result = self.run_js(
             "const form = this.tagName === 'FORM' ? this : this.closest('form'); \
              if (!form) return false; \
+             if (typeof form.requestSubmit === 'function') { \
+                 form.requestSubmit(); \
+                 return true; \
+             } \
              form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); \
              form.submit(); \
              return true;",
@@ -3134,9 +3147,24 @@ impl Element {
     }
 
     fn viewport_point_to_screen(&self, point: (f64, f64)) -> OpenPageResult<Option<(f64, f64)>> {
-        let (viewport_screen_x, viewport_screen_y) = self.top_viewport_screen_origin()?;
-        let (frame_offset_x, frame_offset_y) = self.frame_viewport_offset()?;
-        let device_pixel_ratio = self.top_window_device_pixel_ratio()?;
+        let (viewport_screen_x, viewport_screen_y) = self
+            .top_viewport_screen_origin()
+            .map_err(|err| {
+                OpenPageError::PageOperation(format!(
+                    "resolve top viewport screen origin failed: {err}"
+                ))
+            })?;
+        let Some((frame_offset_x, frame_offset_y)) = self.frame_viewport_offset().map_err(|err| {
+            OpenPageError::PageOperation(format!("resolve frame viewport offset failed: {err}"))
+        })?
+        else {
+            return Ok(None);
+        };
+        let device_pixel_ratio = self.top_window_device_pixel_ratio().map_err(|err| {
+            OpenPageError::PageOperation(format!(
+                "resolve top window devicePixelRatio failed: {err}"
+            ))
+        })?;
         Ok(Some((
             (viewport_screen_x + frame_offset_x + point.0) * device_pixel_ratio,
             (viewport_screen_y + frame_offset_y + point.1) * device_pixel_ratio,
@@ -3149,7 +3177,12 @@ impl Element {
         let (window_left, window_top) = page.window_location()?;
         let (window_width, window_height) = page.window_size()?;
         let (viewport_width, viewport_height) = value_as_f64_pair(
-            page.run_js("[window.innerWidth, window.innerHeight]")?,
+            page.run_js("[window.innerWidth, window.innerHeight]")
+                .map_err(|err| {
+                    OpenPageError::PageOperation(format!(
+                        "top window viewport size lookup failed: {err}"
+                    ))
+                })?,
             "top window viewport size with scrollbar",
         )?;
 
@@ -3172,35 +3205,232 @@ impl Element {
         ))
     }
 
-    fn frame_viewport_offset(&self) -> OpenPageResult<(f64, f64)> {
-        value_as_f64_pair(
-            self.run_js(
-                "(() => { \
-                    let x = 0; \
-                    let y = 0; \
-                    let current = window; \
-                    while (current !== current.top) { \
-                        const frame = current.frameElement; \
-                        if (!frame) break; \
-                        const rect = frame.getBoundingClientRect(); \
-                        x += rect.left; \
-                        y += rect.top; \
-                        try { \
-                            current = current.parent; \
-                        } catch (_err) { \
-                            break; \
-                        } \
-                    } \
-                    return [x, y]; \
-                })()",
-            )?,
-            "frame viewport offset",
-        )
+    fn frame_viewport_offset(&self) -> OpenPageResult<Option<(f64, f64)>> {
+        let page = self.page_wrapper();
+        let main_frame_id = page.main_frame_id()?;
+        let current_frame_id = self
+            .element_frame_id()
+            .map_err(|err| OpenPageError::PageOperation(format!("resolve element frame id failed: {err}")))?;
+        if current_frame_id == main_frame_id {
+            return Ok(Some((0.0, 0.0)));
+        }
+
+        let absolute_owner_location = self
+            .frame_owner_viewport_location(&current_frame_id)
+            .map_err(|err| {
+                OpenPageError::PageOperation(format!(
+                    "resolve frame owner viewport location failed for {current_frame_id}: {err}"
+                ))
+            })?;
+        if absolute_owner_location.is_some() {
+            return Ok(absolute_owner_location);
+        }
+
+        let mut current_frame_id = current_frame_id;
+        let mut offset_x = 0.0;
+        let mut offset_y = 0.0;
+        while current_frame_id != main_frame_id {
+            let Some((owner_x, owner_y)) = self
+                .frame_owner_viewport_location(&current_frame_id)
+                .map_err(|err| {
+                    OpenPageError::PageOperation(format!(
+                        "resolve frame owner viewport location failed for {current_frame_id}: {err}"
+                    ))
+                })?
+            else {
+                return Ok(None);
+            };
+            offset_x += owner_x;
+            offset_y += owner_y;
+            let Some(parent_frame_id) = page.frame_parent_id(&current_frame_id)? else {
+                break;
+            };
+            current_frame_id = parent_frame_id;
+        }
+
+        Ok(Some((offset_x, offset_y)))
+    }
+
+    fn element_frame_id(&self) -> OpenPageResult<String> {
+        let page = self.page_wrapper();
+        let main_frame_id = page.main_frame_id()?;
+
+        let described_frame_id = match self.describe_frame_id() {
+            Ok(frame_id) => frame_id,
+            Err(err) if should_fallback_frame_id_lookup(&err) => None,
+            Err(err) => return Err(err),
+        };
+        if let Some(frame_id) = described_frame_id {
+            return Ok(frame_id);
+        }
+        if value_as_bool(
+            self.run_js("return window.top === window;").map_err(|err| {
+                OpenPageError::PageOperation(format!("element top-frame check failed: {err}"))
+            })?,
+            "element top-frame check",
+        )? {
+            return Ok(main_frame_id);
+        }
+
+        let marker = format!("{}-frame-owner", next_marker_batch());
+        self.set_attr(MARKER_ATTRIBUTE, &marker)?;
+        let selector = format!(r#"css:[{MARKER_ATTRIBUTE}="{marker}"]"#);
+
+        let detected_frame_id = (|| -> OpenPageResult<Option<String>> {
+            let mut deferred_scan_error = None;
+            for frame_id in page.download_scope_frame_ids()? {
+                if frame_id == main_frame_id {
+                    continue;
+                }
+                let owner_element = self.frame_owner_element(&frame_id)?;
+                let frame = Frame::new(page.clone(), frame_id.clone(), owner_element);
+                match frame.find(selector.as_str()) {
+                    Ok(_) => return Ok(Some(frame_id)),
+                    Err(OpenPageError::ElementNotFound(_)) => {}
+                    Err(OpenPageError::JavaScript(message)) if message.contains("No value found") => {
+                        if deferred_scan_error.is_none() {
+                            deferred_scan_error = Some(OpenPageError::PageOperation(format!(
+                                "scan frame {frame_id} for marker failed: javascript evaluation failed: {message}"
+                            )));
+                        }
+                    }
+                    Err(err) => {
+                        return Err(OpenPageError::PageOperation(format!(
+                            "scan frame {frame_id} for marker failed: {err}"
+                        )))
+                    }
+                }
+            }
+            if let Some(err) = deferred_scan_error {
+                return Err(err);
+            }
+            Ok(None)
+        })()?;
+
+        let _ = self.remove_attr(MARKER_ATTRIBUTE);
+        Ok(detected_frame_id.unwrap_or(main_frame_id))
+    }
+
+    fn describe_frame_id(&self) -> OpenPageResult<Option<String>> {
+        let mut last_error = None;
+
+        let describe_result = |params: DescribeNodeParams| {
+            self.runtime.block_on(async {
+                self.page
+                    .execute(params)
+                    .await
+                    .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                    .map(|response| {
+                        response
+                            .result
+                            .node
+                            .frame_id
+                            .map(|frame_id| frame_id.as_ref().to_string())
+                    })
+            })
+        };
+
+        for params in [
+            DescribeNodeParams::builder()
+                .object_id(self.inner.remote_object_id.clone())
+                .build(),
+            DescribeNodeParams::builder().node_id(self.inner.node_id).build(),
+            DescribeNodeParams::builder()
+                .backend_node_id(self.inner.backend_node_id)
+                .build(),
+        ] {
+            match describe_result(params) {
+                Ok(Some(frame_id)) => return Ok(Some(frame_id)),
+                Ok(None) => {}
+                Err(err) => last_error = Some(err),
+            }
+        }
+
+        if let Some(err) = last_error {
+            Err(err)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn frame_owner_element(&self, frame_id: &str) -> OpenPageResult<Element> {
+        let (owner_node_id, owner_backend_node_id) = self.runtime.block_on(async {
+            let response = self
+                .page
+                .execute(GetFrameOwnerParams::new(FrameId::new(frame_id.to_string())))
+                .await
+                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            Ok::<
+                (
+                    Option<chromiumoxide::cdp::browser_protocol::dom::NodeId>,
+                    BackendNodeId,
+                ),
+                OpenPageError,
+            >((response.result.node_id, response.result.backend_node_id))
+        })?;
+        if let Some(node_id) = owner_node_id {
+            self.resolve_node_id(node_id, "frame owner could not be resolved to an element")
+        } else {
+            self.resolve_backend_node_id(owner_backend_node_id)
+        }
+    }
+
+    fn frame_owner_viewport_location(&self, frame_id: &str) -> OpenPageResult<Option<(f64, f64)>> {
+        let (owner_node_id, owner_backend_node_id) = self.runtime.block_on(async {
+            let response = self
+                .page
+                .execute(GetFrameOwnerParams::new(FrameId::new(frame_id.to_string())))
+                .await
+                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            Ok::<
+                (
+                    Option<chromiumoxide::cdp::browser_protocol::dom::NodeId>,
+                    BackendNodeId,
+                ),
+                OpenPageError,
+            >((response.result.node_id, response.result.backend_node_id))
+        })?;
+
+        let model = self.runtime.block_on(async {
+            let params = if let Some(node_id) = owner_node_id {
+                GetBoxModelParams::builder().node_id(node_id).build()
+            } else {
+                GetBoxModelParams::builder()
+                    .backend_node_id(owner_backend_node_id)
+                    .build()
+            };
+            self.page
+                .execute(params)
+                .await
+                .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+        });
+        match model {
+            Ok(response) => {
+                let quad = &response.result.model.border;
+                if quad.inner().len() < 2 {
+                    return Err(OpenPageError::PageOperation(
+                        "frame owner box model did not contain a valid quad".to_string(),
+                    ));
+                }
+                Ok(Some((quad.inner()[0], quad.inner()[1])))
+            }
+            Err(OpenPageError::PageOperation(message))
+                if message.contains("Could not compute box model") =>
+            {
+                Ok(None)
+            }
+            Err(err) => Err(err),
+        }
     }
 
     fn top_window_device_pixel_ratio(&self) -> OpenPageResult<f64> {
         let page = self.page_wrapper();
-        page.run_js("window.devicePixelRatio || 1")?
+        page.run_js("window.devicePixelRatio || 1")
+            .map_err(|err| {
+                OpenPageError::PageOperation(format!(
+                    "top window devicePixelRatio lookup failed: {err}"
+                ))
+            })?
             .as_f64()
             .ok_or_else(|| {
                 OpenPageError::JavaScript(
@@ -4344,6 +4574,17 @@ fn build_js_invocation(script: &str, args: &[Value], as_expr: bool) -> OpenPageR
         Ok(format!(
             "function() {{ const __args = {args_json}; return (function(...args) {{ {script} }}).apply(this, __args); }}"
         ))
+    }
+}
+
+fn should_fallback_frame_id_lookup(error: &OpenPageError) -> bool {
+    match error {
+        OpenPageError::PageOperation(message) => {
+            message.contains("Could not find node with given id")
+                || message.contains("No object Id found")
+                || message.contains("No object id found")
+        }
+        _ => false,
     }
 }
 

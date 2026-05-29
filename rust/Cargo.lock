@@ -1294,6 +1294,7 @@ dependencies = [
  "scraper",
  "serde",
  "serde_json",
+ "shlex",
  "skyscraper",
  "thiserror 2.0.18",
  "tokio",

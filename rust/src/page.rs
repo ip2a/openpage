@@ -13,7 +13,10 @@ use base64::prelude::BASE64_STANDARD;
 use chromiumoxide::cdp::browser_protocol::browser::{
     Bounds, GetWindowForTargetParams, GetWindowForTargetReturns, SetWindowBoundsParams, WindowState,
 };
-use chromiumoxide::cdp::browser_protocol::dom::DescribeNodeParams;
+use chromiumoxide::cdp::browser_protocol::dom::{
+    BackendNodeId, DescribeNodeParams, GetFrameOwnerParams, RemoveAttributeParams,
+    RequestNodeParams, ResolveNodeParams, SetAttributeValueParams,
+};
 use chromiumoxide::cdp::browser_protocol::emulation::SetUserAgentOverrideParams;
 use chromiumoxide::cdp::browser_protocol::input::{
     DispatchKeyEventParams, DispatchKeyEventType, DispatchMouseEventParams, DispatchMouseEventType,
@@ -26,9 +29,11 @@ use chromiumoxide::cdp::browser_protocol::network::{
 };
 use chromiumoxide::cdp::browser_protocol::page::GetFrameTreeParams;
 use chromiumoxide::cdp::browser_protocol::page::{
-    AddScriptToEvaluateOnNewDocumentParams, CaptureScreenshotFormat, FrameId, FrameTree,
-    GetNavigationHistoryParams, NavigateToHistoryEntryParams, PrintToPdfParams, ReloadParams,
-    RemoveScriptToEvaluateOnNewDocumentParams, StopLoadingParams, Viewport as ClipViewport,
+    AddScriptToEvaluateOnNewDocumentParams, CaptureScreenshotFormat, CaptureSnapshotFormat,
+    CaptureSnapshotParams, FrameId, FrameTree, GetNavigationHistoryParams,
+    NavigateToHistoryEntryParams, PrintToPdfParams, ReloadParams,
+    RemoveScriptToEvaluateOnNewDocumentParams, StopLoadingParams,
+    Viewport as ClipViewport,
 };
 use chromiumoxide::cdp::browser_protocol::target::TargetId;
 use chromiumoxide::cdp::js_protocol::runtime::{EvaluateParams, ExecutionContextId};
@@ -204,6 +209,12 @@ pub struct PageElementInfo {
 pub enum PageElementContent<'a> {
     Html(Cow<'a, str>),
     Info(PageElementInfo),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PageSaveContent {
+    Mhtml(String),
+    Pdf(Vec<u8>),
 }
 
 enum ResolvedPageElementTarget<'a> {
@@ -683,7 +694,7 @@ impl ResolvedPageElementTarget<'_> {
 }
 
 impl Frame {
-    fn new(page: Page, frame_id: String, frame_element: Element) -> Self {
+    pub(crate) fn new(page: Page, frame_id: String, frame_element: Element) -> Self {
         Self {
             page,
             frame_id,
@@ -792,7 +803,7 @@ impl Frame {
     }
 
     pub fn title(&self) -> OpenPageResult<Option<String>> {
-        value_as_optional_string(self.run_js("return document.title;")?, "frame title")
+        value_as_optional_string(self.run_js("document.title")?, "frame title")
     }
 
     pub fn download_path(&self) -> OpenPageResult<Option<String>> {
@@ -813,9 +824,7 @@ impl Frame {
 
     pub fn inner_html(&self) -> OpenPageResult<String> {
         value_as_string(
-            self.run_js(
-                "return document.documentElement ? document.documentElement.outerHTML : '';",
-            )?,
+            self.run_js("document.documentElement ? document.documentElement.outerHTML : ''")?,
             "frame inner html",
         )
     }
@@ -1131,72 +1140,70 @@ impl Frame {
     }
 
     pub fn scroll_to_top(&self) -> OpenPageResult<()> {
-        self.run_js("document.documentElement.scrollTo(document.documentElement.scrollLeft, 0);")
+        self.run_js("(document.scrollingElement.scrollTo(document.scrollingElement.scrollLeft, 0), true)")
             .map(|_| ())
     }
 
     pub fn scroll_to_bottom(&self) -> OpenPageResult<()> {
         self.run_js(
-            "document.documentElement.scrollTo(document.documentElement.scrollLeft, document.documentElement.scrollHeight);",
+            "(document.scrollingElement.scrollTo(document.scrollingElement.scrollLeft, document.scrollingElement.scrollHeight), true)",
         )
         .map(|_| ())
     }
 
     pub fn scroll_to_half(&self) -> OpenPageResult<()> {
         self.run_js(
-            "document.documentElement.scrollTo(document.documentElement.scrollLeft, document.documentElement.scrollHeight / 2);",
+            "(document.scrollingElement.scrollTo(document.scrollingElement.scrollLeft, document.scrollingElement.scrollHeight / 2), true)",
         )
         .map(|_| ())
     }
 
     pub fn scroll_to_rightmost(&self) -> OpenPageResult<()> {
         self.run_js(
-            "document.documentElement.scrollTo(document.documentElement.scrollWidth, document.documentElement.scrollTop);",
+            "(document.scrollingElement.scrollTo(document.scrollingElement.scrollWidth, document.scrollingElement.scrollTop), true)",
         )
         .map(|_| ())
     }
 
     pub fn scroll_to_leftmost(&self) -> OpenPageResult<()> {
-        self.run_js("document.documentElement.scrollTo(0, document.documentElement.scrollTop);")
+        self.run_js("(document.scrollingElement.scrollTo(0, document.scrollingElement.scrollTop), true)")
             .map(|_| ())
     }
 
     pub fn scroll_to_location(&self, x: f64, y: f64) -> OpenPageResult<()> {
-        self.run_js(&format!("document.documentElement.scrollTo({x}, {y});"))
+        self.run_js(&format!("(document.scrollingElement.scrollTo({x}, {y}), true)"))
             .map(|_| ())
     }
 
     pub fn scroll_up(&self, pixels: f64) -> OpenPageResult<()> {
         self.run_js(&format!(
-            "document.documentElement.scrollBy(0, {});",
+            "(document.scrollingElement.scrollBy(0, {}), true)",
             -pixels
         ))
         .map(|_| ())
     }
 
     pub fn scroll_down(&self, pixels: f64) -> OpenPageResult<()> {
-        self.run_js(&format!("document.documentElement.scrollBy(0, {pixels});"))
+        self.run_js(&format!("(document.scrollingElement.scrollBy(0, {pixels}), true)"))
             .map(|_| ())
     }
 
     pub fn scroll_left(&self, pixels: f64) -> OpenPageResult<()> {
         self.run_js(&format!(
-            "document.documentElement.scrollBy({}, 0);",
+            "(document.scrollingElement.scrollBy({}, 0), true)",
             -pixels
         ))
         .map(|_| ())
     }
 
     pub fn scroll_right(&self, pixels: f64) -> OpenPageResult<()> {
-        self.run_js(&format!("document.documentElement.scrollBy({pixels}, 0);"))
+        self.run_js(&format!("(document.scrollingElement.scrollBy({pixels}, 0), true)"))
             .map(|_| ())
     }
 
     pub fn scroll_position(&self) -> OpenPageResult<(f64, f64)> {
         value_as_f64_pair(
-            self.run_js(
-                "return [document.documentElement.scrollLeft, document.documentElement.scrollTop];",
-            )?,
+            self.run_js("[document.documentElement.scrollLeft, document.documentElement.scrollTop]")?,
             "frame scroll position",
         )
     }
@@ -1269,7 +1276,7 @@ impl Frame {
 
     pub fn ready_state(&self) -> OpenPageResult<Option<String>> {
         value_as_optional_string(
-            self.run_js("return document.readyState;")?,
+            self.run_js("document.readyState")?,
             "frame ready state",
         )
     }
@@ -3129,6 +3136,65 @@ impl Page {
         Ok(target)
     }
 
+    pub fn save(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        as_pdf: bool,
+    ) -> OpenPageResult<PageSaveContent> {
+        self.save_with_options(path, name, as_pdf, None)
+    }
+
+    pub fn save_with_options(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        as_pdf: bool,
+        pdf_options: Option<PrintToPdfParams>,
+    ) -> OpenPageResult<PageSaveContent> {
+        let save_target = match (path, name) {
+            (None, None) => None,
+            _ => Some(resolve_page_save_target_path(
+                path,
+                name,
+                resolve_page_save_title(self, path, name)?.as_deref(),
+                if as_pdf { "pdf" } else { "mhtml" },
+            )?),
+        };
+
+        let content = if as_pdf {
+            let pdf = self.runtime.block_on(async {
+                self.inner
+                    .pdf(pdf_options.unwrap_or_default())
+                    .await
+                    .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+            })?;
+            PageSaveContent::Pdf(pdf)
+        } else {
+            let mhtml = self.runtime.block_on(async {
+                self.inner
+                    .execute(
+                        CaptureSnapshotParams::builder()
+                            .format(CaptureSnapshotFormat::Mhtml)
+                            .build(),
+                    )
+                    .await
+                    .map(|result| result.data.clone())
+                    .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+            })?;
+            PageSaveContent::Mhtml(mhtml)
+        };
+
+        if let Some(target) = save_target {
+            match &content {
+                PageSaveContent::Mhtml(mhtml) => fs::write(&target, mhtml.as_bytes())?,
+                PageSaveContent::Pdf(pdf) => fs::write(&target, pdf)?,
+            }
+        }
+
+        Ok(content)
+    }
+
     pub fn save_pdf(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
         self.runtime.block_on(async {
             self.inner
@@ -3160,6 +3226,68 @@ impl Page {
 
     pub fn run_js(&self, script: &str) -> OpenPageResult<Value> {
         self.evaluate(script)
+    }
+
+    pub fn scroll_to_top(&self) -> OpenPageResult<()> {
+        self.run_js("(document.scrollingElement.scrollTo(document.scrollingElement.scrollLeft, 0), true)")
+            .map(|_| ())
+    }
+
+    pub fn scroll_to_bottom(&self) -> OpenPageResult<()> {
+        self.run_js(
+            "(document.scrollingElement.scrollTo(document.scrollingElement.scrollLeft, document.scrollingElement.scrollHeight), true)",
+        )
+        .map(|_| ())
+    }
+
+    pub fn scroll_to_half(&self) -> OpenPageResult<()> {
+        self.run_js(
+            "(document.scrollingElement.scrollTo(document.scrollingElement.scrollLeft, document.scrollingElement.scrollHeight / 2), true)",
+        )
+        .map(|_| ())
+    }
+
+    pub fn scroll_to_rightmost(&self) -> OpenPageResult<()> {
+        self.run_js(
+            "(document.scrollingElement.scrollTo(document.scrollingElement.scrollWidth, document.scrollingElement.scrollTop), true)",
+        )
+        .map(|_| ())
+    }
+
+    pub fn scroll_to_leftmost(&self) -> OpenPageResult<()> {
+        self.run_js("(document.scrollingElement.scrollTo(0, document.scrollingElement.scrollTop), true)")
+            .map(|_| ())
+    }
+
+    pub fn scroll_to_location(&self, x: f64, y: f64) -> OpenPageResult<()> {
+        self.run_js(&format!("(document.scrollingElement.scrollTo({x}, {y}), true)"))
+            .map(|_| ())
+    }
+
+    pub fn scroll_up(&self, pixels: f64) -> OpenPageResult<()> {
+        self.run_js(&format!(
+            "(document.scrollingElement.scrollBy(0, {}), true)",
+            -pixels
+        ))
+        .map(|_| ())
+    }
+
+    pub fn scroll_down(&self, pixels: f64) -> OpenPageResult<()> {
+        self.run_js(&format!("(document.scrollingElement.scrollBy(0, {pixels}), true)"))
+            .map(|_| ())
+    }
+
+    pub fn scroll_left(&self, pixels: f64) -> OpenPageResult<()> {
+        self.run_js(&format!(
+            "(document.scrollingElement.scrollBy({}, 0), true)",
+            -pixels
+        ))
+        .map(|_| ())
+    }
+
+    pub fn scroll_right(&self, pixels: f64) -> OpenPageResult<()> {
+        self.run_js(&format!("(document.scrollingElement.scrollBy({pixels}, 0), true)"))
+            .map(|_| ())
     }
 
     pub fn execute_cdp<T>(&self, command: T) -> OpenPageResult<T::Response>
@@ -3629,6 +3757,10 @@ impl Page {
 
     pub fn has_alert(&self) -> OpenPageResult<bool> {
         self.alerts.has_alert()
+    }
+
+    pub fn alert_text(&self) -> OpenPageResult<Option<String>> {
+        self.alerts.alert_text()
     }
 
     pub fn handle_alert(
@@ -4334,8 +4466,113 @@ impl Page {
                 .ok_or_else(|| {
                     OpenPageError::PageOperation("frame element has no frame id".to_string())
                 })
-        })?;
+        });
+        let frame_id = match frame_id {
+            Ok(frame_id) => frame_id,
+            Err(describe_err) => {
+                let marker = next_page_marker();
+                element.set_attr(PAGE_MARKER_ATTRIBUTE, &marker)?;
+                let detected = (|| -> OpenPageResult<Option<String>> {
+                    let main_frame_id = self.main_frame_id()?;
+                    for candidate_frame_id in self.download_scope_frame_ids()? {
+                        if candidate_frame_id == main_frame_id {
+                            continue;
+                        }
+                        let owner_element = self.frame_owner_element_by_id(&candidate_frame_id)?;
+                        if owner_element.attr(PAGE_MARKER_ATTRIBUTE)?.as_deref() == Some(&marker) {
+                            return Ok(Some(candidate_frame_id));
+                        }
+                    }
+                    Ok(None)
+                })();
+                let _ = element.remove_attr(PAGE_MARKER_ATTRIBUTE);
+                match detected {
+                    Ok(Some(frame_id)) => frame_id,
+                    Ok(None) => return Err(describe_err),
+                    Err(err) => return Err(err),
+                }
+            }
+        };
         Ok(Frame::new(self.clone(), frame_id, element))
+    }
+
+    fn frame_owner_element_by_id(&self, frame_id: &str) -> OpenPageResult<Element> {
+        let (node_id, backend_node_id) = self.runtime.block_on(async {
+            let response = self
+                .inner
+                .execute(GetFrameOwnerParams::new(FrameId::new(frame_id.to_string())))
+                .await
+                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            Ok::<
+                (
+                    Option<chromiumoxide::cdp::browser_protocol::dom::NodeId>,
+                    BackendNodeId,
+                ),
+                OpenPageError,
+            >((response.result.node_id, response.result.backend_node_id))
+        })?;
+        if let Some(node_id) = node_id {
+            self.resolve_dom_node_id(node_id, "frame owner could not be resolved to an element")
+        } else {
+            self.resolve_dom_backend_node_id(backend_node_id)
+        }
+    }
+
+    fn resolve_dom_backend_node_id(&self, backend_node_id: BackendNodeId) -> OpenPageResult<Element> {
+        let node_id = self.runtime.block_on(async {
+            let resolved = self
+                .inner
+                .execute(ResolveNodeParams::builder().backend_node_id(backend_node_id).build())
+                .await
+                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            let object_id = resolved.result.object.object_id.ok_or_else(|| {
+                OpenPageError::PageOperation("resolved frame owner has no object id".to_string())
+            })?;
+            let requested = self
+                .inner
+                .execute(RequestNodeParams::new(object_id))
+                .await
+                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            Ok::<chromiumoxide::cdp::browser_protocol::dom::NodeId, OpenPageError>(
+                requested.result.node_id,
+            )
+        })?;
+        self.resolve_dom_node_id(node_id, "frame owner could not be resolved to an element")
+    }
+
+    fn resolve_dom_node_id(
+        &self,
+        node_id: chromiumoxide::cdp::browser_protocol::dom::NodeId,
+        error_message: &str,
+    ) -> OpenPageResult<Element> {
+        let marker = next_page_marker();
+        self.runtime.block_on(async {
+            self.inner
+                .execute(SetAttributeValueParams::new(
+                    node_id,
+                    PAGE_MARKER_ATTRIBUTE,
+                    marker.clone(),
+                ))
+                .await
+                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            Ok::<(), OpenPageError>(())
+        })?;
+
+        let element = self.find(marker_selector(&marker).as_str());
+        let cleanup = self.runtime.block_on(async {
+            let _ = self
+                .inner
+                .execute(RemoveAttributeParams::new(node_id, PAGE_MARKER_ATTRIBUTE))
+                .await;
+            Ok::<(), OpenPageError>(())
+        });
+
+        match (element, cleanup) {
+            (Ok(element), Ok(())) => Ok(element),
+            (Err(_), Ok(())) => Err(OpenPageError::ElementNotFound(error_message.to_string())),
+            (Err(err), Err(_)) => Err(err),
+            (Ok(_), Err(err)) => Err(err),
+        }
     }
 
     fn frame_name_by_id(&self, frame_id: &str) -> OpenPageResult<Option<String>> {
@@ -4356,7 +4593,7 @@ impl Page {
         })
     }
 
-    fn frame_parent_id(&self, frame_id: &str) -> OpenPageResult<Option<String>> {
+    pub(crate) fn frame_parent_id(&self, frame_id: &str) -> OpenPageResult<Option<String>> {
         self.runtime.block_on(async {
             self.inner
                 .frame_parent(FrameId::new(frame_id.to_string()))
@@ -4490,7 +4727,31 @@ fn resolve_page_frame_target<'a>(
 fn find_frame_element_from_object(page: &Page, element: &Element) -> OpenPageResult<Element> {
     let marker = next_page_marker();
     element.set_attr(PAGE_MARKER_ATTRIBUTE, &marker)?;
-    let result = page.find(marker_selector(&marker).as_str());
+    let selector = marker_selector(&marker);
+    let result = match page.find(selector.as_str()) {
+        Ok(element) => Ok(element),
+        Err(err @ OpenPageError::ElementNotFound(_)) => {
+            let main_frame_id = page.main_frame_id()?;
+            let mut found = None;
+            for frame_id in page.download_scope_frame_ids()? {
+                if frame_id == main_frame_id {
+                    continue;
+                }
+                let owner_element = page.frame_owner_element_by_id(&frame_id)?;
+                let frame = page.frame_from_element(owner_element)?;
+                match frame.find(selector.as_str()) {
+                    Ok(element) => {
+                        found = Some(element);
+                        break;
+                    }
+                    Err(OpenPageError::ElementNotFound(_)) => {}
+                    Err(err) => return Err(err),
+                }
+            }
+            found.ok_or(err)
+        }
+        Err(err) => Err(err),
+    };
     let cleanup = element.remove_attr(PAGE_MARKER_ATTRIBUTE);
 
     match (result, cleanup) {
@@ -5148,6 +5409,50 @@ fn resolve_page_screenshot_target_path(
     Ok(target)
 }
 
+fn resolve_page_save_title(
+    page: &Page,
+    path: Option<&Path>,
+    name: Option<&str>,
+) -> OpenPageResult<Option<String>> {
+    let needs_title = match (path, name) {
+        (None, None) => true,
+        (Some(path), None) => path.extension().is_none(),
+        _ => false,
+    };
+    if needs_title {
+        Ok(Some(page.title()?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn resolve_page_save_target_path(
+    path: Option<&Path>,
+    name: Option<&str>,
+    title: Option<&str>,
+    extension: &str,
+) -> OpenPageResult<PathBuf> {
+    let default_name = title
+        .map(sanitize_file_name)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "page".to_string());
+    let mut target = match (path, name) {
+        (Some(path), Some(name)) => path.join(sanitize_file_name(name)),
+        (Some(path), None) if path.extension().is_some() => path.to_path_buf(),
+        (Some(path), None) => path.join(format!("{default_name}.{extension}")),
+        (None, Some(name)) => PathBuf::from(sanitize_file_name(name)),
+        (None, None) => PathBuf::from(format!("{default_name}.{extension}")),
+    };
+    if target.extension().is_none() {
+        target.set_extension(extension);
+    }
+    let target = absolutize_path(target)?;
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    Ok(target)
+}
+
 fn sanitize_file_name(name: &str) -> String {
     let sanitized = name
         .trim()
@@ -5270,6 +5575,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use chromiumoxide::cdp::browser_protocol::page::PrintToPdfParams;
     use chromiumoxide::cdp::browser_protocol::emulation::SetDeviceMetricsOverrideParams;
     use serde_json::{Value, json};
     use std::collections::HashMap;
@@ -5281,10 +5587,11 @@ mod tests {
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use super::{
-        PageElementContent, PageElementInfo, action_drag_payload, compose_frame_html, cookie_param,
-        default_frame_locator, delete_cookie_params, frame_locator, frame_locator_input,
-        history_entry_index, is_explicit_locator, marker_xpath, optional_frame_locator_input,
-        page_element_info_properties_json, remaining_timeout_ms, resolve_implicit_wait_timeout_ms,
+        PageElementContent, PageElementInfo, PageSaveContent, action_drag_payload,
+        compose_frame_html, cookie_param, default_frame_locator, delete_cookie_params,
+        frame_locator, frame_locator_input, history_entry_index, is_explicit_locator,
+        marker_xpath, optional_frame_locator_input, page_element_info_properties_json,
+        remaining_timeout_ms, resolve_implicit_wait_timeout_ms, resolve_page_save_target_path,
         resolve_page_screenshot_target_path, run_with_timeout, screenshot_clip,
         storage_lookup_script,
     };
@@ -5344,11 +5651,11 @@ mod tests {
         let (window_left, window_top) = page.window_location()?;
         let (window_width, window_height) = page.window_size()?;
         let (viewport_width, viewport_height) = pair_from_value(
-            page.run_js("return [window.innerWidth, window.innerHeight];")?,
+            page.run_js("[window.innerWidth, window.innerHeight]")?,
             "top window viewport size with scrollbar",
         )?;
         let device_pixel_ratio = page
-            .run_js("return window.devicePixelRatio || 1;")?
+            .run_js("window.devicePixelRatio || 1")?
             .as_f64()
             .ok_or_else(|| {
                 OpenPageError::PageOperation("devicePixelRatio was not numeric".to_string())
@@ -5461,6 +5768,361 @@ mod tests {
         });
         (address, handle)
     }
+
+    fn spawn_cross_origin_iframe_site() -> (String, thread::JoinHandle<()>, thread::JoinHandle<()>) {
+        let child_listener = TcpListener::bind("127.0.0.1:0").expect("bind child iframe server");
+        child_listener
+            .set_nonblocking(true)
+            .expect("set child iframe server nonblocking");
+        let child_address = format!(
+            "http://{}",
+            child_listener.local_addr().expect("child iframe server addr")
+        );
+
+        let parent_listener =
+            TcpListener::bind("127.0.0.1:0").expect("bind parent iframe server");
+        parent_listener
+            .set_nonblocking(true)
+            .expect("set parent iframe server nonblocking");
+        let parent_address = format!(
+            "http://{}",
+            parent_listener.local_addr().expect("parent iframe server addr")
+        );
+
+        let child_url = format!("{child_address}/child");
+        let child_handle = thread::spawn(move || {
+            let html = r#"<!doctype html>
+<html>
+<head><title>Cross Origin Child</title></head>
+<body style="margin:0;height:1600px;">
+  <div
+    id="inner-box"
+    style="position:absolute;left:56px;top:88px;width:96px;height:58px;border:3px solid #111;padding:5px;background:#eee;"
+  ></div>
+</body>
+</html>
+"#;
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < deadline {
+                let (mut stream, _) = match child_listener.accept() {
+                    Ok(pair) => pair,
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(20));
+                        continue;
+                    }
+                    Err(_) => break,
+                };
+                let mut buffer = [0_u8; 4096];
+                let Ok(read) = stream.read(&mut buffer) else {
+                    continue;
+                };
+                if read == 0 {
+                    continue;
+                }
+                let request = String::from_utf8_lossy(&buffer[..read]);
+                let path = request
+                    .lines()
+                    .next()
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .unwrap_or("/");
+                match path {
+                    "/child" | "/" => {
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n{html}",
+                            html.len()
+                        );
+                    }
+                    _ => {
+                        let body = "not found";
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                    }
+                }
+            }
+        });
+
+        let parent_handle = thread::spawn(move || {
+            let html = format!(
+                r#"<!doctype html>
+<html>
+<body style="margin:0;">
+  <iframe
+    id="cross-frame"
+    style="position:absolute;left:170px;top:110px;width:430px;height:280px;border:0;"
+    src="{child_url}"
+  ></iframe>
+</body>
+</html>
+"#
+            );
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < deadline {
+                let (mut stream, _) = match parent_listener.accept() {
+                    Ok(pair) => pair,
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(20));
+                        continue;
+                    }
+                    Err(_) => break,
+                };
+                let mut buffer = [0_u8; 4096];
+                let Ok(read) = stream.read(&mut buffer) else {
+                    continue;
+                };
+                if read == 0 {
+                    continue;
+                }
+                let request = String::from_utf8_lossy(&buffer[..read]);
+                let path = request
+                    .lines()
+                    .next()
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .unwrap_or("/");
+                match path {
+                    "/parent" | "/" => {
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n{html}",
+                            html.len()
+                        );
+                    }
+                    _ => {
+                        let body = "not found";
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                    }
+                }
+            }
+        });
+
+        (format!("{parent_address}/parent"), parent_handle, child_handle)
+    }
+
+    fn spawn_nested_cross_origin_iframe_site(
+    ) -> (
+        String,
+        thread::JoinHandle<()>,
+        thread::JoinHandle<()>,
+        thread::JoinHandle<()>,
+    ) {
+        let grandchild_listener =
+            TcpListener::bind("127.0.0.1:0").expect("bind grandchild iframe server");
+        grandchild_listener
+            .set_nonblocking(true)
+            .expect("set grandchild iframe server nonblocking");
+        let grandchild_address = format!(
+            "http://{}",
+            grandchild_listener
+                .local_addr()
+                .expect("grandchild iframe server addr")
+        );
+        let grandchild_url = format!("{grandchild_address}/grandchild");
+
+        let child_listener = TcpListener::bind("127.0.0.1:0").expect("bind nested child server");
+        child_listener
+            .set_nonblocking(true)
+            .expect("set nested child server nonblocking");
+        let child_address = format!(
+            "http://{}",
+            child_listener.local_addr().expect("nested child server addr")
+        );
+        let child_url = format!("{child_address}/child");
+
+        let parent_listener =
+            TcpListener::bind("127.0.0.1:0").expect("bind nested parent server");
+        parent_listener
+            .set_nonblocking(true)
+            .expect("set nested parent server nonblocking");
+        let parent_address = format!(
+            "http://{}",
+            parent_listener.local_addr().expect("nested parent server addr")
+        );
+
+        let grandchild_handle = thread::spawn(move || {
+            let html = r#"<!doctype html>
+<html>
+<head><title>Nested Cross Origin Grandchild</title></head>
+<body style="margin:0;height:1400px;">
+  <div
+    id="deep-box"
+    style="position:absolute;left:44px;top:70px;width:88px;height:52px;border:3px solid #111;padding:5px;background:#eee;"
+  ></div>
+</body>
+</html>
+"#;
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < deadline {
+                let (mut stream, _) = match grandchild_listener.accept() {
+                    Ok(pair) => pair,
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(20));
+                        continue;
+                    }
+                    Err(_) => break,
+                };
+                let mut buffer = [0_u8; 4096];
+                let Ok(read) = stream.read(&mut buffer) else {
+                    continue;
+                };
+                if read == 0 {
+                    continue;
+                }
+                let request = String::from_utf8_lossy(&buffer[..read]);
+                let path = request
+                    .lines()
+                    .next()
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .unwrap_or("/");
+                match path {
+                    "/grandchild" | "/" => {
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n{html}",
+                            html.len()
+                        );
+                    }
+                    _ => {
+                        let body = "not found";
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                    }
+                }
+            }
+        });
+
+        let child_handle = thread::spawn(move || {
+            let html = format!(
+                r#"<!doctype html>
+<html>
+<head><title>Nested Cross Origin Child</title></head>
+<body style="margin:0;">
+  <iframe
+    id="inner-frame"
+    style="position:absolute;left:90px;top:60px;width:240px;height:180px;border:0;"
+    src="{grandchild_url}"
+  ></iframe>
+</body>
+</html>
+"#
+            );
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < deadline {
+                let (mut stream, _) = match child_listener.accept() {
+                    Ok(pair) => pair,
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(20));
+                        continue;
+                    }
+                    Err(_) => break,
+                };
+                let mut buffer = [0_u8; 4096];
+                let Ok(read) = stream.read(&mut buffer) else {
+                    continue;
+                };
+                if read == 0 {
+                    continue;
+                }
+                let request = String::from_utf8_lossy(&buffer[..read]);
+                let path = request
+                    .lines()
+                    .next()
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .unwrap_or("/");
+                match path {
+                    "/child" | "/" => {
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n{html}",
+                            html.len()
+                        );
+                    }
+                    _ => {
+                        let body = "not found";
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                    }
+                }
+            }
+        });
+
+        let parent_handle = thread::spawn(move || {
+            let html = format!(
+                r#"<!doctype html>
+<html>
+<body style="margin:0;">
+  <iframe
+    id="outer-frame"
+    style="position:absolute;left:170px;top:110px;width:430px;height:280px;border:0;"
+    src="{child_url}"
+  ></iframe>
+</body>
+</html>
+"#
+            );
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < deadline {
+                let (mut stream, _) = match parent_listener.accept() {
+                    Ok(pair) => pair,
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(20));
+                        continue;
+                    }
+                    Err(_) => break,
+                };
+                let mut buffer = [0_u8; 4096];
+                let Ok(read) = stream.read(&mut buffer) else {
+                    continue;
+                };
+                if read == 0 {
+                    continue;
+                }
+                let request = String::from_utf8_lossy(&buffer[..read]);
+                let path = request
+                    .lines()
+                    .next()
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .unwrap_or("/");
+                match path {
+                    "/parent" | "/" => {
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n{html}",
+                            html.len()
+                        );
+                    }
+                    _ => {
+                        let body = "not found";
+                        let _ = write!(
+                            stream,
+                            "HTTP/1.1 404 Not Found\r\nContent-Length: {}\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                    }
+                }
+            }
+        });
+
+        (
+            format!("{parent_address}/parent"),
+            parent_handle,
+            child_handle,
+            grandchild_handle,
+        )
+    }
+
 
     #[test]
     fn history_entry_index_moves_backward() {
@@ -5699,6 +6361,17 @@ mod tests {
     }
 
     #[test]
+    fn resolve_page_save_target_path_defaults_to_title_and_extension() {
+        let path = resolve_page_save_target_path(None, None, Some("Open:Page"), "mhtml")
+            .expect("save path");
+        assert!(path.is_absolute());
+        assert_eq!(
+            path.file_name().and_then(|value| value.to_str()),
+            Some("Open_Page.mhtml")
+        );
+    }
+
+    #[test]
     fn cookie_param_keeps_optional_scope_fields() {
         let cookie = cookie_param(
             "foo",
@@ -5909,6 +6582,77 @@ mod tests {
             panic!("close headless browser: {err}");
         }
         result.expect("frame target lookup regression");
+    }
+
+    #[test]
+    fn page_save_returns_mhtml_and_pdf_content_at_runtime() {
+        let (browser, temp_dir) =
+            launch_headless_test_browser("page-save").expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.title = "Save Capability";
+                    document.body.innerHTML = `
+                        <main id="content">
+                            <h1>save target</h1>
+                            <p>Rust page.save runtime coverage.</p>
+                        </main>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let mhtml = page.save(None, None, false)?;
+            match mhtml {
+                PageSaveContent::Mhtml(data) => {
+                    assert!(data.contains("save target"));
+                    assert!(data.contains("Content-Location:"));
+                }
+                other => panic!("expected mhtml save content, got {other:?}"),
+            }
+
+            let mhtml_dir = temp_dir.join("page-save-files");
+            let mhtml = page.save(Some(&mhtml_dir), Some("saved-page"), false)?;
+            let mhtml_path = mhtml_dir.join("saved-page.mhtml");
+            assert!(mhtml_path.exists());
+            let saved_mhtml = fs::read_to_string(&mhtml_path).expect("read saved mhtml");
+            assert!(saved_mhtml.contains("save target"));
+            match mhtml {
+                PageSaveContent::Mhtml(data) => {
+                    assert_eq!(data, saved_mhtml);
+                }
+                other => panic!("expected saved mhtml content, got {other:?}"),
+            }
+
+            let pdf = page.save_with_options(
+                Some(&temp_dir),
+                Some("saved-page"),
+                true,
+                Some(PrintToPdfParams::builder().landscape(true).build()),
+            )?;
+            let pdf_path = temp_dir.join("saved-page.pdf");
+            assert!(pdf_path.exists());
+            match pdf {
+                PageSaveContent::Pdf(bytes) => {
+                    assert!(bytes.starts_with(b"%PDF"));
+                    assert_eq!(bytes, fs::read(&pdf_path).expect("read saved pdf"));
+                }
+                other => panic!("expected pdf save content, got {other:?}"),
+            }
+
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("page save runtime regression");
     }
 
     #[test]
@@ -8536,6 +9280,445 @@ mod tests {
         }
         result.expect("element screen point formula regression");
     }
+
+    #[test]
+    fn iframe_element_screen_points_follow_dp_device_pixel_ratio_formula() {
+        let (browser, temp_dir) = launch_headless_test_browser("iframe-element-screen-points")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.execute_cdp(SetDeviceMetricsOverrideParams::new(1280, 720, 2.0, false))?;
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe
+                            id="demo-frame"
+                            style="position:absolute;left:160px;top:90px;width:420px;height:260px;border:0;"
+                            srcdoc="<html><head><title>Inside Frame</title></head><body style='margin:0;height:1600px'><div id='inner-box' style='position:absolute;left:48px;top:72px;width:90px;height:54px;border:3px solid #111;padding:5px;background:#eee;'></div></body></html>"
+                        ></iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let frame = page.get_frame_context("css:#demo-frame")?;
+            assert!(frame.wait_for_doc_loaded(5_000)?);
+            assert_eq!(frame.title()?, Some("Inside Frame".to_string()));
+            assert!(frame.inner_html()?.contains("inner-box"));
+            frame.run_js("(window.scrollTo(0, 23), true)")?;
+            let frame_scroll_position = frame.scroll_position()?;
+            assert_eq!(
+                (
+                    frame_scroll_position.0.round() as i64,
+                    frame_scroll_position.1.round() as i64,
+                ),
+                (0, 23)
+            );
+            let element = frame.find("css:#inner-box")?;
+            let web_element = WebElement::Browser(frame.find("css:#inner-box")?);
+
+            let (viewport_screen_x, viewport_screen_y, device_pixel_ratio) =
+                expected_dp_viewport_screen_origin(&page)?;
+            let frame_viewport_location = frame
+                .frame_element()
+                .rect_viewport_location()?
+                .expect("frame viewport location");
+
+            let viewport_location = element
+                .rect_viewport_location()?
+                .expect("iframe element viewport location");
+            let screen_location = element
+                .rect_screen_location()?
+                .expect("iframe element screen location");
+            assert_pair_close(
+                screen_location,
+                (
+                    (viewport_screen_x + frame_viewport_location.0 + viewport_location.0)
+                        * device_pixel_ratio,
+                    (viewport_screen_y + frame_viewport_location.1 + viewport_location.1)
+                        * device_pixel_ratio,
+                ),
+                "iframe element screen_location",
+            );
+
+            let viewport_midpoint = element
+                .rect_viewport_midpoint()?
+                .expect("iframe element viewport midpoint");
+            let screen_midpoint = element
+                .rect_screen_midpoint()?
+                .expect("iframe element screen midpoint");
+            assert_pair_close(
+                screen_midpoint,
+                (
+                    (viewport_screen_x + frame_viewport_location.0 + viewport_midpoint.0)
+                        * device_pixel_ratio,
+                    (viewport_screen_y + frame_viewport_location.1 + viewport_midpoint.1)
+                        * device_pixel_ratio,
+                ),
+                "iframe element screen_midpoint",
+            );
+
+            let viewport_click_point = element
+                .rect_viewport_click_point()?
+                .expect("iframe element viewport click point");
+            let screen_click_point = element
+                .rect_screen_click_point()?
+                .expect("iframe element screen click point");
+            assert_pair_close(
+                screen_click_point,
+                (
+                    (viewport_screen_x + frame_viewport_location.0 + viewport_click_point.0)
+                        * device_pixel_ratio,
+                    (viewport_screen_y + frame_viewport_location.1 + viewport_click_point.1)
+                        * device_pixel_ratio,
+                ),
+                "iframe element screen_click_point",
+            );
+
+            assert_pair_close(
+                web_element
+                    .rect_screen_location()?
+                    .expect("iframe web element screen location"),
+                screen_location,
+                "iframe web element screen_location",
+            );
+            assert_pair_close(
+                web_element
+                    .rect_screen_midpoint()?
+                    .expect("iframe web element screen midpoint"),
+                screen_midpoint,
+                "iframe web element screen_midpoint",
+            );
+            assert_pair_close(
+                web_element
+                    .rect_screen_click_point()?
+                    .expect("iframe web element screen click point"),
+                screen_click_point,
+                "iframe web element screen_click_point",
+            );
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("iframe element screen point formula regression");
+    }
+
+    #[test]
+    fn cross_origin_iframe_element_screen_points_follow_dp_device_pixel_ratio_formula() {
+        let (browser, temp_dir) = launch_headless_test_browser("xorigin-iframe-screen-points")
+            .expect("launch headless browser");
+        let (parent_url, parent_server, child_server) = spawn_cross_origin_iframe_site();
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            page.execute_cdp(SetDeviceMetricsOverrideParams::new(1280, 720, 2.0, false))?;
+            page.goto(&parent_url)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+
+            let frame = page.get_frame_context("css:#cross-frame")?;
+            assert!(frame.wait_for_doc_loaded(5_000)?);
+            assert_eq!(frame.title()?, Some("Cross Origin Child".to_string()));
+
+            let element = frame.find("css:#inner-box")?;
+            let web_element = WebElement::Browser(frame.find("css:#inner-box")?);
+            let (viewport_screen_x, viewport_screen_y, device_pixel_ratio) =
+                expected_dp_viewport_screen_origin(&page)?;
+            let frame_viewport_location = frame
+                .frame_element()
+                .rect_viewport_location()?
+                .expect("cross-origin frame viewport location");
+
+            let viewport_location = element
+                .rect_viewport_location()?
+                .expect("cross-origin iframe element viewport location");
+            let screen_location = element
+                .rect_screen_location()?
+                .expect("cross-origin iframe element screen location");
+            assert_pair_close(
+                screen_location,
+                (
+                    (viewport_screen_x + frame_viewport_location.0 + viewport_location.0)
+                        * device_pixel_ratio,
+                    (viewport_screen_y + frame_viewport_location.1 + viewport_location.1)
+                        * device_pixel_ratio,
+                ),
+                "cross-origin iframe element screen_location",
+            );
+
+            let viewport_midpoint = element
+                .rect_viewport_midpoint()?
+                .expect("cross-origin iframe element viewport midpoint");
+            let screen_midpoint = element
+                .rect_screen_midpoint()?
+                .expect("cross-origin iframe element screen midpoint");
+            assert_pair_close(
+                screen_midpoint,
+                (
+                    (viewport_screen_x + frame_viewport_location.0 + viewport_midpoint.0)
+                        * device_pixel_ratio,
+                    (viewport_screen_y + frame_viewport_location.1 + viewport_midpoint.1)
+                        * device_pixel_ratio,
+                ),
+                "cross-origin iframe element screen_midpoint",
+            );
+
+            let viewport_click_point = element
+                .rect_viewport_click_point()?
+                .expect("cross-origin iframe element viewport click point");
+            let screen_click_point = element
+                .rect_screen_click_point()?
+                .expect("cross-origin iframe element screen click point");
+            assert_pair_close(
+                screen_click_point,
+                (
+                    (viewport_screen_x + frame_viewport_location.0 + viewport_click_point.0)
+                        * device_pixel_ratio,
+                    (viewport_screen_y + frame_viewport_location.1 + viewport_click_point.1)
+                        * device_pixel_ratio,
+                ),
+                "cross-origin iframe element screen_click_point",
+            );
+
+            assert_pair_close(
+                web_element
+                    .rect_screen_location()?
+                    .expect("cross-origin web element screen location"),
+                screen_location,
+                "cross-origin web element screen_location",
+            );
+            assert_pair_close(
+                web_element
+                    .rect_screen_midpoint()?
+                    .expect("cross-origin web element screen midpoint"),
+                screen_midpoint,
+                "cross-origin web element screen_midpoint",
+            );
+            assert_pair_close(
+                web_element
+                    .rect_screen_click_point()?
+                    .expect("cross-origin web element screen click point"),
+                screen_click_point,
+                "cross-origin web element screen_click_point",
+            );
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+        parent_server.join().expect("join parent iframe server");
+        child_server.join().expect("join child iframe server");
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("cross-origin iframe element screen point formula regression");
+    }
+
+    #[test]
+    fn nested_cross_origin_iframe_element_screen_points_follow_dp_device_pixel_ratio_formula() {
+        let (browser, temp_dir) =
+            launch_headless_test_browser("nested-xorigin-iframe-screen-points")
+                .expect("launch headless browser");
+        let (parent_url, parent_server, child_server, grandchild_server) =
+            spawn_nested_cross_origin_iframe_site();
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            page.execute_cdp(SetDeviceMetricsOverrideParams::new(1280, 720, 2.0, false))?;
+            page.goto(&parent_url)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+
+            let outer_frame = page
+                .get_frame_context("css:#outer-frame")
+                .map_err(|err| OpenPageError::PageOperation(format!("outer frame context: {err}")))?;
+            assert!(
+                outer_frame
+                    .wait_for_doc_loaded(5_000)
+                    .map_err(|err| OpenPageError::PageOperation(format!(
+                        "outer frame wait_for_doc_loaded: {err}"
+                    )))?
+            );
+            let inner_frame_element = outer_frame
+                .find("css:#inner-frame")
+                .map_err(|err| OpenPageError::PageOperation(format!("outer frame find inner frame: {err}")))?;
+            let inner_frame = page
+                .get_frame_context(&inner_frame_element)
+                .map_err(|err| OpenPageError::PageOperation(format!(
+                    "inner frame context from element: {err}"
+                )))?;
+            assert!(
+                inner_frame
+                    .wait_for_doc_loaded(5_000)
+                    .map_err(|err| OpenPageError::PageOperation(format!(
+                        "inner frame wait_for_doc_loaded: {err}"
+                    )))?
+            );
+            assert_eq!(
+                inner_frame
+                    .title()
+                    .map_err(|err| OpenPageError::PageOperation(format!("inner frame title: {err}")))?,
+                Some("Nested Cross Origin Grandchild".to_string())
+            );
+
+            let element = inner_frame
+                .find("css:#deep-box")
+                .map_err(|err| OpenPageError::PageOperation(format!("inner frame find deep-box: {err}")))?;
+            let web_element = WebElement::Browser(
+                inner_frame
+                    .find("css:#deep-box")
+                    .map_err(|err| OpenPageError::PageOperation(format!(
+                        "inner frame find deep-box for web element: {err}"
+                    )))?,
+            );
+            let (viewport_screen_x, viewport_screen_y, device_pixel_ratio) =
+                expected_dp_viewport_screen_origin(&page)?;
+            let outer_frame_viewport_location = outer_frame
+                .frame_element()
+                .rect_viewport_location()
+                .map_err(|err| OpenPageError::PageOperation(format!(
+                    "outer frame rect_viewport_location: {err}"
+                )))?
+                .expect("outer frame viewport location");
+            let inner_frame_viewport_location = inner_frame
+                .frame_element()
+                .rect_viewport_location()
+                .map_err(|err| OpenPageError::PageOperation(format!(
+                    "inner frame rect_viewport_location: {err}"
+                )))?
+                .expect("inner frame viewport location");
+
+            let viewport_location = element
+                .rect_viewport_location()
+                .map_err(|err| OpenPageError::PageOperation(format!(
+                    "deep-box rect_viewport_location: {err}"
+                )))?
+                .expect("nested cross-origin iframe element viewport location");
+            let screen_location = element
+                .rect_screen_location()
+                .map_err(|err| OpenPageError::PageOperation(format!(
+                    "deep-box rect_screen_location: {err}"
+                )))?
+                .expect("nested cross-origin iframe element screen location");
+            assert_pair_close(
+                screen_location,
+                (
+                    (viewport_screen_x
+                        + outer_frame_viewport_location.0
+                        + inner_frame_viewport_location.0
+                        + viewport_location.0)
+                        * device_pixel_ratio,
+                    (viewport_screen_y
+                        + outer_frame_viewport_location.1
+                        + inner_frame_viewport_location.1
+                        + viewport_location.1)
+                        * device_pixel_ratio,
+                ),
+                "nested cross-origin iframe element screen_location",
+            );
+
+            let viewport_midpoint = element
+                .rect_viewport_midpoint()
+                .map_err(|err| OpenPageError::PageOperation(format!(
+                    "deep-box rect_viewport_midpoint: {err}"
+                )))?
+                .expect("nested cross-origin iframe element viewport midpoint");
+            let screen_midpoint = element
+                .rect_screen_midpoint()
+                .map_err(|err| OpenPageError::PageOperation(format!(
+                    "deep-box rect_screen_midpoint: {err}"
+                )))?
+                .expect("nested cross-origin iframe element screen midpoint");
+            assert_pair_close(
+                screen_midpoint,
+                (
+                    (viewport_screen_x
+                        + outer_frame_viewport_location.0
+                        + inner_frame_viewport_location.0
+                        + viewport_midpoint.0)
+                        * device_pixel_ratio,
+                    (viewport_screen_y
+                        + outer_frame_viewport_location.1
+                        + inner_frame_viewport_location.1
+                        + viewport_midpoint.1)
+                        * device_pixel_ratio,
+                ),
+                "nested cross-origin iframe element screen_midpoint",
+            );
+
+            let viewport_click_point = element
+                .rect_viewport_click_point()
+                .map_err(|err| OpenPageError::PageOperation(format!(
+                    "deep-box rect_viewport_click_point: {err}"
+                )))?
+                .expect("nested cross-origin iframe element viewport click point");
+            let screen_click_point = element
+                .rect_screen_click_point()
+                .map_err(|err| OpenPageError::PageOperation(format!(
+                    "deep-box rect_screen_click_point: {err}"
+                )))?
+                .expect("nested cross-origin iframe element screen click point");
+            assert_pair_close(
+                screen_click_point,
+                (
+                    (viewport_screen_x
+                        + outer_frame_viewport_location.0
+                        + inner_frame_viewport_location.0
+                        + viewport_click_point.0)
+                        * device_pixel_ratio,
+                    (viewport_screen_y
+                        + outer_frame_viewport_location.1
+                        + inner_frame_viewport_location.1
+                        + viewport_click_point.1)
+                        * device_pixel_ratio,
+                ),
+                "nested cross-origin iframe element screen_click_point",
+            );
+
+            assert_pair_close(
+                web_element
+                    .rect_screen_location()?
+                    .expect("nested cross-origin web element screen location"),
+                screen_location,
+                "nested cross-origin web element screen_location",
+            );
+            assert_pair_close(
+                web_element
+                    .rect_screen_midpoint()?
+                    .expect("nested cross-origin web element screen midpoint"),
+                screen_midpoint,
+                "nested cross-origin web element screen_midpoint",
+            );
+            assert_pair_close(
+                web_element
+                    .rect_screen_click_point()?
+                    .expect("nested cross-origin web element screen click point"),
+                screen_click_point,
+                "nested cross-origin web element screen_click_point",
+            );
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+        parent_server.join().expect("join nested parent iframe server");
+        child_server.join().expect("join nested child iframe server");
+        grandchild_server
+            .join()
+            .expect("join nested grandchild iframe server");
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("nested cross-origin iframe element screen point formula regression");
+    }
+
 
     #[test]
     fn select_waits_for_delayed_options_at_runtime() {

@@ -20,6 +20,7 @@ use crate::locator::{
 use crate::page::{
     Actions, ActionsInput, Frame, FrameRect, FrameScroller, FrameSetter, FrameStates, FrameWait,
     Page, PageElementContent, PageElementInfo, PageElementTarget, PageFrameTarget,
+    PageSaveContent,
 };
 use crate::screencast::Screencast;
 use crate::session::{
@@ -3206,6 +3207,35 @@ impl WebPage {
         self.driver.save_screenshot(path, full_page)
     }
 
+    pub fn save(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        as_pdf: bool,
+    ) -> OpenPageResult<PageSaveContent> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "save() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.save(path, name, as_pdf)
+    }
+
+    pub fn save_with_options(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        as_pdf: bool,
+        pdf_options: Option<chromiumoxide::cdp::browser_protocol::page::PrintToPdfParams>,
+    ) -> OpenPageResult<PageSaveContent> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "save_with_options() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.save_with_options(path, name, as_pdf, pdf_options)
+    }
+
     pub fn save_pdf(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
@@ -4240,6 +4270,16 @@ impl WebPage {
             sleep(Duration::from_millis(wait_ms));
         }
         let driver = self.browser.get_page(&self.driver.target_id())?;
+        Ok(Self {
+            browser: self.browser.clone(),
+            driver,
+            session: self.session.clone(),
+            mode: Arc::clone(&self.mode),
+        })
+    }
+
+    pub fn with_target(&self, target_id: &str) -> OpenPageResult<Self> {
+        let driver = self.browser.get_page(target_id)?;
         Ok(Self {
             browser: self.browser.clone(),
             driver,

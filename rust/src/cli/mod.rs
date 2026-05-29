@@ -1,4 +1,5 @@
 pub mod args;
+pub mod connection;
 pub mod protocol;
 
 mod oneshot;
@@ -38,20 +39,34 @@ where
         }
     };
 
-    let result = match cli.command {
-        Command::Serve(args) => serve::run(args),
-        command => oneshot::run(command),
-    };
-
-    match result {
-        Ok(()) => Ok(0),
-        Err(err) => {
-            println!(
-                "{}",
-                serde_json::to_string(&protocol::simple_error("openpage", err.to_string()))
+    match cli.command {
+        Command::Serve(args) => match serve::run(args) {
+            Ok(()) => Ok(0),
+            Err(err) => {
+                println!(
+                    "{}",
+                    protocol::format_output_json(&protocol::simple_error(
+                        "openpage",
+                        err.to_string()
+                    ))
                     .map_err(|err| OpenPageError::Serialization(err.to_string()))?
-            );
-            Ok(1)
-        }
+                );
+                Ok(1)
+            }
+        },
+        command => match oneshot::run(command) {
+            Ok(code) => Ok(code),
+            Err(err) => {
+                println!(
+                    "{}",
+                    protocol::format_output_json(&protocol::simple_error(
+                        "openpage",
+                        err.to_string()
+                    ))
+                    .map_err(|err| OpenPageError::Serialization(err.to_string()))?
+                );
+                Ok(1)
+            }
+        },
     }
 }

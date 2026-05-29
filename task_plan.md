@@ -45,12 +45,16 @@
 - **旧直连辅助函数已移除**：`do_start_browser()`、`open_page()`、`load_session()`、`save_session()`、`Browser::connect()` 这一批旧 `oneshot` 执行辅助路径已从 `rust/src/cli/oneshot.rs` 清掉；仅保留 `session_file()` 作为 stop 时顺手清理旧遗留文件。
 - **daemon 内部已接管 tab/frame 上下文**：`rust/src/cli/serve.rs` 新增 `ServeWebPage`，维护 active tab / active frame；CLI 不再依赖旧 session JSON 存储 target/frame 状态。
 - **剩余主任务转向非-CDP 借鉴项**：下一步不再是协议收口，而是继续补 `agent-browser` 风格的外围设计，如 output 治理、daemon inventory、AI 友好输出等。
+- **output 治理已真正接线到 CLI 输出出口**：`rust/src/cli/protocol.rs` 里的 `format_output_json()` 现在已由 `rust/src/cli/oneshot.rs::print_json()` 与 `rust/src/cli/mod.rs` 顶层错误打印共同使用；`OPENPAGE_CONTENT_BOUNDARIES` / `OPENPAGE_MAX_OUTPUT_CHARS` 已通过真实 CLI smoke 验证生效。
+- **batch 批处理已完成第一版接入**：OpenPage 现在支持 `batch` 子命令，按顺序执行多条 CLI 指令；支持参数模式、stdin JSON 模式和 `--bail`，且不引入任何竞品 CDP / element / action 内核。
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
 - `daemon.shutdown` 初始只修改了 runtime 状态，没有真正退出 TCP accept 循环；现已修正并验证 sidecar 会随优雅退出清理。
 - `back/forward` 在第一版 RPC 包装里存在导航完成前就读取 URL 的竞态；现已通过在包装层补 `wait.doc_loaded` 修正并重新验证。
 - `click-for-new-tab` smoke 第一轮失败并非协议问题，而是测试脚本仍停留在新 tab 上就去点旧页的上传控件；调整为先 `tab switch` 回原页后，后续 `click-to-upload` / `click-to-download` / `drag-in` 全部验证通过。
+- 本轮 `cargo check` 首次被 `rust/src/page.rs` 中一个现有工作树编译错误挡住：`CaptureSnapshot` 返回值从借用结果中 move 出 `String`。已做最小修复为 `.clone()`，恢复可验证状态。
+- `batch` 接入为了避免“每条子命令报错后再多打一层总错误 JSON”，把 `rust/src/cli/oneshot.rs` 的返回语义调整为显式 exit code；这是外层 CLI 行为调整，不涉及浏览器/元素/CDP 内核。
 
 ## Status
-**Currently in Phase 6** - 唯一 TCP daemon 路径已经落地并通过 compile + smoke；`oneshot.rs` 旧直连执行路径已移除。下一步继续补非-CDP 借鉴项，并收尾文档、验证与 git checkpoint。
+**Currently in Phase 6** - 唯一 TCP daemon 路径已经落地并通过 compile + smoke；`oneshot.rs` 旧直连执行路径已移除，output 治理和 batch 这两个非-CDP 借鉴项都已经进入可运行状态。下一步继续补 `doctor` / 更完整的 daemon 基础设施 / 文档一致性，并收尾 git checkpoint。

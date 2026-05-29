@@ -142,6 +142,14 @@ impl AlertTracker {
             .map_err(|_| OpenPageError::BrowserOperation("alert state lock poisoned".to_string()))
     }
 
+    pub fn alert_text(&self) -> OpenPageResult<Option<String>> {
+        self.shared
+            .state
+            .lock()
+            .map(|state| state.message.clone())
+            .map_err(|_| OpenPageError::BrowserOperation("alert state lock poisoned".to_string()))
+    }
+
     pub fn handle_alert(
         &self,
         accept: bool,

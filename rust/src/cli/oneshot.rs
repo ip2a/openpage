@@ -1,25 +1,37 @@
+use clap::Parser;
 use std::fs;
+use std::io::Read;
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
 use crate::cli::args::{
-    AlertCommand, AttrArgs, BrowserCommand, BrowserStartArgs, ClickForNewTabArgs,
+    AlertCommand, AttrArgs, BatchArgs, BrowserCommand, BrowserStartArgs, ClickForNewTabArgs,
     ClickToDownloadArgs, ClickToUploadArgs, Command, CookiesCommand, DownloadArgs, DragArgs,
-    DragInArgs, DragToArgs, DragToPointArgs, ElementArgs, FillArgs, FrameCommand, GotoArgs,
+    DragInArgs, DragToArgs, DragToPointArgs, ElementArgs, FillArgs, FrameCommand, GotoArgs, Cli,
     InterceptCommand, JsArgs, KeyArgs, PageTextArgs, PdfArgs, PressArgs, ScrollArgs,
     ScrollIntoViewArgs, SelectArgs, ScreenshotArgs, SessionArgs, ShortcutArgs, StorageCommand,
     StorageScope, TabCommand, TypeWithIntervalArgs, UploadArgs, WaitArgs, WaitElementArgs,
-    WaitForFunctionArgs, WaitForTextArgs, WaitForTitleArgs, WaitForUrlArgs, WindowCommand,
-    WindowMoveArgs,
+    WaitForFunctionArgs, WaitForTextArgs, WaitForTitleArgs, WaitForUrlArgs, WindowCommand, WindowMoveArgs,
 };
 use crate::cli::connection::{
-    cleanup_sidecars, daemon_ready as tcp_daemon_ready, read_port, send_request,
+    cleanup_sidecars, daemon_ready as tcp_daemon_ready, daemon_status, list_daemons, read_port,
+    send_request,
 };
-use crate::cli::protocol::{simple_ok, Request, Response};
+use crate::cli::protocol::{format_output_json, simple_error, simple_ok, Request, Response};
 use crate::error::{OpenPageError, OpenPageResult};
 
-pub fn run(command: Command) -> OpenPageResult<()> {
+pub fn run(command: Command) -> OpenPageResult<i32> {
+    match command {
+        Command::Batch(args) => run_batch(args),
+        command => {
+            run_single(command)?;
+            Ok(0)
+        }
+    }
+}
+
+fn run_single(command: Command) -> OpenPageResult<()> {
     match command {
         Command::Browser(command) => run_browser(command),
         Command::Goto(args) => run_goto(args),
@@ -97,6 +109,7 @@ pub fn run(command: Command) -> OpenPageResult<()> {
         Command::Cookies(command) => run_cookies(command),
         Command::Tab(command) => run_tab(command),
         Command::Frame(command) => run_frame(command),
+        Command::Batch(_) => unreachable!("batch is handled by oneshot::run"),
         Command::Serve(_) => unreachable!("serve is handled by cli::serve"),
     }
 }
@@ -119,18 +132,13 @@ fn run_browser(command: BrowserCommand) -> OpenPageResult<()> {
     match command {
         BrowserCommand::Start(args) => start_browser(args),
         BrowserCommand::Stop(args) => stop_browser(args, false),
+        BrowserCommand::List => {
+            let sessions = list_daemons()?;
+            print_json(simple_ok(json!({ "sessions": sessions })))
+        }
         BrowserCommand::Status(args) => {
-            let status = if tcp_daemon_ready(&args.session) {
-                json!({
-                    "session": args.session,
-                    "alive": true,
-                    "port": read_port(&args.session)?,
-                    "target": args.session,
-                })
-            } else {
-                json!({"session": args.session, "alive": false})
-            };
-            print_json(simple_ok(status))
+            let status = daemon_status(&args.session)?;
+            print_json(simple_ok(json!(status)))
         }
     }
 }
@@ -696,6 +704,87 @@ fn stop_browser(args: SessionArgs, quiet: bool) -> OpenPageResult<()> {
     }
 }
 
+fn run_batch(args: BatchArgs) -> OpenPageResult<i32> {
+    let commands = batch_commands(&args)?;
+    let mut had_error = false;
+
+    for command_args in commands {
+        if command_args.is_empty() {
+            continue;
+        }
+
+        let command = match parse_batch_command(&command_args) {
+            Ok(command) => command,
+            Err(err) => {
+                print_json(simple_error("openpage", err.to_string()))?;
+                had_error = true;
+                if args.bail {
+                    break;
+                }
+                continue;
+            }
+        };
+
+        if let Err(err) = run_single(command) {
+            print_json(simple_error("openpage", err.to_string()))?;
+            had_error = true;
+            if args.bail {
+                break;
+            }
+        }
+    }
+
+    Ok(if had_error { 1 } else { 0 })
+}
+
+fn batch_commands(args: &BatchArgs) -> OpenPageResult<Vec<Vec<String>>> {
+    if !args.commands.is_empty() {
+        return args
+            .commands
+            .iter()
+            .map(|command| {
+                shlex::split(command).ok_or_else(|| {
+                    OpenPageError::UnsupportedOperation(format!(
+                        "invalid batch command quoting: {command}"
+                    ))
+                })
+            })
+            .collect();
+    }
+
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input)?;
+    serde_json::from_str::<Vec<Vec<String>>>(&input).map_err(|err| {
+        OpenPageError::Serialization(format!(
+            "invalid batch stdin JSON: {err}; expected an array of argv arrays"
+        ))
+    })
+}
+
+fn parse_batch_command(command_args: &[String]) -> OpenPageResult<Command> {
+    let mut argv = Vec::with_capacity(command_args.len() + 1);
+    argv.push("openpage".to_string());
+    argv.extend(command_args.iter().cloned());
+
+    let cli = Cli::try_parse_from(argv).map_err(|err| {
+        OpenPageError::UnsupportedOperation(format!(
+            "invalid batch command `{}`: {}",
+            command_args.join(" "),
+            err.to_string().trim()
+        ))
+    })?;
+
+    match cli.command {
+        Command::Batch(_) => Err(OpenPageError::UnsupportedOperation(
+            "batch cannot execute nested batch commands".to_string(),
+        )),
+        Command::Serve(_) => Err(OpenPageError::UnsupportedOperation(
+            "batch cannot execute `serve`; use top-level `serve` separately".to_string(),
+        )),
+        command => Ok(command),
+    }
+}
+
 fn rpc_request(
     daemon_session: &str,
     target: Option<String>,
@@ -775,7 +864,7 @@ fn openpage_home() -> OpenPageResult<PathBuf> {
 fn print_json(value: Value) -> OpenPageResult<()> {
     println!(
         "{}",
-        serde_json::to_string(&value)
+        format_output_json(&value)
             .map_err(|err| OpenPageError::Serialization(err.to_string()))?
     );
     Ok(())
@@ -1613,6 +1702,24 @@ mod tests {
             "agent",
         ])
         .unwrap();
+    }
+
+    #[test]
+    fn parses_batch_with_commands() {
+        Cli::try_parse_from([
+            "openpage",
+            "batch",
+            "--bail",
+            "browser start https://example.com --headless",
+            "title",
+            "browser stop",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_batch_without_commands() {
+        Cli::try_parse_from(["openpage", "batch", "--bail"]).unwrap();
     }
 
     #[test]

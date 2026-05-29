@@ -195,6 +195,14 @@ impl Locator {
         }
 
         if let Some(query) = raw.strip_prefix('@') {
+            let query = query.trim();
+            if query.starts_with('e')
+                && query.len() > 1
+                && query[1..].chars().all(|c| c.is_ascii_digit())
+            {
+                let selector = format!(r#"[data-op-ref="{}"]"#, query);
+                return Ok(Self::new(raw, LocatorKind::Css, selector));
+            }
             let (name, value) = query.split_once('=').ok_or_else(|| {
                 OpenPageError::UnsupportedLocator(format!(
                     "attribute locator requires @name=value form: {raw}"
@@ -421,6 +429,13 @@ mod tests {
             super::parse_optional_locator_input(Some(("id", "main"))).expect("optional by");
 
         assert_eq!(locator.expect("locator").raw(), "@id=main");
+    }
+
+    #[test]
+    fn parse_ref_locator_to_data_attr() {
+        let locator = Locator::parse("@e5").expect("ref locator");
+        assert_eq!(locator.kind(), LocatorKind::Css);
+        assert_eq!(locator.query(), r#"[data-op-ref="e5"]"#);
     }
 
     #[test]
