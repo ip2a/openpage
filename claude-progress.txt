@@ -1310,3 +1310,45 @@
 1. 继续沿 `doctor.rs` 做小而稳的外壳层增强
 2. 如有必要，再做定点历史文档降级，而不是大面积重写
 3. 保持不碰浏览器/CDP/元素真相源
+
+
+## 2026-05-30 — Session 24
+
+### Goal in focus
+- 把前几轮代码层的新真相同步到当前仍然活跃的用户文档面
+- 避免 README / skill docs 落后于真实 CLI 行为
+
+### Work completed
+- 先重新核实当前机器状态：
+  - `browser list` 现在是 4 个 healthy sessions
+  - `doctor --quick` summary 现在是：
+    - `pass=7`
+    - `warn=1`
+    - `fail=1`
+    - `info=2`
+    - `fixable=3`
+    - `total=11`
+- 更新活跃文档：
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - `skills/openpage-test/references/trust-boundaries.md`
+  - `skills/openpage-test/references/snapshot-refs.md`
+- 同步内容主要包括：
+  - legacy session JSON residue 已被 doctor 发现
+  - boundary metadata 现在可带 origin
+  - 当前机器本地 smoke 判断基线
+
+### Verification
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+- 文档片段回读核对
+
+### Current conclusions
+- 活跃文档面现在和当前代码/本机运行态对齐得更紧了。
+- 当前没有新的“活跃 OpenPage CLI 执行手册级误导面”冒出来。
+- 仍然没有碰浏览器/CDP/元素真相源。
+
+### Next steps
+1. 继续沿 `doctor.rs` / `protocol.rs` 做外壳层增强
+2. 如需要，再做定点历史文档降级
+3. 保持 git 路径聚焦提交

@@ -11,9 +11,11 @@ cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick
 
 If either of these fails, stop and report that result first.
 
-Latest recheck on `2026-05-29`:
+Latest recheck on `2026-05-30`:
 
 - `cargo check --manifest-path rust/Cargo.toml` passed
+- `openpage browser list` currently returns 4 healthy sessions and no incomplete or cleaned sidecars
+- `openpage doctor --quick` currently also warns about 4 legacy session JSON files under `/Users/yuuu/.openpage/sessions`
 - `openpage doctor --quick` currently fails at the browser executable check:
   - `browser_path=chrome`
   - configured browser executable not found on PATH
@@ -23,6 +25,9 @@ Interpretation:
 
 - The current branch is compilable.
 - The TCP daemon path is not currently the blocked part.
+- Legacy session JSON residue is currently visible on this machine, but it is not part of the active TCP daemon execution path.
+- Daemon inventory is currently healthy on this machine; the remaining red item is browser executable resolution.
+- Session count is runtime state, not a repository invariant. Treat the current `browser list` output as authoritative, not any older hard-coded count in notes.
 - If `doctor --quick` or full `doctor` fails this way on your machine, treat it as a local browser/config problem first.
 - On the current macOS machine used for the latest audit, Chrome exists as an app bundle under `/Applications/Google Chrome.app`, but `chrome` is not on PATH.
 

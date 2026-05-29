@@ -938,3 +938,31 @@
   - `protocol.rs`
   - agent-facing docs
   rather than broad markdown churn.
+
+
+## Local truth refresh (2026-05-30, active-doc sync pass)
+- This pass updated only the active user-facing docs, not archived reports.
+- Current local truth rechecked right before the doc edit:
+  - `openpage browser list` returned 4 healthy sessions
+  - `openpage doctor --quick` returned:
+    - `warn=1` (`env.legacy_sessions`)
+    - `fail=1` (`browser.executable`)
+    - `info=2`
+    - `fixable=3`
+    - `total=11`
+- Synced files:
+  - `README.md`
+    - `doctor` section now explicitly mentions legacy session JSON residue under `OPENPAGE_HOME/sessions`
+    - boundary section now mentions origin-aware boundary metadata
+  - `skills/openpage-test/references/cli-smoke.md`
+    - latest local recheck now mentions:
+      - 4 healthy sessions
+      - legacy session JSON warning
+      - browser executable as the remaining fail
+  - `skills/openpage-test/references/trust-boundaries.md`
+    - now explains that boundary metadata may carry origin, but that does not increase trust
+  - `skills/openpage-test/references/snapshot-refs.md`
+    - now explains `_boundary.origin` and `origin=...` in wrapped snapshot text
+- Interpretation:
+  - this keeps active guidance aligned with the current repo state without churning archived historical material
+  - it remains fully outside browser/CDP/element truth sources

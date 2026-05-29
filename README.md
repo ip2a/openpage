@@ -206,6 +206,7 @@ cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor
 `doctor` reports:
 
 - environment and daemon sidecar locations
+- legacy session JSON files under `OPENPAGE_HOME/sessions` that no longer drive the active TCP CLI path
 - active healthy daemon sessions
 - incomplete daemon sidecars that still point to a live daemon
 - stale daemon sidecars cleaned during the audit
@@ -225,6 +226,17 @@ AI-first snapshot output now includes:
 - `text` — compact text summary suitable for LLM consumption
 - `refs` — ref-indexed object summary for direct follow-up actions
 - `origin` / `title` — best-effort page context metadata when available
+
+When `OPENPAGE_CONTENT_BOUNDARIES=1` is enabled and OpenPage knows the current
+origin, boundary metadata now also carries that origin so models can separate
+page payloads from tool output more reliably without treating the content as
+trusted.
+
+For repo-local agent usage guidance, see:
+
+- `skills/openpage-test/references/snapshot-refs.md`
+- `skills/openpage-test/references/session-management.md`
+- `skills/openpage-test/references/trust-boundaries.md`
 
 ## Status
 
