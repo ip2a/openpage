@@ -182,3 +182,48 @@
   - competitor CDP transport
   - competitor action dispatch layer
   - competitor element interaction internals
+
+## Protocol migration audit update (2026-05-29, later pass)
+- `rust/src/cli/serve.rs` mid-flight refactor has been completed enough to compile again.
+- `ServeWebPage` is now the daemon-side holder for:
+  - active `WebPage`
+  - active frame target
+- Daemon-side context-sensitive operations now cover:
+  - `tab.list`
+  - `tab.new`
+  - `tab.switch`
+  - `tab.close`
+  - `frame.list`
+  - `frame.switch`
+  - `wait.locator`
+  - `page.drag_in`
+  - `element.click_to_download`
+  - `element.click_to_upload`
+  - `element.click_for_new_tab`
+- `rust/src/cli/oneshot.rs` no longer contains active execution references to:
+  - `open_page()`
+  - `load_session()`
+  - `Browser::connect()`
+  - `do_start_browser()`
+- Verified by grep:
+  - `rg -n "open_page\\(|load_session\\(|Browser::connect\\(|do_start_browser\\(" rust/src/cli`
+  - returns no matches
+- Real smoke that passed through daemon path:
+  - generic `wait '#upload'`
+  - `frame list`
+  - `frame switch 1`
+  - frame-scoped `text '#inside'`
+  - `frame switch main`
+  - `click-for-new-tab '#newtab'`
+  - `tab switch 2`
+  - `click-to-upload '#upload'`
+  - `js 'document.querySelector(\"#upload\").files.length'`
+  - `click-to-download '#download'`
+  - `drag-in '#drop' --text 'Dragged text'`
+  - `js 'document.body.dataset.dropResult'`
+  - `tab close --others`
+  - `tab list`
+  - `browser stop`
+- Important nuance from smoke:
+  - `click-for-new-tab` correctly switched active tab inside daemon state.
+  - The first upload smoke failed only because the test stayed on the new tab; after explicit `tab switch 2`, upload/download/drag-in all passed.

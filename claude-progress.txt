@@ -170,3 +170,88 @@
 1. 设计 daemon 内部的 tab/frame 活跃上下文，替换旧 `SessionRecord.default_target_id/default_frame_target`
 2. 收口 `tab` / `frame` / `click-to-*` / `drag-in`
 3. 再补一层非-CDP 借鉴项：daemon inventory / output truncation / batch
+
+## 2026-05-29 — Session 3
+
+### Goal in focus
+- 完成 `serve.rs` 里未收尾的 tab/frame 上下文重构
+- 把 `oneshot.rs` 中最后一批旧 browser/session 直连命令全部迁到 daemon
+- 用真实 smoke 证明“唯一 TCP 执行路径”不是口头结论
+
+### Work completed
+- 修复 `rust/src/cli/serve.rs` 中途重构留下的编译断点
+  - `webpage.quit` 改为对 `ServeWebPage.page` 执行
+  - `wait.function` / `wait.text` 改为走 `ServeWebPage`
+  - `wait.text` 从脆弱的 `querySelector()` 改为真实 `find(locator) + text()` 轮询
+- 在 daemon 侧完成 active tab / active frame 上下文接管
+  - `ServeWebPage`
+  - `switch_target()`
+  - `switch_frame()`
+  - `current_frame()`
+- 扩展 `rust/src/cli/serve.rs` 的 daemon ops：
+  - `tab.list`
+  - `tab.new`
+  - `tab.switch`
+  - `tab.close`
+  - `frame.list`
+  - `frame.switch`
+  - `wait.locator`
+  - `page.drag_in`
+  - `element.click_to_download`
+  - `element.click_to_upload`
+  - `element.click_for_new_tab`
+- 改造 `rust/src/cli/oneshot.rs`，迁移最后一批旧直连命令：
+  - `drag-in`
+  - 通用 `wait`
+  - `click-to-download`
+  - `click-to-upload`
+  - `click-for-new-tab`
+  - `tab *`
+  - `frame *`
+- 删除 `oneshot.rs` 中不再需要的旧辅助路径：
+  - `do_start_browser`
+  - `open_page`
+  - `set_active_target`
+  - `active_frame`
+  - `resolve_frame_target`
+  - `context_find`
+  - `context_wait_for`
+  - `SessionRecord`
+  - `save_session` / `load_session`
+  - 以及相关旧 browser launch / debugger helper
+- 保留 `session_file()` 仅作为 `browser stop` 时清理历史遗留 session 文件
+
+### Verification
+- `cargo check --manifest-path rust/Cargo.toml`
+- grep 验证 CLI 旧直连路径已消失：
+  - `rg -n "open_page\\(|load_session\\(|Browser::connect\\(|do_start_browser\\(" rust/src/cli`
+  - 无匹配
+- 真实 smoke（`OPENPAGE_HOME=/tmp/openpage-rpc-smoke-v4`）验证：
+  - `browser start file:///tmp/openpage-smoke.html`
+  - `wait '#upload'`
+  - `frame list`
+  - `frame switch 1`
+  - `text '#inside'`
+  - `frame switch main`
+  - `click-for-new-tab '#newtab'`
+  - `title`
+  - `tab list`
+  - `tab switch 2`
+  - `click-to-upload '#upload'`
+  - `js 'document.querySelector(\"#upload\").files.length'`
+  - `click-to-download '#download'`
+  - `drag-in '#drop' --text 'Dragged text'`
+  - `js 'document.body.dataset.dropResult'`
+  - `tab close --others`
+  - `tab list`
+  - `browser stop`
+
+### Current conclusions
+- 对外协议层面，TCP daemon 现在已经不只是“主路径”，而是 `rust/src/cli` 中唯一执行路径。
+- `oneshot.rs` 已经不再自己连接浏览器，也不再持有 tab/frame 活跃状态；这些状态现在在 daemon 内部。
+- 这次迁移仍然完全复用了 OpenPage 自己的 `WebPage` / `Page` / `Element` / `Actions`，没有引入竞品的 CDP / action / element 内核。
+
+### Next steps
+1. 继续接入非-CDP 借鉴项：daemon inventory / output 治理 / batch
+2. 补审 README / skills / help 与当前唯一协议实现是否完全一致
+3. 做 git checkpoint，只提交本轮相关文件

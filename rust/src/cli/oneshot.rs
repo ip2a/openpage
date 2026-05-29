@@ -1,18 +1,8 @@
-use std::ffi::OsStr;
 use std::fs;
-use std::net::TcpListener;
-use std::path::{Path, PathBuf};
-use std::process::{Command as ProcessCommand, Stdio};
-use std::thread::sleep;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::path::PathBuf;
 
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
-
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::browser::Browser;
 use crate::cli::args::{
     AlertCommand, AttrArgs, BrowserCommand, BrowserStartArgs, ClickForNewTabArgs,
     ClickToDownloadArgs, ClickToUploadArgs, Command, CookiesCommand, DownloadArgs, DragArgs,
@@ -28,7 +18,6 @@ use crate::cli::connection::{
 };
 use crate::cli::protocol::{simple_ok, Request, Response};
 use crate::error::{OpenPageError, OpenPageResult};
-use crate::page::{ActionsDragData, Frame, Page};
 
 pub fn run(command: Command) -> OpenPageResult<()> {
     match command {
@@ -443,14 +432,19 @@ fn run_drag_to_point(args: DragToPointArgs) -> OpenPageResult<()> {
 }
 
 fn run_drag_in(args: DragInArgs) -> OpenPageResult<()> {
-    let (_browser, page, record) = open_page(&args.session)?;
-    let mut actions = page.actions()?;
-    let target = context_find(&page, &record, &args.target)?;
     if let Some(text) = args.text {
-        actions.drag_in(&target, ActionsDragData::text(text))?;
+        let _ = rpc_webpage(
+            &args.session,
+            "page.drag_in",
+            json!({"target": args.target, "text": text}),
+        )?;
         print_json(simple_ok(json!({"dragged": true, "target": args.target, "kind": "text"})))
     } else if !args.files.is_empty() {
-        actions.drag_in(&target, ActionsDragData::files(args.files.clone()))?;
+        let _ = rpc_webpage(
+            &args.session,
+            "page.drag_in",
+            json!({"target": args.target, "files": args.files}),
+        )?;
         print_json(simple_ok(json!({"dragged": true, "target": args.target, "kind": "files"})))
     } else {
         Err(OpenPageError::UnsupportedOperation(
@@ -476,17 +470,26 @@ fn run_attr(args: AttrArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait(args: WaitArgs) -> OpenPageResult<()> {
-    let (_browser, page, record) = open_page(&args.session)?;
     let condition = args.condition.trim();
     if condition.eq_ignore_ascii_case("navigation")
         || condition.eq_ignore_ascii_case("load")
         || condition.eq_ignore_ascii_case("loaded")
     {
-        page.wait_for_doc_loaded(args.timeout)?;
-    } else if let Some(locator) = condition.strip_prefix("element ") {
-        let _ = context_wait_for(&page, &record, locator.trim(), args.timeout)?;
+        let _ = rpc_webpage(
+            &args.session,
+            "wait.doc_loaded",
+            json!({"timeout_ms": args.timeout}),
+        )?;
     } else {
-        let _ = context_wait_for(&page, &record, condition, args.timeout)?;
+        let locator = condition
+            .strip_prefix("element ")
+            .map(str::trim)
+            .unwrap_or(condition);
+        let _ = rpc_webpage(
+            &args.session,
+            "wait.locator",
+            json!({"locator": locator, "timeout_ms": args.timeout}),
+        )?;
     }
     print_json(simple_ok(json!({"waited": true, "condition": condition})))
 }
@@ -622,97 +625,6 @@ fn run_alert(command: AlertCommand) -> OpenPageResult<()> {
     }
 }
 
-fn do_start_browser(args: &BrowserStartArgs) -> OpenPageResult<(SessionRecord, bool)> {
-    if !args.replace {
-        if let Ok(mut record) = load_session(&args.session) {
-            if debugger_version(&record.debugger_url).is_ok() {
-                record.last_used_at_ms = now_ms();
-                let _ = save_session(&record);
-                return Ok((record, false));
-            }
-        }
-    }
-
-    if args.replace {
-        let stop_args = SessionArgs {
-            session: args.session.clone(),
-        };
-        let _ = stop_browser(stop_args, true);
-    }
-
-    let port = match args.port {
-        Some(port) => port,
-        None => free_port()?,
-    };
-    let debugger_url = format!("http://127.0.0.1:{port}");
-    let user_data_dir = args
-        .user_data_dir
-        .clone()
-        .unwrap_or(session_profile_dir(&args.session)?);
-    fs::create_dir_all(&user_data_dir)?;
-
-    let browser_path = args
-        .browser_path
-        .clone()
-        .or_else(default_browser_path)
-        .ok_or_else(|| {
-            OpenPageError::BrowserLaunch(
-                "could not find a Chrome/Chromium executable; pass --browser-path".to_string(),
-            )
-        })?;
-
-    let mut command = ProcessCommand::new(&browser_path);
-    command
-        .arg(format!("--remote-debugging-port={port}"))
-        .arg(format!("--user-data-dir={}", user_data_dir.display()))
-        .arg(format!("--window-size={},{}" , args.width, args.height))
-        .arg("--no-first-run")
-        .arg("--no-default-browser-check")
-        .arg("--disable-background-networking")
-        .arg("--disable-popup-blocking")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    let headless = args.headless && !args.head;
-    if args.no_sandbox {
-        command.arg("--no-sandbox").arg("--disable-setuid-sandbox");
-    }
-    if headless {
-        command
-            .arg("--headless=new")
-            .arg("--hide-scrollbars")
-            .arg("--mute-audio");
-    }
-    #[cfg(unix)]
-    {
-        command.process_group(0);
-    }
-    command.arg("about:blank");
-
-    let child = command
-        .spawn()
-        .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?;
-
-    wait_for_debugger(&debugger_url, Duration::from_secs(15))?;
-    let now = now_ms();
-    let record = SessionRecord {
-        name: args.session.clone(),
-        debugger_url: debugger_url.clone(),
-        user_data_dir: Some(user_data_dir),
-        default_target_id: current_target_id(&debugger_url)?,
-        default_frame_target: None,
-        pid: Some(child.id()),
-        created_at_ms: now,
-        last_used_at_ms: now,
-    };
-    save_session(&record)?;
-    let _ = std::thread::spawn({
-        let session = args.session.clone();
-        move || idle_watchdog(session)
-    });
-    Ok((record, true))
-}
-
 fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
     let headless = args.headless && !args.head;
     let create = rpc_request(
@@ -815,6 +727,21 @@ fn rpc_webpage(session: &str, op: &str, params: Value) -> OpenPageResult<Value> 
     rpc_request(session, Some(session.to_string()), op, params)
 }
 
+fn tab_target_id_from_index(session: &str, index: usize) -> OpenPageResult<String> {
+    let response = rpc_webpage(session, "tab.list", Value::Null)?;
+    let tabs = response
+        .get("tabs")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            OpenPageError::BrowserOperation("tab.list returned no tabs array".to_string())
+        })?;
+    tabs.get(index.saturating_sub(1))
+        .and_then(|tab| tab.get("target_id"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .ok_or_else(|| OpenPageError::ElementNotFound(format!("tab index out of range: {index}")))
+}
+
 fn response_result(response: Response) -> OpenPageResult<Value> {
     if response.ok {
         Ok(response.result.unwrap_or(Value::Null))
@@ -827,138 +754,10 @@ fn response_result(response: Response) -> OpenPageResult<Value> {
     }
 }
 
-fn open_page(session: &str) -> OpenPageResult<(Browser, Page, SessionRecord)> {
-    let mut record = match load_session(session) {
-        Ok(r) => r,
-        Err(_) => {
-            let args = BrowserStartArgs {
-                url: None,
-                session: session.to_string(),
-                browser_path: None,
-                user_data_dir: None,
-                port: None,
-                head: false,
-                headless: true,
-                width: 1280,
-                height: 900,
-                no_sandbox: false,
-                replace: false,
-            };
-            let (record, _) = do_start_browser(&args)?;
-            record
-        }
-    };
-    let browser = Browser::connect(&record.debugger_url)?;
-
-    if let Some(target_id) = &record.default_target_id {
-        if let Ok(page) = browser.get_page(target_id) {
-            record.last_used_at_ms = now_ms();
-            let _ = save_session(&record);
-            return Ok((browser, page, record));
-        }
-    }
-
-    if let Some(page) = browser.pages()?.into_iter().next() {
-        record.default_target_id = Some(page.target_id());
-        record.last_used_at_ms = now_ms();
-        save_session(&record)?;
-        return Ok((browser, page, record));
-    }
-
-    let page = browser.new_page(None)?;
-    record.default_target_id = Some(page.target_id());
-    record.last_used_at_ms = now_ms();
-    save_session(&record)?;
-    Ok((browser, page, record))
-}
-
-fn set_active_target(session: &str, target_id: &str) -> OpenPageResult<()> {
-    let mut record = load_session(session)?;
-    record.default_target_id = Some(target_id.to_string());
-    record.default_frame_target = None;
-    save_session(&record)
-}
-
-fn active_frame(page: &Page, record: &SessionRecord) -> OpenPageResult<Option<Frame>> {
-    match record.default_frame_target.as_deref() {
-        Some(target) => resolve_frame_target(page, target).map(Some),
-        None => Ok(None),
-    }
-}
-
-fn resolve_frame_target(page: &Page, target: &str) -> OpenPageResult<Frame> {
-    if let Ok(index) = target.parse::<usize>() {
-        page.get_frame_context_by_index(index)
-    } else {
-        page.get_frame_context(target)
-    }
-}
-
-fn context_find(page: &Page, record: &SessionRecord, locator: &str) -> OpenPageResult<crate::element::Element> {
-    match active_frame(page, record)? {
-        Some(frame) => frame.find(locator),
-        None => page.find(locator),
-    }
-}
-
-fn context_wait_for(
-    page: &Page,
-    record: &SessionRecord,
-    locator: &str,
-    timeout_ms: u64,
-) -> OpenPageResult<crate::element::Element> {
-    match active_frame(page, record)? {
-        Some(frame) => {
-            if frame.wait_for_doc_loaded(timeout_ms)? {
-                frame.find(locator)
-            } else {
-                Err(OpenPageError::Timeout(format!(
-                    "frame wait_for timed out after {timeout_ms}ms: {locator}"
-                )))
-            }
-        }
-        None => page.wait_for(locator, timeout_ms),
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct SessionRecord {
-    name: String,
-    debugger_url: String,
-    user_data_dir: Option<PathBuf>,
-    default_target_id: Option<String>,
-    #[serde(default)]
-    default_frame_target: Option<String>,
-    pid: Option<u32>,
-    created_at_ms: u128,
-    last_used_at_ms: u128,
-}
-
-fn save_session(record: &SessionRecord) -> OpenPageResult<()> {
-    let path = session_file(&record.name)?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let data = serde_json::to_vec_pretty(record)
-        .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
-    fs::write(path, data)?;
-    Ok(())
-}
-
-fn load_session(session: &str) -> OpenPageResult<SessionRecord> {
-    let path = session_file(session)?;
-    let data = fs::read(path)?;
-    serde_json::from_slice(&data).map_err(|err| OpenPageError::Serialization(err.to_string()))
-}
-
 fn session_file(session: &str) -> OpenPageResult<PathBuf> {
     Ok(openpage_home()?
         .join("sessions")
         .join(format!("{session}.json")))
-}
-
-fn session_profile_dir(session: &str) -> OpenPageResult<PathBuf> {
-    Ok(openpage_home()?.join("profiles").join(session))
 }
 
 fn openpage_home() -> OpenPageResult<PathBuf> {
@@ -971,147 +770,6 @@ fn openpage_home() -> OpenPageResult<PathBuf> {
     Err(OpenPageError::Io(
         "OPENPAGE_HOME or HOME must be set".to_string(),
     ))
-}
-
-fn free_port() -> OpenPageResult<u16> {
-    let listener = TcpListener::bind("127.0.0.1:0")?;
-    Ok(listener.local_addr()?.port())
-}
-
-fn wait_for_debugger(url: &str, timeout: Duration) -> OpenPageResult<()> {
-    let client = reqwest::blocking::ClientBuilder::new()
-        .no_proxy()
-        .timeout(Duration::from_secs(1))
-        .build()
-        .map_err(|err| OpenPageError::Http(err.to_string()))?;
-    let endpoint = format!("{}/json/version", url.trim_end_matches('/'));
-    let deadline = Instant::now() + timeout;
-    loop {
-        if client
-            .get(&endpoint)
-            .send()
-            .is_ok_and(|resp| resp.status().is_success())
-        {
-            return Ok(());
-        }
-        if Instant::now() >= deadline {
-            return Err(OpenPageError::Timeout(format!(
-                "browser debugger did not become ready: {endpoint}"
-            )));
-        }
-        sleep(Duration::from_millis(100));
-    }
-}
-
-fn debugger_version(url: &str) -> OpenPageResult<Value> {
-    let client = reqwest::blocking::ClientBuilder::new()
-        .no_proxy()
-        .timeout(Duration::from_secs(1))
-        .build()
-        .map_err(|err| OpenPageError::Http(err.to_string()))?;
-    let endpoint = format!("{}/json/version", url.trim_end_matches('/'));
-    client
-        .get(&endpoint)
-        .send()
-        .map_err(|err| OpenPageError::Http(err.to_string()))?
-        .json()
-        .map_err(|err| OpenPageError::Serialization(err.to_string()))
-}
-
-#[derive(Debug, Deserialize)]
-struct DebugTarget {
-    id: String,
-    #[serde(rename = "type")]
-    kind: String,
-}
-
-fn current_target_id(url: &str) -> OpenPageResult<Option<String>> {
-    let client = reqwest::blocking::ClientBuilder::new()
-        .no_proxy()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .map_err(|err| OpenPageError::Http(err.to_string()))?;
-    let endpoint = format!("{}/json/list", url.trim_end_matches('/'));
-    let targets: Vec<DebugTarget> = client
-        .get(&endpoint)
-        .send()
-        .map_err(|err| OpenPageError::Http(err.to_string()))?
-        .json()
-        .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
-    Ok(targets
-        .into_iter()
-        .find(|target| target.kind == "page")
-        .map(|target| target.id))
-}
-
-fn default_browser_path() -> Option<PathBuf> {
-    for var in ["OPENPAGE_BROWSER_PATH", "CHROME", "CHROME_PATH"] {
-        if let Some(path) = std::env::var_os(var).map(PathBuf::from) {
-            if path.exists() {
-                return Some(path);
-            }
-        }
-    }
-
-    for path in platform_browser_paths() {
-        if path.exists() {
-            return Some(path);
-        }
-    }
-
-    find_on_path("google-chrome")
-        .or_else(|| find_on_path("chromium"))
-        .or_else(|| find_on_path("chromium-browser"))
-        .or_else(|| find_on_path("chrome"))
-        .or_else(|| find_on_path("msedge"))
-}
-
-fn platform_browser_paths() -> Vec<PathBuf> {
-    vec![
-        PathBuf::from("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
-        PathBuf::from("/Applications/Chromium.app/Contents/MacOS/Chromium"),
-        PathBuf::from("/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"),
-    ]
-}
-
-fn find_on_path(name: &str) -> Option<PathBuf> {
-    let path_var = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path_var) {
-        let path = dir.join(name);
-        if is_executable(&path) {
-            return Some(path);
-        }
-    }
-    None
-}
-
-fn is_executable(path: &Path) -> bool {
-    path.is_file() || path.extension() == Some(OsStr::new("exe"))
-}
-
-fn now_ms() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
-}
-
-fn idle_watchdog(session: String) {
-    let check_interval = Duration::from_secs(60);
-    let idle_timeout = Duration::from_secs(300);
-    loop {
-        sleep(check_interval);
-        match load_session(&session) {
-            Ok(record) => {
-                let idle = now_ms().saturating_sub(record.last_used_at_ms);
-                if idle >= idle_timeout.as_millis() as u128 {
-                    let _ = stop_browser(SessionArgs { session }, true);
-                    break;
-                }
-            }
-            Err(_) => break,
-        }
-    }
 }
 
 fn print_json(value: Value) -> OpenPageResult<()> {
@@ -1176,65 +834,45 @@ fn run_upload(args: UploadArgs) -> OpenPageResult<()> {
 }
 
 fn run_click_to_download(args: ClickToDownloadArgs) -> OpenPageResult<()> {
-    let (_browser, page, record) = open_page(&args.session)?;
-    let element = context_find(&page, &record, &args.locator)?;
     let dir = args.dir.as_ref().map(|path| path.to_string_lossy().into_owned());
-    let mission = element.clicker().to_download(
-        dir.as_deref(),
-        args.rename.as_deref(),
-        args.suffix.as_deref(),
-        args.suffix.is_some(),
-        Some(args.timeout),
-        args.js,
-        args.new_tab,
-    )?;
-    let mission = match mission {
-        Some(mission) => json!({
-            "guid": mission.guid(),
-            "url": mission.url()?,
-            "suggested_filename": mission.suggested_filename()?,
-            "state": mission.state()?,
-            "received_bytes": mission.received_bytes()?,
-            "total_bytes": mission.total_bytes()?,
-            "final_path": mission.final_path()?,
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.click_to_download",
+        json!({
+            "locator": args.locator,
+            "dir": dir,
+            "rename": args.rename,
+            "suffix": args.suffix,
+            "timeout_ms": args.timeout,
+            "js": args.js,
+            "new_tab": args.new_tab,
         }),
-        None => Value::Null,
-    };
-    print_json(simple_ok(json!({
-        "download_started": !mission.is_null(),
-        "mission": mission,
-    })))
+    )?))
 }
 
 fn run_click_to_upload(args: ClickToUploadArgs) -> OpenPageResult<()> {
-    let (_browser, page, record) = open_page(&args.session)?;
-    let uploaded = context_find(&page, &record, &args.locator)?
-        .clicker()
-        .to_upload(&args.files, Some(args.timeout), args.js)?;
-    print_json(simple_ok(json!({
-        "uploaded": uploaded,
-        "files": args.files,
-    })))
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.click_to_upload",
+        json!({
+            "locator": args.locator,
+            "files": args.files,
+            "timeout_ms": args.timeout,
+            "js": args.js,
+        }),
+    )?))
 }
 
 fn run_click_for_new_tab(args: ClickForNewTabArgs) -> OpenPageResult<()> {
-    let (_browser, page, record) = open_page(&args.session)?;
-    let new_page = context_find(&page, &record, &args.locator)?
-        .clicker()
-        .for_new_tab(Some(args.timeout), args.js)?;
-    match new_page {
-        Some(page) => {
-            let target_id = page.target_id();
-            set_active_target(&args.session, &target_id)?;
-            print_json(simple_ok(json!({
-                "created": true,
-                "switched": true,
-                "target_id": target_id,
-                "url": page.url()?,
-            })))
-        }
-        None => print_json(simple_ok(json!({"created": false}))),
-    }
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.click_for_new_tab",
+        json!({
+            "locator": args.locator,
+            "timeout_ms": args.timeout,
+            "js": args.js,
+        }),
+    )?))
 }
 
 fn run_is_visible(args: ElementArgs) -> OpenPageResult<()> {
@@ -1585,79 +1223,56 @@ fn run_tab(command: TabCommand) -> OpenPageResult<()> {
         TabCommand::List(args) => args.session.clone(),
         TabCommand::Switch(args) => args.session.clone(),
     };
-    let (browser, _page, record) = open_page(&session)?;
     match command {
         TabCommand::New(args) => {
-            let new_page = browser.new_tab(args.url.as_deref(), args.window, args.background)?;
-            let target_id = new_page.target_id();
-            if !args.background {
-                set_active_target(&session, &target_id)?;
-            }
-            print_json(simple_ok(json!({
-                "created": true,
-                "target_id": target_id,
-                "url": new_page.url()?,
-                "window": args.window,
-                "background": args.background,
-            })))
+            print_json(simple_ok(rpc_webpage(
+                &session,
+                "tab.new",
+                json!({
+                    "url": args.url,
+                    "window": args.window,
+                    "background": args.background,
+                }),
+            )?))
         }
         TabCommand::Close(args) => {
             if args.others {
-                let current = record.default_target_id.unwrap_or_default();
-                let closed = browser.close_tabs(&[current], true)?;
-                print_json(simple_ok(json!({"closed": closed, "others": true})))
-            } else if let Some(target) = args.target {
-                let closed = browser.close_tabs(&[target], false)?;
-                print_json(simple_ok(json!({"closed": closed})))
+                print_json(simple_ok(rpc_webpage(
+                    &session,
+                    "tab.close",
+                    json!({"others": true}),
+                )?))
+            } else if let Some(target_id) = args.target {
+                print_json(simple_ok(rpc_webpage(
+                    &session,
+                    "tab.close",
+                    json!({"targets": [target_id]}),
+                )?))
             } else if let Some(index) = args.index {
-                let pages = browser.pages()?;
-                let target = pages
-                    .into_iter()
-                    .nth(index.saturating_sub(1))
-                    .ok_or_else(|| {
-                        OpenPageError::ElementNotFound(format!("tab index out of range: {index}"))
-                    })?;
-                let closed = browser.close_tabs(&[target.target_id()], false)?;
-                print_json(simple_ok(json!({"closed": closed})))
+                let target_id = tab_target_id_from_index(&session, index)?;
+                print_json(simple_ok(rpc_webpage(
+                    &session,
+                    "tab.close",
+                    json!({"targets": [target_id]}),
+                )?))
             } else {
                 Err(OpenPageError::UnsupportedOperation(
                     "tab close requires --target, --index, or --others".to_string(),
                 ))
             }
         }
-        TabCommand::List(_) => {
-            let tabs: Vec<Value> = browser
-                .tab_infos()?
-                .into_iter()
-                .map(|t| {
-                    json!({
-                        "target_id": t.target_id,
-                        "url": t.url,
-                        "title": t.title,
-                        "type": t.tab_type,
-                    })
-                })
-                .collect();
-            print_json(simple_ok(json!({"tabs": tabs})))
-        }
+        TabCommand::List(_) => print_json(simple_ok(rpc_webpage(&session, "tab.list", Value::Null)?)),
         TabCommand::Switch(args) => {
             let target_id = if let Ok(index) = args.target.parse::<usize>() {
-                let pages = browser.pages()?;
-                pages
-                    .into_iter()
-                    .nth(index.saturating_sub(1))
-                    .ok_or_else(|| {
-                        OpenPageError::ElementNotFound(format!(
-                            "tab index out of range: {index}"
-                        ))
-                    })?
-                    .target_id()
+                tab_target_id_from_index(&session, index)?
             } else {
                 args.target
             };
-            browser.activate_tab(&target_id)?;
-            set_active_target(&session, &target_id)?;
-            print_json(simple_ok(json!({"switched": true, "target_id": target_id})))
+            print_json(simple_ok(rpc_webpage(
+                &session,
+                "tab.switch",
+                json!({"target_id": target_id}),
+            )?))
         }
     }
 }
@@ -1667,44 +1282,13 @@ fn run_frame(command: FrameCommand) -> OpenPageResult<()> {
         FrameCommand::List(args) => args.session.clone(),
         FrameCommand::Switch(args) => args.session.clone(),
     };
-    let (_browser, page, _record) = open_page(&session)?;
     match command {
-        FrameCommand::List(_) => {
-            let frames = page.get_frames(None::<&str>).unwrap_or_default();
-            let list: Vec<Value> = frames
-                .into_iter()
-                .map(|f| {
-                    json!({
-                        "tag": f.tag().unwrap_or_default(),
-                        "attrs": f.attrs().unwrap_or_default(),
-                    })
-                })
-                .collect();
-            print_json(simple_ok(json!({"frames": list})))
-        }
-        FrameCommand::Switch(args) => {
-            if matches!(args.target.as_str(), "main" | "root" | "page") {
-                let mut record = load_session(&session)?;
-                record.default_frame_target = None;
-                save_session(&record)?;
-                return print_json(simple_ok(json!({
-                    "switched": true,
-                    "frame": "main",
-                })));
-            }
-            let frame = if let Ok(index) = args.target.parse::<usize>() {
-                page.get_frame_context_by_index(index)?
-            } else {
-                page.get_frame_context(&args.target)?
-            };
-            let mut record = load_session(&session)?;
-            record.default_frame_target = Some(args.target.clone());
-            save_session(&record)?;
-            print_json(simple_ok(json!({
-                "switched": true,
-                "frame_id": frame.id(),
-            })))
-        }
+        FrameCommand::List(_) => print_json(simple_ok(rpc_webpage(&session, "frame.list", Value::Null)?)),
+        FrameCommand::Switch(args) => print_json(simple_ok(rpc_webpage(
+            &session,
+            "frame.switch",
+            json!({"target": args.target}),
+        )?)),
     }
 }
 
