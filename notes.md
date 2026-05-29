@@ -1062,3 +1062,43 @@
 - Interpretation:
   - current evidence still supports the claim that TCP daemon is the only active CLI execution truth
   - remaining “old path” evidence is now mostly archival/tracking material, not active code or active user docs
+
+
+## Local truth refresh (2026-05-30, doctor summary id pass)
+- This pass stayed entirely in the CLI/daemon shell.
+- Motivation:
+  - `doctor --quick` already exposed counts in `summary`
+  - but scripts/agents still had to rescan every `checks[]` entry to answer:
+    - which checks are warnings right now?
+    - which checks are outright failures?
+    - which checks have a fix suggestion?
+- Landed code changes in `rust/src/cli/doctor.rs`:
+  - `Summary` now also returns:
+    - `warn_ids`
+    - `fail_ids`
+    - `info_ids`
+    - `fixable_ids`
+  - `summarize(...)` now populates those lists in check order
+- Why this is aligned:
+  - it is a direct non-CDP outer-shell improvement
+  - it helps future agents/scripts reason about the current local machine state without reimplementing filtering logic
+  - it does not touch browser launch internals, CDP transport, element lookup, or interaction truth sources
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml summarize_counts_info_fixable_and_total -- --nocapture`
+    - passed
+  - `cargo check --manifest-path rust/Cargo.toml`
+    - passed
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - current runtime summary now includes:
+      - `warn_ids=["env.legacy_sessions"]`
+      - `fail_ids=["browser.executable"]`
+      - `info_ids=["browser.executable.hint","browser.launch"]`
+      - `fixable_ids=["env.legacy_sessions","browser.executable","browser.launch"]`
+- Active-doc sync done in the same pass:
+  - `skills/openpage-test/references/cli-smoke.md`
+    - updated current local session count from 4 to 5 healthy sessions
+    - now mentions the actionable summary id lists
+  - `README.md`
+    - doctor section now mentions actionable summary id lists
+- Interpretation:
+  - this makes `doctor` more useful as the canonical local-state audit entrypoint while keeping the implementation fully outside browser/CDP/element truth sources

@@ -93,6 +93,8 @@
 - **活跃代码面再次 grep 核实**：当前 `rust/src/cli`、`README.md` 与 `skills/openpage-test/*` 里没有重新出现活跃 `serve --stdio`、`open_page()`、`load_session()`、`save_session()`、CLI-side `Browser::connect()` 或旧 `page get/page url/page title/page screenshot` 用户面；剩余命中集中在归档历史报告与跟踪文件。
 - **`serve.rs` 的 origin 透传已收成纯 helper 并补单测**：当前 `payload_with_origin(...)` / `payload_with_origin_and_title(...)` / `payload_object(...)` 已把 `webpage.html`、`webpage.run_js`、`page.selected_text`、`element.text/html/attr` 以及 snapshot 根 payload 的 origin/title 注入逻辑集中到一处，继续停留在外壳/合约层，不碰浏览器、CDP 或元素交互真相源。
 - **本轮外壳层测试已补证据**：新增 `serve.rs` 的 payload helper 单测 3 个，并重新通过了 `protocol.rs`、`connection.rs`、`doctor.rs` 与 snapshot 文本/ref 的定向单测；`cargo check`、`browser list`、`doctor --quick` 也已再次复核当前本机状态。
+- **`doctor.rs` 的 machine-friendly summary 又向竞品靠了一步**：当前 `summary` 不只返回计数，还会稳定返回 `warn_ids` / `fail_ids` / `info_ids` / `fixable_ids`，这样脚本和 agent 不必再重扫全部 `checks` 才知道当前本机究竟卡在哪些检查项上。
+- **活跃 smoke 文档已同步当前本机真相**：`skills/openpage-test/references/cli-smoke.md` 已从 4 个 healthy sessions 更新到 5 个，并写明 `doctor --quick` 的 actionable summary id 列表；`README.md` 的 doctor 段也已补上这一点。
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
@@ -118,4 +120,4 @@
 - 当前历史文档仍然保留大量旧事实正文，这是有意保留的回溯材料；本轮只做了显式降级标注，没有重写全文。
 
 ## Status
-**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 本轮最新核验里：`cargo test --manifest-path rust/Cargo.toml payload_with_origin -- --nocapture`、`cargo test --manifest-path rust/Cargo.toml format_output_json_includes_origin_in_boundary_metadata -- --nocapture`、`cargo test --manifest-path rust/Cargo.toml summarize_counts_info_fixable_and_total -- --nocapture`、三条 `existing_daemon_action_*` 定向测试，以及 snapshot 文本/ref 定向测试都已通过；`cargo check` 通过；`browser list` 最新实测返回 5 个 healthy sessions；`doctor --quick` 当前仍只有 1 个 fail（`browser.executable`）。本轮继续保持不碰浏览器/CDP/元素真相源，只在 `serve.rs` 外壳层把 origin/title payload 构造收口成纯 helper 并补证据。下一步继续沿 `doctor.rs` 的 summary/fix 结构、顶层 JSON error 结构和根目录历史文档误导面做收敛。
+**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 本轮最新核验里：`cargo test --manifest-path rust/Cargo.toml summarize_counts_info_fixable_and_total -- --nocapture` 已验证新的 summary id 列表；`cargo check` 通过；`browser list` 当前仍返回 5 个 healthy sessions；`doctor --quick` 当前仍只有 1 个 fail（`browser.executable`），但 summary 现在会直接暴露 `fail_ids=["browser.executable"]`、`warn_ids=["env.legacy_sessions"]` 等可操作字段。本轮继续保持不碰浏览器/CDP/元素真相源，只在 `doctor.rs` 和活跃 smoke/docs 面继续收紧当前真相。下一步继续沿 `doctor.rs` 的 summary/fix 结构、顶层 JSON error 结构和根目录历史文档误导面做收敛。

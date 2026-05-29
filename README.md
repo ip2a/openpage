@@ -211,6 +211,7 @@ cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor
 - incomplete daemon sidecars that still point to a live daemon
 - stale daemon sidecars cleaned during the audit
 - browser executable/config and optional live launch smoke
+- machine-readable summary counts plus actionable `warn_ids` / `fail_ids` / `info_ids` / `fixable_ids`
 
 Agent-friendly output shaping for large page payloads:
 

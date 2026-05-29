@@ -14,11 +14,16 @@ If either of these fails, stop and report that result first.
 Latest recheck on `2026-05-30`:
 
 - `cargo check --manifest-path rust/Cargo.toml` passed
-- `openpage browser list` currently returns 4 healthy sessions and no incomplete or cleaned sidecars
+- `openpage browser list` currently returns 5 healthy sessions and no incomplete or cleaned sidecars
 - `openpage doctor --quick` currently also warns about 4 legacy session JSON files under `/Users/yuuu/.openpage/sessions`
 - `openpage doctor --quick` currently fails at the browser executable check:
   - `browser_path=chrome`
   - configured browser executable not found on PATH
+- `openpage doctor --quick` machine-readable summary now also carries actionable ID lists:
+  - `warn_ids`
+  - `fail_ids`
+  - `info_ids`
+  - `fixable_ids`
 - `openpage doctor` reports the same browser executable/config failure and skips live launch after that
 
 Interpretation:

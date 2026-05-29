@@ -70,6 +70,10 @@ struct Summary {
     info: usize,
     fixable: usize,
     total: usize,
+    warn_ids: Vec<String>,
+    fail_ids: Vec<String>,
+    info_ids: Vec<String>,
+    fixable_ids: Vec<String>,
 }
 
 pub fn run(args: DoctorArgs) -> OpenPageResult<i32> {
@@ -102,13 +106,23 @@ fn summarize(checks: &[Check]) -> Summary {
         summary.total += 1;
         match check.status {
             "pass" => summary.pass += 1,
-            "warn" => summary.warn += 1,
-            "fail" => summary.fail += 1,
-            "info" => summary.info += 1,
+            "warn" => {
+                summary.warn += 1;
+                summary.warn_ids.push(check.id.clone());
+            }
+            "fail" => {
+                summary.fail += 1;
+                summary.fail_ids.push(check.id.clone());
+            }
+            "info" => {
+                summary.info += 1;
+                summary.info_ids.push(check.id.clone());
+            }
             _ => {}
         }
         if check.fix.is_some() {
             summary.fixable += 1;
+            summary.fixable_ids.push(check.id.clone());
         }
     }
     summary
@@ -1112,5 +1126,12 @@ mod tests {
         assert_eq!(summary.info, 1);
         assert_eq!(summary.fixable, 2);
         assert_eq!(summary.total, 4);
+        assert_eq!(summary.warn_ids, vec![String::from("b")]);
+        assert_eq!(summary.fail_ids, vec![String::from("c")]);
+        assert_eq!(summary.info_ids, vec![String::from("d")]);
+        assert_eq!(
+            summary.fixable_ids,
+            vec![String::from("b"), String::from("c")]
+        );
     }
 }
