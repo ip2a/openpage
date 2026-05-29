@@ -1266,3 +1266,47 @@
 1. 继续扫根目录历史文档误导面
 2. 继续沿 `doctor.rs` / `protocol.rs` / 文档层收竞品外壳设计
 3. 保持不碰浏览器/CDP/元素真相源
+
+
+## 2026-05-30 — Session 23
+
+### Goal in focus
+- 继续收紧 `doctor` 的机器可消费结构
+- 再做一轮根目录文档误导面审计，避免在不必要的地方乱改
+
+### Work completed
+- 修改 `rust/src/cli/doctor.rs`
+  - `Summary` 新增：
+    - `info`
+    - `fixable`
+    - `total`
+  - `summarize(...)` 现在直接统计这些值
+- 新增单测：
+  - `summarize_counts_info_fixable_and_total`
+- 重新跑真实 `doctor --quick`
+  - 当前 summary 已明确输出：
+    - `pass=9`
+    - `warn=1`
+    - `fail=1`
+    - `info=2`
+    - `fixable=3`
+    - `total=13`
+- 对根目录 markdown 再做定点审计
+  - 结论是：当前没有发现新的“活跃 OpenPage CLI 执行手册级误导面”
+  - 剩余旧协议措辞主要仍在归档/跟踪材料里
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml summarize_counts_info_fixable_and_total -- --nocapture`
+- `cargo check --manifest-path rust/Cargo.toml`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+- root markdown audit with `rg` over protocol keywords
+
+### Current conclusions
+- 这轮继续保持在外壳层，但 doctor 对 agent/脚本已经更友好。
+- 当前根目录文档里不需要再做无意义的大面积归档动作。
+- 下一步仍然应该优先放在 `doctor.rs` / `protocol.rs` / agent-facing docs。
+
+### Next steps
+1. 继续沿 `doctor.rs` 做小而稳的外壳层增强
+2. 如有必要，再做定点历史文档降级，而不是大面积重写
+3. 保持不碰浏览器/CDP/元素真相源

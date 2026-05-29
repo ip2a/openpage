@@ -919,3 +919,22 @@
   - this is another non-CDP outer-shell improvement
   - it makes `doctor` materially easier for future agents/scripts to consume without reimplementing summary logic
   - it stays completely outside browser/CDP/element truth sources
+
+
+## Local truth refresh (2026-05-30, post-summary doc audit)
+- Re-audited root-level markdown files specifically for misleading **current OpenPage CLI protocol** wording.
+- Result:
+  - no new active user-facing OpenPage CLI handbook surface was found beyond what was already downgraded/corrected
+  - remaining old protocol wording is still concentrated in:
+    - archived historical reports (`rust_progress_report.md`, `协议迁移审计-v1.md`)
+    - tracking files (`notes.md`, `task_plan.md`, `claude-progress.txt`)
+    - comparative research docs that already carry correction notes (`dp_vs_openpage_comparison.md`)
+  - competitor/reference-only docs inspected this pass do not currently need extra OpenPage protocol corrections:
+    - `项目梳理与Rust替换分析.md`
+    - `技术文档-竞品cli分析.md`
+    - `竞品的流程.md`
+- This means the remaining live work is still better spent in:
+  - `doctor.rs`
+  - `protocol.rs`
+  - agent-facing docs
+  rather than broad markdown churn.
