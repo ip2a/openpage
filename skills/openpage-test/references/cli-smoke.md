@@ -14,11 +14,12 @@ If either of these fails, stop and report that result first.
 Latest recheck on `2026-05-30`:
 
 - `cargo check --manifest-path rust/Cargo.toml` passed
-- `openpage browser list` currently returns 6 healthy sessions and no incomplete or cleaned sidecars
+- during the latest local recheck, `openpage browser list` returned only healthy sessions and no incomplete or cleaned sidecars
+- the exact healthy session count is runtime-local and drifts as named-session smoke daemons are created or left running
 - `openpage doctor --quick --fix` was run locally, and `openpage doctor --quick` no longer warns about legacy session JSON residue under `/Users/yuuu/.openpage/sessions`
 - `openpage doctor --quick` currently fails at the browser executable check:
-  - `browser_path=chrome`
-  - configured browser executable not found on PATH
+  - in the current dirty worktree on this machine, `rust/configs.ini` currently resolves to `browser_path=/tmp/dp-browser`
+  - that configured browser executable is not present on this machine
 - for machine-local override work, the active CLI and doctor now also honor:
   - `OPENPAGE_BROWSER_PATH=/absolute/path/to/browser`
 - `openpage doctor --quick` machine-readable summary now also carries actionable ID lists:
@@ -173,9 +174,10 @@ Rules:
   - set `OPENPAGE_BROWSER_PATH=/absolute/path/to/browser`
   - or pass `--browser-path` to `browser start` or `webpage.create`
 - `doctor` says `Configured browser executable "chrome" was not found`
+- `doctor` says the configured browser executable from `rust/configs.ini` was not found
   - set `OPENPAGE_BROWSER_PATH=/absolute/path/to/browser`
   - or edit `rust/configs.ini` `browser_path`
-  - or install the browser so that `chrome` resolves on PATH
+  - or install whatever executable name/path `doctor` is currently reporting
   - or pass `--browser-path` explicitly in smoke commands
 - named-session CLI failure but raw TCP daemon smoke passes
   - treat that as a CLI-wrapper regression first, not a transport-path failure

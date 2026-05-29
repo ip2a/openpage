@@ -1400,3 +1400,44 @@
   - runtime now starts both launch options and session options from the same ini/config truth
   - this is still strictly outer-shell work
   - it does not borrow competitor CDP, snapshot internals, element lookup, or interaction logic
+
+
+## Local truth refresh (2026-05-30, request retry re-ensure pass)
+- This pass focused on another outer-shell stability gap in the unique TCP daemon path.
+- Motivation:
+  - `send_request()` previously called `ensure_daemon()` only once, before entering the retry loop
+  - if the daemon died after that first ensure but before the real socket round-trip completed, later retries would only resend against the bad state instead of re-running sidecar/restart logic
+- Landed changes:
+  - `rust/src/cli/connection.rs`
+    - extracted `send_request_with_retry(...)`
+    - `send_request()` now re-runs ensure logic before every retry attempt
+    - transient request recovery now reuses the same stale-daemon cleanup path as initial daemon startup
+  - `skills/openpage-test/references/cli-smoke.md`
+    - no longer hard-codes a specific healthy-session count
+    - now records that browser-list counts are runtime-local and drift as named-session smoke daemons accumulate
+    - current dirty-worktree browser-path truth on this machine updated from old `chrome` wording to `/tmp/dp-browser`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml send_request_with_retry_ -- --nocapture`
+    - passed
+    - verified re-ensure happens again after a transient error
+    - verified non-transient errors still stop immediately
+  - `cargo check --manifest-path rust/Cargo.toml`
+    - passed
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+    - returned only healthy sessions and no incomplete / cleaned sidecars
+    - exact count drifted again during smoke because browser stop does not necessarily remove daemon sessions
+  - `OPENPAGE_BROWSER_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start --session retry-shell-check --headless https://example.com`
+    - passed
+  - same env override + `title --session retry-shell-check`
+    - returned `Example Domain`
+  - same env override + `browser stop --session retry-shell-check`
+    - passed
+- Verification chain blockers encountered:
+  - current worktree had unrelated compile blockers in:
+    - `rust/src/settings.rs` (untracked new file)
+    - `rust/src/page.rs` test patterns
+  - minimal local fixes were applied only to restore `cargo check` / targeted `cargo test` evidence
+  - these are not part of the outer-shell design change itself
+- Interpretation:
+  - the TCP daemon path is now more resilient to daemon death between initial ensure and request send
+  - this is a direct borrow of competitor outer-shell thinking, not of competitor CDP or element internals

@@ -126,6 +126,13 @@
   - `cargo check --manifest-path rust/Cargo.toml` 通过
   - `browser start --session session-config-noenv --headless https://example.com` 现在会像 `doctor` 一样因为 `/tmp/dp-browser` 失败
   - 带 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 的 `browser start --session session-config-seq --headless https://example.com -> title -> browser stop` 通过
+- **daemon 请求重试路径又向竞品外壳层靠了一步**：当前 `rust/src/cli/connection.rs` 的 `send_request()` 不再只在第一次发送前 `ensure_daemon()` 一次；现在每次重试前都会重新 ensure。这样如果 daemon 在第一次 ensure 之后、真正读写 socket 之前崩掉，下一次重试会重新走 sidecar 检查 / stale kill / respawn，而不是盲重试同一个坏状态。
+- **这轮 request-retry 收口已经补了直接证据**：
+  - 新增 `connection.rs` 定向单测 2 个，验证 transient error 后会重新 ensure，而 non-transient error 会立即停下
+  - `cargo test --manifest-path rust/Cargo.toml send_request_with_retry_ -- --nocapture` 通过
+  - `cargo check --manifest-path rust/Cargo.toml` 通过
+  - 带 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 的 `browser start --session retry-shell-check --headless https://example.com -> title -> browser stop` 通过
+- **活跃 smoke 文档不再写死 daemon session 数量**：`skills/openpage-test/references/cli-smoke.md` 现在不再把某个 healthy session 数字写成固定事实，而是明确说明 exact count 是 runtime-local，会随 named-session smoke daemon 的创建和遗留而漂移。
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
@@ -154,6 +161,11 @@
 - `serve.rs` 这轮为了让 runtime 和 `doctor` 对齐，改成了从 ini 配置起步；因此在本机不带 `OPENPAGE_BROWSER_PATH` 时，`browser start` 现在会和 `doctor` 一样受 `browser_path=chrome` 影响，这不是回归，而是刻意去掉两套不一致的 browser-path 真相。
 - 2026-05-30 这轮重新取证时又发现一个“旧结论过期”问题：当前工作树里的 `rust/configs.ini` 已被本地脏改成 `browser_path=/tmp/dp-browser`，所以先前跟踪文件里写死的 `browser_path=chrome` 已不再代表今天这台机器的真实失败对象；本轮已改为把新 truth 追加记录，而不是继续复用旧说法。
 - 一次并发 smoke 把 `title --session session-config-env` 和 `browser stop --session session-config-env` 同时跑了，导致 `title` 命中了 `unknown target`；后续顺序重跑 `browser start -> title -> browser stop` 已拿到有效通过证据。
+- 本轮验证链路又被当前工作树里的其它 compile blockers 挡了一次：
+  - `rust/src/settings.rs` 这个未跟踪新文件里有一个 `FnMut` 捕获值 move 和一个测试导入问题
+  - `rust/src/page.rs` 测试里有两个 `matches!` 模式借用问题
+  - 这三处都只做了最小修复，用来恢复 `cargo check` / 定向 `cargo test` 证据链，不属于本轮外壳层设计变更本身
+- `browser stop --session <name>` 不会自动把对应 daemon session 从 `browser list` 里移除；它会停浏览器，但 daemon 自身可能继续存活。因此 exact healthy session count 不是稳定仓库事实，也不适合作为活跃 smoke 文档里的固定数字。
 
 ## Status
-**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 这轮最新核验里：活跃废弃 CLI surface 拒绝测试仍然有效；`serve.rs` 新增的 session-config 定向单测 2 个已通过；`cargo check` 继续通过；当前机器上 `browser list` 是 6 healthy / 0 incomplete / 0 cleaned；默认 `doctor --quick` 和默认 `browser start` 现在都会一致地卡在本地脏改后的 `browser_path=/tmp/dp-browser`；而 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 依旧能把 `doctor --quick` 与 `browser start -> title -> browser stop` 全部拉通。也就是说，runtime 的 launch/session 两侧现在都开始从同一份 ini 真相起步，而没有重新引入旧 one-shot / CDP / 元素交互分叉。下一步继续沿活跃文档面误导项、更多 machine-friendly 外壳细节，以及 path-focused git 提交做收敛。
+**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 这轮最新核验里：`connection.rs` 新增的 request-retry 定向单测 2 个已通过；`cargo check` 继续通过；带 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 的 `browser start -> title -> browser stop` 链路继续通过；`cli-smoke.md` 已从“写死某个 session 数量与旧 browser_path 事实”改成当前机器 truth + runtime-local 说明。也就是说，当前 outer shell 不只保住了唯一 TCP daemon 路径，还进一步收紧了 transient request recovery 行为，而没有重新引入旧 one-shot / CDP / 元素交互分叉。下一步继续沿活跃 docs/help 面误导项、更多 machine-friendly 外壳细节，以及 path-focused git 提交做收敛。

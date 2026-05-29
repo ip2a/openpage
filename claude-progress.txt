@@ -1864,3 +1864,61 @@
 1. 做 path-focused git 提交，只带这轮 `serve.rs` + 跟踪文件
 2. 继续扫活跃 docs/help/smoke 面还有没有落后于当前 `/tmp/dp-browser` 本机 truth 的描述
 3. 继续找还能安全吸收的竞品外壳层设计
+
+
+## 2026-05-30 — Session 35
+
+### Goal in focus
+- 继续把唯一 TCP daemon 路径的外围稳定性向竞品外壳层靠拢
+- 这次聚焦 request retry 行为，不碰 CDP / element / interaction 内核
+
+### Work completed
+- 重新审计活跃 docs/help 面，确认：
+  - `skills/openpage-test/references/cli-smoke.md` 还残留旧本机 truth
+  - 其中既有过期的 `browser_path=chrome` 说法，也有把 healthy session 数量写死的问题
+- 修改 `rust/src/cli/connection.rs`
+  - 抽出 `send_request_with_retry(...)`
+  - `send_request()` 不再只在第一次发送前 `ensure_daemon()`
+  - 现在每次重试前都会重新 ensure
+  - 这样 transient socket 失败后，下一次重试会重新走 stale sidecar / daemon respawn 判断
+- 为这次外壳层改动补了定向单测：
+  - transient error 后会再次 ensure
+  - non-transient error 会立即停止
+- 修改活跃 smoke 文档：
+  - `skills/openpage-test/references/cli-smoke.md`
+  - 去掉固定 healthy session 数字
+  - 把本机 dirty worktree 的 browser executable truth 更新为 `/tmp/dp-browser`
+- 为了恢复验证链路，顺手做了两类最小 compile blocker 修复：
+  - `rust/src/settings.rs`
+  - `rust/src/page.rs`
+  这些不是本轮设计改动本身，只是当前工作树里挡路的最小修平
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml send_request_with_retry_ -- --nocapture`
+  - 2 个新测试通过
+- `cargo check --manifest-path rust/Cargo.toml`
+  - 通过
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - 返回 only healthy sessions、0 incomplete、0 cleaned
+  - exact count 再次漂移，进一步证明这不该写死进活跃 smoke 文档
+- 带 env override 的真实链路：
+  - `browser start --session retry-shell-check --headless https://example.com`
+  - `title --session retry-shell-check`
+  - `browser stop --session retry-shell-check`
+  - 全部通过，title 返回 `Example Domain`
+
+### Current conclusions
+- 当前 outer shell 的 daemon request retry 行为比上一轮更稳：
+  - daemon 若在首次 ensure 后、真正请求前崩掉
+  - 重试 now 会重新走 ensure / stale kill / respawn
+- 这仍然是纯外壳层借鉴，没有引入任何竞品：
+  - CDP transport
+  - snapshot internals
+  - element lookup
+  - interaction runtime
+- 活跃 smoke 文档也不再把 runtime-local session 数量写成仓库事实。
+
+### Next steps
+1. 做 path-focused git 提交，只带 `connection.rs` + `cli-smoke.md` + 跟踪文件
+2. 继续扫活跃 docs/help 面剩余过期本机 truth
+3. 继续看还能从竞品外壳层借哪些不碰内核的稳定性设计

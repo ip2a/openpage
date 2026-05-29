@@ -532,27 +532,12 @@ pub(crate) fn ensure_daemon(session: &str) -> OpenPageResult<DaemonStatus> {
 }
 
 pub(crate) fn send_request(session: &str, request: &Request) -> OpenPageResult<Response> {
-    let _ = ensure_daemon(session)?;
-    let mut last_error: Option<OpenPageError> = None;
-
-    for attempt in 0..MAX_RETRIES {
-        if attempt > 0 {
-            std::thread::sleep(Duration::from_millis(100 * attempt as u64));
-        }
-
-        match send_request_once(session, request) {
-            Ok(response) => return Ok(response),
-            Err(err) if is_transient_error(&err) => {
-                last_error = Some(err);
-                continue;
-            }
-            Err(err) => return Err(err),
-        }
-    }
-
-    Err(last_error.unwrap_or_else(|| {
-        OpenPageError::Io("daemon request failed with no captured error".to_string())
-    }))
+    send_request_with_retry(
+        session,
+        request,
+        |session| ensure_daemon(session).map(|_| ()),
+        send_request_once,
+    )
 }
 
 fn send_request_once(session: &str, request: &Request) -> OpenPageResult<Response> {
@@ -606,6 +591,40 @@ fn is_transient_error(error: &OpenPageError) -> bool {
         || message.contains("empty daemon response")
 }
 
+fn send_request_with_retry<F, G>(
+    session: &str,
+    request: &Request,
+    mut ensure: F,
+    mut send_once: G,
+) -> OpenPageResult<Response>
+where
+    F: FnMut(&str) -> OpenPageResult<()>,
+    G: FnMut(&str, &Request) -> OpenPageResult<Response>,
+{
+    let mut last_error: Option<OpenPageError> = None;
+
+    for attempt in 0..MAX_RETRIES {
+        if attempt > 0 {
+            std::thread::sleep(Duration::from_millis(100 * attempt as u64));
+        }
+
+        ensure(session)?;
+
+        match send_once(session, request) {
+            Ok(response) => return Ok(response),
+            Err(err) if is_transient_error(&err) => {
+                last_error = Some(err);
+                continue;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        OpenPageError::Io("daemon request failed with no captured error".to_string())
+    }))
+}
+
 pub(crate) struct SidecarGuard {
     paths: Vec<PathBuf>,
 }
@@ -626,8 +645,11 @@ impl Drop for SidecarGuard {
 mod tests {
     use super::{
         ExistingDaemonAction, daemon_dir, existing_daemon_action_with_retry, pid_path, port_path,
-        version_path,
+        send_request_with_retry, version_path,
     };
+    use crate::cli::protocol::{Request, Response};
+    use crate::error::OpenPageError;
+    use serde_json::{Value, json};
     use std::fs;
     use std::net::TcpListener;
     use std::path::PathBuf;
@@ -752,5 +774,73 @@ mod tests {
         assert_eq!(action, ExistingDaemonAction::Kill);
 
         let _ = fs::remove_dir_all(home);
+    }
+
+    fn test_request() -> Request {
+        Request {
+            id: Some(json!("test")),
+            op: "daemon.status".to_string(),
+            target: None,
+            params: Value::Null,
+        }
+    }
+
+    #[test]
+    fn send_request_with_retry_reensures_after_transient_error() {
+        let request = test_request();
+        let mut ensure_calls = 0;
+        let mut send_calls = 0;
+
+        let response = send_request_with_retry(
+            "retry-session",
+            &request,
+            |_| {
+                ensure_calls += 1;
+                Ok(())
+            },
+            |_, _| {
+                send_calls += 1;
+                if send_calls == 1 {
+                    Err(OpenPageError::Io("connection reset by peer".to_string()))
+                } else {
+                    Ok(Response::ok(
+                        Some(json!("test")),
+                        json!({"recovered": true}),
+                    ))
+                }
+            },
+        )
+        .expect("recover after transient error");
+
+        assert_eq!(ensure_calls, 2);
+        assert_eq!(send_calls, 2);
+        assert_eq!(response.result, Some(json!({"recovered": true})));
+    }
+
+    #[test]
+    fn send_request_with_retry_stops_after_non_transient_error() {
+        let request = test_request();
+        let mut ensure_calls = 0;
+        let mut send_calls = 0;
+
+        let error = send_request_with_retry(
+            "non-transient-session",
+            &request,
+            |_| {
+                ensure_calls += 1;
+                Ok(())
+            },
+            |_, _| {
+                send_calls += 1;
+                Err(OpenPageError::Serialization(
+                    "invalid daemon response".to_string(),
+                ))
+            },
+        )
+        .expect_err("stop after non-transient error");
+
+        assert_eq!(ensure_calls, 1);
+        assert_eq!(send_calls, 1);
+        assert!(matches!(error, OpenPageError::Serialization(_)));
     }
 }
