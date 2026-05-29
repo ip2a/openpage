@@ -69,7 +69,11 @@ pub(crate) fn write_tcp_sidecars(session: &str, port: u16) -> OpenPageResult<Sid
 }
 
 pub(crate) fn cleanup_sidecars(session: &str) -> OpenPageResult<()> {
-    for path in [port_path(session)?, pid_path(session)?, version_path(session)?] {
+    for path in [
+        port_path(session)?,
+        pid_path(session)?,
+        version_path(session)?,
+    ] {
         match fs::remove_file(&path) {
             Ok(()) => {}
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
@@ -225,6 +229,56 @@ fn kill_stale_daemon(session: &str) -> OpenPageResult<()> {
     cleanup_sidecars(session)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExistingDaemonAction {
+    Reuse,
+    Kill,
+    Ignore,
+}
+
+fn wait_for_daemon_ready(session: &str, attempts: u32, delay_ms: u64) -> bool {
+    for _ in 0..attempts {
+        if daemon_ready(session) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(delay_ms));
+    }
+    daemon_ready(session)
+}
+
+fn existing_daemon_action_with_retry(
+    session: &str,
+    attempts: u32,
+    delay_ms: u64,
+) -> OpenPageResult<ExistingDaemonAction> {
+    if daemon_ready(session) {
+        return Ok(if daemon_version_matches(session) {
+            ExistingDaemonAction::Reuse
+        } else {
+            ExistingDaemonAction::Kill
+        });
+    }
+
+    let pid_alive = read_pid(session)?.map(is_pid_alive).unwrap_or(false);
+    if !pid_alive {
+        return Ok(ExistingDaemonAction::Ignore);
+    }
+
+    if wait_for_daemon_ready(session, attempts, delay_ms) {
+        return Ok(if daemon_version_matches(session) {
+            ExistingDaemonAction::Reuse
+        } else {
+            ExistingDaemonAction::Kill
+        });
+    }
+
+    Ok(ExistingDaemonAction::Kill)
+}
+
+fn existing_daemon_action(session: &str) -> OpenPageResult<ExistingDaemonAction> {
+    existing_daemon_action_with_retry(session, STARTUP_POLL_ATTEMPTS, STARTUP_POLL_DELAY_MS)
+}
+
 pub(crate) fn daemon_ready(session: &str) -> bool {
     let Ok(Some(port)) = read_port(session) else {
         return false;
@@ -305,8 +359,7 @@ pub(crate) fn daemon_inventory() -> OpenPageResult<DaemonInventory> {
         let version_present = !matches!(version_state, SidecarState::Missing);
         let pid_valid = !matches!(pid_state, SidecarState::Invalid);
         let port_valid = !matches!(port_state, SidecarState::Invalid);
-        let complete =
-            pid_present && port_present && version_present && pid_valid && port_valid;
+        let complete = pid_present && port_present && version_present && pid_valid && port_valid;
 
         if alive && complete {
             inventory.sessions.push(DaemonSessionInfo {
@@ -411,13 +464,16 @@ fn cleaned_reason(
 }
 
 pub(crate) fn ensure_daemon(session: &str) -> OpenPageResult<DaemonStatus> {
-    if daemon_ready(session) {
-        if daemon_version_matches(session) {
+    match existing_daemon_action(session)? {
+        ExistingDaemonAction::Reuse => {
             return Ok(DaemonStatus {
                 already_running: true,
             });
         }
-        kill_stale_daemon(session)?;
+        ExistingDaemonAction::Kill => {
+            kill_stale_daemon(session)?;
+        }
+        ExistingDaemonAction::Ignore => {}
     }
 
     cleanup_sidecars(session)?;
@@ -500,16 +556,17 @@ pub(crate) fn send_request(session: &str, request: &Request) -> OpenPageResult<R
 }
 
 fn send_request_once(session: &str, request: &Request) -> OpenPageResult<Response> {
-    let port = read_port(session)?
-        .ok_or_else(|| OpenPageError::Io(format!("daemon port not found for session '{session}'")))?;
+    let port = read_port(session)?.ok_or_else(|| {
+        OpenPageError::Io(format!("daemon port not found for session '{session}'"))
+    })?;
     let socket = SocketAddr::from(([127, 0, 0, 1], port));
     let mut stream =
         TcpStream::connect_timeout(&socket, Duration::from_millis(CONNECT_TIMEOUT_MS))?;
     stream.set_read_timeout(Some(Duration::from_secs(READ_TIMEOUT_SECS)))?;
     stream.set_write_timeout(Some(Duration::from_secs(WRITE_TIMEOUT_SECS)))?;
 
-    let mut payload =
-        serde_json::to_string(request).map_err(|err| OpenPageError::Serialization(err.to_string()))?;
+    let mut payload = serde_json::to_string(request)
+        .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
     payload.push('\n');
     stream.write_all(payload.as_bytes())?;
     stream.flush()?;
@@ -562,5 +619,138 @@ impl Drop for SidecarGuard {
         for path in &self.paths {
             let _ = fs::remove_file(path);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ExistingDaemonAction, daemon_dir, existing_daemon_action_with_retry, pid_path, port_path,
+        version_path,
+    };
+    use std::fs;
+    use std::net::TcpListener;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &PathBuf) -> Self {
+            let previous = std::env::var_os(key);
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => unsafe {
+                    std::env::set_var(self.key, value);
+                },
+                None => unsafe {
+                    std::env::remove_var(self.key);
+                },
+            }
+        }
+    }
+
+    fn unique_openpage_home(label: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "openpage-connection-test-{label}-{}-{unique}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn existing_daemon_action_reuses_ready_matching_daemon() {
+        let home = unique_openpage_home("reuse");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
+        let port = listener.local_addr().expect("listener addr").port();
+        let session = "reuse";
+
+        fs::write(port_path(session).expect("port path"), port.to_string()).expect("write port");
+        fs::write(
+            pid_path(session).expect("pid path"),
+            std::process::id().to_string(),
+        )
+        .expect("write pid");
+        fs::write(
+            version_path(session).expect("version path"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("write version");
+
+        let action =
+            existing_daemon_action_with_retry(session, 0, 0).expect("existing daemon action");
+        assert_eq!(action, ExistingDaemonAction::Reuse);
+
+        drop(listener);
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn existing_daemon_action_kills_ready_version_mismatch() {
+        let home = unique_openpage_home("mismatch");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
+        let port = listener.local_addr().expect("listener addr").port();
+        let session = "mismatch";
+
+        fs::write(port_path(session).expect("port path"), port.to_string()).expect("write port");
+        fs::write(
+            pid_path(session).expect("pid path"),
+            std::process::id().to_string(),
+        )
+        .expect("write pid");
+        fs::write(version_path(session).expect("version path"), "0.0.1").expect("write version");
+
+        let action =
+            existing_daemon_action_with_retry(session, 0, 0).expect("existing daemon action");
+        assert_eq!(action, ExistingDaemonAction::Kill);
+
+        drop(listener);
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn existing_daemon_action_kills_alive_unready_daemon_after_grace() {
+        let home = unique_openpage_home("stale");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let session = "stale";
+        fs::write(port_path(session).expect("port path"), "9").expect("write port");
+        fs::write(
+            pid_path(session).expect("pid path"),
+            std::process::id().to_string(),
+        )
+        .expect("write pid");
+        fs::write(
+            version_path(session).expect("version path"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("write version");
+
+        let action =
+            existing_daemon_action_with_retry(session, 1, 0).expect("existing daemon action");
+        assert_eq!(action, ExistingDaemonAction::Kill);
+
+        let _ = fs::remove_dir_all(home);
     }
 }

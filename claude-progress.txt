@@ -788,3 +788,396 @@
 2. 然后继续把 `doctor.rs` 向竞品框架收紧，但先不动破坏性 fix 行为
 3. 再补 OpenPage 自己的 trust-boundary / snapshot-refs / session-management 文档
 
+## 2026-05-29 — Session 12
+
+### Goal in focus
+- 重新核对“本地当前真相”是否和借鉴文档保持一致
+- 把已经落地的借鉴项从“待做”状态改成“已完成”，避免后续会话误判
+
+### Work completed
+- 重新检查 `rust/src/cli/protocol.rs`
+  - 已确认 boundary nonce 不再是 `pid + timestamp`
+  - 当前实现已经改成 `getrandom` 生成的 CSPRNG nonce
+- 重新跑本地核验命令：
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+- 更新 `竞品文档-考虑借鉴的部分v1.md`
+  - 把 output/boundary 项从“nonce 还没借到位”改成“已接入”
+  - 新增“最新本地核验（2026-05-29）”表格
+  - 把下一批借鉴重点调整为：
+    - `doctor.rs` 的 check/fix/smoke 结构
+    - trust-boundary / snapshot-refs / session-management 文档
+- 同步 `task_plan.md`
+  - 明确 CSPRNG nonce 已落地
+  - 当前状态不再把 nonce 当下一步待办
+
+### Verification
+- `cargo check --manifest-path rust/Cargo.toml`
+  - 通过
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - 返回：
+    - 3 个 healthy sessions
+    - `incomplete=[]`
+    - `cleaned=[]`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - 当前唯一 fail：
+    - `browser.executable`
+  - 当前本机有效修复提示：
+    - `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+
+### Current conclusions
+- TCP-only 主路径没有回退。
+- 当前借鉴文档和本地代码真相重新对齐了。
+- 下一步的最小高价值借鉴点已经收敛到 doctor 框架和 agent-facing 文档，而不是继续碰协议内核或 CDP 内核。
+
+### Next steps
+1. 继续把 `rust/src/cli/doctor.rs` 向竞品 `Check/fix/summary` 结构收拢
+2. 补 OpenPage 自己的 trust-boundary / snapshot-refs / session-management 文档
+3. 继续清理仍会误导后续会话的历史帮助面和历史迁移表述
+
+## 2026-05-29 — Session 13
+
+### Goal in focus
+- 开始把竞品 `doctor` 的结构化 check/fix 思路真正接到 OpenPage
+- 仍然只做外壳层，不引入自动修复副作用
+
+### Work completed
+- 修改 `rust/src/cli/doctor.rs`
+  - `Check` 新增可选 `fix` 字段
+  - 增加 `with_fix()` 构造辅助
+  - 当前首先把 `browser.executable` 失败项接上明确修复建议
+- 新增单测：
+  - `browser_executable_fix_uses_hint_when_present`
+  - `check_omits_fix_when_absent_and_serializes_when_present`
+- 重新跑 `doctor --quick`
+  - 已确认当前 JSON 输出里 `browser.executable` 会附带 `fix`
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml browser_executable_fix_uses_hint_when_present -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml check_omits_fix_when_absent_and_serializes_when_present -- --nocapture`
+- `cargo check --manifest-path rust/Cargo.toml`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - 当前 `browser.executable` 输出已包含：
+    - `fix`
+    - 且 fix 文案会带本机可用 Chrome 绝对路径
+
+### Current conclusions
+- OpenPage 已经开始真正借入竞品 doctor 的结构层，不再只是文档建议。
+- 当前接入点很小，但方向是对的：
+  - 只增强诊断 contract
+  - 不触碰浏览器/CDP/元素内核
+
+### Next steps
+1. 继续把更多 `doctor` 检查项补成结构化 fix 提示
+2. 评估是否把 launch smoke 的临时目录生命周期进一步做成更像 `LaunchGuard` 的模式
+3. 补 trust-boundary / snapshot-refs / session-management 文档
+
+## 2026-05-30 — Session 14
+
+### Goal in focus
+- 把竞品里最值得借的 agent-facing 文档结构真正接到 OpenPage 当前活跃用户面
+- 同时重新核对今天的本地真相，避免沿用 2026-05-29 的旧计数
+
+### Work completed
+- 新增 repo-local agent 文档：
+  - `skills/openpage-test/references/snapshot-refs.md`
+  - `skills/openpage-test/references/session-management.md`
+  - `skills/openpage-test/references/trust-boundaries.md`
+- 更新 `skills/openpage-test/SKILL.md`
+  - 按任务类型把这三份文档接到 workflow / resources / decision rules
+- 更新 `README.md`
+  - 在 Rust CLI 的 AI-first snapshot 段落补了 repo-local agent 文档入口
+- 重新只针对活跃用户面做 grep
+  - `README.md`
+  - `rust/src/cli/*`
+  - `skills/openpage-test/*`
+  - 结果没有发现活跃旧协议入口重新暴露
+- 重新跑 2026-05-30 本地核验：
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+
+### Verification
+- `cargo check --manifest-path rust/Cargo.toml`
+  - 通过
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - 当前返回：
+    - 5 个 healthy sessions
+    - `incomplete=[]`
+    - `cleaned=[]`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - 当前唯一 fail 仍是：
+    - `browser.executable`
+  - fix/hint 仍指向：
+    - `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+- 活跃用户面 grep
+  - 未发现 `serve --stdio`
+  - 未发现活跃 CLI 面重新回到 `open_page()` / `load_session()` / `save_session()` / CLI-side `Browser::connect()`
+
+### Current conclusions
+- 当前最值得借的三份 agent-facing 文档已经不再只是竞品清单，而是已进入 OpenPage repo-local 技能面。
+- 当前活跃用户面仍保持 TCP-only 心智，没有看到旧协议重新浮出。
+- 今天的本地 session 计数已经从昨天的 3 变成 5，相关文档已同步到最新真相。
+
+### Next steps
+1. 继续把更多 `doctor` 检查项补成结构化 `fix`
+2. 评估是否把 launch smoke 临时目录生命周期进一步向 `LaunchGuard` 收拢
+3. 继续清理只剩历史文档里的旧协议叙述，避免误导未来会话
+
+## 2026-05-30 — Session 15
+
+### Goal in focus
+- 沿 `doctor.rs` 继续借竞品外壳设计
+- 做一批真正落地的 `fix` 扩展，并开始把 launch smoke 清理逻辑向 guard 模式收拢
+
+### Work completed
+- 修改 `rust/src/cli/doctor.rs`
+  - `Check.fix` 覆盖面继续扩大：
+    - environment
+    - daemon inventory / incomplete sessions / no-session state
+    - browser config load failure
+    - browser launch skip / fail / warn
+  - 增加 launch 失败修复建议 helper：
+    - `browser_launch_fix()`
+    - `shell_safe_browser_path_arg()`
+  - 增加小型 `TempDirGuard`
+    - 用 Drop 负责 launch smoke 临时目录清理
+    - 这是向竞品 `LaunchGuard` 思路靠拢的一小步
+- 重新核对活跃用户面 grep
+  - 没有发现旧协议重新暴露
+- 重新核对本地 inventory
+  - 今天同一天内 session 数量从 5 变成了 4
+  - 已明确记入文档：session 数量是运行时态，不是仓库不变量
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml cli::doctor::tests -- --nocapture`
+  - 7 个 doctor 相关测试通过
+- `cargo check --manifest-path rust/Cargo.toml`
+  - 通过
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - 当前唯一 fail 仍是 `browser.executable`
+  - `browser.launch` quick-skip 现在也带 `fix`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - 最新实测：
+    - 4 个 healthy sessions
+    - `incomplete=[]`
+    - `cleaned=[]`
+
+### Current conclusions
+- 这轮是实打实的 outer-shell 借鉴落地，不只是文档同步。
+- `doctor` 结构已经比上一轮更接近竞品：
+  - 更广的 structured fixes
+  - 更稳的 cleanup lifecycle
+- 协议主路径没有回退，活跃用户面仍然保持 TCP-only。
+
+### Next steps
+1. 继续评估是否把整个 launch smoke 生命周期进一步做成更完整的 guard 模式
+2. 继续把剩余高价值 `doctor` 检查项文案和 summary 结构收紧
+3. 继续清理历史文档里的旧协议叙述，避免误导未来会话
+
+## 2026-05-30 — Session 16
+
+### Goal in focus
+- 继续收紧 `doctor` 的结构化修复建议
+- 把 daemon session warning 从“只有状态描述”推进到“带明确建议动作”
+
+### Work completed
+- 修改 `rust/src/cli/doctor.rs`
+  - 新增 `daemon_session_fix(...)`
+  - 当前 `daemon.session.*` warning 两类情况会返回 fix：
+    - version mismatch
+    - session not ready
+- 新增单测：
+  - `daemon_session_fix_prefers_version_restart_guidance`
+  - `daemon_session_fix_points_to_status_and_log_when_not_ready`
+- 重新跑 `doctor --quick` 和 `browser list`
+  - 确认这轮改动没有引入新的运行时回退
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml daemon_session_fix_prefers_version_restart_guidance -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml daemon_session_fix_points_to_status_and_log_when_not_ready -- --nocapture`
+- `cargo check --manifest-path rust/Cargo.toml`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+
+### Current conclusions
+- `doctor` 的结构化 fix 又往前走了一步：
+  - 不只是浏览器配置
+  - 也开始覆盖 daemon session warning 的后续动作
+- 当前最新 runtime truth 没变：
+  - `doctor --quick` 唯一 fail 仍是 `browser.executable`
+  - `browser list` 仍是 4 个 healthy sessions
+- 这仍然是纯外壳借鉴，没有碰内部浏览器/CDP/元素实现。
+
+### Next steps
+1. 继续评估是否给 `doctor` 增加更完整的 launch cleanup / browser close guard
+2. 继续收紧 `doctor` summary / fix 文案结构
+3. 继续清理历史文档里的旧协议叙述，避免误导未来会话
+
+## 2026-05-30 — Session 17
+
+### Goal in focus
+- 继续把 `doctor` 的 launch smoke 生命周期收成更像 guard 的模式
+- 维持“只动外壳，不动浏览器/CDP/元素内核”的边界
+
+### Work completed
+- 修改 `rust/src/cli/doctor.rs`
+  - 新增 `BrowserLaunchGuard`
+  - launch smoke 成功路径现在不再只靠显式 `browser.close()`
+  - guard Drop 会做 best-effort close
+  - temp-dir cleanup guard 继续保留
+- 重新核对 doctor 相关测试
+  - 当前 doctor 相关测试数已经变成 10 个
+- 重新跑 `doctor --quick`
+  - 当前唯一 fail 仍是 `browser.executable`
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml browser_launch_guard_without_browser_still_cleans_temp_dir -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml cli::doctor::tests -- --nocapture`
+- `cargo check --manifest-path rust/Cargo.toml`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+- 活跃用户面 grep：
+  - 未发现 `serve --stdio`
+  - 未发现活跃 CLI 面重新回到 `open_page()` / `load_session()` / `save_session()` / CLI-side `Browser::connect()`
+
+### Current conclusions
+- `doctor` 的 launch lifecycle 又收紧了一步：
+  - best-effort browser close
+  - temp-dir cleanup
+- 当前主协议方向没有回退。
+- 这轮仍然是竞品外壳设计借鉴，不涉及内核替换。
+
+### Next steps
+1. 继续收紧 `doctor` summary / fix 文案结构
+2. 继续清理历史文档里的旧协议叙述，避免误导未来会话
+3. 如果继续做代码借鉴，优先仍放在 CLI/doctor/output/doc 外壳层
+
+## 2026-05-30 — Session 18
+
+### Goal in focus
+- 继续清理会误导未来会话的历史协议文档
+- 保留历史材料，但不再允许它们被误当成当前执行手册
+
+### Work completed
+- 修改：
+  - `rust_progress_report.md`
+  - `协议迁移审计-v1.md`
+- 两份文档现在都做了更强的归档降级：
+  - 标题改为 `[ARCHIVED]`
+  - 顶部增加 `当前覆盖事实（2026-05-30）`
+  - 明确声明：
+    - 当前活跃协议路径是 TCP daemon
+    - 旧命令只剩历史样本意义
+    - 不要再按这些旧命令验证当前仓库
+    - 当前应优先看 `doctor --quick` / `browser list` / `skills/openpage-test/references/cli-smoke.md`
+
+### Verification
+- 检查两份文档顶部内容
+- 活跃用户面 grep：
+  - `README.md`
+  - `rust/src/cli/*`
+  - `skills/openpage-test/*`
+  - 结果仍未发现活跃 `serve --stdio` / old one-shot surface
+
+### Current conclusions
+- 当前仓库里最容易误导未来会话的两份历史协议文档已经被强制降级。
+- 这不会删除历史依据，但会明显降低它们被误当成当前真相的概率。
+- 当前协议主路径判断没有变化：活跃用户面仍然是 TCP-only。
+
+### Next steps
+1. 继续收紧 `doctor` summary / fix 文案结构
+2. 如果继续清历史噪音，就去看其他根目录研究文档是否也需要统一归档标识
+3. 代码借鉴仍优先停留在 CLI/doctor/output/doc 外壳层
+
+
+## 2026-05-30 — Session 19
+
+### Goal in focus
+- 继续收紧“唯一 TCP daemon 路径”的运行时约束
+- 清掉活跃 CLI 面里最后一小块旧 session JSON 残留
+
+### Work completed
+- 修改 `rust/src/cli/connection.rs`
+  - 新增：
+    - `ExistingDaemonAction`
+    - `wait_for_daemon_ready(...)`
+    - `existing_daemon_action_with_retry(...)`
+    - `existing_daemon_action(...)`
+  - `ensure_daemon()` 现在不再只处理“ready + version mismatch”
+  - 如果同 session 旧进程还活着但 TCP 迟迟不可用：
+    - 先给一个短暂 ready 宽限期
+    - 宽限后仍不可用就杀旧进程再拉新 daemon
+- 新增单测：
+  - `existing_daemon_action_reuses_ready_matching_daemon`
+  - `existing_daemon_action_kills_ready_version_mismatch`
+  - `existing_daemon_action_kills_alive_unready_daemon_after_grace`
+- 修改 `rust/src/cli/oneshot.rs`
+  - 删除旧残留：
+    - `session_file()`
+    - 本地 `openpage_home()` helper
+    - `browser stop` 时删除 `sessions/<name>.json` 的逻辑
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml existing_daemon_action_ -- --nocapture`
+- `cargo check --manifest-path rust/Cargo.toml`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+
+### Current conclusions
+- 这轮不是文档整理，而是实打实补了一处“同 session 旧进程可能遗留”的协议稳定性缺口。
+- 当前活跃 CLI 面里最后那点旧 session JSON 清理残留也已经删除，stop 路径现在只围绕 TCP sidecar 和 daemon shutdown。
+- 最新 runtime truth：
+  - `browser list` 返回 5 个 healthy sessions
+  - `doctor --quick` 仍只有 1 个 fail：`browser.executable`
+- 这轮仍然严格停留在非-CDP 外壳层，没有碰浏览器/元素/交互内核。
+
+### Next steps
+1. 继续收紧 `doctor.rs` 的 summary / fix / output 结构
+2. 继续检查根目录历史对比文档是否还会误导当前 CLI 协议心智
+3. 如继续借竞品代码，优先仍放在 `connection.rs` / `doctor.rs` / 文档层
+
+
+## 2026-05-30 — Session 20
+
+### Goal in focus
+- 继续把竞品非-CDP 外壳设计借到 OpenPage 的输出层
+- 强化 AI-facing snapshot/text 输出的 trust boundary
+
+### Work completed
+- 修改 `rust/src/cli/protocol.rs`
+  - `wrap_content(...)` 改为支持 `origin`
+  - `_boundary` metadata 现在包含：
+    - `nonce`
+    - `keys`
+    - `origin`
+  - wrapped page-content marker 现在在可用时带：
+    - `origin=<url>`
+- 新增单测：
+  - `format_output_json_includes_origin_in_boundary_metadata`
+  - `format_output_json_omits_empty_origin_from_boundary_metadata`
+- 做了一个真实 CLI smoke：
+  - 临时 `OPENPAGE_HOME`
+  - 显式本机 Chrome 绝对路径
+  - `about:blank` + 注入简单 DOM
+  - `snapshot` 输出验证 `_boundary.origin` 和 marker 中的 `origin=...`
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml format_output_json_ -- --nocapture`
+- `cargo check --manifest-path rust/Cargo.toml`
+- boundary smoke：
+  - `browser start about:blank --session boundary-smoke --replace --headless --browser-path /Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+  - `js ... --session boundary-smoke`
+  - `OPENPAGE_CONTENT_BOUNDARIES=1 OPENPAGE_MAX_OUTPUT_CHARS=500 openpage snapshot --session boundary-smoke`
+  - `browser stop --session boundary-smoke`
+
+### Current conclusions
+- 这轮继续停留在纯外壳层，但已经是实际用户面收益：
+  - AI/agent 消费 snapshot/text/html 时，boundary 现在不只知道 nonce 和 key，也知道 origin。
+- 真实 CLI smoke 已证明这不是只在单测里成立。
+- 这依然没有碰浏览器、元素定位、交互、CDP 真相源。
+
+### Next steps
+1. 继续收紧 `doctor.rs` 的 summary / fix / output 结构
+2. 继续扫根目录历史文档里是否还有会误导当前 CLI 协议心智的内容
+3. 如继续借竞品代码，优先仍放在 `doctor.rs` / `protocol.rs` / agent-facing docs

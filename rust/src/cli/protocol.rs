@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::OnceLock;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Request {
@@ -102,11 +101,9 @@ fn env_truthy(name: &str) -> bool {
 fn boundary_nonce() -> &'static str {
     static NONCE: OnceLock<String> = OnceLock::new();
     NONCE.get_or_init(|| {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        format!("{:x}{:x}", std::process::id(), nanos)
+        let mut buf = [0u8; 16];
+        getrandom::getrandom(&mut buf).expect("failed to generate output boundary nonce");
+        buf.iter().map(|byte| format!("{byte:02x}")).collect()
     })
 }
 
@@ -129,10 +126,14 @@ fn truncate_string(content: &str, limit: usize) -> String {
     )
 }
 
-fn wrap_content(key: &str, content: &str) -> String {
+fn wrap_content(key: &str, content: &str, origin: Option<&str>) -> String {
     let nonce = boundary_nonce();
+    let origin_suffix = origin
+        .filter(|value| !value.is_empty())
+        .map(|value| format!(" origin={value}"))
+        .unwrap_or_default();
     format!(
-        "--- OPENPAGE_PAGE_CONTENT nonce={nonce} key={key} ---\n{content}\n--- END_OPENPAGE_PAGE_CONTENT nonce={nonce} ---"
+        "--- OPENPAGE_PAGE_CONTENT nonce={nonce} key={key}{origin_suffix} ---\n{content}\n--- END_OPENPAGE_PAGE_CONTENT nonce={nonce} ---"
     )
 }
 
@@ -148,6 +149,11 @@ fn apply_output_filters(value: &mut Value) {
     let Some(result_obj) = result.as_object_mut() else {
         return;
     };
+    let origin = result_obj
+        .get("origin")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
 
     let mut wrapped_keys = Vec::new();
     for key in ["html", "text", "value"] {
@@ -163,7 +169,7 @@ fn apply_output_filters(value: &mut Value) {
             next = truncate_string(&next, limit);
         }
         if opts.content_boundaries {
-            next = wrap_content(key, &next);
+            next = wrap_content(key, &next, origin.as_deref());
             wrapped_keys.push(key.to_string());
         }
         *current = Value::String(next);
@@ -175,6 +181,7 @@ fn apply_output_filters(value: &mut Value) {
             serde_json::json!({
                 "nonce": boundary_nonce(),
                 "keys": wrapped_keys,
+                "origin": origin,
             }),
         );
     }
@@ -209,5 +216,66 @@ mod tests {
         assert_eq!(value["ok"], true);
         assert_eq!(value["id"], "1");
         assert_eq!(value["result"]["title"], "Example");
+    }
+
+    #[test]
+    fn boundary_nonce_is_process_stable_hex() {
+        let nonce = boundary_nonce();
+        assert_eq!(nonce, boundary_nonce());
+        assert_eq!(nonce.len(), 32);
+        assert!(nonce.chars().all(|ch| ch.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn format_output_json_includes_origin_in_boundary_metadata() {
+        unsafe {
+            std::env::set_var("OPENPAGE_CONTENT_BOUNDARIES", "1");
+        }
+        let formatted = format_output_json(&serde_json::json!({
+            "ok": true,
+            "result": {
+                "origin": "https://example.com/path",
+                "text": "hello"
+            }
+        }))
+        .expect("format output");
+        unsafe {
+            std::env::remove_var("OPENPAGE_CONTENT_BOUNDARIES");
+        }
+
+        let parsed: Value = serde_json::from_str(&formatted).expect("parse formatted json");
+        assert_eq!(
+            parsed["result"]["_boundary"]["origin"],
+            "https://example.com/path"
+        );
+        let wrapped_text = parsed["result"]["text"]
+            .as_str()
+            .expect("wrapped text should be a string");
+        assert!(wrapped_text.contains("origin=https://example.com/path"));
+    }
+
+    #[test]
+    fn format_output_json_omits_empty_origin_from_boundary_metadata() {
+        unsafe {
+            std::env::set_var("OPENPAGE_CONTENT_BOUNDARIES", "1");
+        }
+        let formatted = format_output_json(&serde_json::json!({
+            "ok": true,
+            "result": {
+                "origin": "",
+                "text": "hello"
+            }
+        }))
+        .expect("format output");
+        unsafe {
+            std::env::remove_var("OPENPAGE_CONTENT_BOUNDARIES");
+        }
+
+        let parsed: Value = serde_json::from_str(&formatted).expect("parse formatted json");
+        assert!(parsed["result"]["_boundary"]["origin"].is_null());
+        let wrapped_text = parsed["result"]["text"]
+            .as_str()
+            .expect("wrapped text should be a string");
+        assert!(!wrapped_text.contains("origin="));
     }
 }

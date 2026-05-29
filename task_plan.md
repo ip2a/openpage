@@ -29,7 +29,7 @@
 - `rust/src/cli/args.rs` 的 `ServeArgs` 已移除 `stdio`
 - `rust/src/cli/serve.rs` 已只保留 TCP daemon 路径
 - `README.md` 与 `skills/openpage-test/*` 已改为 TCP daemon 表述
-- `rust/src/cli/oneshot.rs` 大量命令仍直接走 `load_session()` / `open_page()` / `Browser::connect()`
+- 历史 audit 起点里 `rust/src/cli/oneshot.rs` 曾大量命令直接走 `load_session()` / `open_page()` / `Browser::connect()`；当前这些旧直连执行路径已经从活跃 CLI 面移除
 - `rust/src/cli/protocol.rs` 已经具备较清晰的 NDJSON request/response 结构
 
 ## Current Audit Summary
@@ -42,14 +42,14 @@
 - **本轮又迁移一批 page/element/page-state 命令**：`scroll`、`back`、`forward`、`reload`、`stop-loading`、`js`、`download`、`intercept start/stop/status`、`alert accept/dismiss/text`、`hover`、`press`、`select`、`upload`、`drag`、`drag-to`、`drag-to-point`、`active-element`、`wait-for-url`、`wait-for-title`、`wait-for-function`、`wait-for-text`、`pdf`、`storage get/set`、`cookies get/set/delete/clear` 已走 daemon 路径。
 - **connection 层已补强**：`ensure_daemon()` 现在会校验 `.version`，在版本不匹配时杀掉旧 daemon 并重启；daemon 启动 stderr 也会落到 `OPENPAGE_HOME/daemon/<session>.log`，启动失败时直接回传日志路径或内容。
 - **AI-first ref 链路已打通**：`snapshot -> @e1 -> click` 已通过 daemon 实测通过。
-- **旧直连辅助函数已移除**：`do_start_browser()`、`open_page()`、`load_session()`、`save_session()`、`Browser::connect()` 这一批旧 `oneshot` 执行辅助路径已从 `rust/src/cli/oneshot.rs` 清掉；仅保留 `session_file()` 作为 stop 时顺手清理旧遗留文件。
+- **旧直连辅助函数已移除**：`do_start_browser()`、`open_page()`、`load_session()`、`save_session()`、`Browser::connect()` 这一批旧 `oneshot` 执行辅助路径已从 `rust/src/cli/oneshot.rs` 清掉；本轮连最后那点旧 `session_file()` 清理残留也一起删掉了。
 - **daemon 内部已接管 tab/frame 上下文**：`rust/src/cli/serve.rs` 新增 `ServeWebPage`，维护 active tab / active frame；CLI 不再依赖旧 session JSON 存储 target/frame 状态。
 - **剩余主任务转向非-CDP 借鉴项**：下一步不再是协议收口，而是继续补 `agent-browser` 风格的外围设计，如 output 治理、daemon inventory、AI 友好输出等。
 - **output 治理已真正接线到 CLI 输出出口**：`rust/src/cli/protocol.rs` 里的 `format_output_json()` 现在已由 `rust/src/cli/oneshot.rs::print_json()` 与 `rust/src/cli/mod.rs` 顶层错误打印共同使用；`OPENPAGE_CONTENT_BOUNDARIES` / `OPENPAGE_MAX_OUTPUT_CHARS` 已通过真实 CLI smoke 验证生效。
 - **batch 批处理已完成第一版接入**：OpenPage 现在支持 `batch` 子命令，按顺序执行多条 CLI 指令；支持参数模式、stdin JSON 模式和 `--bail`，且不引入任何竞品 CDP / element / action 内核。
 - **doctor 最小版已接入**：OpenPage 现在支持 `doctor` / `doctor --quick`，会用只读方式检查环境、daemon sidecars 和浏览器启动；浏览器 launch smoke 复用的是你自己的 `LaunchOptions` / `Browser::launch`。
 - **daemon inventory 已真正接上 doctor**：`rust/src/cli/connection.rs` 里的 `daemon_inventory()` 现在不再是半成品；`rust/src/cli/doctor.rs` 已消费它，并区分 healthy session、incomplete sidecars、cleaned stale sidecars。
-- **本机现状已重新核实**：本机 `~/.openpage/daemon` 当前有 3 个 healthy session（`cli-more-states-2`、`cli-state-queries`、`human-flow`）；当前唯一明确失败点仍是 `rust/configs.ini` 配置的 `browser_path=chrome` 在本机不可解析。
+- **本机现状已重新核实**：本机 `~/.openpage/daemon` 的 healthy session 数量是运行时态；2026-05-30 最新一次 `browser list` 实测为 4 个 healthy session（`cli-more-states-2`、`cli-state-queries`、`human-flow`、`smoke-history2`）；当前唯一明确失败点仍是 `rust/configs.ini` 配置的 `browser_path=chrome` 在本机不可解析。
 - **doctor 的本机修复提示已补强**：当 `browser_path=chrome` 这类别名在 PATH 中找不到时，`doctor` 现在会额外探测本机常见浏览器落点；当前机器会明确提示 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 可直接写回 `rust/configs.ini`。
 - **inventory 行为已通过合成 sidecar 验证**：用临时 `OPENPAGE_HOME` 成功验证了两类行为：
   - dead + invalid sidecars 会被 `doctor --quick` 标记为 `daemon.cleaned.*`
@@ -72,10 +72,19 @@
   - `interactive_count`
   且 `text` 会自动走现有 `OPENPAGE_CONTENT_BOUNDARIES` / `OPENPAGE_MAX_OUTPUT_CHARS` 输出治理链路。
 - **历史迁移文档已降级标注**：`rust_progress_report.md` 和 `协议迁移审计-v1.md` 顶部都已加“历史文档说明”，避免后续会话把旧的 `serve --stdio` / one-shot 事实误当成当前真相。
+- **高风险历史协议文档已进一步强降级**：`rust_progress_report.md` 和 `协议迁移审计-v1.md` 现在都已改成 `[ARCHIVED]` 标题，并补了“当前覆盖事实（2026-05-30）”块，明确说明这些旧命令不可再作为当前仓库执行手册。
 - **竞品借鉴文档已落盘**：根目录 `竞品文档-考虑借鉴的部分v1.md` 现在明确列出了三类内容：
   - OpenPage 当前本地现状
   - 可直接 copy 的非-CDP 借鉴点
   - 明确禁止借用的竞品内核范围
+- **`protocol.rs` 的 CSPRNG boundary nonce 已落地**：当前 `rust/src/cli/protocol.rs` 不再使用弱 `pid+timestamp` 方案，而是改为 `getrandom` 生成进程内稳定 nonce，并已通过 `cargo check` 重新验证。
+- **`protocol.rs` 的 trust boundary 又向竞品靠了一步**：当前 boundary 不再只有 `nonce + keys`；如果结果里存在 `origin`，`_boundary.origin` 和 wrapped page-content marker 都会带上该 origin。这个改动已经通过单测和真实 `snapshot` CLI smoke 验证。
+- **`doctor.rs` 的 `Check.fix` 已扩展覆盖面**：当前结构化 `fix` 已不只在 `browser.executable`，还覆盖到了 environment / daemon inventory / browser launch 相关检查；同时 launch smoke 的临时目录清理已收成 Drop guard，开始向竞品 `LaunchGuard` 思路靠拢。
+- **`doctor.rs` 的 daemon warning 修复建议已补上**：当前 `daemon.session.*` 这类 warning 不再只有状态描述；如果 version mismatch 或 session not ready，doctor 现在会返回明确的 stop/status/log 检查建议。
+- **`doctor.rs` 的 launch lifecycle 已继续收紧**：当前 launch smoke 不再只靠显式 close；已补 `BrowserLaunchGuard` 做 best-effort browser close，并继续保留 Drop 清理临时目录，进一步向竞品 `LaunchGuard` 模式靠近。
+- **`connection.rs` 的唯一 daemon 约束又收紧了一步**：`ensure_daemon()` 现在不再只处理“ready 但 version mismatch”的旧进程；如果发现同 session 旧进程仍存活但 TCP 端口迟迟不可用，会先给启动中的 daemon 一个短暂 ready 宽限期，宽限后仍不可用就杀掉旧进程再拉起新的 daemon，避免同 session 留下孤儿进程或并存 daemon。
+- **旧 session JSON 残留已彻底从活跃 CLI 面移除**：`rust/src/cli/oneshot.rs` 里的 `session_file()` / 本地 `openpage_home()` 以及 `browser stop` 时顺手删旧 session JSON 的逻辑都已删除，当前 CLI stop 只围绕 TCP sidecar 与 daemon shutdown。
+- **本轮运行态再次核实**：2026-05-30 最新一次 `browser list` 实测返回 5 个 healthy sessions（`cli-more-states-2`、`cli-state-queries`、`human-flow`、`smoke-alert`、`smoke-history2`）；`doctor --quick` 当前仍只有 1 个 fail（`browser.executable`）；这个 session 数量是运行时态，不应写死成仓库事实。
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
@@ -101,4 +110,4 @@
 - 当前历史文档仍然保留大量旧事实正文，这是有意保留的回溯材料；本轮只做了显式降级标注，没有重写全文。
 
 ## Status
-**Currently in Phase 7** - 唯一 TCP daemon 路径已稳定，当前主要工作变成两类：一是继续清掉仍会误导后续会话的历史/帮助面噪音，二是继续把竞品里对 OpenPage 友好的非-CDP 外壳设计往里收。本轮除了补强 doctor 的本机浏览器修复提示、降级高风险历史文档外，还把“该借什么 / 不该借什么 / 当前本地已到哪一步”固化到了 `竞品文档-考虑借鉴的部分v1.md`。下一步优先考虑两个小而实的接入点：`protocol.rs` 的 CSPRNG boundary nonce，以及 `doctor.rs` 的 check/fix 框架继续对齐。
+**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / 文档层收。2026-05-30 本轮最新核验里：`cargo test --manifest-path rust/Cargo.toml existing_daemon_action_ -- --nocapture` 通过，`cargo check` 通过，`browser list` 最新实测返回 5 个 healthy sessions，`doctor --quick` 当前仍只有 1 个 fail（`browser.executable`）。本轮还额外修掉了一个会伤害“唯一 daemon”约束的点：旧进程活着但 TCP 不可用时，`ensure_daemon()` 现在会在短暂 ready 宽限期后杀掉旧进程再拉起新 daemon，而不是留下同 session 孤儿进程。与此同时，`oneshot.rs` 里最后那点旧 session JSON 清理残留也已经删除。下一步继续沿 `doctor.rs` 的 summary/fix 结构和根目录历史文档误导面做收敛。
