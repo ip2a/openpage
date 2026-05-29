@@ -459,3 +459,44 @@
   - current local browser-launch issue in `doctor` is specifically the default configured executable name, not a missing browser installation
   - repo-local smoke now compensates for that local config mismatch without changing OpenPage core launch logic
   - active repo-local docs now better reflect the single TCP execution path
+
+## Borrowed non-CDP design audit update (2026-05-29, browser list inventory pass)
+- After `doctor` started consuming `daemon_inventory()`, the remaining obvious gap was that the most direct user-facing inventory command, `browser list`, still exposed only healthy sessions.
+- Before this pass:
+  - `rust/src/cli/oneshot.rs` handled `BrowserCommand::List` with:
+    - `list_daemons()?`
+    - JSON result containing only `sessions`
+  - that meant:
+    - `browser list` hid alive-but-incomplete sidecars
+    - `browser list` hid stale sidecars cleaned during the scan
+    - users had to run `doctor` to see the richer inventory model
+- This pass changed `BrowserCommand::List` to use `daemon_inventory()` directly and return:
+  - `sessions`
+  - `incomplete`
+  - `cleaned`
+- `rust/src/cli/args.rs` help text was updated from:
+  - `List active daemon-backed browser sessions`
+  - to:
+  - `List daemon-backed browser sessions and sidecar audit state`
+- `README.md` was updated accordingly so the command example no longer implies that `browser list` is only a session lister.
+- Verification:
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - current local output:
+    - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+    - result included:
+      - `sessions`
+      - `incomplete: []`
+      - `cleaned: []`
+  - synthetic verification with temporary `OPENPAGE_HOME`:
+    - wrote invalid dead sidecars for `dead`
+    - started a real daemon session `alive`
+    - removed only `alive.version`
+    - `browser list` returned:
+      - `cleaned=[{session:\"dead\", reason:\"invalid pid, invalid port\"}]`
+      - `incomplete=[{session:\"alive\", version_present:false, alive:true, ready:true, ...}]`
+      - `sessions=[]`
+- Interpretation:
+  - the borrowed daemon-inventory design is now visible in both:
+    - `doctor`
+    - `browser list`
+  - this is a better user-facing landing spot than keeping the feature only in diagnostics

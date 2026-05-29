@@ -186,7 +186,7 @@ pub enum BrowserCommand {
     Stop(SessionArgs),
     /// Check browser session status
     Status(SessionArgs),
-    /// List active daemon-backed browser sessions
+    /// List daemon-backed browser sessions and sidecar audit state
     List,
 }
 

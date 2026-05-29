@@ -15,7 +15,7 @@ use crate::cli::args::{
     WaitForFunctionArgs, WaitForTextArgs, WaitForTitleArgs, WaitForUrlArgs, WindowCommand, WindowMoveArgs,
 };
 use crate::cli::connection::{
-    cleanup_sidecars, daemon_ready as tcp_daemon_ready, daemon_status, list_daemons, read_port,
+    cleanup_sidecars, daemon_inventory, daemon_ready as tcp_daemon_ready, daemon_status, read_port,
     send_request,
 };
 use crate::cli::protocol::{format_output_json, simple_error, simple_ok, Request, Response};
@@ -134,8 +134,12 @@ fn run_browser(command: BrowserCommand) -> OpenPageResult<()> {
         BrowserCommand::Start(args) => start_browser(args),
         BrowserCommand::Stop(args) => stop_browser(args, false),
         BrowserCommand::List => {
-            let sessions = list_daemons()?;
-            print_json(simple_ok(json!({ "sessions": sessions })))
+            let inventory = daemon_inventory()?;
+            print_json(simple_ok(json!({
+                "sessions": inventory.sessions,
+                "incomplete": inventory.incomplete,
+                "cleaned": inventory.cleaned,
+            })))
         }
         BrowserCommand::Status(args) => {
             let status = daemon_status(&args.session)?;

@@ -175,6 +175,12 @@ OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin open
 OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser stop --session agent
 ```
 
+`browser list` now returns:
+
+- `sessions` — healthy daemon-backed sessions
+- `incomplete` — alive daemons with incomplete sidecars
+- `cleaned` — stale sidecars cleaned during the scan
+
 Batch multiple commands in one invocation:
 
 ```bash

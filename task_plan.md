@@ -58,6 +58,11 @@
   - named-session CLI smoke
   - raw TCP daemon smoke
   - 两张 Baidu 截图都已生成，且至少一张已视觉确认不是白屏
+- **daemon inventory 已继续暴露到直接用户面**：`browser list` 不再只返回 healthy sessions，而是直接返回：
+  - `sessions`
+  - `incomplete`
+  - `cleaned`
+  这样用户不必先跑 `doctor` 才能看见 sidecar 异常状态。
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
@@ -78,6 +83,7 @@
   - `url`
   - `title`
   - `screenshot`
+- `browser list` 原先只暴露 healthy sessions，无法直接把 `daemon_inventory()` 的 `incomplete` / `cleaned` 带给用户；现已做加法式修正。
 
 ## Status
-**Currently in Phase 6** - 唯一 TCP daemon 路径已经落地并通过 compile + smoke；`oneshot.rs` 旧直连执行路径已移除，output 治理、batch、doctor 这三个非-CDP 借鉴项都已经进入可运行状态，且 doctor 已开始消费更完整的 daemon inventory。README / repo-local skills 也已开始统一到这条唯一 TCP 心智。下一步继续清剩余活跃文档和帮助面的一致性，并继续把适合的非-CDP 外壳设计往里收。
+**Currently in Phase 6** - 唯一 TCP daemon 路径已经落地并通过 compile + smoke；`oneshot.rs` 旧直连执行路径已移除，output 治理、batch、doctor 这三个非-CDP 借鉴项都已经进入可运行状态，且 doctor 与 `browser list` 都开始消费更完整的 daemon inventory。README / repo-local skills 也已开始统一到这条唯一 TCP 心智。下一步继续清剩余活跃文档和帮助面的一致性，并继续把适合的非-CDP 外壳设计往里收。

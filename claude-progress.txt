@@ -584,3 +584,51 @@
 1. 继续审计是否还有活跃用户面之外、但仍可能误导当前开发的文档需要降噪或标明 historical
 2. 评估是否把更丰富的 daemon inventory 暴露到 `browser list` 或额外命令输出
 3. 做下一次 checkpoint commit，只包含这一轮相关文件
+
+## 2026-05-29 — Session 9
+
+### Goal in focus
+- 继续把借来的 daemon inventory 设计往更直接的用户面暴露
+- 保持改动只在 CLI 外壳层，不碰内部浏览器/CDP/元素真相源
+
+### Work completed
+- 审计 `browser list` 当前实现和用户面：
+  - 发现它仍只返回 `sessions`
+  - richer inventory 只在 `doctor` 可见
+- 改造 `rust/src/cli/oneshot.rs`
+  - `BrowserCommand::List` 改为直接走 `daemon_inventory()`
+  - 输出改为：
+    - `sessions`
+    - `incomplete`
+    - `cleaned`
+- 改造 `rust/src/cli/args.rs`
+  - `browser list` help 文案改为 sidecar audit 语义
+- 同步 `README.md`
+  - 说明 `browser list` 现在直接返回 healthy / incomplete / cleaned 三类结果
+
+### Verification
+- `cargo check --manifest-path rust/Cargo.toml`
+- 本机真实输出：
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - 当前返回：
+    - `sessions` 含 3 个 healthy session
+    - `incomplete=[]`
+    - `cleaned=[]`
+- 合成 sidecar 验证：
+  - 写入 invalid dead sidecars：`dead`
+  - 启动真实 daemon：`alive`
+  - 删除 `alive.version`
+  - `browser list` 返回：
+    - `cleaned=[dead]`
+    - `incomplete=[alive]`
+    - `sessions=[]`
+
+### Current conclusions
+- `daemon_inventory()` 不再只藏在 connection/doctor 内部。
+- 用户现在可以直接通过 `browser list` 看到 sidecar 审计状态。
+- 这仍然是纯外壳借鉴项，没有碰内部浏览器/元素/CDP 实现。
+
+### Next steps
+1. 继续审计哪些历史文档还在误导当前开发，应降噪还是标注 historical
+2. 继续评估下一批最值得借的非-CDP 用户面设计
+3. 做下一次 checkpoint commit
