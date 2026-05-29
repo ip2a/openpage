@@ -196,6 +196,7 @@ pub struct BrowserStartArgs {
     pub url: Option<String>,
     #[arg(long, default_value = "default")]
     pub session: String,
+    /// Override the browser executable for this launch. If omitted, runtime starts from launch config defaults; OPENPAGE_BROWSER_PATH can still override per-process.
     #[arg(long)]
     pub browser_path: Option<PathBuf>,
     #[arg(long)]
@@ -695,7 +696,7 @@ pub struct BatchArgs {
 
 #[derive(Debug, Args)]
 pub struct DoctorArgs {
-    /// Skip the live browser launch smoke test
+    /// Skip the live browser launch smoke test. OPENPAGE_BROWSER_PATH still affects browser-path resolution in doctor checks.
     #[arg(long)]
     pub quick: bool,
     /// Apply deterministic non-CDP cleanup fixes such as removing legacy session JSON files
