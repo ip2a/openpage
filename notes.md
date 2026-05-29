@@ -966,3 +966,44 @@
 - Interpretation:
   - this keeps active guidance aligned with the current repo state without churning archived historical material
   - it remains fully outside browser/CDP/element truth sources
+
+
+## Local truth refresh (2026-05-30, origin-propagation pass)
+- This pass extended the already-borrowed trust-boundary/output design from `snapshot` into more read surfaces in `rust/src/cli/serve.rs`.
+- Before this pass:
+  - `snapshot` already returned `origin`
+  - boundary metadata could include `origin` when the result object had it
+  - but many other page-read RPC results still did not carry `origin`, so the boundary design did not help there
+- Landed code changes in `rust/src/cli/serve.rs`:
+  - `webpage.html` now returns `origin` and best-effort `title` alongside `html`
+  - `webpage.run_js` / `page.run_js` now returns `origin` alongside `value`
+  - `page.selected_text` now returns `origin` alongside `text`
+  - `element.text` now returns `origin` alongside `text`
+  - `element.html` now returns `origin` alongside `html`
+  - `element.attr` now returns `origin` alongside `value`
+  - snapshot internals were lightly deduplicated through:
+    - `current_page_origin(...)`
+    - `current_page_title(...)`
+- Verification:
+  - `cargo fmt --manifest-path rust/Cargo.toml -- rust/src/cli/serve.rs`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - real CLI smoke with temporary `OPENPAGE_HOME` and explicit browser path:
+    - `browser start about:blank --session origin-smoke --replace --headless --browser-path /Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+    - `js "document.body.innerHTML = ..." --session origin-smoke`
+    - `OPENPAGE_CONTENT_BOUNDARIES=1 OPENPAGE_MAX_OUTPUT_CHARS=500 openpage html --session origin-smoke`
+    - `OPENPAGE_CONTENT_BOUNDARIES=1 OPENPAGE_MAX_OUTPUT_CHARS=500 openpage text '#hero' --session origin-smoke`
+    - `browser stop --session origin-smoke`
+- Observed runtime proof:
+  - `js` result now includes `origin: "about:blank"`
+  - `html` result now includes:
+    - `origin: "about:blank"`
+    - `_boundary.origin: "about:blank"`
+    - wrapped marker `origin=about:blank`
+  - `text` result now includes:
+    - `origin: "about:blank"`
+    - `_boundary.origin: "about:blank"`
+    - wrapped marker `origin=about:blank`
+- Interpretation:
+  - this is a direct AI-facing outer-shell improvement
+  - it broadens the value of boundary/origin design beyond snapshot alone
+  - it still does not touch browser/CDP/element truth sources

@@ -1,12 +1,15 @@
-use std::cell::RefCell;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::thread::sleep;
-use std::time::{Duration, Instant};
 use std::io::{BufRead, Write};
 use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 
+use chromiumoxide::cdp::browser_protocol::page::{
+    GetNavigationHistoryParams, NavigateToHistoryEntryParams,
+};
 use serde_json::{Map, Value, json};
 
 use crate::browser::{DownloadFileExistsMode, LaunchOptions, LoadMode};
@@ -56,10 +59,7 @@ fn run_tcp(port: u16, session: &str) -> OpenPageResult<()> {
     Ok(())
 }
 
-fn handle_client(
-    stream: &mut TcpStream,
-    runtime: Rc<RefCell<ServeRuntime>>,
-) -> OpenPageResult<()> {
+fn handle_client(stream: &mut TcpStream, runtime: Rc<RefCell<ServeRuntime>>) -> OpenPageResult<()> {
     let mut buf = String::new();
 
     loop {
@@ -214,7 +214,11 @@ impl ServeRuntime {
         }
     }
 
-    fn create_webpage(&mut self, target_hint: Option<&str>, params: &Value) -> OpenPageResult<Value> {
+    fn create_webpage(
+        &mut self,
+        target_hint: Option<&str>,
+        params: &Value,
+    ) -> OpenPageResult<Value> {
         let mode = optional_str(params, "mode")
             .map(WebMode::parse)
             .transpose()?
@@ -257,7 +261,8 @@ impl ServeRuntime {
         };
 
         let page = WebPage::new(mode, launch, session)?;
-        self.webpages.insert(target.clone(), ServeWebPage::new(page));
+        self.webpages
+            .insert(target.clone(), ServeWebPage::new(page));
         Ok(json!({"target": target, "mode": mode.as_str()}))
     }
 }
@@ -267,6 +272,58 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
     match op {
         "webpage.back" => Ok(json!({"back": page.back(1)?})),
         "webpage.forward" => Ok(json!({"forward": page.forward(1)?})),
+        "history.list" => {
+            let history = page.execute_cdp(GetNavigationHistoryParams::default())?;
+            let current_index = history.current_index as usize;
+            let entries = history
+                .entries
+                .into_iter()
+                .enumerate()
+                .map(|(index, entry)| {
+                    json!({
+                        "index": index + 1,
+                        "current": index == current_index,
+                        "id": entry.id,
+                        "url": entry.url,
+                        "user_typed_url": entry.user_typed_url,
+                        "title": entry.title,
+                        "transition_type": entry.transition_type,
+                    })
+                })
+                .collect::<Vec<_>>();
+            Ok(json!({
+                "current_index": current_index + 1,
+                "entries": entries,
+            }))
+        }
+        "history.go" => {
+            let requested_index = optional_u64(params, "index").ok_or_else(|| {
+                OpenPageError::BrowserOperation("missing numeric param: index".to_string())
+            })? as usize;
+            if requested_index == 0 {
+                return Err(OpenPageError::BrowserOperation(
+                    "history index must be >= 1".to_string(),
+                ));
+            }
+            let history = page.execute_cdp(GetNavigationHistoryParams::default())?;
+            let entry = history
+                .entries
+                .into_iter()
+                .nth(requested_index - 1)
+                .ok_or_else(|| {
+                    OpenPageError::BrowserOperation(format!(
+                        "history index out of range: {requested_index}"
+                    ))
+                })?;
+            page.execute_cdp(NavigateToHistoryEntryParams::new(entry.id))?;
+            Ok(json!({
+                "navigated": true,
+                "index": requested_index,
+                "id": entry.id,
+                "url": entry.url,
+                "title": entry.title,
+            }))
+        }
         "webpage.reload" => {
             page.refresh(false)?;
             state.wait_for_doc_loaded(optional_u64(params, "timeout_ms").unwrap_or(10_000))?;
@@ -293,7 +350,17 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         "webpage.mode" => Ok(json!({"mode": page.mode()?.as_str()})),
         "webpage.url" => Ok(json!({"url": page.url()?})),
         "webpage.title" => Ok(json!({"title": page.title()?})),
-        "webpage.html" => Ok(json!({"html": page.html()?})),
+        "webpage.html" => {
+            let mut payload = Map::new();
+            payload.insert("html".to_string(), json!(page.html()?));
+            if let Some(origin) = current_page_origin(state) {
+                payload.insert("origin".to_string(), Value::String(origin));
+            }
+            if let Some(title) = current_page_title(state) {
+                payload.insert("title".to_string(), Value::String(title));
+            }
+            Ok(Value::Object(payload))
+        }
         "webpage.snapshot" => snapshot_payload(state),
         "webpage.json" => Ok(json!({"json": page.json()?})),
         "webpage.cookies" => Ok(json!({"cookies": page.cookies()?})),
@@ -484,7 +551,15 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             Ok(json!({"scrolled": true}))
         }
         "webpage.run_js" | "page.run_js" => {
-            Ok(json!({"value": state.run_js(required_str(params, "script")?)?}))
+            let mut payload = Map::new();
+            payload.insert(
+                "value".to_string(),
+                json!(state.run_js(required_str(params, "script")?)?),
+            );
+            if let Some(origin) = current_page_origin(state) {
+                payload.insert("origin".to_string(), Value::String(origin));
+            }
+            Ok(Value::Object(payload))
         }
         "webpage.download_url" | "page.download_url" => {
             let path = if let Some(output) = optional_str(params, "path") {
@@ -506,8 +581,71 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         }
         "page.type_keys" => {
             let mut actions = page.actions()?;
-            actions.type_keys(required_str(params, "text")?)?;
+            if let Some(values) = optional_string_array(params, "text") {
+                actions.type_keys(values)?;
+            } else {
+                actions.type_keys(required_str(params, "text")?)?;
+            }
             Ok(json!({"typed": true}))
+        }
+        "page.selected_text" => {
+            let text = page
+                .run_js(
+                    "(() => {\
+                        const active = document.activeElement;\
+                        if (active && typeof active.value === 'string' && typeof active.selectionStart === 'number' && typeof active.selectionEnd === 'number') {\
+                            return active.value.slice(active.selectionStart, active.selectionEnd);\
+                        }\
+                        return window.getSelection ? window.getSelection().toString() : '';\
+                    })()",
+                )?
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            let mut payload = Map::new();
+            payload.insert("text".to_string(), Value::String(text));
+            if let Some(origin) = current_page_origin(state) {
+                payload.insert("origin".to_string(), Value::String(origin));
+            }
+            Ok(Value::Object(payload))
+        }
+        "page.find_in_page" => {
+            let query = required_str(params, "text")?;
+            if query.trim().is_empty() {
+                return Err(OpenPageError::BrowserOperation(
+                    "find-in-page text must not be empty".to_string(),
+                ));
+            }
+            let query_json = serde_json::to_string(query)
+                .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
+            let script = format!(
+                "(() => {{
+                    const found = window.find({query}, {case_sensitive}, {backward}, true, false, false, false);
+                    const selection = found && window.getSelection ? window.getSelection().toString() : '';
+                    const source = document.body?.innerText || document.documentElement?.innerText || '';
+                    const haystack = {case_sensitive} ? source : source.toLowerCase();
+                    const needle = {case_sensitive} ? {query} : {query}.toLowerCase();
+                    let count = 0;
+                    if (needle.length > 0) {{
+                        let index = 0;
+                        while ((index = haystack.indexOf(needle, index)) !== -1) {{
+                            count += 1;
+                            index += needle.length;
+                        }}
+                    }}
+                    return {{ found, selection, count }};
+                }})()",
+                query = query_json,
+                case_sensitive = optional_bool(params, "case_sensitive").unwrap_or(false),
+                backward = optional_bool(params, "backward").unwrap_or(false),
+            );
+            let result = page.run_js(&script)?;
+            Ok(json!({
+                "found": result.get("found").and_then(Value::as_bool).unwrap_or(false),
+                "selection": result.get("selection").cloned().unwrap_or(Value::String(String::new())),
+                "count": result.get("count").and_then(Value::as_i64).unwrap_or(0),
+                "text": query,
+            }))
         }
         "page.input" => {
             let mut actions = page.actions()?;
@@ -657,7 +795,9 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
                 "target": target,
             }))
         }
-        "webpage.find" => Ok(web_element_to_json(state.find(&required_locator_string(params)?)?)?),
+        "webpage.find" => Ok(web_element_to_json(
+            state.find(&required_locator_string(params)?)?,
+        )?),
         "webpage.find_all" => Ok(json!({
             "elements": state.find_all(&required_locator_string(params)?)?
                 .into_iter()
@@ -699,35 +839,271 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             Ok(json!({"focused": true}))
         }
         "webpage.ele.text" | "element.text" => {
-            Ok(json!({"text": state.find(&required_locator_string(params)?)?.text()?}))
+            let mut payload = Map::new();
+            payload.insert(
+                "text".to_string(),
+                json!(state.find(&required_locator_string(params)?)?.text()?),
+            );
+            if let Some(origin) = current_page_origin(state) {
+                payload.insert("origin".to_string(), Value::String(origin));
+            }
+            Ok(Value::Object(payload))
         }
         "webpage.ele.html" | "element.html" => {
-            Ok(json!({"html": state.find(&required_locator_string(params)?)?.html()?}))
+            let mut payload = Map::new();
+            payload.insert(
+                "html".to_string(),
+                json!(state.find(&required_locator_string(params)?)?.html()?),
+            );
+            if let Some(origin) = current_page_origin(state) {
+                payload.insert("origin".to_string(), Value::String(origin));
+            }
+            Ok(Value::Object(payload))
         }
-        "webpage.ele.attr" | "element.attr" => Ok(json!({
-            "value": state.find(&required_locator_string(params)?)?.attr(required_str(params, "name")?)?
-        })),
+        "webpage.ele.attr" | "element.attr" => {
+            let mut payload = Map::new();
+            payload.insert(
+                "value".to_string(),
+                json!(
+                    state
+                        .find(&required_locator_string(params)?)?
+                        .attr(required_str(params, "name")?)?
+                ),
+            );
+            if let Some(origin) = current_page_origin(state) {
+                payload.insert("origin".to_string(), Value::String(origin));
+            }
+            Ok(Value::Object(payload))
+        }
         "webpage.ele.click" | "element.click" => {
             state.find(&required_locator_string(params)?)?.click()?;
             Ok(json!({"clicked": true}))
         }
         "webpage.ele.click_right" | "element.click_right" => {
-            state.find(&required_locator_string(params)?)?.click_right()?;
+            state
+                .find(&required_locator_string(params)?)?
+                .click_right()?;
             Ok(json!({"clicked": true, "button": "right"}))
         }
         "webpage.ele.click_middle" | "element.click_middle" => {
-            state.find(&required_locator_string(params)?)?.click_middle()?;
+            state
+                .find(&required_locator_string(params)?)?
+                .click_middle()?;
             Ok(json!({"clicked": true, "button": "middle"}))
         }
         "webpage.ele.click_multi" | "element.click_multi" => {
-            state.find(&required_locator_string(params)?)?
+            state
+                .find(&required_locator_string(params)?)?
                 .click_multi(optional_u64(params, "count").unwrap_or(2) as u32)?;
             Ok(json!({"clicked": true}))
         }
+        "webpage.ele.click_at" | "element.click_at" => {
+            state.find(&required_locator_string(params)?)?.click_at(
+                optional_f64(params, "x"),
+                optional_f64(params, "y"),
+                optional_str(params, "button").unwrap_or("left"),
+                optional_u64(params, "count").unwrap_or(1) as u32,
+            )?;
+            Ok(json!({"clicked": true}))
+        }
         "webpage.ele.input" | "element.input" => {
-            state.find(&required_locator_string(params)?)?
+            state
+                .find(&required_locator_string(params)?)?
                 .input(required_str(params, "text")?)?;
             Ok(json!({"input": true}))
+        }
+        "webpage.ele.select_range" | "element.select_range" => {
+            let start = params.get("start").and_then(Value::as_u64).ok_or_else(|| {
+                OpenPageError::BrowserOperation("missing numeric param: start".to_string())
+            })?;
+            let end = params.get("end").and_then(Value::as_u64).ok_or_else(|| {
+                OpenPageError::BrowserOperation("missing numeric param: end".to_string())
+            })?;
+            if end < start {
+                return Err(OpenPageError::BrowserOperation(
+                    "select-range requires end >= start".to_string(),
+                ));
+            }
+            let start = start as usize;
+            let end = end as usize;
+            let element = state.find(&required_locator_string(params)?)?;
+            let script = format!(
+                "(() => {{
+                    if (typeof this.setSelectionRange !== 'function') {{
+                        throw new Error('select-range only supports input and textarea elements');
+                    }}
+                    const value = typeof this.value === 'string' ? this.value : '';
+                    const length = value.length;
+                    const start = Math.min({start}, length);
+                    const end = Math.min({end}, length);
+                    this.focus();
+                    this.setSelectionRange(start, end);
+                    return {{
+                        start: this.selectionStart ?? start,
+                        end: this.selectionEnd ?? end,
+                        text: value.slice(start, end),
+                    }};
+                }})()",
+                start = start,
+                end = end,
+            );
+            element.run_js(&script)?;
+            let actual_start = element
+                .property("selectionStart")?
+                .and_then(|value| value.as_u64())
+                .unwrap_or(start as u64) as usize;
+            let actual_end = element
+                .property("selectionEnd")?
+                .and_then(|value| value.as_u64())
+                .unwrap_or(end as u64) as usize;
+            let value = element.value()?.unwrap_or_default();
+            Ok(json!({
+                "start": actual_start,
+                "end": actual_end,
+                "text": value.get(actual_start..actual_end).unwrap_or_default(),
+            }))
+        }
+        "webpage.ele.select_text" | "element.select_text" => {
+            let start = optional_u64(params, "start").map(|value| value as usize);
+            let end = optional_u64(params, "end").map(|value| value as usize);
+            if matches!((start, end), (Some(s), Some(e)) if e < s) {
+                return Err(OpenPageError::BrowserOperation(
+                    "select-text requires end >= start".to_string(),
+                ));
+            }
+            let element = state.find(&required_locator_string(params)?)?;
+            let tag = element.tag()?.to_ascii_lowercase();
+            if matches!(tag.as_str(), "input" | "textarea") {
+                let value = element.value()?.unwrap_or_default();
+                let length = value.len();
+                let actual_start = start.unwrap_or(0).min(length);
+                let actual_end = end.unwrap_or(length).min(length);
+                let script = format!(
+                    "(() => {{
+                        this.focus();
+                        this.setSelectionRange({start}, {end});
+                        return true;
+                    }})()",
+                    start = actual_start,
+                    end = actual_end,
+                );
+                element.run_js(&script)?;
+                return Ok(json!({
+                    "start": actual_start,
+                    "end": actual_end,
+                    "text": value.get(actual_start..actual_end).unwrap_or_default(),
+                }));
+            }
+
+            let start_raw = start.unwrap_or(0);
+            let end_expr = end.map_or("Number.MAX_SAFE_INTEGER".to_string(), |value| {
+                value.to_string()
+            });
+            let select_script = format!(
+                "(() => {{
+                    const root = this;
+                    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {{
+                        acceptNode(node) {{
+                            if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
+                            const parent = node.parentElement;
+                            if (!parent) return NodeFilter.FILTER_REJECT;
+                            const tag = parent.tagName;
+                            if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') {{
+                                return NodeFilter.FILTER_REJECT;
+                            }}
+                            return NodeFilter.FILTER_ACCEPT;
+                        }}
+                    }});
+
+                    const nodes = [];
+                    let total = 0;
+                    while (true) {{
+                        const node = walker.nextNode();
+                        if (!node) break;
+                        nodes.push(node);
+                        total += node.nodeValue.length;
+                    }}
+
+                    if (nodes.length === 0) {{
+                        const selection = window.getSelection();
+                        if (selection) selection.removeAllRanges();
+                        return 0;
+                    }}
+
+                    const start = Math.min({start}, total);
+                    const end = Math.min({end}, total);
+                    const locate = (offset) => {{
+                        let remaining = offset;
+                        for (const node of nodes) {{
+                            const length = node.nodeValue.length;
+                            if (remaining <= length) {{
+                                return {{ node, offset: remaining }};
+                            }}
+                            remaining -= length;
+                        }}
+                        const last = nodes[nodes.length - 1];
+                        return {{ node: last, offset: last.nodeValue.length }};
+                    }};
+
+                    const startPos = locate(start);
+                    const endPos = locate(end);
+                    const range = document.createRange();
+                    range.setStart(startPos.node, startPos.offset);
+                    range.setEnd(endPos.node, endPos.offset);
+
+                    const selection = window.getSelection();
+                    if (selection) {{
+                        selection.removeAllRanges();
+                        selection.addRange(range);
+                    }}
+
+                    root.scrollIntoView({{ block: 'center', inline: 'nearest' }});
+                    return total;
+                }})()",
+                start = start_raw,
+                end = end_expr,
+            );
+            let total = element.run_js(&select_script)?.as_u64().unwrap_or(0) as usize;
+            let selected_text = page
+                .run_js("window.getSelection ? window.getSelection().toString() : ''")?
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            let actual_start = element
+                .run_js(
+                    "(() => {\
+                        const selection = window.getSelection();\
+                        if (!selection || selection.rangeCount === 0) return 0;\
+                        const range = selection.getRangeAt(0);\
+                        if (!this.contains(range.startContainer)) return 0;\
+                        const prefix = range.cloneRange();\
+                        prefix.selectNodeContents(this);\
+                        prefix.setEnd(range.startContainer, range.startOffset);\
+                        return prefix.toString().length;\
+                    })()",
+                )?
+                .as_u64()
+                .unwrap_or(start_raw as u64) as usize;
+            let actual_end = element
+                .run_js(
+                    "(() => {\
+                        const selection = window.getSelection();\
+                        if (!selection || selection.rangeCount === 0) return 0;\
+                        const range = selection.getRangeAt(0);\
+                        if (!this.contains(range.endContainer)) return 0;\
+                        const prefix = range.cloneRange();\
+                        prefix.selectNodeContents(this);\
+                        prefix.setEnd(range.endContainer, range.endOffset);\
+                        return prefix.toString().length;\
+                    })()",
+                )?
+                .as_u64()
+                .unwrap_or(end.unwrap_or(total) as u64) as usize;
+            Ok(json!({
+                "start": actual_start,
+                "end": actual_end,
+                "text": selected_text,
+            }))
         }
         "webpage.ele.clear" | "element.clear" => {
             state.find(&required_locator_string(params)?)?.clear()?;
@@ -738,11 +1114,15 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             Ok(json!({"submitted": true}))
         }
         "webpage.ele.check" | "element.check" => {
-            state.find(&required_locator_string(params)?)?.set_checked(true)?;
+            state
+                .find(&required_locator_string(params)?)?
+                .set_checked(true)?;
             Ok(json!({"checked": true}))
         }
         "webpage.ele.uncheck" | "element.uncheck" => {
-            state.find(&required_locator_string(params)?)?.set_checked(false)?;
+            state
+                .find(&required_locator_string(params)?)?
+                .set_checked(false)?;
             Ok(json!({"checked": false}))
         }
         "webpage.ele.hover" | "element.hover" => {
@@ -750,7 +1130,8 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             Ok(json!({"hovered": true}))
         }
         "webpage.ele.press_key" | "element.press_key" => {
-            state.find(&required_locator_string(params)?)?
+            state
+                .find(&required_locator_string(params)?)?
                 .press_key(required_str(params, "key")?)?;
             Ok(json!({"pressed": true}))
         }
@@ -771,7 +1152,8 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         }
         "webpage.ele.upload" | "element.upload" => {
             let files = required_string_array(params, "files")?;
-            state.find(&required_locator_string(params)?)?
+            state
+                .find(&required_locator_string(params)?)?
                 .set_file_input_files(&files)?;
             Ok(json!({"uploaded": true}))
         }
@@ -851,18 +1233,21 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             Ok(json!({"dragged": true}))
         }
         "webpage.ele.drag_to_point" | "element.drag_to_point" => {
-            state.find(&required_locator_string(params)?)?.drag_to_point(
-                optional_f64(params, "x").unwrap_or(0.0),
-                optional_f64(params, "y").unwrap_or(0.0),
-                optional_f64(params, "duration").unwrap_or(0.5),
-            )?;
+            state
+                .find(&required_locator_string(params)?)?
+                .drag_to_point(
+                    optional_f64(params, "x").unwrap_or(0.0),
+                    optional_f64(params, "y").unwrap_or(0.0),
+                    optional_f64(params, "duration").unwrap_or(0.5),
+                )?;
             Ok(json!({"dragged": true}))
         }
         "webpage.ele.run_js" | "element.run_js" => Ok(json!({
             "value": state.find(&required_locator_string(params)?)?.run_js(required_str(params, "script")?)?
         })),
         "webpage.ele.screenshot" | "element.screenshot" => {
-            state.find(&required_locator_string(params)?)?
+            state
+                .find(&required_locator_string(params)?)?
                 .save_screenshot(required_str(params, "path")?)?;
             Ok(json!({"saved": true}))
         }
@@ -1102,10 +1487,7 @@ fn parse_ref(input: &str) -> Option<&str> {
 }
 
 fn parse_plain_ref(input: &str) -> Option<&str> {
-    if input.len() > 1
-        && input.starts_with('e')
-        && input[1..].chars().all(|c| c.is_ascii_digit())
-    {
+    if input.len() > 1 && input.starts_with('e') && input[1..].chars().all(|c| c.is_ascii_digit()) {
         Some(input)
     } else {
         None
@@ -1143,18 +1525,8 @@ fn agent_snapshot_script() -> &'static str {
 fn snapshot_payload(state: &ServeWebPage) -> OpenPageResult<Value> {
     let snapshot = state.run_js(agent_snapshot_script())?;
 
-    let origin = state
-        .page
-        .url()
-        .ok()
-        .flatten()
-        .filter(|value| !value.is_empty());
-    let title = state
-        .page
-        .title()
-        .ok()
-        .flatten()
-        .filter(|value| !value.is_empty());
+    let origin = current_page_origin(state);
+    let title = current_page_title(state);
 
     let mut payload = Map::new();
     payload.insert("snapshot".to_string(), snapshot.clone());
@@ -1168,13 +1540,35 @@ fn snapshot_payload(state: &ServeWebPage) -> OpenPageResult<Value> {
     if let Some(entries) = snapshot.as_array() {
         payload.insert(
             "text".to_string(),
-            Value::String(format_snapshot_text(entries, title.as_deref(), origin.as_deref())),
+            Value::String(format_snapshot_text(
+                entries,
+                title.as_deref(),
+                origin.as_deref(),
+            )),
         );
         payload.insert("refs".to_string(), Value::Object(snapshot_refs(entries)));
         payload.insert("interactive_count".to_string(), json!(entries.len()));
     }
 
     Ok(Value::Object(payload))
+}
+
+fn current_page_origin(state: &ServeWebPage) -> Option<String> {
+    state
+        .page
+        .url()
+        .ok()
+        .flatten()
+        .filter(|value| !value.is_empty())
+}
+
+fn current_page_title(state: &ServeWebPage) -> Option<String> {
+    state
+        .page
+        .title()
+        .ok()
+        .flatten()
+        .filter(|value| !value.is_empty())
 }
 
 fn format_snapshot_text(entries: &[Value], title: Option<&str>, origin: Option<&str>) -> String {
@@ -1212,8 +1606,19 @@ fn format_snapshot_text(entries: &[Value], title: Option<&str>, origin: Option<&
         }
 
         if let Some(attrs) = attrs {
-            for key in ["placeholder", "href", "value", "type", "name", "id", "class"] {
-                if let Some(value) = attrs.get(key).and_then(Value::as_str).filter(|s| !s.is_empty())
+            for key in [
+                "placeholder",
+                "href",
+                "value",
+                "type",
+                "name",
+                "id",
+                "class",
+            ] {
+                if let Some(value) = attrs
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
                 {
                     line.push(' ');
                     line.push_str(key);

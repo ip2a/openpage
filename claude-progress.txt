@@ -1352,3 +1352,48 @@
 1. 继续沿 `doctor.rs` / `protocol.rs` 做外壳层增强
 2. 如需要，再做定点历史文档降级
 3. 保持 git 路径聚焦提交
+
+
+## 2026-05-30 — Session 25
+
+### Goal in focus
+- 继续把竞品 trust-boundary 设计从 snapshot 扩到更多读操作
+- 让 `_boundary.origin` 不只对 snapshot 有用
+
+### Work completed
+- 修改 `rust/src/cli/serve.rs`
+  - 给这些返回补了 `origin`：
+    - `webpage.html`
+    - `page.run_js`
+    - `page.selected_text`
+    - `element.text`
+    - `element.html`
+    - `element.attr`
+  - 同时把 snapshot 里的 page context 读取轻量收成 helper：
+    - `current_page_origin(...)`
+    - `current_page_title(...)`
+- 做了真实 CLI smoke：
+  - 临时 `OPENPAGE_HOME`
+  - `about:blank`
+  - 注入简单 DOM
+  - 验证 `html` 和 `text` 在 boundary 模式下都拿到了 `origin`
+
+### Verification
+- `cargo fmt --manifest-path rust/Cargo.toml -- rust/src/cli/serve.rs`
+- `cargo check --manifest-path rust/Cargo.toml`
+- origin smoke：
+  - `browser start about:blank --session origin-smoke --replace --headless --browser-path /Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+  - `js ... --session origin-smoke`
+  - `OPENPAGE_CONTENT_BOUNDARIES=1 OPENPAGE_MAX_OUTPUT_CHARS=500 openpage html --session origin-smoke`
+  - `OPENPAGE_CONTENT_BOUNDARIES=1 OPENPAGE_MAX_OUTPUT_CHARS=500 openpage text '#hero' --session origin-smoke`
+  - `browser stop --session origin-smoke`
+
+### Current conclusions
+- 这轮继续严格停留在外壳/合约层，但 AI-facing 收益是实打实的。
+- 现在 boundary/origin 设计不只对 snapshot 有用，对 html/text/js/attr 也开始有用了。
+- 仍然没有去碰浏览器/CDP/元素交互内核。
+
+### Next steps
+1. 继续看 `doctor.rs` / `protocol.rs` / skill docs 还有哪些小而稳的外壳设计可借
+2. 保持协议主路径只围绕 TCP daemon
+3. 继续做路径聚焦提交

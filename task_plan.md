@@ -86,6 +86,7 @@
 - **`doctor.rs` 的 summary 已继续结构化**：当前 summary 不再只有 `pass/warn/fail`，还直接返回 `info/fixable/total`，便于 agent 和脚本快速判断当前还有多少纯提示项、多少可修复项。
 - **根目录文档误导面已再做一轮定点审计**：当前没有发现新的“活跃 OpenPage CLI 执行手册级误导面”；剩余旧协议措辞主要还在归档历史报告、比较研究和跟踪文件里。
 - **活跃用户文档面已跟进当前真相**：README、`skills/openpage-test/references/cli-smoke.md`、`trust-boundaries.md`、`snapshot-refs.md` 已同步写入 legacy session JSON warning 与 origin-aware boundary 行为，避免代码和 skill docs 继续漂移。
+- **origin-aware boundary 已从 snapshot 扩到更多读操作**：当前 `webpage.html`、`page.run_js`、`page.selected_text`、`element.text/html/attr` 这类结果也会在可用时携带 `origin`，所以 `_boundary.origin` 与 wrapped marker 的 origin 现在不再只服务于 snapshot。
 - **`connection.rs` 的唯一 daemon 约束又收紧了一步**：`ensure_daemon()` 现在不再只处理“ready 但 version mismatch”的旧进程；如果发现同 session 旧进程仍存活但 TCP 端口迟迟不可用，会先给启动中的 daemon 一个短暂 ready 宽限期，宽限后仍不可用就杀掉旧进程再拉起新的 daemon，避免同 session 留下孤儿进程或并存 daemon。
 - **旧 session JSON 残留已彻底从活跃 CLI 面移除**：`rust/src/cli/oneshot.rs` 里的 `session_file()` / 本地 `openpage_home()` 以及 `browser stop` 时顺手删旧 session JSON 的逻辑都已删除，当前 CLI stop 只围绕 TCP sidecar 与 daemon shutdown。
 - **本轮运行态再次核实**：2026-05-30 最新一次 `browser list` 实测返回 5 个 healthy sessions（`cli-more-states-2`、`cli-state-queries`、`human-flow`、`smoke-alert`、`smoke-history2`）；`doctor --quick` 当前仍只有 1 个 fail（`browser.executable`）；这个 session 数量是运行时态，不应写死成仓库事实。
