@@ -1726,3 +1726,35 @@
 1. 做路径聚焦提交，只带这轮 browser-path shell 相关改动
 2. 继续看活跃 docs / smoke 面是否还有落后于当前真相的点
 3. 继续保持不碰竞品 native/CDP/element 内核
+
+
+## 2026-05-30 — Session 32
+
+### Goal in focus
+- 把 `OPENPAGE_BROWSER_PATH` 这条新外壳层能力同步进 `doctor` 的失败提示和活跃 smoke 文案
+
+### Work completed
+- 修改 `rust/src/cli/doctor.rs`
+  - `missing_browser_message(...)` 现在会提示 `OPENPAGE_BROWSER_PATH`
+  - `browser_executable_fix(...)` 现在也会提示 `OPENPAGE_BROWSER_PATH`
+- 更新相关单测断言：
+  - `missing_browser_message_includes_hint_when_present`
+  - `browser_executable_fix_uses_hint_when_present`
+- 更新活跃文档：
+  - `skills/openpage-test/references/cli-smoke.md`
+  - 常见 browser executable 失败场景现在优先提 process-local env override
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml missing_browser_message_includes_hint_when_present -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml browser_executable_fix_uses_hint_when_present -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml browser_path_env_override_reads_non_empty_value -- --nocapture`
+- `OPENPAGE_BROWSER_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+
+### Current conclusions
+- 现在运行时、doctor 检查、doctor 修复提示、repo-local smoke 文档已经对齐到同一个 browser-path 真相。
+- 这仍然是外壳层工作，没有改浏览器/CDP/元素实现。
+
+### Next steps
+1. 做这个更小 slice 的路径聚焦提交
+2. 继续扫活跃文档面的残余误导项
+3. 继续找还能从竞品外壳层稳定借过来的点

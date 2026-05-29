@@ -1297,3 +1297,30 @@
   - this is the right outer-shell compromise
   - it avoids polluting repo defaults with a machine-specific path
   - it keeps protocol/CDP/element truth sources untouched
+
+
+## Local truth refresh (2026-05-30, browser-path guidance sync pass)
+- This was a smaller follow-up pass on top of the env override work.
+- Motivation:
+  - runtime already honored `OPENPAGE_BROWSER_PATH`
+  - doctor check output already reflected it
+  - but failure/fix text still biased too heavily toward editing `rust/configs.ini`
+- Landed changes:
+  - `rust/src/cli/doctor.rs`
+    - `missing_browser_message(...)` now mentions `OPENPAGE_BROWSER_PATH`
+    - `browser_executable_fix(...)` now mentions `OPENPAGE_BROWSER_PATH`
+    - existing unit tests updated to assert that the env override path appears in the guidance
+  - `skills/openpage-test/references/cli-smoke.md`
+    - common failure meanings now recommend `OPENPAGE_BROWSER_PATH` before forcing a repo config edit
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml missing_browser_message_includes_hint_when_present -- --nocapture`
+    - passed
+  - `cargo test --manifest-path rust/Cargo.toml browser_executable_fix_uses_hint_when_present -- --nocapture`
+    - passed
+  - `cargo test --manifest-path rust/Cargo.toml browser_path_env_override_reads_non_empty_value -- --nocapture`
+    - passed
+  - `OPENPAGE_BROWSER_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - still passed after the guidance update
+- Interpretation:
+  - the active guidance is now consistent with the active runtime behavior
+  - the outer-shell/browser-path story is cleaner for future sessions and agents

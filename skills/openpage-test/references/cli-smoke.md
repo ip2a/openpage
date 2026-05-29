@@ -168,9 +168,11 @@ Rules:
 ## Common Failure Meanings
 
 - `could not find a Chrome/Chromium executable`
-  - pass `--browser-path` to `browser start` or `webpage.create`
+  - set `OPENPAGE_BROWSER_PATH=/absolute/path/to/browser`
+  - or pass `--browser-path` to `browser start` or `webpage.create`
 - `doctor` says `Configured browser executable "chrome" was not found`
-  - edit `rust/configs.ini` `browser_path`
+  - set `OPENPAGE_BROWSER_PATH=/absolute/path/to/browser`
+  - or edit `rust/configs.ini` `browser_path`
   - or install the browser so that `chrome` resolves on PATH
   - or pass `--browser-path` explicitly in smoke commands
 - named-session CLI failure but raw TCP daemon smoke passes

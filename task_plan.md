@@ -111,6 +111,7 @@
   - full `doctor` 转为全 pass，并成功完成 live headless launch smoke
   - `browser start --headless https://example.com -> title -> browser stop` 也已实测通过
   这让 machine-local 浏览器路径不再需要写死进仓库 `rust/configs.ini`。
+- **`doctor` 的失败提示也已跟进新的外壳层真相**：当前 `missing_browser_message(...)` 和 `browser_executable_fix(...)` 不再只让用户改 `rust/configs.ini` 或传 `--browser-path`；它们也会明确提示可以设置 `OPENPAGE_BROWSER_PATH` 做 process-local override。活跃 smoke 文档里的常见失败说明也已经同步。
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。

@@ -767,13 +767,16 @@ impl Drop for BrowserLaunchGuard {
 fn missing_browser_message(browser_path: &str, hint: Option<&Path>) -> String {
     match hint {
         Some(path) => format!(
-            "Configured browser executable `{}` was not found. Update rust/configs.ini browser_path to {}, install the browser on PATH, or pass --browser-path explicitly.",
+            "Configured browser executable `{}` was not found. Update rust/configs.ini browser_path to {}, set {}={} for this process, install the browser on PATH, or pass --browser-path explicitly.",
             browser_path,
+            path.display(),
+            OPENPAGE_BROWSER_PATH_ENV,
             path.display()
         ),
         None => format!(
-            "Configured browser executable `{}` was not found. Update rust/configs.ini browser_path, install the browser on PATH, or pass --browser-path explicitly.",
-            browser_path
+            "Configured browser executable `{}` was not found. Update rust/configs.ini browser_path, set {}=<absolute-browser-path> for this process, install the browser on PATH, or pass --browser-path explicitly.",
+            browser_path,
+            OPENPAGE_BROWSER_PATH_ENV
         ),
     }
 }
@@ -781,13 +784,16 @@ fn missing_browser_message(browser_path: &str, hint: Option<&Path>) -> String {
 fn browser_executable_fix(browser_path: &str, hint: Option<&Path>) -> String {
     match hint {
         Some(path) => format!(
-            "Set rust/configs.ini browser_path to {} on this machine, or rerun the command with --browser-path {}. If you want to keep `{}` as a name, make sure it resolves on PATH.",
+            "Set rust/configs.ini browser_path to {} on this machine, set {}={} for a process-local override, or rerun the command with --browser-path {}. If you want to keep `{}` as a name, make sure it resolves on PATH.",
+            path.display(),
+            OPENPAGE_BROWSER_PATH_ENV,
             path.display(),
             path.display(),
             browser_path
         ),
         None => format!(
-            "Update rust/configs.ini browser_path to a real browser executable, or rerun the command with --browser-path <absolute-browser-path>. If you want to keep `{}`, make sure it resolves on PATH.",
+            "Update rust/configs.ini browser_path to a real browser executable, set {}=<absolute-browser-path> for a process-local override, or rerun the command with --browser-path <absolute-browser-path>. If you want to keep `{}`, make sure it resolves on PATH.",
+            OPENPAGE_BROWSER_PATH_ENV,
             browser_path
         ),
     }
@@ -968,6 +974,7 @@ mod tests {
         let message = missing_browser_message("chrome", Some(hint.as_path()));
         assert!(message.contains("chrome"));
         assert!(message.contains("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"));
+        assert!(message.contains("OPENPAGE_BROWSER_PATH"));
     }
 
     #[test]
@@ -1003,6 +1010,7 @@ mod tests {
         assert!(fix.contains("rust/configs.ini"));
         assert!(fix.contains("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"));
         assert!(fix.contains("--browser-path"));
+        assert!(fix.contains("OPENPAGE_BROWSER_PATH"));
     }
 
     #[test]
