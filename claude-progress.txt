@@ -1225,3 +1225,44 @@
 1. 继续收紧 `doctor.rs` 的 summary / fix / output 结构
 2. 继续扫根目录历史文档误导面
 3. 如果后面要继续借竞品代码，优先仍放在 `doctor.rs` / `protocol.rs` / 文档层
+
+
+## 2026-05-30 — Session 22
+
+### Goal in focus
+- 继续把 `doctor` 输出结构做得更适合 agent/脚本消费
+- 保持借鉴范围停留在 CLI 外壳层
+
+### Work completed
+- 修改 `rust/src/cli/doctor.rs`
+  - `Summary` 现在不再只有 `pass/warn/fail`
+  - 新增：
+    - `info`
+    - `fixable`
+    - `total`
+  - `summarize(...)` 会直接把这些值统计出来
+- 新增单测：
+  - `summarize_counts_info_fixable_and_total`
+- 重新跑真实 `doctor --quick`
+  - 确认 summary 新字段已经出现在真实 JSON 输出中
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml summarize_counts_info_fixable_and_total -- --nocapture`
+- `cargo check --manifest-path rust/Cargo.toml`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+
+### Current conclusions
+- 这轮不涉及协议和浏览器内核，但提升了 doctor 的机器可消费性。
+- 当前本机 `doctor --quick` 的 summary 已明确给出：
+  - `pass=9`
+  - `warn=1`
+  - `fail=1`
+  - `info=2`
+  - `fixable=3`
+  - `total=13`
+- 当前唯一 fail 依旧还是 `browser.executable`；旧 session JSON 残留则作为 warn 暴露。
+
+### Next steps
+1. 继续扫根目录历史文档误导面
+2. 继续沿 `doctor.rs` / `protocol.rs` / 文档层收竞品外壳设计
+3. 保持不碰浏览器/CDP/元素真相源

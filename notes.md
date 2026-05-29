@@ -882,3 +882,40 @@
 - Interpretation:
   - this is another concrete move toward “one stable TCP path” because deprecated local artifacts are now visible to users and future agents
   - it still does not touch browser/CDP/element truth sources
+
+
+## Local truth refresh (2026-05-30, doctor-summary pass)
+- This pass continued the structured doctor-output line rather than touching protocol or browser internals.
+- Problem before the patch:
+  - `doctor` summary only exposed `pass / warn / fail`
+  - but OpenPage doctor also uses `info` and `fix` heavily
+  - any agent/script that wanted “how many informational checks were emitted?” or “how many checks are fixable?” had to rescan the whole `checks` array
+- Landed code changes:
+  - `rust/src/cli/doctor.rs`
+    - `Summary` now includes:
+      - `pass`
+      - `warn`
+      - `fail`
+      - `info`
+      - `fixable`
+      - `total`
+    - `summarize(...)` now counts all of those directly
+  - added test:
+    - `summarize_counts_info_fixable_and_total`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml summarize_counts_info_fixable_and_total -- --nocapture`
+    - passed
+  - `cargo check --manifest-path rust/Cargo.toml`
+    - passed
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - current runtime summary is now:
+      - `pass=9`
+      - `warn=1`
+      - `fail=1`
+      - `info=2`
+      - `fixable=3`
+      - `total=13`
+- Interpretation:
+  - this is another non-CDP outer-shell improvement
+  - it makes `doctor` materially easier for future agents/scripts to consume without reimplementing summary logic
+  - it stays completely outside browser/CDP/element truth sources

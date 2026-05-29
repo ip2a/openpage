@@ -83,6 +83,7 @@
 - **`doctor.rs` 的 daemon warning 修复建议已补上**：当前 `daemon.session.*` 这类 warning 不再只有状态描述；如果 version mismatch 或 session not ready，doctor 现在会返回明确的 stop/status/log 检查建议。
 - **`doctor.rs` 的 launch lifecycle 已继续收紧**：当前 launch smoke 不再只靠显式 close；已补 `BrowserLaunchGuard` 做 best-effort browser close，并继续保留 Drop 清理临时目录，进一步向竞品 `LaunchGuard` 模式靠近。
 - **`doctor.rs` 现在也开始审计旧协议本地残留物**：当前会额外检查 `OPENPAGE_HOME/sessions/*.json` 这类 legacy session JSON 文件；在本机上已经实测发现 `~/.openpage/sessions` 下仍有 4 个旧文件，并会以 `env.legacy_sessions` warning + fix 的形式暴露出来。
+- **`doctor.rs` 的 summary 已继续结构化**：当前 summary 不再只有 `pass/warn/fail`，还直接返回 `info/fixable/total`，便于 agent 和脚本快速判断当前还有多少纯提示项、多少可修复项。
 - **`connection.rs` 的唯一 daemon 约束又收紧了一步**：`ensure_daemon()` 现在不再只处理“ready 但 version mismatch”的旧进程；如果发现同 session 旧进程仍存活但 TCP 端口迟迟不可用，会先给启动中的 daemon 一个短暂 ready 宽限期，宽限后仍不可用就杀掉旧进程再拉起新的 daemon，避免同 session 留下孤儿进程或并存 daemon。
 - **旧 session JSON 残留已彻底从活跃 CLI 面移除**：`rust/src/cli/oneshot.rs` 里的 `session_file()` / 本地 `openpage_home()` 以及 `browser stop` 时顺手删旧 session JSON 的逻辑都已删除，当前 CLI stop 只围绕 TCP sidecar 与 daemon shutdown。
 - **本轮运行态再次核实**：2026-05-30 最新一次 `browser list` 实测返回 5 个 healthy sessions（`cli-more-states-2`、`cli-state-queries`、`human-flow`、`smoke-alert`、`smoke-history2`）；`doctor --quick` 当前仍只有 1 个 fail（`browser.executable`）；这个 session 数量是运行时态，不应写死成仓库事实。

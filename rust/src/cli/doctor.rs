@@ -67,6 +67,9 @@ struct Summary {
     pass: usize,
     warn: usize,
     fail: usize,
+    info: usize,
+    fixable: usize,
+    total: usize,
 }
 
 pub fn run(args: DoctorArgs) -> OpenPageResult<i32> {
@@ -96,11 +99,16 @@ pub fn run(args: DoctorArgs) -> OpenPageResult<i32> {
 fn summarize(checks: &[Check]) -> Summary {
     let mut summary = Summary::default();
     for check in checks {
+        summary.total += 1;
         match check.status {
             "pass" => summary.pass += 1,
             "warn" => summary.warn += 1,
             "fail" => summary.fail += 1,
+            "info" => summary.info += 1,
             _ => {}
+        }
+        if check.fix.is_some() {
+            summary.fixable += 1;
         }
     }
     summary
@@ -1086,5 +1094,23 @@ mod tests {
 
         let files = legacy_session_files().expect("list legacy session files");
         assert!(files.is_empty());
+    }
+
+    #[test]
+    fn summarize_counts_info_fixable_and_total() {
+        let checks = vec![
+            Check::new("a", "Env", Status::Pass, "ok"),
+            Check::new("b", "Env", Status::Warn, "warn").with_fix("do something"),
+            Check::new("c", "Env", Status::Fail, "fail").with_fix("do something else"),
+            Check::new("d", "Env", Status::Info, "info"),
+        ];
+
+        let summary = super::summarize(&checks);
+        assert_eq!(summary.pass, 1);
+        assert_eq!(summary.warn, 1);
+        assert_eq!(summary.fail, 1);
+        assert_eq!(summary.info, 1);
+        assert_eq!(summary.fixable, 2);
+        assert_eq!(summary.total, 4);
     }
 }
