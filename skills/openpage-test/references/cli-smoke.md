@@ -19,12 +19,18 @@ Latest recheck on `2026-05-30`:
 - `openpage doctor --quick` currently fails at the browser executable check:
   - `browser_path=chrome`
   - configured browser executable not found on PATH
+- for machine-local override work, the active CLI and doctor now also honor:
+  - `OPENPAGE_BROWSER_PATH=/absolute/path/to/browser`
 - `openpage doctor --quick` machine-readable summary now also carries actionable ID lists:
   - `warn_ids`
   - `fail_ids`
   - `info_ids`
   - `fixable_ids`
 - `openpage doctor` reports the same browser executable/config failure and skips live launch after that
+- with `OPENPAGE_BROWSER_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` on this machine:
+  - `openpage doctor --quick` passes
+  - full `openpage doctor` passes, including the live headless launch smoke
+  - `browser start --headless https://example.com -> title -> browser stop` also passes without editing repo defaults
 
 Interpretation:
 
@@ -35,6 +41,7 @@ Interpretation:
 - Session count is runtime state, not a repository invariant. Treat the current `browser list` output as authoritative, not any older hard-coded count in notes.
 - If `doctor --quick` or full `doctor` fails this way on your machine, treat it as a local browser/config problem first.
 - On the current macOS machine used for the latest audit, Chrome exists as an app bundle under `/Applications/Google Chrome.app`, but `chrome` is not on PATH.
+- On that machine, `OPENPAGE_BROWSER_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` is now the process-local workaround that does not require editing repo defaults.
 - The removed legacy CLI surfaces are intentionally rejected and now have parser tests:
   - `serve --stdio`
   - `page get`

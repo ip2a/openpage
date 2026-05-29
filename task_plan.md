@@ -106,6 +106,11 @@
 - **本轮还顺手修掉了一个当前工作树的最小 compile blocker**：`rust/src/webpage.rs` 里 session timeout wrapper 与当前 `SessionPage` 真接口存在命名漂移；已做最小对齐（`timeout_secs` / `set_timeout` 与 `HashMap` import），目的是恢复验证链路，不是改产品语义。
 - **`doctor --quick --fix` 已落地并在本机执行过**：当前 `doctor` 新增了一个只做外壳层清理的修复入口，会删除 `OPENPAGE_HOME/sessions/*.json` 这类已经不再驱动活跃 TCP CLI 路径的 legacy session JSON 文件；本机 `/Users/yuuu/.openpage/sessions` 里的 4 个旧 JSON 已被清掉。
 - **本机当前剩余问题已进一步收口**：2026-05-30 最新复核里，`browser list` 现在返回 6 个 healthy sessions、0 incomplete、0 cleaned；`doctor --quick` 已不再有 `env.legacy_sessions` warning，唯一 fail 只剩 `browser.executable`，即 `rust/configs.ini` 里的 `browser_path=chrome` 在本机 PATH 上不可解析，而 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 是可用候选。
+- **本机 browser_path 问题已有不污染仓库默认值的外壳层解法**：当前 `Browser::launch` 与 `doctor` 都已开始识别 `OPENPAGE_BROWSER_PATH`。在本机上设置 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 后：
+  - `doctor --quick` 转为全 pass
+  - full `doctor` 转为全 pass，并成功完成 live headless launch smoke
+  - `browser start --headless https://example.com -> title -> browser stop` 也已实测通过
+  这让 machine-local 浏览器路径不再需要写死进仓库 `rust/configs.ini`。
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
@@ -130,6 +135,7 @@
 - `snapshot` 原先只返回 `snapshot` 数组，缺少面向 agent 的文本摘要和 ref 索引；现已在不修改内部元素/CDP 实现的前提下补到 CLI/daemon 合约层。
 - 当前历史文档仍然保留大量旧事实正文，这是有意保留的回溯材料；本轮只做了显式降级标注，没有重写全文。
 - 给 `doctor.rs` 新增清理测试时，第一次把 `remove_legacy_session_files()` 直接写成了裸调用；由于测试在子模块里，需要改成 `super::remove_legacy_session_files()`，修正后定向单测通过。
+- 给 `browser.rs` 新增 env override 测试时，第一次把常量写成了未导入名字；已改成 `super::OPENPAGE_BROWSER_PATH_ENV`，定向单测随后通过。
 
 ## Status
-**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 本轮最新核验里：5 条废弃 CLI surface 拒绝测试都已通过；`protocol.rs` 的错误分类 helper 单测已通过；`doctor --quick --fix` 的 legacy-session 清理单测已通过；`batch` runtime 失败已实测返回 `error.kind="unsupported_operation"`；raw TCP daemon 对无效 target 的 runtime 失败已实测返回 `error.kind="browser_operation"`；`cargo check` 当前也已恢复通过；本机旧 `sessions/*.json` 残留也已清掉，当前 `doctor --quick` 唯一剩余 fail 只在 `browser.executable`。本轮继续保持不碰浏览器/CDP/元素真相源，只在 JSON error 外壳、doctor 修复入口和活跃 smoke/docs 面继续收紧当前真相。下一步继续沿活跃文档面误导项与其它 machine-friendly 外壳细节做收敛。
+**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 本轮最新核验里：5 条废弃 CLI surface 拒绝测试都已通过；`protocol.rs` 的错误分类 helper 单测已通过；`doctor --quick --fix` 的 legacy-session 清理单测已通过；新的 `browser_path_env_override_reads_non_empty_value` 单测已通过；`batch` runtime 失败已实测返回 `error.kind="unsupported_operation"`；raw TCP daemon 对无效 target 的 runtime 失败已实测返回 `error.kind="browser_operation"`；`cargo check` 当前也已恢复通过；本机旧 `sessions/*.json` 残留已清掉；而 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 现在已经可以把本机 `doctor` 和真实 `browser start` 全部拉通，不需要改仓库默认 `rust/configs.ini`。本轮继续保持不碰浏览器/CDP/元素真相源，只在 JSON error 外壳、doctor 修复入口、browser-path 外壳策略和活跃 smoke/docs 面继续收紧当前真相。下一步继续沿活跃文档面误导项与其它 machine-friendly 外壳细节做收敛。

@@ -1673,3 +1673,56 @@
 1. 继续看是否要把浏览器路径问题也收成一个更稳的本地外壳方案
 2. 继续收敛活跃文档与 smoke 面
 3. 做路径聚焦提交，避免把 unrelated 大 diff 一起带进去
+
+
+## 2026-05-30 — Session 31
+
+### Goal in focus
+- 不修改仓库默认 `configs.ini` 的前提下，给本机 browser path 问题一个外壳层解法
+- 继续让 doctor/runtime 真相和活跃文档保持一致
+
+### Work completed
+- 审计 `LaunchOptions::from_ini`、`Browser::launch`、`doctor.rs`、`serve.rs`、named-session 启动链
+- 确认：
+  - `doctor` 读 `rust/configs.ini`
+  - named-session CLI 真正的 launch 仍走 `Browser::launch`
+  - 不适合把 `/Applications/...` 这类 machine-specific 路径写回仓库默认配置
+- 修改 `rust/src/browser.rs`
+  - 新增 `OPENPAGE_BROWSER_PATH_ENV`
+  - 新增 `browser_path_env_override()`
+  - `Browser::launch(...)` 现在允许 `OPENPAGE_BROWSER_PATH` 覆盖当前进程的浏览器路径
+  - 新增定向单测 `browser_path_env_override_reads_non_empty_value`
+- 修改 `rust/src/cli/doctor.rs`
+  - `browser.config` 现在会把 env override 体现在有效 browser path 展示里
+- 更新活跃文档：
+  - `README.md`
+  - `skills/openpage-test/references/install.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- 本机实际验证：
+  - `OPENPAGE_BROWSER_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" openpage doctor --quick`
+  - `OPENPAGE_BROWSER_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" openpage doctor`
+  - `OPENPAGE_BROWSER_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" OPENPAGE_HOME=/tmp/openpage-env-browser openpage browser start --session env-browser --replace --headless https://example.com`
+  - `title --session env-browser`
+  - `browser stop --session env-browser`
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml browser_path_env_override_reads_non_empty_value -- --nocapture`
+- `cargo check --manifest-path rust/Cargo.toml`
+- `OPENPAGE_BROWSER_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+- `OPENPAGE_BROWSER_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor`
+- `OPENPAGE_BROWSER_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" OPENPAGE_HOME=/tmp/openpage-env-browser cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start --session env-browser --replace --headless https://example.com`
+- same env override + `title --session env-browser`
+- same env override + `browser stop --session env-browser`
+
+### Current conclusions
+- 当前本机 browser path 问题已经有了不污染仓库默认值的真实解法。
+- 这个解法停留在非-CDP 外壳层：
+  - env override
+  - doctor 真相同步
+  - 活跃文档同步
+- 这一步没有动浏览器/CDP/元素交互内部实现。
+
+### Next steps
+1. 做路径聚焦提交，只带这轮 browser-path shell 相关改动
+2. 继续看活跃 docs / smoke 面是否还有落后于当前真相的点
+3. 继续保持不碰竞品 native/CDP/element 内核

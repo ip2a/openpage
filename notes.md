@@ -1248,3 +1248,52 @@
   - legacy protocol residue on this machine is now reduced further without touching browser/CDP/element truth sources
   - the active TCP daemon path remains healthy
   - the next real problem is not protocol uniqueness; it is local browser-path resolution
+
+
+## Local truth refresh (2026-05-30, browser-path env override pass)
+- This pass stayed in the outer-shell/config layer again.
+- Motivation:
+  - protocol uniqueness was no longer the red item
+  - the remaining local blocker was `rust/configs.ini` saying `browser_path=chrome` while this macOS machine only had the app bundle path
+  - we did not want to hardcode `/Applications/...` into repo defaults
+- Landed code changes:
+  - `rust/src/browser.rs`
+    - added `OPENPAGE_BROWSER_PATH_ENV`
+    - added `browser_path_env_override()`
+    - `Browser::launch(...)` now lets `OPENPAGE_BROWSER_PATH` override the configured browser path for the current process
+    - added unit test `browser_path_env_override_reads_non_empty_value`
+  - `rust/src/cli/doctor.rs`
+    - doctor now also reflects that same env override in the effective `browser.config` check text
+  - active docs updated:
+    - `README.md`
+    - `skills/openpage-test/references/install.md`
+    - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml browser_path_env_override_reads_non_empty_value -- --nocapture`
+    - passed
+  - `cargo check --manifest-path rust/Cargo.toml`
+    - passed
+  - `OPENPAGE_BROWSER_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - passed
+  - `OPENPAGE_BROWSER_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor`
+    - passed
+    - included successful live headless launch smoke
+  - `OPENPAGE_BROWSER_PATH=\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" OPENPAGE_HOME=/tmp/openpage-env-browser cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start --session env-browser --replace --headless https://example.com`
+    - passed
+  - same env override + `title --session env-browser`
+    - returned `Example Domain`
+  - same env override + `browser stop --session env-browser`
+    - passed
+- Current local machine truth after this pass:
+  - repo default `rust/configs.ini` still says `browser_path=chrome`
+  - that stays unchanged
+  - machine-local fix is now:
+    - `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+  - with that env override active:
+    - doctor passes
+    - live headless launch passes
+    - named-session CLI launch passes
+- Interpretation:
+  - this is the right outer-shell compromise
+  - it avoids polluting repo defaults with a machine-specific path
+  - it keeps protocol/CDP/element truth sources untouched

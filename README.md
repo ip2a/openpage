@@ -201,6 +201,7 @@ Diagnose the local CLI environment:
 ```bash
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick --fix
+OPENPAGE_BROWSER_PATH="/absolute/path/to/browser" cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor
 ```
 
@@ -226,6 +227,7 @@ For runtime JSON failures, the active CLI/daemon shell now emits stable
 - environment and daemon sidecar locations
 - legacy session JSON files under `OPENPAGE_HOME/sessions` that no longer drive the active TCP CLI path
 - optional `--fix` cleanup for those legacy session JSON files
+- optional `OPENPAGE_BROWSER_PATH` process-local override for machine-specific browser locations
 - active healthy daemon sessions
 - incomplete daemon sidecars that still point to a live daemon
 - stale daemon sidecars cleaned during the audit

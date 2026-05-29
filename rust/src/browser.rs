@@ -101,6 +101,7 @@ impl Default for TimeoutConfig {
 }
 
 const DEFAULT_AUTO_PORT_SCOPE: (u16, u16) = (9600, 59_600);
+pub(crate) const OPENPAGE_BROWSER_PATH_ENV: &str = "OPENPAGE_BROWSER_PATH";
 
 #[derive(Debug, Clone)]
 pub struct LaunchOptions {
@@ -617,6 +618,9 @@ impl Browser {
             Arc::new(Runtime::new().map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?);
 
         let mut options = options;
+        if let Some(path) = browser_path_env_override() {
+            options.browser_path = Some(path);
+        }
 
         if options.auto_port && options.remote_debugging_port.is_none() {
             options.remote_debugging_port = Some(find_free_port(options.auto_port_scope())?);
@@ -1874,6 +1878,16 @@ fn project_launch_options_ini_path() -> OpenPageResult<PathBuf> {
 
 fn built_in_launch_options_defaults() -> OpenPageResult<LaunchOptions> {
     parse_launch_options_ini(include_str!("../configs.ini"))
+}
+
+pub(crate) fn browser_path_env_override() -> Option<PathBuf> {
+    let value = std::env::var_os(OPENPAGE_BROWSER_PATH_ENV)?;
+    let path = PathBuf::from(value);
+    if path.as_os_str().is_empty() {
+        None
+    } else {
+        Some(path)
+    }
 }
 
 fn resolve_launch_options_ini_path(path: Option<&Path>) -> OpenPageResult<PathBuf> {
@@ -3184,6 +3198,34 @@ mod tests {
         }
     }
 
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &std::path::Path) -> Self {
+            let previous = env::var_os(key);
+            unsafe {
+                env::set_var(key, value);
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => unsafe {
+                    env::set_var(self.key, value);
+                },
+                None => unsafe {
+                    env::remove_var(self.key);
+                },
+            }
+        }
+    }
+
     #[test]
     fn unique_download_path_appends_counter() {
         let dir = make_temp_dir("rename");
@@ -3361,6 +3403,17 @@ mod tests {
             Some(PathBuf::from("/tmp/test-browser"))
         );
         assert_eq!(options.browser_path(), "/tmp/test-browser");
+    }
+
+    #[test]
+    fn browser_path_env_override_reads_non_empty_value() {
+        let dir = make_temp_dir("browser-path-env");
+        let browser_path = dir.join("chrome");
+        let _guard = EnvVarGuard::set(super::OPENPAGE_BROWSER_PATH_ENV, browser_path.as_path());
+
+        assert_eq!(super::browser_path_env_override(), Some(browser_path));
+
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]

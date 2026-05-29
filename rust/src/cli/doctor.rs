@@ -5,7 +5,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use serde_json::json;
 
-use crate::browser::{Browser, LaunchOptions};
+use crate::browser::{
+    Browser, LaunchOptions, OPENPAGE_BROWSER_PATH_ENV, browser_path_env_override,
+};
 use crate::cli::args::DoctorArgs;
 use crate::cli::connection::{DaemonSessionInfo, daemon_dir, daemon_inventory, openpage_home};
 use crate::cli::protocol::format_output_json;
@@ -429,8 +431,13 @@ fn daemon_session_fix(session: &DaemonSessionInfo) -> Option<String> {
 
 fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
     let category = "Browser";
+    let browser_path_override = browser_path_env_override();
     let options = match LaunchOptions::from_ini(None) {
-        Ok(options) => {
+        Ok(mut options) => {
+            let configured_browser_path = options.browser_path();
+            if let Some(path) = browser_path_override.as_ref() {
+                options.set_browser_path(path);
+            }
             let source = options
                 .source_ini_path
                 .as_ref()
@@ -442,6 +449,22 @@ fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
             } else {
                 browser_path
             };
+            let browser_path_display = match browser_path_override.as_ref() {
+                Some(path) => {
+                    let configured = if configured_browser_path.is_empty() {
+                        "<default>".to_string()
+                    } else {
+                        configured_browser_path
+                    };
+                    format!(
+                        "{} (overrides configured {} via {})",
+                        path.display(),
+                        configured,
+                        OPENPAGE_BROWSER_PATH_ENV
+                    )
+                }
+                None => browser_path.clone(),
+            };
             checks.push(Check::new(
                 "browser.config",
                 category,
@@ -449,7 +472,7 @@ fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
                 format!(
                     "Loaded launch options from {} (browser_path={}, headless={}, auto_port={})",
                     source,
-                    browser_path,
+                    browser_path_display,
                     options.is_headless(),
                     options.is_auto_port()
                 ),
