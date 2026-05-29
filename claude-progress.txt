@@ -1181,3 +1181,47 @@
 1. 继续收紧 `doctor.rs` 的 summary / fix / output 结构
 2. 继续扫根目录历史文档里是否还有会误导当前 CLI 协议心智的内容
 3. 如继续借竞品代码，优先仍放在 `doctor.rs` / `protocol.rs` / agent-facing docs
+
+
+## 2026-05-30 — Session 21
+
+### Goal in focus
+- 继续把“唯一 TCP 路径”从代码层推进到诊断层
+- 让旧 session JSON 残留对用户和后续会话变得可见
+
+### Work completed
+- 先核实本机真实状态：
+  - `~/.openpage/sessions/` 当前仍存在
+  - 文件包括：
+    - `cli-more-states-2.json`
+    - `cli-state-queries.json`
+    - `default.json`
+    - `test.json`
+- 修改 `rust/src/cli/doctor.rs`
+  - 新增：
+    - `legacy_sessions_dir()`
+    - `legacy_session_files()`
+  - `environment_checks(...)` 现在会发出 `env.legacy_sessions`：
+    - 无旧 JSON 文件时 `pass`
+    - 发现旧 `sessions/*.json` 时 `warn`
+    - 给出显式 `fix`，建议先备份再删除
+- 新增单测：
+  - `legacy_session_files_returns_only_json_entries`
+  - `legacy_session_files_returns_empty_when_directory_missing`
+- 测试里顺手补了环境变量锁，避免并发测试串掉 `OPENPAGE_HOME`
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml legacy_session_files_ -- --nocapture`
+- `cargo check --manifest-path rust/Cargo.toml`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+
+### Current conclusions
+- 当前 TCP daemon 主路径没有回退。
+- 当前本机上，旧 session JSON 时代的本地遗留物终于被 `doctor` 正式看见了。
+- 这轮依然没有去碰浏览器/CDP/元素交互内核。
+- 自动删除这些用户本地 JSON 文件过于激进，所以这轮只做显式告警和 fix 建议。
+
+### Next steps
+1. 继续收紧 `doctor.rs` 的 summary / fix / output 结构
+2. 继续扫根目录历史文档误导面
+3. 如果后面要继续借竞品代码，优先仍放在 `doctor.rs` / `protocol.rs` / 文档层

@@ -840,3 +840,45 @@
   - this is a direct outer-shell trust-boundary improvement
   - it stays fully outside browser/CDP/element truth sources
   - it improves AI-facing snapshot/text output without replacing the existing internal snapshot mechanism
+
+
+## Local truth refresh (2026-05-30, legacy-session-json doctor pass)
+- This pass stayed on the CLI outer shell and targeted one concrete local residue of the old pre-TCP execution model.
+- Current local evidence on this machine:
+  - `~/.openpage/sessions/` still exists
+  - current files include:
+    - `cli-more-states-2.json`
+    - `cli-state-queries.json`
+    - `default.json`
+    - `test.json`
+- Important interpretation:
+  - the active TCP daemon CLI path no longer reads these files
+  - they are local legacy session artifacts, not part of the current execution truth
+  - deleting user data automatically would be too destructive, so this pass adds diagnosis and explicit cleanup guidance instead of removing them silently
+- Landed code changes:
+  - `rust/src/cli/doctor.rs`
+    - added `legacy_sessions_dir()`
+    - added `legacy_session_files()`
+    - `environment_checks(...)` now emits `env.legacy_sessions`
+      - `pass` when no legacy JSON files exist
+      - `warn` when old `sessions/*.json` files are found
+      - includes a `fix` telling the user to back them up and remove the directory if no remaining workflow depends on them
+  - added tests:
+    - `legacy_session_files_returns_only_json_entries`
+    - `legacy_session_files_returns_empty_when_directory_missing`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml legacy_session_files_ -- --nocapture`
+    - 2 tests passed
+  - `cargo check --manifest-path rust/Cargo.toml`
+    - passed
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - current machine now reports:
+      - `env.legacy_sessions` as `warn`
+      - exactly 1 `fail` remains: `browser.executable`
+      - summary now includes the legacy residue as a real warning rather than leaving it invisible
+- Observed runtime nuance:
+  - current healthy sessions changed again during the day and now include `smoke-dl` / `smoke-dl2` instead of the previous `smoke-alert` sample
+  - session inventory remains runtime state, not a durable repository fact
+- Interpretation:
+  - this is another concrete move toward “one stable TCP path” because deprecated local artifacts are now visible to users and future agents
+  - it still does not touch browser/CDP/element truth sources
