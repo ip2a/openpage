@@ -1134,3 +1134,117 @@
     - now explicitly states the same and ties it to parser tests
 - Interpretation:
   - current evidence is now stronger than grep-only evidence: the removed protocol/command surfaces are both absent from the active user surface and actively guarded by parser tests
+
+
+## Local truth refresh (2026-05-30, stable runtime error-kind pass)
+- This pass continued strictly at the CLI/daemon shell boundary.
+- Motivation:
+  - runtime JSON failures still used generic `openpage` in several places
+  - that forced automation to scrape human-readable message text instead of matching stable machine categories
+- Landed code changes:
+  - `rust/src/cli/protocol.rs`
+    - added `openpage_error_kind(...)`
+    - added `simple_openpage_error(...)`
+    - added `response_openpage_error(...)`
+  - `rust/src/cli/mod.rs`
+    - top-level CLI runtime JSON failures now use `simple_openpage_error(...)`
+  - `rust/src/cli/serve.rs`
+    - raw TCP daemon runtime failures now use `response_openpage_error(...)`
+  - `rust/src/cli/oneshot.rs`
+    - `batch` command failures now use `simple_openpage_error(...)`
+- Stable runtime `error.kind` values now include categories such as:
+  - `unsupported_operation`
+  - `browser_operation`
+  - `timeout`
+  - `io`
+  - `serialization`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml openpage_error_kind_maps_variants_to_stable_strings -- --nocapture`
+    - passed
+  - `cargo test --manifest-path rust/Cargo.toml simple_openpage_error_uses_stable_kind_and_message -- --nocapture`
+    - passed
+  - runtime smoke: `printf '[[\"doctor\"]]' | openpage batch`
+    - returned `{"error":{"kind":"unsupported_operation",...},"ok":false}`
+  - runtime smoke: raw TCP daemon with invalid target
+    - request: `{"id":"1","op":"webpage.title","target":"missing","params":{}}`
+    - response: `{"id":"1","ok":false,"error":{"kind":"browser_operation",...}}`
+- Current local compile-chain note:
+  - while landing this pass, the current worktree exposed a small compile blocker in `rust/src/webpage.rs`
+  - it was not a browser/CDP semantic issue; it was a wrapper-level naming drift against current `SessionPage` methods
+  - minimal fix applied:
+    - `timeout_millis()` -> `timeout_secs()`
+    - `set_timeout_millis(...)` -> `set_timeout(...)`
+    - restore `HashMap` import
+  - after that, `cargo check --manifest-path rust/Cargo.toml` passed again
+- Active-doc sync in the same pass:
+  - `README.md`
+    - now states runtime JSON failures expose stable `error.kind`
+  - `skills/openpage-test/references/cli-smoke.md`
+    - now advises automation to prefer `error.kind` over scraping the human message text
+- Interpretation:
+  - this makes the active TCP-only CLI/daemon surface more predictable for agents and scripts
+  - it still does not touch browser/CDP/element truth sources
+
+
+## Local truth refresh (2026-05-30, doctor fix pass)
+- This pass stayed in the same outer-shell boundary:
+  - `rust/src/cli/args.rs`
+  - `rust/src/cli/doctor.rs`
+  - active repo-local docs under `README.md` and `skills/openpage-test/*`
+- Motivation:
+  - local audit still showed obsolete `OPENPAGE_HOME/sessions/*.json` residue from the removed one-shot CLI path
+  - those files no longer drove the active TCP daemon path, but they kept `doctor --quick` noisy on this machine
+- Landed code changes:
+  - `rust/src/cli/args.rs`
+    - added `doctor --fix`
+  - `rust/src/cli/doctor.rs`
+    - added `apply_fixes()`
+    - added `remove_legacy_session_files()`
+    - `doctor` JSON output now includes a `fixed` array
+    - added unit test `remove_legacy_session_files_deletes_only_json_entries`
+  - active docs updated:
+    - `README.md`
+    - `skills/openpage-test/SKILL.md`
+    - `skills/openpage-test/references/cli-smoke.md`
+    - `skills/openpage-test/references/session-management.md`
+    - `skills/openpage-test/references/install.md`
+- Runtime verification:
+  - `cargo check --manifest-path rust/Cargo.toml`
+    - passed
+  - `cargo test --manifest-path rust/Cargo.toml openpage_error_kind_maps_variants_to_stable_strings -- --nocapture`
+    - passed
+  - `cargo test --manifest-path rust/Cargo.toml simple_openpage_error_uses_stable_kind_and_message -- --nocapture`
+    - passed
+  - `cargo test --manifest-path rust/Cargo.toml remove_legacy_session_files_deletes_only_json_entries -- --nocapture`
+    - passed
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick --fix`
+    - removed:
+      - `/Users/yuuu/.openpage/sessions/cli-more-states-2.json`
+      - `/Users/yuuu/.openpage/sessions/cli-state-queries.json`
+      - `/Users/yuuu/.openpage/sessions/default.json`
+      - `/Users/yuuu/.openpage/sessions/test.json`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - now reports `env.legacy_sessions = pass`
+    - remaining fail is still `browser.executable`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+    - currently returns 6 healthy sessions
+    - `incomplete=[]`
+    - `cleaned=[]`
+- Current local machine truth after this pass:
+  - `OPENPAGE_HOME=/Users/yuuu/.openpage`
+  - `~/.openpage/sessions/` is now empty
+  - `~/.openpage/daemon/` currently has 6 healthy sessions:
+    - `cli-more-states-2`
+    - `cli-state-queries`
+    - `definitely-missing`
+    - `human-flow`
+    - `smoke-history2`
+    - `smoke-shot`
+  - the only remaining red item in `doctor --quick` is:
+    - `browser.executable`
+    - repo config currently says `browser_path=chrome`
+    - local viable candidate is `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+- Interpretation:
+  - legacy protocol residue on this machine is now reduced further without touching browser/CDP/element truth sources
+  - the active TCP daemon path remains healthy
+  - the next real problem is not protocol uniqueness; it is local browser-path resolution

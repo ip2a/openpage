@@ -77,6 +77,7 @@ struct Summary {
 }
 
 pub fn run(args: DoctorArgs) -> OpenPageResult<i32> {
+    let fixed = if args.fix { apply_fixes()? } else { Vec::new() };
     let mut checks = Vec::new();
     environment_checks(&mut checks);
     daemon_checks(&mut checks);
@@ -92,12 +93,19 @@ pub fn run(args: DoctorArgs) -> OpenPageResult<i32> {
             "result": {
                 "summary": summary,
                 "checks": checks,
+                "fixed": fixed,
             }
         }))
         .map_err(|err| OpenPageError::Serialization(err.to_string()))?
     );
 
     Ok(if success { 0 } else { 1 })
+}
+
+fn apply_fixes() -> OpenPageResult<Vec<String>> {
+    let mut fixed = Vec::new();
+    fixed.extend(remove_legacy_session_files()?);
+    Ok(fixed)
 }
 
 fn summarize(checks: &[Check]) -> Summary {
@@ -650,6 +658,27 @@ fn legacy_session_files() -> OpenPageResult<Vec<PathBuf>> {
     Ok(files)
 }
 
+fn remove_legacy_session_files() -> OpenPageResult<Vec<String>> {
+    let files = legacy_session_files()?;
+    let mut removed = Vec::new();
+    for path in files {
+        match fs::remove_file(&path) {
+            Ok(()) => removed.push(format!(
+                "Removed legacy session JSON {}",
+                path.display()
+            )),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => {
+                return Err(OpenPageError::Io(format!(
+                    "failed to remove legacy session JSON {}: {err}",
+                    path.display()
+                )))
+            }
+        }
+    }
+    Ok(removed)
+}
+
 enum BrowserExecutable {
     Default,
     Found(PathBuf),
@@ -1108,6 +1137,33 @@ mod tests {
 
         let files = legacy_session_files().expect("list legacy session files");
         assert!(files.is_empty());
+    }
+
+    #[test]
+    fn remove_legacy_session_files_deletes_only_json_entries() {
+        let _guard = test_env_lock().lock().expect("lock test env");
+        let home = unique_openpage_home("legacy-remove");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        let sessions_dir = home.join("sessions");
+        fs::create_dir_all(&sessions_dir).expect("create sessions dir");
+        let keep_json = sessions_dir.join("keep.json");
+        let keep_txt = sessions_dir.join("other.txt");
+        fs::write(&keep_json, "{}").expect("write keep.json");
+        fs::write(&keep_txt, "x").expect("write other.txt");
+
+        let removed =
+            super::remove_legacy_session_files().expect("remove legacy session files");
+        assert_eq!(
+            removed,
+            vec![format!(
+                "Removed legacy session JSON {}",
+                keep_json.display()
+            )]
+        );
+        assert!(!keep_json.exists());
+        assert!(keep_txt.exists());
+
+        let _ = fs::remove_dir_all(home);
     }
 
     #[test]

@@ -102,6 +102,10 @@
   - `page title`
   - `page screenshot`
 - **活跃文档也已明确“这些旧入口是有意拒绝”的当前真相**：`README.md` 与 `skills/openpage-test/references/cli-smoke.md` 现在都写明旧 `page *` 和 `serve --stdio` 不是遗漏，而是被明确移除并由测试守住的废弃面。
+- **顶层 JSON error 外壳已继续收紧**：当前 `protocol.rs` 已新增稳定 `openpage_error_kind(...)` 映射，以及 `simple_openpage_error(...)` / `response_openpage_error(...)` helper；CLI 顶层、batch 错误输出与 raw TCP daemon runtime error 现在都不再笼统返回 `openpage`，而是给出稳定 `error.kind`，例如 `unsupported_operation`、`browser_operation`、`timeout`、`io`、`serialization`。
+- **本轮还顺手修掉了一个当前工作树的最小 compile blocker**：`rust/src/webpage.rs` 里 session timeout wrapper 与当前 `SessionPage` 真接口存在命名漂移；已做最小对齐（`timeout_secs` / `set_timeout` 与 `HashMap` import），目的是恢复验证链路，不是改产品语义。
+- **`doctor --quick --fix` 已落地并在本机执行过**：当前 `doctor` 新增了一个只做外壳层清理的修复入口，会删除 `OPENPAGE_HOME/sessions/*.json` 这类已经不再驱动活跃 TCP CLI 路径的 legacy session JSON 文件；本机 `/Users/yuuu/.openpage/sessions` 里的 4 个旧 JSON 已被清掉。
+- **本机当前剩余问题已进一步收口**：2026-05-30 最新复核里，`browser list` 现在返回 6 个 healthy sessions、0 incomplete、0 cleaned；`doctor --quick` 已不再有 `env.legacy_sessions` warning，唯一 fail 只剩 `browser.executable`，即 `rust/configs.ini` 里的 `browser_path=chrome` 在本机 PATH 上不可解析，而 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 是可用候选。
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
@@ -125,6 +129,7 @@
 - `browser list` 原先只暴露 healthy sessions，无法直接把 `daemon_inventory()` 的 `incomplete` / `cleaned` 带给用户；现已做加法式修正。
 - `snapshot` 原先只返回 `snapshot` 数组，缺少面向 agent 的文本摘要和 ref 索引；现已在不修改内部元素/CDP 实现的前提下补到 CLI/daemon 合约层。
 - 当前历史文档仍然保留大量旧事实正文，这是有意保留的回溯材料；本轮只做了显式降级标注，没有重写全文。
+- 给 `doctor.rs` 新增清理测试时，第一次把 `remove_legacy_session_files()` 直接写成了裸调用；由于测试在子模块里，需要改成 `super::remove_legacy_session_files()`，修正后定向单测通过。
 
 ## Status
-**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 本轮最新核验里：5 条废弃 CLI surface 拒绝测试都已通过；`cargo check` 通过；`browser list` 当前仍返回 5 个 healthy sessions；`doctor --quick` 当前仍只有 1 个 fail（`browser.executable`），并且 summary 会直接暴露 `fail_ids=["browser.executable"]`、`warn_ids=["env.legacy_sessions"]` 等可操作字段。本轮继续保持不碰浏览器/CDP/元素真相源，只在 CLI parser 护栏、`doctor.rs` 和活跃 smoke/docs 面继续收紧当前真相。下一步继续沿顶层 JSON error 结构和根目录历史文档误导面做收敛。
+**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 本轮最新核验里：5 条废弃 CLI surface 拒绝测试都已通过；`protocol.rs` 的错误分类 helper 单测已通过；`doctor --quick --fix` 的 legacy-session 清理单测已通过；`batch` runtime 失败已实测返回 `error.kind="unsupported_operation"`；raw TCP daemon 对无效 target 的 runtime 失败已实测返回 `error.kind="browser_operation"`；`cargo check` 当前也已恢复通过；本机旧 `sessions/*.json` 残留也已清掉，当前 `doctor --quick` 唯一剩余 fail 只在 `browser.executable`。本轮继续保持不碰浏览器/CDP/元素真相源，只在 JSON error 外壳、doctor 修复入口和活跃 smoke/docs 面继续收紧当前真相。下一步继续沿活跃文档面误导项与其它 machine-friendly 外壳细节做收敛。

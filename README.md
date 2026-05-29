@@ -200,6 +200,7 @@ Diagnose the local CLI environment:
 
 ```bash
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick
+cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick --fix
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor
 ```
 
@@ -211,10 +212,20 @@ The current CLI intentionally rejects the removed legacy surfaces:
 - `page title`
 - `page screenshot`
 
+For runtime JSON failures, the active CLI/daemon shell now emits stable
+`error.kind` values such as:
+
+- `unsupported_operation`
+- `browser_operation`
+- `timeout`
+- `io`
+- `serialization`
+
 `doctor` reports:
 
 - environment and daemon sidecar locations
 - legacy session JSON files under `OPENPAGE_HOME/sessions` that no longer drive the active TCP CLI path
+- optional `--fix` cleanup for those legacy session JSON files
 - active healthy daemon sessions
 - incomplete daemon sidecars that still point to a live daemon
 - stale daemon sidecars cleaned during the audit

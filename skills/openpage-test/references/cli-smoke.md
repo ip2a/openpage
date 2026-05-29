@@ -14,8 +14,8 @@ If either of these fails, stop and report that result first.
 Latest recheck on `2026-05-30`:
 
 - `cargo check --manifest-path rust/Cargo.toml` passed
-- `openpage browser list` currently returns 5 healthy sessions and no incomplete or cleaned sidecars
-- `openpage doctor --quick` currently also warns about 4 legacy session JSON files under `/Users/yuuu/.openpage/sessions`
+- `openpage browser list` currently returns 6 healthy sessions and no incomplete or cleaned sidecars
+- `openpage doctor --quick --fix` was run locally, and `openpage doctor --quick` no longer warns about legacy session JSON residue under `/Users/yuuu/.openpage/sessions`
 - `openpage doctor --quick` currently fails at the browser executable check:
   - `browser_path=chrome`
   - configured browser executable not found on PATH
@@ -30,7 +30,7 @@ Interpretation:
 
 - The current branch is compilable.
 - The TCP daemon path is not currently the blocked part.
-- Legacy session JSON residue is currently visible on this machine, but it is not part of the active TCP daemon execution path.
+- Legacy session JSON residue is not part of the active TCP daemon execution path, and `doctor --quick --fix` is now the repo-local cleanup path for it.
 - Daemon inventory is currently healthy on this machine; the remaining red item is browser executable resolution.
 - Session count is runtime state, not a repository invariant. Treat the current `browser list` output as authoritative, not any older hard-coded count in notes.
 - If `doctor --quick` or full `doctor` fails this way on your machine, treat it as a local browser/config problem first.
@@ -41,6 +41,12 @@ Interpretation:
   - `page url`
   - `page title`
   - `page screenshot`
+- Runtime JSON failures now also expose stable `error.kind` values. For automation, prefer matching on:
+  - `unsupported_operation`
+  - `browser_operation`
+  - `timeout`
+  - `io`
+  rather than scraping the human message text.
 
 ## Last Successful Runtime Observations
 

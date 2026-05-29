@@ -698,4 +698,7 @@ pub struct DoctorArgs {
     /// Skip the live browser launch smoke test
     #[arg(long)]
     pub quick: bool,
+    /// Apply deterministic non-CDP cleanup fixes such as removing legacy session JSON files
+    #[arg(long)]
+    pub fix: bool,
 }

@@ -1559,3 +1559,117 @@
 1. 继续评估顶层 CLI JSON error 是否要补 `type` / 更稳定分类
 2. 继续做活跃文档面的定点真相同步
 3. 继续保持路径聚焦提交
+
+
+## 2026-05-30 — Session 29
+
+### Goal in focus
+- 继续把顶层 JSON error 外壳从泛化 `openpage` 收成稳定 machine-friendly 分类
+- 在不碰浏览器/CDP/元素真相源的前提下，补 runtime 证据与文档同步
+
+### Work completed
+- 审计 `OpenPageError`、`protocol.rs`、`cli/mod.rs`、`serve.rs`、`oneshot.rs`
+- 修改 `rust/src/cli/protocol.rs`
+  - 新增：
+    - `openpage_error_kind(...)`
+    - `simple_openpage_error(...)`
+    - `response_openpage_error(...)`
+  - 新增单测：
+    - `openpage_error_kind_maps_variants_to_stable_strings`
+    - `simple_openpage_error_uses_stable_kind_and_message`
+- 修改 `rust/src/cli/mod.rs`
+  - 顶层 CLI runtime JSON error 改走 `simple_openpage_error(...)`
+- 修改 `rust/src/cli/serve.rs`
+  - raw TCP daemon runtime error 改走 `response_openpage_error(...)`
+- 修改 `rust/src/cli/oneshot.rs`
+  - `batch` 子命令错误 JSON 改走 `simple_openpage_error(...)`
+- 更新活跃文档：
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - 两处都开始明确强调稳定 `error.kind`
+- 处理了一个当前工作树里阻塞验证的最小 compile drift：
+  - `rust/src/webpage.rs`
+  - 对齐 `SessionPage` 当前真实方法名：
+    - `timeout_secs`
+    - `set_timeout`
+  - 以及 `HashMap` import
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml openpage_error_kind_maps_variants_to_stable_strings -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml simple_openpage_error_uses_stable_kind_and_message -- --nocapture`
+- `printf '[[\"doctor\"]]' | cargo run --manifest-path rust/Cargo.toml --bin openpage -- batch`
+  - 返回 `error.kind=\"unsupported_operation\"`
+- raw TCP daemon invalid-target smoke:
+  - `serve --port 0 --session err-kind-smoke2`
+  - request: `{\"id\":\"1\",\"op\":\"webpage.title\",\"target\":\"missing\",\"params\":{}}`
+  - response: `error.kind=\"browser_operation\"`
+- `cargo check --manifest-path rust/Cargo.toml`
+
+### Current conclusions
+- 现在 runtime JSON error 不再只给通用 `openpage`，而是已经开始给稳定 machine-friendly kind。
+- 这让 agent 和脚本可以更稳地分流：
+  - `unsupported_operation`
+  - `browser_operation`
+  - `timeout`
+  - `io`
+  - `serialization`
+- 这轮仍然没有碰浏览器/CDP/元素真相源。
+
+### Next steps
+1. 继续清点活跃文档面是否还有落后于当前 TCP-only 真相的点
+2. 继续评估是否还需要补更多 CLI/daemon shell 层回归护栏
+3. 继续保持路径聚焦提交
+
+
+## 2026-05-30 — Session 30
+
+### Goal in focus
+- 继续清理仍会污染“唯一 TCP daemon 真相”的本机旧残留
+- 继续只在非-CDP 外壳层吸收竞品设计，不碰浏览器/CDP/元素实现
+
+### Work completed
+- 重新核实本机当前状态：
+  - `OPENPAGE_HOME=/Users/yuuu/.openpage`
+  - `browser list` 当前返回 6 个 healthy sessions
+  - `doctor --quick` 在修复前仍有：
+    - `env.legacy_sessions` warning
+    - `browser.executable` fail
+- 修改 `rust/src/cli/args.rs`
+  - 为 `doctor` 新增 `--fix`
+- 修改 `rust/src/cli/doctor.rs`
+  - 新增 `apply_fixes()`
+  - 新增 `remove_legacy_session_files()`
+  - `doctor` 输出中新增 `fixed` 数组
+  - 新增单测 `remove_legacy_session_files_deletes_only_json_entries`
+- 更新活跃文档：
+  - `README.md`
+  - `skills/openpage-test/SKILL.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - `skills/openpage-test/references/session-management.md`
+  - `skills/openpage-test/references/install.md`
+- 在本机实际执行：
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick --fix`
+  - 成功删除 4 个旧 `~/.openpage/sessions/*.json`
+
+### Verification
+- `cargo check --manifest-path rust/Cargo.toml`
+- `cargo test --manifest-path rust/Cargo.toml openpage_error_kind_maps_variants_to_stable_strings -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml simple_openpage_error_uses_stable_kind_and_message -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml remove_legacy_session_files_deletes_only_json_entries -- --nocapture`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+- `ls -la ~/.openpage/sessions`
+
+### Current conclusions
+- 本机旧 one-shot session JSON 残留已经清掉。
+- 当前 `doctor --quick` 不再因为 legacy session JSON 报 warning。
+- 当前唯一剩余红项仍是本机浏览器路径配置：
+  - `rust/configs.ini`
+  - `browser_path=chrome`
+  - 但本机可用真实路径是 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+- 这一步仍然完全停留在 CLI/doctor/doc 外壳层，没有碰浏览器/CDP/元素真相源。
+
+### Next steps
+1. 继续看是否要把浏览器路径问题也收成一个更稳的本地外壳方案
+2. 继续收敛活跃文档与 smoke 面
+3. 做路径聚焦提交，避免把 unrelated 大 diff 一起带进去

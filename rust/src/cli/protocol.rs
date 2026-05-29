@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::OnceLock;
 
+use crate::error::OpenPageError;
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Request {
     #[serde(default)]
@@ -68,6 +70,30 @@ pub fn simple_error(kind: impl Into<String>, message: impl Into<String>) -> Valu
             "message": message.into(),
         },
     })
+}
+
+pub fn openpage_error_kind(error: &OpenPageError) -> &'static str {
+    match error {
+        OpenPageError::BrowserLaunch(_) => "browser_launch",
+        OpenPageError::BrowserOperation(_) => "browser_operation",
+        OpenPageError::PageOperation(_) => "page_operation",
+        OpenPageError::ElementNotFound(_) => "element_not_found",
+        OpenPageError::UnsupportedLocator(_) => "unsupported_locator",
+        OpenPageError::UnsupportedOperation(_) => "unsupported_operation",
+        OpenPageError::JavaScript(_) => "javascript",
+        OpenPageError::Http(_) => "http",
+        OpenPageError::Io(_) => "io",
+        OpenPageError::Timeout(_) => "timeout",
+        OpenPageError::Serialization(_) => "serialization",
+    }
+}
+
+pub fn simple_openpage_error(error: &OpenPageError) -> Value {
+    simple_error(openpage_error_kind(error), error.to_string())
+}
+
+pub fn response_openpage_error(id: Option<Value>, error: &OpenPageError) -> Response {
+    Response::error(id, openpage_error_kind(error), error.to_string())
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -277,5 +303,60 @@ mod tests {
             .as_str()
             .expect("wrapped text should be a string");
         assert!(!wrapped_text.contains("origin="));
+    }
+
+    #[test]
+    fn openpage_error_kind_maps_variants_to_stable_strings() {
+        let cases = vec![
+            (
+                OpenPageError::BrowserLaunch("x".to_string()),
+                "browser_launch",
+            ),
+            (
+                OpenPageError::BrowserOperation("x".to_string()),
+                "browser_operation",
+            ),
+            (
+                OpenPageError::PageOperation("x".to_string()),
+                "page_operation",
+            ),
+            (
+                OpenPageError::ElementNotFound("x".to_string()),
+                "element_not_found",
+            ),
+            (
+                OpenPageError::UnsupportedLocator("x".to_string()),
+                "unsupported_locator",
+            ),
+            (
+                OpenPageError::UnsupportedOperation("x".to_string()),
+                "unsupported_operation",
+            ),
+            (OpenPageError::JavaScript("x".to_string()), "javascript"),
+            (OpenPageError::Http("x".to_string()), "http"),
+            (OpenPageError::Io("x".to_string()), "io"),
+            (OpenPageError::Timeout("x".to_string()), "timeout"),
+            (
+                OpenPageError::Serialization("x".to_string()),
+                "serialization",
+            ),
+        ];
+
+        for (error, expected) in cases {
+            assert_eq!(openpage_error_kind(&error), expected);
+        }
+    }
+
+    #[test]
+    fn simple_openpage_error_uses_stable_kind_and_message() {
+        let error = OpenPageError::UnsupportedOperation("batch cannot execute serve".to_string());
+        let payload = simple_openpage_error(&error);
+
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["error"]["kind"], "unsupported_operation");
+        assert_eq!(
+            payload["error"]["message"],
+            "unsupported operation: batch cannot execute serve"
+        );
     }
 }

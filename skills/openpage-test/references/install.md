@@ -19,6 +19,7 @@ Run these first:
 ```bash
 cargo check --manifest-path rust/Cargo.toml
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick
+cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick --fix
 cargo test --manifest-path rust/Cargo.toml
 cargo check --manifest-path rust/Cargo.toml --features python-module
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor
@@ -28,6 +29,7 @@ cargo run --manifest-path rust/Cargo.toml --bin openpage -- --help
 Interpretation:
 
 - `doctor --quick` is the cheap config/environment gate.
+- `doctor --quick --fix` is the deterministic cleanup path for legacy session JSON residue from the removed one-shot CLI path.
 - full `doctor` adds a live headless browser launch smoke.
 - if full `doctor` fails with a configured `browser_path` not found, fix that before blaming the CLI transport path.
 - the repo-local smoke scripts also accept `OPENPAGE_BROWSER_PATH` and will try common PATH and macOS app-bundle locations automatically.

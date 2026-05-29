@@ -46,11 +46,8 @@ where
             Err(err) => {
                 println!(
                     "{}",
-                    protocol::format_output_json(&protocol::simple_error(
-                        "openpage",
-                        err.to_string()
-                    ))
-                    .map_err(|err| OpenPageError::Serialization(err.to_string()))?
+                    protocol::format_output_json(&protocol::simple_openpage_error(&err))
+                        .map_err(|err| OpenPageError::Serialization(err.to_string()))?
                 );
                 Ok(1)
             }
@@ -60,11 +57,8 @@ where
             Err(err) => {
                 println!(
                     "{}",
-                    protocol::format_output_json(&protocol::simple_error(
-                        "openpage",
-                        err.to_string()
-                    ))
-                    .map_err(|err| OpenPageError::Serialization(err.to_string()))?
+                    protocol::format_output_json(&protocol::simple_openpage_error(&err))
+                        .map_err(|err| OpenPageError::Serialization(err.to_string()))?
                 );
                 Ok(1)
             }
@@ -74,11 +68,8 @@ where
             Err(err) => {
                 println!(
                     "{}",
-                    protocol::format_output_json(&protocol::simple_error(
-                        "openpage",
-                        err.to_string()
-                    ))
-                    .map_err(|err| OpenPageError::Serialization(err.to_string()))?
+                    protocol::format_output_json(&protocol::simple_openpage_error(&err))
+                        .map_err(|err| OpenPageError::Serialization(err.to_string()))?
                 );
                 Ok(1)
             }

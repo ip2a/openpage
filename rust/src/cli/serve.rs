@@ -81,7 +81,7 @@ fn handle_client(stream: &mut TcpStream, runtime: Rc<RefCell<ServeRuntime>>) -> 
                 let mut runtime = runtime.borrow_mut();
                 match runtime.dispatch(request) {
                     Ok(result) => Response::ok(id, result),
-                    Err(err) => Response::error(id, "openpage", err.to_string()),
+                    Err(err) => crate::cli::protocol::response_openpage_error(id, &err),
                 }
             }
             Err(err) => Response::error(None, "invalid_json", err.to_string()),

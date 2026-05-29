@@ -822,7 +822,7 @@ fn run_batch(args: BatchArgs) -> OpenPageResult<i32> {
         let command = match parse_batch_command(&command_args) {
             Ok(command) => command,
             Err(err) => {
-                print_json(simple_error("openpage", err.to_string()))?;
+                print_json(crate::cli::protocol::simple_openpage_error(&err))?;
                 had_error = true;
                 if args.bail {
                     break;
@@ -832,7 +832,7 @@ fn run_batch(args: BatchArgs) -> OpenPageResult<i32> {
         };
 
         if let Err(err) = run_single(command) {
-            print_json(simple_error("openpage", err.to_string()))?;
+            print_json(crate::cli::protocol::simple_openpage_error(&err))?;
             had_error = true;
             if args.bail {
                 break;
