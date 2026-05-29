@@ -350,17 +350,12 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         "webpage.mode" => Ok(json!({"mode": page.mode()?.as_str()})),
         "webpage.url" => Ok(json!({"url": page.url()?})),
         "webpage.title" => Ok(json!({"title": page.title()?})),
-        "webpage.html" => {
-            let mut payload = Map::new();
-            payload.insert("html".to_string(), json!(page.html()?));
-            if let Some(origin) = current_page_origin(state) {
-                payload.insert("origin".to_string(), Value::String(origin));
-            }
-            if let Some(title) = current_page_title(state) {
-                payload.insert("title".to_string(), Value::String(title));
-            }
-            Ok(Value::Object(payload))
-        }
+        "webpage.html" => Ok(payload_with_origin_and_title(
+            "html",
+            json!(page.html()?),
+            current_page_origin(state).as_deref(),
+            current_page_title(state).as_deref(),
+        )),
         "webpage.snapshot" => snapshot_payload(state),
         "webpage.json" => Ok(json!({"json": page.json()?})),
         "webpage.cookies" => Ok(json!({"cookies": page.cookies()?})),
@@ -550,17 +545,11 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             }
             Ok(json!({"scrolled": true}))
         }
-        "webpage.run_js" | "page.run_js" => {
-            let mut payload = Map::new();
-            payload.insert(
-                "value".to_string(),
-                json!(state.run_js(required_str(params, "script")?)?),
-            );
-            if let Some(origin) = current_page_origin(state) {
-                payload.insert("origin".to_string(), Value::String(origin));
-            }
-            Ok(Value::Object(payload))
-        }
+        "webpage.run_js" | "page.run_js" => Ok(payload_with_origin(
+            "value",
+            json!(state.run_js(required_str(params, "script")?)?),
+            current_page_origin(state).as_deref(),
+        )),
         "webpage.download_url" | "page.download_url" => {
             let path = if let Some(output) = optional_str(params, "path") {
                 page.download_to(required_str(params, "url")?, output)?
@@ -602,12 +591,11 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
-            let mut payload = Map::new();
-            payload.insert("text".to_string(), Value::String(text));
-            if let Some(origin) = current_page_origin(state) {
-                payload.insert("origin".to_string(), Value::String(origin));
-            }
-            Ok(Value::Object(payload))
+            Ok(payload_with_origin(
+                "text",
+                Value::String(text),
+                current_page_origin(state).as_deref(),
+            ))
         }
         "page.find_in_page" => {
             let query = required_str(params, "text")?;
@@ -838,43 +826,25 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             state.find(&required_locator_string(params)?)?.focus()?;
             Ok(json!({"focused": true}))
         }
-        "webpage.ele.text" | "element.text" => {
-            let mut payload = Map::new();
-            payload.insert(
-                "text".to_string(),
-                json!(state.find(&required_locator_string(params)?)?.text()?),
-            );
-            if let Some(origin) = current_page_origin(state) {
-                payload.insert("origin".to_string(), Value::String(origin));
-            }
-            Ok(Value::Object(payload))
-        }
-        "webpage.ele.html" | "element.html" => {
-            let mut payload = Map::new();
-            payload.insert(
-                "html".to_string(),
-                json!(state.find(&required_locator_string(params)?)?.html()?),
-            );
-            if let Some(origin) = current_page_origin(state) {
-                payload.insert("origin".to_string(), Value::String(origin));
-            }
-            Ok(Value::Object(payload))
-        }
-        "webpage.ele.attr" | "element.attr" => {
-            let mut payload = Map::new();
-            payload.insert(
-                "value".to_string(),
-                json!(
-                    state
-                        .find(&required_locator_string(params)?)?
-                        .attr(required_str(params, "name")?)?
-                ),
-            );
-            if let Some(origin) = current_page_origin(state) {
-                payload.insert("origin".to_string(), Value::String(origin));
-            }
-            Ok(Value::Object(payload))
-        }
+        "webpage.ele.text" | "element.text" => Ok(payload_with_origin(
+            "text",
+            json!(state.find(&required_locator_string(params)?)?.text()?),
+            current_page_origin(state).as_deref(),
+        )),
+        "webpage.ele.html" | "element.html" => Ok(payload_with_origin(
+            "html",
+            json!(state.find(&required_locator_string(params)?)?.html()?),
+            current_page_origin(state).as_deref(),
+        )),
+        "webpage.ele.attr" | "element.attr" => Ok(payload_with_origin(
+            "value",
+            json!(
+                state
+                    .find(&required_locator_string(params)?)?
+                    .attr(required_str(params, "name")?)?
+            ),
+            current_page_origin(state).as_deref(),
+        )),
         "webpage.ele.click" | "element.click" => {
             state.find(&required_locator_string(params)?)?.click()?;
             Ok(json!({"clicked": true}))
@@ -1528,14 +1498,12 @@ fn snapshot_payload(state: &ServeWebPage) -> OpenPageResult<Value> {
     let origin = current_page_origin(state);
     let title = current_page_title(state);
 
-    let mut payload = Map::new();
-    payload.insert("snapshot".to_string(), snapshot.clone());
-    if let Some(origin) = origin.as_deref() {
-        payload.insert("origin".to_string(), Value::String(origin.to_string()));
-    }
-    if let Some(title) = title.as_deref() {
-        payload.insert("title".to_string(), Value::String(title.to_string()));
-    }
+    let mut payload = payload_object(
+        "snapshot",
+        snapshot.clone(),
+        origin.as_deref(),
+        title.as_deref(),
+    );
 
     if let Some(entries) = snapshot.as_array() {
         payload.insert(
@@ -1551,6 +1519,36 @@ fn snapshot_payload(state: &ServeWebPage) -> OpenPageResult<Value> {
     }
 
     Ok(Value::Object(payload))
+}
+
+fn payload_with_origin(key: &str, value: Value, origin: Option<&str>) -> Value {
+    Value::Object(payload_object(key, value, origin, None))
+}
+
+fn payload_with_origin_and_title(
+    key: &str,
+    value: Value,
+    origin: Option<&str>,
+    title: Option<&str>,
+) -> Value {
+    Value::Object(payload_object(key, value, origin, title))
+}
+
+fn payload_object(
+    key: &str,
+    value: Value,
+    origin: Option<&str>,
+    title: Option<&str>,
+) -> Map<String, Value> {
+    let mut payload = Map::new();
+    payload.insert(key.to_string(), value);
+    if let Some(origin) = origin {
+        payload.insert("origin".to_string(), Value::String(origin.to_string()));
+    }
+    if let Some(title) = title {
+        payload.insert("title".to_string(), Value::String(title.to_string()));
+    }
+    payload
 }
 
 fn current_page_origin(state: &ServeWebPage) -> Option<String> {
@@ -1722,6 +1720,42 @@ mod tests {
         assert_eq!(refs["e3"]["tag"], "a");
         assert_eq!(refs["e3"]["text"], "More");
         assert_eq!(refs["e3"]["attrs"]["href"], "https://example.com");
+    }
+
+    #[test]
+    fn payload_with_origin_includes_origin_and_value() {
+        let payload = payload_with_origin(
+            "text",
+            Value::String("hello".to_string()),
+            Some("about:blank"),
+        );
+
+        assert_eq!(payload["text"], "hello");
+        assert_eq!(payload["origin"], "about:blank");
+        assert!(payload.get("title").is_none());
+    }
+
+    #[test]
+    fn payload_with_origin_omits_empty_fields_when_missing() {
+        let payload = payload_with_origin("value", json!(true), None);
+
+        assert_eq!(payload["value"], true);
+        assert!(payload.get("origin").is_none());
+        assert!(payload.get("title").is_none());
+    }
+
+    #[test]
+    fn payload_with_origin_and_title_includes_both_fields() {
+        let payload = payload_with_origin_and_title(
+            "html",
+            Value::String("<main/>".to_string()),
+            Some("https://example.com/path"),
+            Some("Example"),
+        );
+
+        assert_eq!(payload["html"], "<main/>");
+        assert_eq!(payload["origin"], "https://example.com/path");
+        assert_eq!(payload["title"], "Example");
     }
 }
 

@@ -1007,3 +1007,58 @@
   - this is a direct AI-facing outer-shell improvement
   - it broadens the value of boundary/origin design beyond snapshot alone
   - it still does not touch browser/CDP/element truth sources
+
+
+## Local truth refresh (2026-05-30, active-surface grep + payload-helper test pass)
+- Re-audited the active CLI/user surface after the latest outer-shell changes.
+- Current grep result:
+  - no live `serve --stdio` surface found in `rust/src/cli`, `README.md`, or `skills/openpage-test/*`
+  - no live CLI-side `open_page()` / `load_session()` / `save_session()` / `Browser::connect()` execution path found in `rust/src/cli`
+  - no live old `page get / page url / page title / page screenshot` user surface found outside archived/tracking docs
+- Landed code changes in `rust/src/cli/serve.rs`:
+  - deduplicated origin/title payload construction into pure helpers:
+    - `payload_with_origin(...)`
+    - `payload_with_origin_and_title(...)`
+    - `payload_object(...)`
+  - reused those helpers for:
+    - `webpage.html`
+    - `webpage.run_js` / `page.run_js`
+    - `page.selected_text`
+    - `element.text`
+    - `element.html`
+    - `element.attr`
+    - snapshot root payload
+- Why this pass matters:
+  - it keeps the AI-facing trust-boundary/origin design centralized in the CLI/daemon shell
+  - it adds regression proof without touching browser/CDP/element truth sources
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml payload_with_origin -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml format_output_json_includes_origin_in_boundary_metadata -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml summarize_counts_info_fixable_and_total -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml existing_daemon_action_reuses_ready_matching_daemon -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml existing_daemon_action_kills_ready_version_mismatch -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml existing_daemon_action_kills_alive_unready_daemon_after_grace -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml format_snapshot_text_includes_title_origin_refs_and_attrs -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml snapshot_refs_builds_ref_index -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+- Current machine truth from this pass:
+  - `browser list` returned 5 healthy sessions:
+    - `cli-more-states-2`
+    - `cli-state-queries`
+    - `human-flow`
+    - `smoke-history2`
+    - `smoke-shot`
+  - `doctor --quick` returned:
+    - `pass=8`
+    - `warn=1`
+    - `fail=1`
+    - `info=2`
+    - `fixable=3`
+    - `total=12`
+  - the remaining fail is still `browser.executable`
+  - the remaining warn is still legacy one-shot session JSON residue under `~/.openpage/sessions`
+- Interpretation:
+  - current evidence still supports the claim that TCP daemon is the only active CLI execution truth
+  - remaining “old path” evidence is now mostly archival/tracking material, not active code or active user docs

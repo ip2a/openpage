@@ -1397,3 +1397,78 @@
 1. 继续看 `doctor.rs` / `protocol.rs` / skill docs 还有哪些小而稳的外壳设计可借
 2. 保持协议主路径只围绕 TCP daemon
 3. 继续做路径聚焦提交
+
+
+## 2026-05-30 — Session 26
+
+### Goal in focus
+- 再次核实当前本地是否还残留活跃旧协议/旧直连执行面
+- 在不碰浏览器/CDP/元素真相源的前提下，继续把 AI-facing 外壳设计收紧并补回归证据
+
+### Work completed
+- 重新读取并遵循：
+  - `karpathy-guidelines`
+  - `long-running-agent`
+  - `planning-with-files`
+- 重跑当前状态核验：
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `openpage browser list`
+  - `openpage doctor --quick`
+- 对活跃面做定点 grep：
+  - `rust/src/cli`
+  - `README.md`
+  - `skills/openpage-test/*`
+  - 结论是没有重新出现活跃 `serve --stdio`
+  - 也没有重新出现 CLI-side `open_page()` / `load_session()` / `save_session()` / `Browser::connect()`
+  - 旧 `page get / page url / page title / page screenshot` 只剩归档/跟踪材料命中
+- 修改 `rust/src/cli/serve.rs`
+  - 把页面读结果里的 origin/title payload 构造收成纯 helper：
+    - `payload_with_origin(...)`
+    - `payload_with_origin_and_title(...)`
+    - `payload_object(...)`
+  - 让这些分支统一走 helper：
+    - `webpage.html`
+    - `webpage.run_js` / `page.run_js`
+    - `page.selected_text`
+    - `element.text`
+    - `element.html`
+    - `element.attr`
+    - snapshot 根 payload
+- 新增 `serve.rs` 单测 3 个：
+  - `payload_with_origin_includes_origin_and_value`
+  - `payload_with_origin_omits_empty_fields_when_missing`
+  - `payload_with_origin_and_title_includes_both_fields`
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml payload_with_origin -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml format_output_json_includes_origin_in_boundary_metadata -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml summarize_counts_info_fixable_and_total -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml existing_daemon_action_reuses_ready_matching_daemon -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml existing_daemon_action_kills_ready_version_mismatch -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml existing_daemon_action_kills_alive_unready_daemon_after_grace -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml format_snapshot_text_includes_title_origin_refs_and_attrs -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml snapshot_refs_builds_ref_index -- --nocapture`
+- `cargo check --manifest-path rust/Cargo.toml`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+
+### Current conclusions
+- 当前证据仍支持：TCP daemon 是唯一活跃 CLI 执行真相源。
+- 剩余旧路径命中主要在归档历史报告和跟踪文件，不在活跃代码面和活跃用户文档面。
+- 这轮新增的是纯外壳层测试与轻量收口，没有碰浏览器/CDP/元素交互内核。
+- 当前本机运行态：
+  - `browser list` 返回 5 个 healthy sessions：
+    - `cli-more-states-2`
+    - `cli-state-queries`
+    - `human-flow`
+    - `smoke-history2`
+    - `smoke-shot`
+  - `doctor --quick` 仍只有 1 个 fail：
+    - `browser.executable`
+  - 同时仍有 1 个 warn：
+    - `env.legacy_sessions`
+
+### Next steps
+1. 继续沿 `doctor.rs` 收紧 machine-friendly 的 summary / fix / check 结构
+2. 评估是否把顶层 JSON error 再向竞品 `main.rs` 靠一步，但不引入第二套命令真相源
+3. 保持只在 CLI/daemon/documentation 外壳层推进，避免碰浏览器/CDP/元素真相源

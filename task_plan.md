@@ -49,7 +49,7 @@
 - **batch 批处理已完成第一版接入**：OpenPage 现在支持 `batch` 子命令，按顺序执行多条 CLI 指令；支持参数模式、stdin JSON 模式和 `--bail`，且不引入任何竞品 CDP / element / action 内核。
 - **doctor 最小版已接入**：OpenPage 现在支持 `doctor` / `doctor --quick`，会用只读方式检查环境、daemon sidecars 和浏览器启动；浏览器 launch smoke 复用的是你自己的 `LaunchOptions` / `Browser::launch`。
 - **daemon inventory 已真正接上 doctor**：`rust/src/cli/connection.rs` 里的 `daemon_inventory()` 现在不再是半成品；`rust/src/cli/doctor.rs` 已消费它，并区分 healthy session、incomplete sidecars、cleaned stale sidecars。
-- **本机现状已重新核实**：本机 `~/.openpage/daemon` 的 healthy session 数量是运行时态；2026-05-30 最新一次 `browser list` 实测为 4 个 healthy session（`cli-more-states-2`、`cli-state-queries`、`human-flow`、`smoke-history2`）；当前唯一明确失败点仍是 `rust/configs.ini` 配置的 `browser_path=chrome` 在本机不可解析。
+- **本机现状已重新核实**：本机 `~/.openpage/daemon` 的 healthy session 数量是运行时态；2026-05-30 较早一次 `browser list` 实测为 4 个 healthy session（`cli-more-states-2`、`cli-state-queries`、`human-flow`、`smoke-history2`）；当前唯一明确失败点仍是 `rust/configs.ini` 配置的 `browser_path=chrome` 在本机不可解析。
 - **doctor 的本机修复提示已补强**：当 `browser_path=chrome` 这类别名在 PATH 中找不到时，`doctor` 现在会额外探测本机常见浏览器落点；当前机器会明确提示 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 可直接写回 `rust/configs.ini`。
 - **inventory 行为已通过合成 sidecar 验证**：用临时 `OPENPAGE_HOME` 成功验证了两类行为：
   - dead + invalid sidecars 会被 `doctor --quick` 标记为 `daemon.cleaned.*`
@@ -89,7 +89,10 @@
 - **origin-aware boundary 已从 snapshot 扩到更多读操作**：当前 `webpage.html`、`page.run_js`、`page.selected_text`、`element.text/html/attr` 这类结果也会在可用时携带 `origin`，所以 `_boundary.origin` 与 wrapped marker 的 origin 现在不再只服务于 snapshot。
 - **`connection.rs` 的唯一 daemon 约束又收紧了一步**：`ensure_daemon()` 现在不再只处理“ready 但 version mismatch”的旧进程；如果发现同 session 旧进程仍存活但 TCP 端口迟迟不可用，会先给启动中的 daemon 一个短暂 ready 宽限期，宽限后仍不可用就杀掉旧进程再拉起新的 daemon，避免同 session 留下孤儿进程或并存 daemon。
 - **旧 session JSON 残留已彻底从活跃 CLI 面移除**：`rust/src/cli/oneshot.rs` 里的 `session_file()` / 本地 `openpage_home()` 以及 `browser stop` 时顺手删旧 session JSON 的逻辑都已删除，当前 CLI stop 只围绕 TCP sidecar 与 daemon shutdown。
-- **本轮运行态再次核实**：2026-05-30 最新一次 `browser list` 实测返回 5 个 healthy sessions（`cli-more-states-2`、`cli-state-queries`、`human-flow`、`smoke-alert`、`smoke-history2`）；`doctor --quick` 当前仍只有 1 个 fail（`browser.executable`）；这个 session 数量是运行时态，不应写死成仓库事实。
+- **本轮运行态再次核实**：2026-05-30 最新一次 `browser list` 实测返回 5 个 healthy sessions（`cli-more-states-2`、`cli-state-queries`、`human-flow`、`smoke-history2`、`smoke-shot`）；`doctor --quick` 当前仍只有 1 个 fail（`browser.executable`）；这个 session 数量是运行时态，不应写死成仓库事实。
+- **活跃代码面再次 grep 核实**：当前 `rust/src/cli`、`README.md` 与 `skills/openpage-test/*` 里没有重新出现活跃 `serve --stdio`、`open_page()`、`load_session()`、`save_session()`、CLI-side `Browser::connect()` 或旧 `page get/page url/page title/page screenshot` 用户面；剩余命中集中在归档历史报告与跟踪文件。
+- **`serve.rs` 的 origin 透传已收成纯 helper 并补单测**：当前 `payload_with_origin(...)` / `payload_with_origin_and_title(...)` / `payload_object(...)` 已把 `webpage.html`、`webpage.run_js`、`page.selected_text`、`element.text/html/attr` 以及 snapshot 根 payload 的 origin/title 注入逻辑集中到一处，继续停留在外壳/合约层，不碰浏览器、CDP 或元素交互真相源。
+- **本轮外壳层测试已补证据**：新增 `serve.rs` 的 payload helper 单测 3 个，并重新通过了 `protocol.rs`、`connection.rs`、`doctor.rs` 与 snapshot 文本/ref 的定向单测；`cargo check`、`browser list`、`doctor --quick` 也已再次复核当前本机状态。
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
@@ -115,4 +118,4 @@
 - 当前历史文档仍然保留大量旧事实正文，这是有意保留的回溯材料；本轮只做了显式降级标注，没有重写全文。
 
 ## Status
-**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / 文档层收。2026-05-30 本轮最新核验里：`cargo test --manifest-path rust/Cargo.toml existing_daemon_action_ -- --nocapture` 通过，`cargo check` 通过，`browser list` 最新实测返回 5 个 healthy sessions，`doctor --quick` 当前仍只有 1 个 fail（`browser.executable`）。本轮还额外修掉了一个会伤害“唯一 daemon”约束的点：旧进程活着但 TCP 不可用时，`ensure_daemon()` 现在会在短暂 ready 宽限期后杀掉旧进程再拉起新 daemon，而不是留下同 session 孤儿进程。与此同时，`oneshot.rs` 里最后那点旧 session JSON 清理残留也已经删除。下一步继续沿 `doctor.rs` 的 summary/fix 结构和根目录历史文档误导面做收敛。
+**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 本轮最新核验里：`cargo test --manifest-path rust/Cargo.toml payload_with_origin -- --nocapture`、`cargo test --manifest-path rust/Cargo.toml format_output_json_includes_origin_in_boundary_metadata -- --nocapture`、`cargo test --manifest-path rust/Cargo.toml summarize_counts_info_fixable_and_total -- --nocapture`、三条 `existing_daemon_action_*` 定向测试，以及 snapshot 文本/ref 定向测试都已通过；`cargo check` 通过；`browser list` 最新实测返回 5 个 healthy sessions；`doctor --quick` 当前仍只有 1 个 fail（`browser.executable`）。本轮继续保持不碰浏览器/CDP/元素真相源，只在 `serve.rs` 外壳层把 origin/title payload 构造收口成纯 helper 并补证据。下一步继续沿 `doctor.rs` 的 summary/fix 结构、顶层 JSON error 结构和根目录历史文档误导面做收敛。
