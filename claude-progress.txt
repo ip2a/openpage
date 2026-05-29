@@ -516,3 +516,71 @@
 1. 更新 README / skills / help / 相关文档，确保对外只表达 TCP 唯一路径和当前已借入的非-CDP 设计
 2. 评估是否要把 inventory 进一步暴露到 `browser list` 之外的用户面
 3. 做一个只包含相关文件的 checkpoint commit
+
+## 2026-05-29 — Session 8
+
+### Goal in focus
+- 清理活跃用户面的旧协议心智
+- 把 repo-local smoke 和文档统一到当前真实 CLI surface
+- 用真实运行证明这些文档/脚本同步不是纸面修改
+
+### Work completed
+- 审计当前活跃用户面：
+  - `README.md`
+  - `skills/openpage-test/SKILL.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - `skills/openpage-test/references/install.md`
+  - `skills/openpage-test/scripts/*`
+- 发现并修复以下不一致：
+  - README 未明确写出“所有 CLI 用户面共享同一 TCP daemon 执行路径”
+  - skill 文案仍把 “one-shot” 当作独立控制面
+  - old smoke script 仍使用旧命令：
+    - `page get`
+    - `page url`
+    - `page title`
+    - `page screenshot`
+- 进行了用户面统一：
+  - README 增加唯一 TCP 执行路径说明
+  - README 增加 `doctor` 的 sidecar/inventory 描述
+  - `openpage-test` skill 全部改为：
+    - raw TCP daemon
+    - named-session CLI
+    - CLI-wrapper regression
+  - 删除 `skills/openpage-test/scripts/oneshot_baidu_smoke.sh`
+  - 新增 `skills/openpage-test/scripts/named_session_baidu_smoke.sh`
+  - 更新 `serve_baidu_smoke.sh`
+  - 两个 smoke scripts 都支持：
+    - `OPENPAGE_BROWSER_PATH`
+    - 常见 PATH 名称
+    - macOS app bundle 路径自动探测
+
+### Local machine findings added this round
+- `chrome` / `google-chrome` / `chromium` 均不在 PATH
+- `/Applications/Google Chrome.app` 存在
+- 实际可用可执行文件为：
+  - `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+
+### Verification
+- `bash -n skills/openpage-test/scripts/named_session_baidu_smoke.sh`
+- `bash -n skills/openpage-test/scripts/serve_baidu_smoke.sh`
+- 真实 named-session CLI smoke：
+  - `bash skills/openpage-test/scripts/named_session_baidu_smoke.sh /tmp/openpage-cli-artifacts/review-baidu.png`
+- 真实 raw TCP daemon smoke：
+  - `bash skills/openpage-test/scripts/serve_baidu_smoke.sh /tmp/openpage-cli-artifacts/serve-baidu.png`
+- 截图文件检查：
+  - `ls -lh /tmp/openpage-cli-artifacts/review-baidu.png /tmp/openpage-cli-artifacts/serve-baidu.png`
+  - `file /tmp/openpage-cli-artifacts/review-baidu.png /tmp/openpage-cli-artifacts/serve-baidu.png`
+- 视觉检查：
+  - 直接查看 `/tmp/openpage-cli-artifacts/review-baidu.png`
+  - 确认是百度主页，不是白屏
+
+### Current conclusions
+- 活跃用户面的旧协议心智已进一步收缩。
+- repo-local smoke 现在和当前真实 CLI surface 一致。
+- 本机虽然默认 `doctor` 仍会因为 `browser_path=chrome` 失败，但真实浏览器并不缺失，只是默认配置名不对。
+- raw TCP 和 named-session CLI 两条用户面都已在当前机器上真实跑通。
+
+### Next steps
+1. 继续审计是否还有活跃用户面之外、但仍可能误导当前开发的文档需要降噪或标明 historical
+2. 评估是否把更丰富的 daemon inventory 暴露到 `browser list` 或额外命令输出
+3. 做下一次 checkpoint commit，只包含这一轮相关文件

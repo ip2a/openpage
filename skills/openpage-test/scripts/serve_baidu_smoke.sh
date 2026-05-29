@@ -13,6 +13,30 @@ export OPENPAGE_HOME="$OPENPAGE_HOME_DIR"
 SESSION="smoke"
 LOG_PATH="$(mktemp)"
 
+resolve_browser_path() {
+  if [[ -n "${OPENPAGE_BROWSER_PATH:-}" ]]; then
+    printf '%s\n' "$OPENPAGE_BROWSER_PATH"
+    return 0
+  fi
+  for candidate in chrome google-chrome chromium chromium-browser; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      command -v "$candidate"
+      return 0
+    fi
+  done
+  for candidate in \
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+    "/Applications/Chromium.app/Contents/MacOS/Chromium"; do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+BROWSER_PATH="$(resolve_browser_path || true)"
+
 cargo build --quiet --manifest-path rust/Cargo.toml --bin openpage
 rust/target/debug/openpage serve --session "$SESSION" >"$LOG_PATH" 2>&1 &
 SERVER_PID=$!
@@ -56,13 +80,17 @@ if [[ -z "$PORT" ]]; then
   exit 1
 fi
 
-python3 - <<'PY' "$PORT" "$SCREENSHOT_PATH" "$SESSION"
+python3 - <<'PY' "$PORT" "$SCREENSHOT_PATH" "$SESSION" "$BROWSER_PATH"
 import json, socket, sys
 port = int(sys.argv[1])
 path = sys.argv[2]
 session = sys.argv[3]
+browser_path = sys.argv[4]
+params = {"headless": True}
+if browser_path:
+    params["browser_path"] = browser_path
 commands = [
-    {"id":"1","op":"webpage.create","target":session,"params":{"headless":True}},
+    {"id":"1","op":"webpage.create","target":session,"params":params},
     {"id":"2","op":"webpage.get","target":session,"params":{"url":"https://www.baidu.com"}},
     {"id":"3","op":"webpage.title","target":session,"params":None},
     {"id":"4","op":"page.screenshot","target":session,"params":{"path":path}},

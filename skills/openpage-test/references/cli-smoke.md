@@ -14,23 +14,24 @@ If either of these fails, stop and report that result first.
 Latest recheck on `2026-05-29`:
 
 - `cargo check --manifest-path rust/Cargo.toml` passed
-- `openpage doctor --quick` passed its environment / daemon / config checks
-- `openpage doctor` reported a **local browser launch configuration failure**:
+- `openpage doctor --quick` currently fails at the browser executable check:
   - `browser_path=chrome`
-  - `No such file or directory (os error 2)`
+  - configured browser executable not found on PATH
+- `openpage doctor` reports the same browser executable/config failure and skips live launch after that
 
 Interpretation:
 
 - The current branch is compilable.
 - The TCP daemon path is not currently the blocked part.
-- If full `doctor` fails this way on your machine, treat it as a local browser/config problem first.
+- If `doctor --quick` or full `doctor` fails this way on your machine, treat it as a local browser/config problem first.
+- On the current macOS machine used for the latest audit, Chrome exists as an app bundle under `/Applications/Google Chrome.app`, but `chrome` is not on PATH.
 
 ## Last Successful Runtime Observations
 
 When the crate built successfully on `2026-05-29`, the following runtime behavior was confirmed:
 
 - TCP daemon path: open page, read title, save screenshot, and the screenshot is visually correct
-- one-shot named session: `browser start`, `goto`, `url`, `title`, and `screenshot` succeed through the same TCP daemon-backed control path
+- named-session CLI: `browser start`, `goto`, `url`, `title`, and `screenshot` succeed through the same TCP daemon-backed control path
 - AI-first snapshot ref flow: `snapshot` returns `@eN` refs and `click @e1` works through the daemon path
 - outer-shell borrowed features now available:
   - `batch`
@@ -41,7 +42,7 @@ Interpretation:
 
 - Rust CLI is usable without Python.
 - the TCP daemon path is the higher-confidence agent-control path.
-- one-shot CLI is being converged onto that same path.
+- named-session CLI commands now use that same TCP daemon-backed execution path.
 
 ## Preferred Smoke Test: TCP daemon
 
@@ -81,12 +82,12 @@ cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor
 
 If `doctor` says the configured browser executable cannot be found, fix that first.
 
-## Secondary Smoke Test: One-Shot Named Session
+## Secondary Smoke Test: Named-Session CLI
 
 Use the helper script:
 
 ```bash
-bash skills/openpage-test/scripts/oneshot_baidu_smoke.sh
+bash skills/openpage-test/scripts/named_session_baidu_smoke.sh
 ```
 
 Manual form:
@@ -100,9 +101,9 @@ OPENPAGE_HOME=/tmp/openpage-cli-test cargo run --manifest-path rust/Cargo.toml -
 OPENPAGE_HOME=/tmp/openpage-cli-test cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser stop --session review
 ```
 
-Known current behavior:
+Current behavior:
 
-- one-shot commands now auto-route through the TCP daemon for the migrated command set
+- named-session CLI commands now route through the same TCP daemon-backed execution path
 - if the screenshot is blank or white, count the run as failed even if `saved: true` is returned
 - `batch` can be used to collapse the same smoke into one invocation if needed
 
@@ -143,8 +144,8 @@ Rules:
   - edit `rust/configs.ini` `browser_path`
   - or install the browser so that `chrome` resolves on PATH
   - or pass `--browser-path` explicitly in smoke commands
-- one-shot failure but TCP daemon smoke passes
-  - the migration surface in `oneshot.rs` is incomplete; treat the daemon path as authoritative
+- named-session CLI failure but raw TCP daemon smoke passes
+  - treat that as a CLI-wrapper regression first, not a transport-path failure
 - screenshot saved but blank/white
   - rendering or attach context is not healthy enough for reliable automation
 - Python-only failure after Rust passes

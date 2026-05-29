@@ -53,6 +53,11 @@
 - **inventory 行为已通过合成 sidecar 验证**：用临时 `OPENPAGE_HOME` 成功验证了两类行为：
   - dead + invalid sidecars 会被 `doctor --quick` 标记为 `daemon.cleaned.*`
   - alive + missing version sidecar 会被 `doctor --quick` 标记为 `daemon.incomplete.*`
+- **活跃用户面已开始统一到唯一 TCP 心智**：README 和 repo-local `skills/openpage-test/*` 已删除 one-shot / 旧 `page get` 类表述，改为 raw TCP daemon 与 named-session CLI 这两个共享同一 TCP 执行路径的用户面。
+- **repo-local smoke 已重新跑通**：当前机器虽然 `chrome` 不在 PATH，但 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 可用；repo-local smoke scripts 已自动探测该路径，并成功跑通：
+  - named-session CLI smoke
+  - raw TCP daemon smoke
+  - 两张 Baidu 截图都已生成，且至少一张已视觉确认不是白屏
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
@@ -63,6 +68,16 @@
 - `batch` 接入为了避免“每条子命令报错后再多打一层总错误 JSON”，把 `rust/src/cli/oneshot.rs` 的返回语义调整为显式 exit code；这是外层 CLI 行为调整，不涉及浏览器/元素/CDP 内核。
 - 当前本机 `doctor` 实测表明：`OPENPAGE_HOME=/Users/yuuu/.openpage`，现存多个活跃 daemon session；当前加载到的配置里 `browser_path=chrome`，但本机并不能解析这个可执行文件，因此 `doctor --quick` 已经会直接失败，full `doctor` 也会跳过 live launch 并给出显式修复提示。
 - 一次补充的“live incomplete sidecar”脚本验证命令因为 `cargo run` 并发编译锁导致后台 `serve` 尚未写 sidecar 时就触发了 `doctor`；该次输出已判定为脚本竞态，不作为结论证据。
+- repo-local smoke scripts 原先还残留旧命令语法：
+  - `page get`
+  - `page url`
+  - `page title`
+  - `page screenshot`
+  现已统一到当前真实 CLI 语法：
+  - `goto`
+  - `url`
+  - `title`
+  - `screenshot`
 
 ## Status
-**Currently in Phase 6** - 唯一 TCP daemon 路径已经落地并通过 compile + smoke；`oneshot.rs` 旧直连执行路径已移除，output 治理、batch、doctor 这三个非-CDP 借鉴项都已经进入可运行状态，且 doctor 已开始消费更完整的 daemon inventory。下一步继续补 README/skills/help 一致性，并继续把适合的非-CDP 外壳设计往里收。
+**Currently in Phase 6** - 唯一 TCP daemon 路径已经落地并通过 compile + smoke；`oneshot.rs` 旧直连执行路径已移除，output 治理、batch、doctor 这三个非-CDP 借鉴项都已经进入可运行状态，且 doctor 已开始消费更完整的 daemon inventory。README / repo-local skills 也已开始统一到这条唯一 TCP 心智。下一步继续清剩余活跃文档和帮助面的一致性，并继续把适合的非-CDP 外壳设计往里收。

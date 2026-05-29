@@ -30,6 +30,7 @@ Interpretation:
 - `doctor --quick` is the cheap config/environment gate.
 - full `doctor` adds a live headless browser launch smoke.
 - if full `doctor` fails with a configured `browser_path` not found, fix that before blaming the CLI transport path.
+- the repo-local smoke scripts also accept `OPENPAGE_BROWSER_PATH` and will try common PATH and macOS app-bundle locations automatically.
 
 If you want a built binary instead of `cargo run`:
 

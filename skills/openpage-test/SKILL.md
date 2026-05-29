@@ -1,6 +1,6 @@
 ---
 name: openpage-test
-description: Use when verifying or debugging the local OpenPage Rust build, running CLI/browser smoke tests, checking screenshots, comparing the TCP daemon path with named one-shot sessions, or confirming the thin Python wrapper after Rust passes.
+description: Use when verifying or debugging the local OpenPage Rust build, running CLI/browser smoke tests, checking screenshots, comparing raw TCP daemon control with named-session CLI commands, or confirming the thin Python wrapper after Rust passes.
 ---
 
 # OpenPage Test
@@ -13,9 +13,9 @@ This skill is the repo-local testing playbook for OpenPage. It treats the Rust c
 
 - You need to install or build OpenPage locally.
 - You need to verify the Rust CLI can launch and control a browser without Python.
-- You need to smoke-test the TCP daemon path or named one-shot CLI sessions.
+- You need to smoke-test the TCP daemon path or named-session CLI commands.
 - You need to confirm screenshots are real page renders instead of trusting file existence alone.
-- You need to explain whether a failure is in Rust core, the TCP daemon path, or one-shot attach/navigation semantics.
+- You need to explain whether a failure is in Rust core, the TCP daemon path, the CLI wrapper layer, or Python integration.
 
 ## Workflow
 
@@ -28,10 +28,10 @@ This skill is the repo-local testing playbook for OpenPage. It treats the Rust c
    - `cargo check --manifest-path rust/Cargo.toml --features python-module`
    - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor`
    - `bash skills/openpage-test/scripts/serve_baidu_smoke.sh`
-   - `bash skills/openpage-test/scripts/oneshot_baidu_smoke.sh`
+   - `bash skills/openpage-test/scripts/named_session_baidu_smoke.sh`
 4. If any compile step fails, stop there and report the compiler error before attempting runtime smoke.
 5. Treat the TCP daemon path as the main agent-control path.
-6. Treat one-shot CLI as secondary. A navigation timeout does not automatically mean the browser failed if `url`, `title`, and a correct screenshot still succeed.
+6. Treat named-session CLI commands as a higher-level wrapper over the same TCP daemon execution path. If raw TCP and named-session CLI disagree, investigate the CLI wrapper layer first.
 7. Never trust screenshot existence alone. Always run file checks and visually inspect the image.
 8. Use `doctor` results to separate local browser/config problems from TCP daemon protocol regressions before blaming the CLI transport path.
 
@@ -43,13 +43,13 @@ This skill is the repo-local testing playbook for OpenPage. It treats the Rust c
   - Exact smoke-test commands, expected outcomes, and current failure interpretation, including `doctor`.
 - `scripts/serve_baidu_smoke.sh`
   - Deterministic TCP daemon smoke test that opens Baidu and saves a screenshot.
-- `scripts/oneshot_baidu_smoke.sh`
-  - Deterministic named-session smoke test that tolerates the known one-shot navigation timeout case and still verifies title plus screenshot.
+- `scripts/named_session_baidu_smoke.sh`
+  - Deterministic named-session CLI smoke test through the same TCP daemon-backed execution path.
 
 ## Decision Rules
 
 - Use repo scripts `./scripts/dev_install.sh` and `./scripts/run_checks.sh` only when you want the full repo workflow. They are not required for Rust-only CLI verification.
-- If the TCP daemon path and one-shot CLI disagree, trust the TCP daemon path first.
+- If raw TCP daemon control and named-session CLI disagree, treat that as a CLI-wrapper regression first.
 - If a screenshot is blank, white, or obviously not the target page, the run failed even if the CLI returned success.
 - If Rust passes and Python fails, describe that as a wrapper/integration problem instead of a Rust-core failure unless the Python path reproduces a Rust-side defect.
 
@@ -61,4 +61,4 @@ When using this skill, report:
 - pass/fail per step
 - screenshot output paths
 - whether screenshots were visually checked
-- whether a failure is Rust-core, TCP daemon, one-shot, or Python-wrapper specific
+- whether a failure is Rust-core, TCP daemon, CLI-wrapper, or Python-wrapper specific

@@ -154,6 +154,9 @@ thin debug binary:
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- --help
 ```
 
+All user-facing CLI commands now route through the same TCP daemon execution path. There is no
+separate stdio daemon mode or direct browser-execution path for the CLI surface.
+
 Long-lived agent control over the NDJSON TCP daemon:
 
 ```bash
@@ -193,6 +196,14 @@ Diagnose the local CLI environment:
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor
 ```
+
+`doctor` reports:
+
+- environment and daemon sidecar locations
+- active healthy daemon sessions
+- incomplete daemon sidecars that still point to a live daemon
+- stale daemon sidecars cleaned during the audit
+- browser executable/config and optional live launch smoke
 
 Agent-friendly output shaping for large page payloads:
 

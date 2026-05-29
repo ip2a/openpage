@@ -398,3 +398,64 @@
   - the TCP-only protocol path still holds
   - the borrowed daemon-inventory design is now materially integrated, not just staged in `connection.rs`
   - next valuable non-CDP work is docs/help/skills consistency and possibly surfacing richer inventory in more user-facing commands
+
+## User-facing consistency audit update (2026-05-29, README + repo-local skills pass)
+- After the daemon-inventory pass, the next highest-value inconsistency was in active user-facing docs and repo-local smoke scripts, not in the execution path itself.
+- Findings before this pass:
+  - `README.md` did not explicitly say that all user-facing CLI commands now share the same TCP daemon execution path
+  - `skills/openpage-test/SKILL.md` still used "one-shot" wording as if it were a distinct control mode
+  - `skills/openpage-test/scripts/oneshot_baidu_smoke.sh` still used obsolete command syntax:
+    - `page get`
+    - `page url`
+    - `page title`
+    - `page screenshot`
+  - `skills/openpage-test/references/cli-smoke.md` still described `doctor --quick` as if it passed config checks on the current machine
+- Changes made:
+  - `README.md`
+    - now explicitly states there is no separate stdio daemon mode or direct browser-execution path for the CLI surface
+    - now describes `doctor` as reporting active healthy sessions, incomplete sidecars, and cleaned stale sidecars
+  - `skills/openpage-test/SKILL.md`
+    - replaced "one-shot" wording with:
+      - raw TCP daemon control
+      - named-session CLI commands
+      - CLI-wrapper regression wording where appropriate
+  - `skills/openpage-test/references/cli-smoke.md`
+    - updated local `doctor --quick` reality
+    - updated the named-session wording
+    - clarified that current macOS machine has Chrome.app installed but `chrome` is not on PATH
+  - `skills/openpage-test/references/install.md`
+    - now mentions `OPENPAGE_BROWSER_PATH` and script auto-detection behavior
+  - `skills/openpage-test/scripts/serve_baidu_smoke.sh`
+    - now auto-detects browser path from:
+      - `OPENPAGE_BROWSER_PATH`
+      - common PATH names
+      - macOS app bundle paths
+    - forwards `browser_path` into `webpage.create`
+  - `skills/openpage-test/scripts/oneshot_baidu_smoke.sh`
+    - removed
+  - `skills/openpage-test/scripts/named_session_baidu_smoke.sh`
+    - added as the replacement
+    - uses current real CLI commands:
+      - `browser start`
+      - `goto`
+      - `url`
+      - `title`
+      - `screenshot`
+- Local machine browser-path fact confirmed during this pass:
+  - `chrome` not found on PATH
+  - `/Applications/Google Chrome.app` exists
+  - effective executable used by the updated smoke script:
+    - `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+- Real runtime verification after the pass:
+  - `bash skills/openpage-test/scripts/named_session_baidu_smoke.sh /tmp/openpage-cli-artifacts/review-baidu.png`
+  - `bash skills/openpage-test/scripts/serve_baidu_smoke.sh /tmp/openpage-cli-artifacts/serve-baidu.png`
+  - both succeeded
+  - resulting files:
+    - `/tmp/openpage-cli-artifacts/review-baidu.png`
+    - `/tmp/openpage-cli-artifacts/serve-baidu.png`
+  - `file` output showed both are valid PNG screenshots
+  - visual inspection of `/tmp/openpage-cli-artifacts/review-baidu.png` confirmed visible Baidu homepage content, not a blank screenshot
+- Interpretation:
+  - current local browser-launch issue in `doctor` is specifically the default configured executable name, not a missing browser installation
+  - repo-local smoke now compensates for that local config mismatch without changing OpenPage core launch logic
+  - active repo-local docs now better reflect the single TCP execution path
