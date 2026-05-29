@@ -56,7 +56,7 @@
 - `click-for-new-tab` smoke 第一轮失败并非协议问题，而是测试脚本仍停留在新 tab 上就去点旧页的上传控件；调整为先 `tab switch` 回原页后，后续 `click-to-upload` / `click-to-download` / `drag-in` 全部验证通过。
 - 本轮 `cargo check` 首次被 `rust/src/page.rs` 中一个现有工作树编译错误挡住：`CaptureSnapshot` 返回值从借用结果中 move 出 `String`。已做最小修复为 `.clone()`，恢复可验证状态。
 - `batch` 接入为了避免“每条子命令报错后再多打一层总错误 JSON”，把 `rust/src/cli/oneshot.rs` 的返回语义调整为显式 exit code；这是外层 CLI 行为调整，不涉及浏览器/元素/CDP 内核。
-- 当前本机 `doctor` 实测表明：`OPENPAGE_HOME=/Users/yuuu/.openpage`，现存多个活跃 daemon session；但浏览器启动检查失败，原因是当前加载到的配置里 `browser_path=chrome`，而本机该路径启动返回 `os error 2`。
+- 当前本机 `doctor` 实测表明：`OPENPAGE_HOME=/Users/yuuu/.openpage`，现存多个活跃 daemon session；当前加载到的配置里 `browser_path=chrome`，但本机并不能解析这个可执行文件，因此 `doctor --quick` 已经会直接失败，full `doctor` 也会跳过 live launch 并给出显式修复提示。
 
 ## Status
 **Currently in Phase 6** - 唯一 TCP daemon 路径已经落地并通过 compile + smoke；`oneshot.rs` 旧直连执行路径已移除，output 治理、batch、doctor 这三个非-CDP 借鉴项都已经进入可运行状态。下一步继续补更完整的 daemon 基础设施、README/skills 一致性，以及 git 收尾。

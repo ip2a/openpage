@@ -1,0 +1,151 @@
+# CLI Smoke
+
+## Current Branch Gate
+
+Before any runtime smoke, rerun:
+
+```bash
+cargo check --manifest-path rust/Cargo.toml
+cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick
+```
+
+If either of these fails, stop and report that result first.
+
+Latest recheck on `2026-05-29`:
+
+- `cargo check --manifest-path rust/Cargo.toml` passed
+- `openpage doctor --quick` passed its environment / daemon / config checks
+- `openpage doctor` reported a **local browser launch configuration failure**:
+  - `browser_path=chrome`
+  - `No such file or directory (os error 2)`
+
+Interpretation:
+
+- The current branch is compilable.
+- The TCP daemon path is not currently the blocked part.
+- If full `doctor` fails this way on your machine, treat it as a local browser/config problem first.
+
+## Last Successful Runtime Observations
+
+When the crate built successfully on `2026-05-29`, the following runtime behavior was confirmed:
+
+- TCP daemon path: open page, read title, save screenshot, and the screenshot is visually correct
+- one-shot named session: `browser start`, `goto`, `url`, `title`, and `screenshot` succeed through the same TCP daemon-backed control path
+- AI-first snapshot ref flow: `snapshot` returns `@eN` refs and `click @e1` works through the daemon path
+- outer-shell borrowed features now available:
+  - `batch`
+  - `doctor`
+  - output boundaries via `OPENPAGE_CONTENT_BOUNDARIES` / `OPENPAGE_MAX_OUTPUT_CHARS`
+
+Interpretation:
+
+- Rust CLI is usable without Python.
+- the TCP daemon path is the higher-confidence agent-control path.
+- one-shot CLI is being converged onto that same path.
+
+## Preferred Smoke Test: TCP daemon
+
+Use the helper script:
+
+```bash
+bash skills/openpage-test/scripts/serve_baidu_smoke.sh
+```
+
+Manual form:
+
+```bash
+cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --session smoke
+```
+
+Then connect over TCP and send NDJSON:
+
+```json
+{"id":"1","op":"webpage.create","target":"smoke","params":{"headless":true}}
+{"id":"2","op":"webpage.get","target":"smoke","params":{"url":"https://www.baidu.com"}}
+{"id":"3","op":"webpage.title","target":"smoke"}
+{"id":"4","op":"page.screenshot","target":"smoke","params":{"path":"/tmp/openpage-cli-artifacts/serve-baidu.png"}}
+{"id":"5","op":"daemon.shutdown"}
+```
+
+Expected result:
+
+- title includes `百度一下，你就知道`
+- screenshot exists at `/tmp/openpage-cli-artifacts/serve-baidu.png`
+- the screenshot visibly shows the Baidu homepage
+
+Before calling the daemon path broken, run:
+
+```bash
+cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor
+```
+
+If `doctor` says the configured browser executable cannot be found, fix that first.
+
+## Secondary Smoke Test: One-Shot Named Session
+
+Use the helper script:
+
+```bash
+bash skills/openpage-test/scripts/oneshot_baidu_smoke.sh
+```
+
+Manual form:
+
+```bash
+OPENPAGE_HOME=/tmp/openpage-cli-test cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start --session review --replace --headless
+OPENPAGE_HOME=/tmp/openpage-cli-test cargo run --manifest-path rust/Cargo.toml --bin openpage -- goto https://www.baidu.com --session review
+OPENPAGE_HOME=/tmp/openpage-cli-test cargo run --manifest-path rust/Cargo.toml --bin openpage -- url --session review
+OPENPAGE_HOME=/tmp/openpage-cli-test cargo run --manifest-path rust/Cargo.toml --bin openpage -- title --session review
+OPENPAGE_HOME=/tmp/openpage-cli-test cargo run --manifest-path rust/Cargo.toml --bin openpage -- screenshot /tmp/openpage-cli-artifacts/review-baidu.png --session review
+OPENPAGE_HOME=/tmp/openpage-cli-test cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser stop --session review
+```
+
+Known current behavior:
+
+- one-shot commands now auto-route through the TCP daemon for the migrated command set
+- if the screenshot is blank or white, count the run as failed even if `saved: true` is returned
+- `batch` can be used to collapse the same smoke into one invocation if needed
+
+Example:
+
+```bash
+OPENPAGE_HOME=/tmp/openpage-cli-test cargo run --manifest-path rust/Cargo.toml --bin openpage -- batch \
+  "browser start https://www.baidu.com --headless --session review" \
+  "title --session review" \
+  "screenshot /tmp/openpage-cli-artifacts/review-baidu.png --session review" \
+  "browser stop --session review"
+```
+
+## Screenshot Verification
+
+Do all three checks:
+
+```bash
+ls -lh /tmp/openpage-cli-artifacts/serve-baidu.png
+file /tmp/openpage-cli-artifacts/serve-baidu.png
+ls -lh /tmp/openpage-cli-artifacts/review-baidu.png
+file /tmp/openpage-cli-artifacts/review-baidu.png
+```
+
+Then visually inspect the images.
+
+Rules:
+
+- file exists only: not enough
+- PNG metadata looks correct: still not enough
+- visible page content matches the target site: required
+
+## Common Failure Meanings
+
+- `could not find a Chrome/Chromium executable`
+  - pass `--browser-path` to `browser start` or `webpage.create`
+- `doctor` says `Configured browser executable "chrome" was not found`
+  - edit `rust/configs.ini` `browser_path`
+  - or install the browser so that `chrome` resolves on PATH
+  - or pass `--browser-path` explicitly in smoke commands
+- one-shot failure but TCP daemon smoke passes
+  - the migration surface in `oneshot.rs` is incomplete; treat the daemon path as authoritative
+- screenshot saved but blank/white
+  - rendering or attach context is not healthy enough for reliable automation
+- Python-only failure after Rust passes
+  - wrapper/install path needs work; do not call it a Rust-core failure by default

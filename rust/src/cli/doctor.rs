@@ -290,6 +290,43 @@ fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
         }
     };
 
+    let browser_path = {
+        let value = options.browser_path();
+        if value.is_empty() {
+            "<default>".to_string()
+        } else {
+            value
+        }
+    };
+    let browser_exec = resolve_browser_executable(&browser_path);
+    match &browser_exec {
+        BrowserExecutable::Default => checks.push(Check::new(
+            "browser.executable",
+            category,
+            Status::Info,
+            "No explicit browser_path configured; live launch will rely on built-in browser resolution",
+        )),
+        BrowserExecutable::Found(path) => checks.push(Check::new(
+            "browser.executable",
+            category,
+            Status::Pass,
+            format!(
+                "Configured browser executable `{}` resolves to {}",
+                browser_path,
+                path.display()
+            ),
+        )),
+        BrowserExecutable::Missing => checks.push(Check::new(
+            "browser.executable",
+            category,
+            Status::Fail,
+            format!(
+                "Configured browser executable `{}` was not found. Update rust/configs.ini browser_path, install the browser on PATH, or pass --browser-path explicitly.",
+                browser_path
+            ),
+        )),
+    }
+
     if quick {
         checks.push(Check::new(
             "browser.launch",
@@ -300,16 +337,18 @@ fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
         return;
     }
 
+    if matches!(browser_exec, BrowserExecutable::Missing) {
+        checks.push(Check::new(
+            "browser.launch",
+            category,
+            Status::Info,
+            "Skipped live browser launch because the configured browser executable was not found",
+        ));
+        return;
+    }
+
     let temp_dir = doctor_temp_dir("launch");
     let mut launch = options;
-    let browser_path = {
-        let value = launch.browser_path();
-        if value.is_empty() {
-            "<default>".to_string()
-        } else {
-            value
-        }
-    };
     launch.headless(true);
     launch.auto_port(true);
     launch.new_env(true);
@@ -385,4 +424,52 @@ fn doctor_temp_dir(label: &str) -> PathBuf {
         "openpage-doctor-{label}-{}-{unique}",
         std::process::id()
     ))
+}
+
+enum BrowserExecutable {
+    Default,
+    Found(PathBuf),
+    Missing,
+}
+
+fn resolve_browser_executable(browser_path: &str) -> BrowserExecutable {
+    if browser_path.is_empty() || browser_path == "<default>" {
+        return BrowserExecutable::Default;
+    }
+
+    let path = Path::new(browser_path);
+    if path.is_absolute() || path.components().count() > 1 {
+        return if path.exists() {
+            BrowserExecutable::Found(path.to_path_buf())
+        } else {
+            BrowserExecutable::Missing
+        };
+    }
+
+    if let Some(found) = find_in_path(browser_path) {
+        return BrowserExecutable::Found(found);
+    }
+
+    BrowserExecutable::Missing
+}
+
+fn find_in_path(executable: &str) -> Option<PathBuf> {
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join(executable);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+
+        #[cfg(windows)]
+        {
+            for suffix in [".exe", ".cmd", ".bat"] {
+                let candidate = dir.join(format!("{executable}{suffix}"));
+                if candidate.exists() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+    None
 }

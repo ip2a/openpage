@@ -340,10 +340,10 @@
     - `browser_path=chrome`
     - `headless=false`
     - `auto_port=false`
-  - full launch smoke currently fails with:
-    - `browser launch failed: No such file or directory (os error 2)`
-  - this is now surfaced more explicitly as:
-    - `Headless browser launch failed with browser_path=chrome: ...`
+  - doctor now resolves browser executables before launch:
+    - current result: configured executable `chrome` was not found
+  - `doctor --quick` therefore now fails at the config/executable layer already
+  - full `doctor` skips live launch after that failure instead of emitting a second redundant launch error
 - Interpretation:
   - the CLI/daemon path is healthy
   - the current local browser-launch issue is environmental/configurational, not a protocol-regression signal

@@ -426,8 +426,11 @@
   - `browser_path=chrome`
   - `headless=false`
   - `auto_port=false`
-- 当前 full doctor 的关键失败点：
-  - `Headless browser launch failed with browser_path=chrome: browser launch failed: No such file or directory (os error 2)`
+- 当前 doctor 的关键失败点已经前移为：
+  - `Configured browser executable 'chrome' was not found`
+- 因此：
+  - `doctor --quick` 已经会直接失败
+  - full `doctor` 会跳过 live launch，而不是再报一层重复 launch 错误
 
 ### Current conclusions
 - `doctor` 已作为第三个明确的非-CDP 借鉴项落地：

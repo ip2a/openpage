@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenPage Test"
+  short_description: "Install and verify local OpenPage Rust CLI"
+  default_prompt: "Use $openpage-test to install the local OpenPage Rust build and verify CLI/browser behavior."
