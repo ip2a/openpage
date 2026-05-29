@@ -2117,4 +2117,52 @@ mod tests {
     fn parses_serve_port() {
         Cli::try_parse_from(["openpage", "serve", "--port", "9876"]).unwrap();
     }
+
+    #[test]
+    fn rejects_serve_stdio_flag() {
+        assert!(
+            Cli::try_parse_from(["openpage", "serve", "--stdio"]).is_err(),
+            "serve --stdio should remain rejected so TCP stays the only active daemon protocol"
+        );
+    }
+
+    #[test]
+    fn rejects_legacy_page_get_command() {
+        assert!(
+            Cli::try_parse_from(["openpage", "page", "get", "https://example.com"]).is_err(),
+            "legacy page get command should remain rejected"
+        );
+    }
+
+    #[test]
+    fn rejects_legacy_page_url_command() {
+        assert!(
+            Cli::try_parse_from(["openpage", "page", "url", "--session", "agent"]).is_err(),
+            "legacy page url command should remain rejected"
+        );
+    }
+
+    #[test]
+    fn rejects_legacy_page_title_command() {
+        assert!(
+            Cli::try_parse_from(["openpage", "page", "title", "--session", "agent"]).is_err(),
+            "legacy page title command should remain rejected"
+        );
+    }
+
+    #[test]
+    fn rejects_legacy_page_screenshot_command() {
+        assert!(
+            Cli::try_parse_from([
+                "openpage",
+                "page",
+                "screenshot",
+                "shot.png",
+                "--session",
+                "agent",
+            ])
+            .is_err(),
+            "legacy page screenshot command should remain rejected"
+        );
+    }
 }

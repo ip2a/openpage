@@ -1102,3 +1102,35 @@
     - doctor section now mentions actionable summary id lists
 - Interpretation:
   - this makes `doctor` more useful as the canonical local-state audit entrypoint while keeping the implementation fully outside browser/CDP/element truth sources
+
+
+## Local truth refresh (2026-05-30, deprecated-cli rejection guard pass)
+- This pass focused on making the “unique active protocol surface” claim testable, not just documented.
+- Motivation:
+  - active-surface grep already showed no live `serve --stdio` or old `page *` user surface
+  - but grep alone is soft evidence; a later parser change could accidentally reintroduce those legacy entrypoints
+- Landed code changes in `rust/src/cli/oneshot.rs` tests:
+  - added parser rejection tests for:
+    - `serve --stdio`
+    - `page get`
+    - `page url`
+    - `page title`
+    - `page screenshot`
+- Why this is aligned:
+  - it directly protects the “TCP daemon is the only active CLI execution truth” invariant
+  - it still does not touch browser/CDP/element truth sources
+  - it turns a historical migration claim into executable regression coverage
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml rejects_serve_stdio_flag -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rejects_legacy_page_get_command -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rejects_legacy_page_url_command -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rejects_legacy_page_title_command -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rejects_legacy_page_screenshot_command -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Active-doc sync in the same pass:
+  - `README.md`
+    - now explicitly states these removed legacy surfaces are intentionally rejected
+  - `skills/openpage-test/references/cli-smoke.md`
+    - now explicitly states the same and ties it to parser tests
+- Interpretation:
+  - current evidence is now stronger than grep-only evidence: the removed protocol/command surfaces are both absent from the active user surface and actively guarded by parser tests

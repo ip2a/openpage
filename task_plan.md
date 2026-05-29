@@ -95,6 +95,13 @@
 - **本轮外壳层测试已补证据**：新增 `serve.rs` 的 payload helper 单测 3 个，并重新通过了 `protocol.rs`、`connection.rs`、`doctor.rs` 与 snapshot 文本/ref 的定向单测；`cargo check`、`browser list`、`doctor --quick` 也已再次复核当前本机状态。
 - **`doctor.rs` 的 machine-friendly summary 又向竞品靠了一步**：当前 `summary` 不只返回计数，还会稳定返回 `warn_ids` / `fail_ids` / `info_ids` / `fixable_ids`，这样脚本和 agent 不必再重扫全部 `checks` 才知道当前本机究竟卡在哪些检查项上。
 - **活跃 smoke 文档已同步当前本机真相**：`skills/openpage-test/references/cli-smoke.md` 已从 4 个 healthy sessions 更新到 5 个，并写明 `doctor --quick` 的 actionable summary id 列表；`README.md` 的 doctor 段也已补上这一点。
+- **唯一协议的 parser 回归护栏已补上**：当前 `rust/src/cli/oneshot.rs` 已新增拒绝测试，明确保证这些废弃入口继续 parse 失败：
+  - `serve --stdio`
+  - `page get`
+  - `page url`
+  - `page title`
+  - `page screenshot`
+- **活跃文档也已明确“这些旧入口是有意拒绝”的当前真相**：`README.md` 与 `skills/openpage-test/references/cli-smoke.md` 现在都写明旧 `page *` 和 `serve --stdio` 不是遗漏，而是被明确移除并由测试守住的废弃面。
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
@@ -120,4 +127,4 @@
 - 当前历史文档仍然保留大量旧事实正文，这是有意保留的回溯材料；本轮只做了显式降级标注，没有重写全文。
 
 ## Status
-**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 本轮最新核验里：`cargo test --manifest-path rust/Cargo.toml summarize_counts_info_fixable_and_total -- --nocapture` 已验证新的 summary id 列表；`cargo check` 通过；`browser list` 当前仍返回 5 个 healthy sessions；`doctor --quick` 当前仍只有 1 个 fail（`browser.executable`），但 summary 现在会直接暴露 `fail_ids=["browser.executable"]`、`warn_ids=["env.legacy_sessions"]` 等可操作字段。本轮继续保持不碰浏览器/CDP/元素真相源，只在 `doctor.rs` 和活跃 smoke/docs 面继续收紧当前真相。下一步继续沿 `doctor.rs` 的 summary/fix 结构、顶层 JSON error 结构和根目录历史文档误导面做收敛。
+**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 本轮最新核验里：5 条废弃 CLI surface 拒绝测试都已通过；`cargo check` 通过；`browser list` 当前仍返回 5 个 healthy sessions；`doctor --quick` 当前仍只有 1 个 fail（`browser.executable`），并且 summary 会直接暴露 `fail_ids=["browser.executable"]`、`warn_ids=["env.legacy_sessions"]` 等可操作字段。本轮继续保持不碰浏览器/CDP/元素真相源，只在 CLI parser 护栏、`doctor.rs` 和活跃 smoke/docs 面继续收紧当前真相。下一步继续沿顶层 JSON error 结构和根目录历史文档误导面做收敛。

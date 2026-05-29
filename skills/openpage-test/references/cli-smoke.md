@@ -35,6 +35,12 @@ Interpretation:
 - Session count is runtime state, not a repository invariant. Treat the current `browser list` output as authoritative, not any older hard-coded count in notes.
 - If `doctor --quick` or full `doctor` fails this way on your machine, treat it as a local browser/config problem first.
 - On the current macOS machine used for the latest audit, Chrome exists as an app bundle under `/Applications/Google Chrome.app`, but `chrome` is not on PATH.
+- The removed legacy CLI surfaces are intentionally rejected and now have parser tests:
+  - `serve --stdio`
+  - `page get`
+  - `page url`
+  - `page title`
+  - `page screenshot`
 
 ## Last Successful Runtime Observations
 

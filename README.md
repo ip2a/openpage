@@ -203,6 +203,14 @@ cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor
 ```
 
+The current CLI intentionally rejects the removed legacy surfaces:
+
+- `serve --stdio`
+- `page get`
+- `page url`
+- `page title`
+- `page screenshot`
+
 `doctor` reports:
 
 - environment and daemon sidecar locations

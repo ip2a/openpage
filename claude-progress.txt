@@ -1517,3 +1517,45 @@
 1. 继续评估是否把顶层 CLI JSON error 结构再向竞品 `main.rs` 靠一步
 2. 继续清点是否还有活跃文档面落后于当前 TCP-only 真相
 3. 继续保持路径聚焦提交
+
+
+## 2026-05-30 — Session 28
+
+### Goal in focus
+- 给“唯一 TCP 协议主路径”补更硬的 parser 回归护栏
+- 同步活跃文档，明确旧入口是“有意拒绝”而不是单纯未记录
+
+### Work completed
+- 审计当前 CLI parse tests 与活跃面 grep
+  - 结论：活跃面已无旧 `page *` 与 `serve --stdio`，但还缺回归测试
+- 修改 `rust/src/cli/oneshot.rs` 测试块
+  - 新增拒绝测试：
+    - `rejects_serve_stdio_flag`
+    - `rejects_legacy_page_get_command`
+    - `rejects_legacy_page_url_command`
+    - `rejects_legacy_page_title_command`
+    - `rejects_legacy_page_screenshot_command`
+- 更新活跃文档：
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - 两处都明确写了这些旧 surface 是 intentionally rejected
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml rejects_serve_stdio_flag -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml rejects_legacy_page_get_command -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml rejects_legacy_page_url_command -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml rejects_legacy_page_title_command -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml rejects_legacy_page_screenshot_command -- --nocapture`
+- `cargo check --manifest-path rust/Cargo.toml`
+
+### Current conclusions
+- 现在“唯一活跃协议面”不再只是 grep 审计结论，也有 parser 层的回归护栏。
+- 这轮仍然没有碰浏览器/CDP/元素真相源。
+- 当前下一步的高价值外壳层方向，仍然是：
+  - 顶层 JSON error 结构
+  - 活跃文档面误导项继续清零
+
+### Next steps
+1. 继续评估顶层 CLI JSON error 是否要补 `type` / 更稳定分类
+2. 继续做活跃文档面的定点真相同步
+3. 继续保持路径聚焦提交
