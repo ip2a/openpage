@@ -50,6 +50,7 @@
 - **doctor 最小版已接入**：OpenPage 现在支持 `doctor` / `doctor --quick`，会用只读方式检查环境、daemon sidecars 和浏览器启动；浏览器 launch smoke 复用的是你自己的 `LaunchOptions` / `Browser::launch`。
 - **daemon inventory 已真正接上 doctor**：`rust/src/cli/connection.rs` 里的 `daemon_inventory()` 现在不再是半成品；`rust/src/cli/doctor.rs` 已消费它，并区分 healthy session、incomplete sidecars、cleaned stale sidecars。
 - **本机现状已重新核实**：本机 `~/.openpage/daemon` 当前有 3 个 healthy session（`cli-more-states-2`、`cli-state-queries`、`human-flow`）；当前唯一明确失败点仍是 `rust/configs.ini` 配置的 `browser_path=chrome` 在本机不可解析。
+- **doctor 的本机修复提示已补强**：当 `browser_path=chrome` 这类别名在 PATH 中找不到时，`doctor` 现在会额外探测本机常见浏览器落点；当前机器会明确提示 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 可直接写回 `rust/configs.ini`。
 - **inventory 行为已通过合成 sidecar 验证**：用临时 `OPENPAGE_HOME` 成功验证了两类行为：
   - dead + invalid sidecars 会被 `doctor --quick` 标记为 `daemon.cleaned.*`
   - alive + missing version sidecar 会被 `doctor --quick` 标记为 `daemon.incomplete.*`
@@ -70,6 +71,11 @@
   - `title`（可用时）
   - `interactive_count`
   且 `text` 会自动走现有 `OPENPAGE_CONTENT_BOUNDARIES` / `OPENPAGE_MAX_OUTPUT_CHARS` 输出治理链路。
+- **历史迁移文档已降级标注**：`rust_progress_report.md` 和 `协议迁移审计-v1.md` 顶部都已加“历史文档说明”，避免后续会话把旧的 `serve --stdio` / one-shot 事实误当成当前真相。
+- **竞品借鉴文档已落盘**：根目录 `竞品文档-考虑借鉴的部分v1.md` 现在明确列出了三类内容：
+  - OpenPage 当前本地现状
+  - 可直接 copy 的非-CDP 借鉴点
+  - 明确禁止借用的竞品内核范围
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
@@ -92,6 +98,7 @@
   - `screenshot`
 - `browser list` 原先只暴露 healthy sessions，无法直接把 `daemon_inventory()` 的 `incomplete` / `cleaned` 带给用户；现已做加法式修正。
 - `snapshot` 原先只返回 `snapshot` 数组，缺少面向 agent 的文本摘要和 ref 索引；现已在不修改内部元素/CDP 实现的前提下补到 CLI/daemon 合约层。
+- 当前历史文档仍然保留大量旧事实正文，这是有意保留的回溯材料；本轮只做了显式降级标注，没有重写全文。
 
 ## Status
-**Currently in Phase 6** - 唯一 TCP daemon 路径已经落地并通过 compile + smoke；`oneshot.rs` 旧直连执行路径已移除，output 治理、batch、doctor 这三个非-CDP 借鉴项都已经进入可运行状态，且 doctor 与 `browser list` 都开始消费更完整的 daemon inventory。README / repo-local skills 也已开始统一到这条唯一 TCP 心智；snapshot 的 AI-first contract 也已向竞品靠拢，但仍保持内部浏览器/CDP/元素实现不变。下一步继续清剩余活跃文档和帮助面的一致性，并继续把适合的非-CDP 外壳设计往里收。
+**Currently in Phase 7** - 唯一 TCP daemon 路径已稳定，当前主要工作变成两类：一是继续清掉仍会误导后续会话的历史/帮助面噪音，二是继续把竞品里对 OpenPage 友好的非-CDP 外壳设计往里收。本轮除了补强 doctor 的本机浏览器修复提示、降级高风险历史文档外，还把“该借什么 / 不该借什么 / 当前本地已到哪一步”固化到了 `竞品文档-考虑借鉴的部分v1.md`。下一步优先考虑两个小而实的接入点：`protocol.rs` 的 CSPRNG boundary nonce，以及 `doctor.rs` 的 check/fix 框架继续对齐。

@@ -259,6 +259,46 @@
   - `.map(|result| result.data.clone())`
 - This was not part of the protocol design work itself, but it was required to restore a verifiable compile state for the current worktree
 
+## Borrowed non-CDP design audit update (2026-05-29, doctor local-path hint pass)
+- Current machine facts re-verified:
+  - `OPENPAGE_HOME=/Users/yuuu/.openpage`
+  - healthy daemon sessions:
+    - `cli-more-states-2`
+    - `cli-state-queries`
+    - `human-flow`
+  - repo config still loads `browser_path=chrome` from `rust/configs.ini`
+  - this machine does **not** resolve `chrome` on PATH
+  - this machine **does** have:
+    - `/Applications/Google Chrome.app`
+    - `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+- Code change made in `rust/src/cli/doctor.rs`:
+  - when configured `browser_path` is missing, doctor now probes common local browser candidates
+  - for the current macOS machine, `doctor --quick` now returns:
+    - the existing `browser.executable` failure
+    - plus an explicit `browser.executable.hint`
+    - with the exact local path that should work
+- This is intentionally only a **diagnostic / outer-shell** improvement:
+  - it does not change OpenPage browser/CDP/element internals
+  - it does not hardcode repo config to a macOS-specific absolute path
+  - it keeps the current config problem visible instead of silently masking it
+- Verification:
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo test --manifest-path rust/Cargo.toml suggested_browser_executable -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml missing_browser_message_includes_hint_when_present -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+
+## Historical-doc noise reduction update (2026-05-29)
+- Two high-risk historical docs were left in place but explicitly downgraded at the top:
+  - `rust_progress_report.md`
+  - `协议迁移审计-v1.md`
+- Reason:
+  - both still contain large amounts of now-obsolete truth such as:
+    - `serve --stdio`
+    - one-shot attach as main path
+    - old `page get/page url/page title/page screenshot`
+  - deleting or fully rewriting them this turn would be broader than necessary
+  - a prominent historical banner prevents future sessions from mistaking them for current authority
+
 ## Borrowed non-CDP design audit update (2026-05-29, batch pass)
 - `agent-browser`'s next most transferable outer-shell feature after output governance was `batch`
 - OpenPage's current clap-based CLI has no global `Flags` layer, which simplified one design decision:
@@ -556,3 +596,19 @@
   - this is a good example of “borrow outer-shell design, keep internal truth source”
   - no competitor CDP / snapshot tree / element model was imported
   - but the user-facing snapshot contract is now materially more agent-friendly
+
+## Competitor borrow matrix update (2026-05-29, doc pass)
+- Wrote root deliverable: `竞品文档-考虑借鉴的部分v1.md`
+- The document now records, in one place:
+  - current OpenPage local status against the 3 user constraints
+  - file-level mapping from `agent-browser` borrow targets to OpenPage landing points
+  - explicit allow / do-not-copy boundary
+- Current highest-confidence “copy next” targets remain:
+  - `参考项目/agent-browser-main/cli/src/output.rs` → stronger CSPRNG boundary nonce for `rust/src/cli/protocol.rs`
+  - `参考项目/agent-browser-main/cli/src/doctor/mod.rs` and `cli/src/doctor/launch.rs` → richer `Check/fix/summary` structure for `rust/src/cli/doctor.rs`
+  - `参考项目/agent-browser-main/skill-data/core/references/{snapshot-refs,session-management,trust-boundaries}.md` → OpenPage skill / agent-usage docs
+- Explicit non-borrow boundary remains unchanged:
+  - do not copy `参考项目/agent-browser-main/cli/src/native/*`
+  - do not copy competitor CDP / element / interaction internals
+  - do not let outer-shell borrowing leak into `rust/src/browser.rs` or page/element truth sources
+

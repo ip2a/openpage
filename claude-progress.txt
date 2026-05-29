@@ -259,6 +259,56 @@
 ## 2026-05-29 — Session 4
 
 ### Goal in focus
+- 继续做“唯一 TCP 路径 + 非 CDP 外壳借鉴”的后续收口
+- 优先解决会影响后续会话判断的两类噪音：
+  - 本机浏览器解析失败但修复路径不够明确
+  - 历史文档仍然陈列旧协议事实，容易误导
+
+### Work completed
+- 重新核实本机当前事实：
+  - `OPENPAGE_HOME=/Users/yuuu/.openpage`
+  - healthy daemon sessions:
+    - `cli-more-states-2`
+    - `cli-state-queries`
+    - `human-flow`
+  - `rust/configs.ini` 当前仍是 `browser_path=chrome`
+  - 本机没有 `chrome` 命令，但存在：
+    - `/Applications/Google Chrome.app`
+    - `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+- 补强 `rust/src/cli/doctor.rs`
+  - 当 `browser_path` 是 `chrome/google-chrome/chromium` 这类别名、且 PATH 解析失败时
+  - doctor 现在会探测本机常见浏览器候选路径
+  - 对当前机器会额外输出：
+    - `browser.executable.hint`
+    - 明确建议把 `rust/configs.ini browser_path` 改成 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+- 为避免后续会话误判当前实现状态，给两份高风险历史文档加了顶部降级说明：
+  - `rust_progress_report.md`
+  - `协议迁移审计-v1.md`
+  - 明确标注这些文档包含迁移前的旧事实，仅用于回溯
+
+### Verification
+- `cargo check --manifest-path rust/Cargo.toml`
+- `cargo test --manifest-path rust/Cargo.toml suggested_browser_executable -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml missing_browser_message_includes_hint_when_present -- --nocapture`
+- `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - 结果仍正确失败于 `browser_path=chrome` 不可解析
+  - 但现在会额外输出本机可用候选路径提示
+
+### Current conclusions
+- 当前代码层面，“唯一 TCP daemon 路径”继续保持成立；新发现的问题不在协议层，而在：
+  1. 历史文档噪音
+  2. 本机浏览器路径诊断体验
+- 本轮改动仍然只在外围外壳层：
+  - doctor 诊断
+  - 文档降级标识
+- 没有引入竞品 CDP / element / interaction 内核实现
+
+### Next steps
+1. 继续审计剩余会误导当前实现状态的帮助面 / 文档
+2. 选择下一项纯外壳借鉴点继续接入
+3. 做本轮 git checkpoint，只提交与 doctor / 历史文档降级 / 进度文件相关的改动
+
+### Goal in focus
 - 继续接入竞品可借鉴的非-CDP 设计
 - 先完成一个最小但真实的接入批次：让 output 治理真正进入 OpenPage CLI 的统一 JSON 输出路径
 - 保持 TCP daemon 唯一路径结论不被回退
@@ -689,3 +739,52 @@
 1. 继续审计剩余历史文档，标注 historical 或降噪
 2. 继续找下一批最值得借的非-CDP 外壳设计
 3. 做下一次 checkpoint commit
+
+## 2026-05-29 — Session 11
+
+### Goal in focus
+- 把竞品调研从散落的 notes / task_plan 结论，收敛成一个后续可以直接执行的借鉴文档
+- 文档里要明确三件事：
+  - OpenPage 本地当前状态到底是什么
+  - 哪些竞品代码可以直接 copy 再微调
+  - 哪些部分明确不要借
+
+### Work completed
+- 重写根目录交付件：`竞品文档-考虑借鉴的部分v1.md`
+- 文档现在显式包含：
+  - OpenPage 对三条核心约束的本地现状核对
+  - 当前机器的浏览器/daemon 事实
+  - P0/P1/P2 借鉴优先级矩阵
+  - file-level mapping：竞品文件 → OpenPage 落点
+  - allow-copy / do-not-copy 的明确边界
+- 文档里已经把最值得继续接入的两个小项定死：
+  - `rust/src/cli/protocol.rs` 的 boundary nonce 改成 CSPRNG
+  - `rust/src/cli/doctor.rs` 继续向 `Check/fix/LaunchGuard` 结构收敛
+
+### Verification
+- 重新核对当前本地文件：
+  - `rust/src/cli/connection.rs`
+  - `rust/src/cli/serve.rs`
+  - `rust/src/cli/protocol.rs`
+  - `rust/src/cli/doctor.rs`
+  - `rust/src/cli/oneshot.rs`
+  - `rust/src/cli/args.rs`
+- 重新核对竞品文件：
+  - `参考项目/agent-browser-main/cli/src/connection.rs`
+  - `参考项目/agent-browser-main/cli/src/doctor/*.rs`
+  - `参考项目/agent-browser-main/cli/src/output.rs`
+  - `参考项目/agent-browser-main/cli/src/main.rs`
+  - `参考项目/agent-browser-main/skill-data/core/*`
+
+### Current conclusions
+- 当前最重要的协议方向判断没有变化：TCP-only 是对的。
+- 当前最重要的借鉴边界也没有变化：借外壳，不借内核。
+- 后续如果要继续落代码，最值的是两个小而稳的点：
+  - output nonce
+  - doctor check/fix 框架
+
+### Next steps
+1. 如果继续落代码，优先做 `protocol.rs` 的 CSPRNG nonce
+2. 然后继续把 `doctor.rs` 向竞品框架收紧，但先不动破坏性 fix 行为
+3. 再补 OpenPage 自己的 trust-boundary / snapshot-refs / session-management 文档
+

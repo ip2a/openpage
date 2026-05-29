@@ -324,6 +324,7 @@ fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
         }
     };
     let browser_exec = resolve_browser_executable(&browser_path);
+    let browser_hint = suggested_browser_executable(&browser_path);
     match &browser_exec {
         BrowserExecutable::Default => checks.push(Check::new(
             "browser.executable",
@@ -345,11 +346,22 @@ fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
             "browser.executable",
             category,
             Status::Fail,
-            format!(
-                "Configured browser executable `{}` was not found. Update rust/configs.ini browser_path, install the browser on PATH, or pass --browser-path explicitly.",
-                browser_path
-            ),
+            missing_browser_message(&browser_path, browser_hint.as_deref()),
         )),
+    }
+
+    if matches!(browser_exec, BrowserExecutable::Missing) {
+        if let Some(path) = browser_hint.as_ref() {
+            checks.push(Check::new(
+                "browser.executable.hint",
+                category,
+                Status::Info,
+                format!(
+                    "Local browser candidate found at {}. Setting rust/configs.ini browser_path to this absolute path should work on this machine.",
+                    path.display()
+                ),
+            ));
+        }
     }
 
     if quick {
@@ -367,7 +379,16 @@ fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
             "browser.launch",
             category,
             Status::Info,
-            "Skipped live browser launch because the configured browser executable was not found",
+            match browser_hint.as_ref() {
+                Some(path) => format!(
+                    "Skipped live browser launch because the configured browser executable was not found. Local candidate: {}",
+                    path.display()
+                ),
+                None => {
+                    "Skipped live browser launch because the configured browser executable was not found"
+                        .to_string()
+                }
+            },
         ));
         return;
     }
@@ -440,6 +461,20 @@ enum BrowserExecutable {
     Missing,
 }
 
+fn missing_browser_message(browser_path: &str, hint: Option<&Path>) -> String {
+    match hint {
+        Some(path) => format!(
+            "Configured browser executable `{}` was not found. Update rust/configs.ini browser_path to {}, install the browser on PATH, or pass --browser-path explicitly.",
+            browser_path,
+            path.display()
+        ),
+        None => format!(
+            "Configured browser executable `{}` was not found. Update rust/configs.ini browser_path, install the browser on PATH, or pass --browser-path explicitly.",
+            browser_path
+        ),
+    }
+}
+
 fn resolve_browser_executable(browser_path: &str) -> BrowserExecutable {
     if browser_path.is_empty() || browser_path == "<default>" {
         return BrowserExecutable::Default;
@@ -461,6 +496,63 @@ fn resolve_browser_executable(browser_path: &str) -> BrowserExecutable {
     BrowserExecutable::Missing
 }
 
+fn suggested_browser_executable(browser_path: &str) -> Option<PathBuf> {
+    suggested_browser_executable_from_known_paths(browser_path, common_browser_candidates())
+}
+
+fn suggested_browser_executable_from_known_paths(
+    browser_path: &str,
+    candidates: Vec<PathBuf>,
+) -> Option<PathBuf> {
+    if browser_path.is_empty() || browser_path == "<default>" {
+        return None;
+    }
+
+    if browser_path.contains(std::path::MAIN_SEPARATOR) {
+        return None;
+    }
+
+    let normalized = browser_path.trim().to_ascii_lowercase();
+    if !matches!(
+        normalized.as_str(),
+        "chrome" | "google-chrome" | "google chrome" | "chromium" | "chromium-browser"
+    ) {
+        return None;
+    }
+
+    candidates.into_iter().find(|path| path.exists())
+}
+
+fn common_browser_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    #[cfg(target_os = "macos")]
+    {
+        candidates.push(
+            PathBuf::from("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+        );
+        candidates.push(
+            PathBuf::from(
+                "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+            ),
+        );
+
+        if let Some(home) = std::env::var_os("HOME") {
+            let home = PathBuf::from(home);
+            candidates.push(
+                home.join(
+                    "Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                ),
+            );
+            candidates.push(home.join(
+                "Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+            ));
+        }
+    }
+
+    candidates
+}
+
 fn find_in_path(executable: &str) -> Option<PathBuf> {
     let path_var = std::env::var_os("PATH")?;
     for dir in std::env::split_paths(&path_var) {
@@ -480,4 +572,50 @@ fn find_in_path(executable: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{missing_browser_message, suggested_browser_executable_from_known_paths};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn missing_browser_message_includes_hint_when_present() {
+        let hint = PathBuf::from("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
+        let message = missing_browser_message("chrome", Some(hint.as_path()));
+        assert!(message.contains("chrome"));
+        assert!(message.contains("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"));
+    }
+
+    #[test]
+    fn suggested_browser_executable_only_applies_to_known_aliases() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "openpage-doctor-test-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let candidate = dir.join("Chrome");
+        fs::write(&candidate, "").expect("candidate file");
+
+        let found = suggested_browser_executable_from_known_paths(
+            "chrome",
+            vec![candidate.clone()],
+        );
+        assert_eq!(found, Some(candidate.clone()));
+
+        let ignored = suggested_browser_executable_from_known_paths(
+            "custom-browser",
+            vec![candidate],
+        );
+        assert!(ignored.is_none());
+
+        let _ = fs::remove_file(dir.join("Chrome"));
+        let _ = fs::remove_dir_all(dir);
+    }
 }
