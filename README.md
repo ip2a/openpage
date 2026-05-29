@@ -219,6 +219,13 @@ OPENPAGE_MAX_OUTPUT_CHARS=2000 \
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- html --session agent
 ```
 
+AI-first snapshot output now includes:
+
+- `snapshot` — structured interactive-element array with stable `eN` refs
+- `text` — compact text summary suitable for LLM consumption
+- `refs` — ref-indexed object summary for direct follow-up actions
+- `origin` / `title` — best-effort page context metadata when available
+
 ## Status
 
 This first version is intentionally browser-first:

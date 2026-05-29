@@ -500,3 +500,59 @@
     - `doctor`
     - `browser list`
   - this is a better user-facing landing spot than keeping the feature only in diagnostics
+
+## Borrowed non-CDP design audit update (2026-05-29, AI-first snapshot contract pass)
+- Current OpenPage snapshot path before this pass:
+  - daemon op `webpage.snapshot` returned only:
+    - `{"snapshot": [...]}` from `agent_snapshot_script()`
+  - that already supported the ref flow because the script stamped `data-op-ref=eN`
+  - but the user-facing contract was still thinner than the borrowed competitor design:
+    - no compact text summary
+    - no explicit ref index object
+    - no page context metadata
+- This pass kept the existing internal mechanism unchanged:
+  - same JS-based interactive-element scan
+  - same `data-op-ref`
+  - same locator normalization for `@eN`
+- The pass only enhanced the CLI/daemon contract layer in `rust/src/cli/serve.rs`:
+  - `snapshot`
+  - `text`
+  - `refs`
+  - `origin`
+  - `title` when available
+  - `interactive_count`
+- Important design choice:
+  - the compact summary uses the key `text`
+  - that means the already-borrowed output-governance path automatically applies:
+    - `OPENPAGE_CONTENT_BOUNDARIES`
+    - `OPENPAGE_MAX_OUTPUT_CHARS`
+- Added narrow unit coverage for the new pure helpers:
+  - `format_snapshot_text_includes_title_origin_refs_and_attrs`
+  - `snapshot_refs_builds_ref_index`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml format_snapshot_text_includes_title_origin_refs_and_attrs -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml snapshot_refs_builds_ref_index -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - real CLI smoke with temporary `OPENPAGE_HOME` and explicit local browser path:
+    - `browser start --session snap2 --replace --headless --browser-path /Applications/Google Chrome.app/Contents/MacOS/Google Chrome about:blank`
+    - `js "document.body.innerHTML = ..."`
+    - `OPENPAGE_CONTENT_BOUNDARIES=1 OPENPAGE_MAX_OUTPUT_CHARS=500 openpage snapshot --session snap2`
+    - `click @e1 --session snap2`
+    - `browser stop --session snap2`
+- Observed snapshot output now included:
+  - `_boundary`
+  - `interactive_count: 3`
+  - `origin: "about:blank"`
+  - `refs`
+  - raw `snapshot` array
+  - `text` such as:
+    - `@e1 [button] "Go" id="go"`
+    - `@e2 [a] "More" href="https://example.com"`
+    - `@e3 [input] placeholder="Email"`
+- Important verification point:
+  - `click @e1` still succeeded after the contract enhancement
+  - so the borrowed AI-first snapshot design did not break the existing ref-action loop
+- Interpretation:
+  - this is a good example of “borrow outer-shell design, keep internal truth source”
+  - no competitor CDP / snapshot tree / element model was imported
+  - but the user-facing snapshot contract is now materially more agent-friendly

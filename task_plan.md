@@ -63,6 +63,13 @@
   - `incomplete`
   - `cleaned`
   这样用户不必先跑 `doctor` 才能看见 sidecar 异常状态。
+- **AI-first snapshot contract 已增强**：`snapshot` 现在不再只返回交互元素数组，还会额外返回：
+  - `text`
+  - `refs`
+  - `origin`
+  - `title`（可用时）
+  - `interactive_count`
+  且 `text` 会自动走现有 `OPENPAGE_CONTENT_BOUNDARIES` / `OPENPAGE_MAX_OUTPUT_CHARS` 输出治理链路。
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
@@ -84,6 +91,7 @@
   - `title`
   - `screenshot`
 - `browser list` 原先只暴露 healthy sessions，无法直接把 `daemon_inventory()` 的 `incomplete` / `cleaned` 带给用户；现已做加法式修正。
+- `snapshot` 原先只返回 `snapshot` 数组，缺少面向 agent 的文本摘要和 ref 索引；现已在不修改内部元素/CDP 实现的前提下补到 CLI/daemon 合约层。
 
 ## Status
-**Currently in Phase 6** - 唯一 TCP daemon 路径已经落地并通过 compile + smoke；`oneshot.rs` 旧直连执行路径已移除，output 治理、batch、doctor 这三个非-CDP 借鉴项都已经进入可运行状态，且 doctor 与 `browser list` 都开始消费更完整的 daemon inventory。README / repo-local skills 也已开始统一到这条唯一 TCP 心智。下一步继续清剩余活跃文档和帮助面的一致性，并继续把适合的非-CDP 外壳设计往里收。
+**Currently in Phase 6** - 唯一 TCP daemon 路径已经落地并通过 compile + smoke；`oneshot.rs` 旧直连执行路径已移除，output 治理、batch、doctor 这三个非-CDP 借鉴项都已经进入可运行状态，且 doctor 与 `browser list` 都开始消费更完整的 daemon inventory。README / repo-local skills 也已开始统一到这条唯一 TCP 心智；snapshot 的 AI-first contract 也已向竞品靠拢，但仍保持内部浏览器/CDP/元素实现不变。下一步继续清剩余活跃文档和帮助面的一致性，并继续把适合的非-CDP 外壳设计往里收。

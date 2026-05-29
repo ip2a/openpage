@@ -632,3 +632,60 @@
 1. 继续审计哪些历史文档还在误导当前开发，应降噪还是标注 historical
 2. 继续评估下一批最值得借的非-CDP 用户面设计
 3. 做下一次 checkpoint commit
+
+## 2026-05-29 — Session 10
+
+### Goal in focus
+- 把竞品里最适合借的 AI-first snapshot contract 借过来
+- 前提仍然不变：
+  - 不碰内部浏览器/CDP/元素真相源
+  - 只改 CLI/daemon 合约层
+
+### Work completed
+- 审计当前 `webpage.snapshot` 实现：
+  - `rust/src/cli/serve.rs` 里已有 `agent_snapshot_script()`
+  - 当前只返回 `snapshot` 数组
+  - 已有 `data-op-ref=eN`
+  - `click @eN` 已通过 locator 归一化工作
+- 做了最小 contract 增强：
+  - 保留原来的 `snapshot` 数组
+  - 新增：
+    - `text`
+    - `refs`
+    - `origin`
+    - `title`
+    - `interactive_count`
+- 设计上特意把 compact summary 命名为 `text`
+  - 这样能直接复用已借入的 output-governance 链路：
+    - `OPENPAGE_CONTENT_BOUNDARIES`
+    - `OPENPAGE_MAX_OUTPUT_CHARS`
+- 增加纯 helper 单测：
+  - `format_snapshot_text_includes_title_origin_refs_and_attrs`
+  - `snapshot_refs_builds_ref_index`
+- 同步 README / repo-local smoke 文档：
+  - README 说明 snapshot 现在包含 `snapshot/text/refs/origin/title`
+  - `skills/openpage-test/references/cli-smoke.md` 说明 snapshot 现在除了 `@eN` 外还有 `text/refs` 元数据
+
+### Verification
+- `cargo test --manifest-path rust/Cargo.toml format_snapshot_text_includes_title_origin_refs_and_attrs -- --nocapture`
+- `cargo test --manifest-path rust/Cargo.toml snapshot_refs_builds_ref_index -- --nocapture`
+- `cargo check --manifest-path rust/Cargo.toml`
+- 真实 snapshot smoke：
+  - `browser start --session snap2 --replace --headless --browser-path /Applications/Google Chrome.app/Contents/MacOS/Google Chrome about:blank`
+  - `js "document.body.innerHTML = ..."`
+  - `OPENPAGE_CONTENT_BOUNDARIES=1 OPENPAGE_MAX_OUTPUT_CHARS=500 openpage snapshot --session snap2`
+  - `click @e1 --session snap2`
+  - `browser stop --session snap2`
+
+### Current conclusions
+- snapshot 的用户面 contract 现在明显更 agent-friendly 了。
+- 这次增强没有改：
+  - 内部浏览器实现
+  - 内部 CDP 封装
+  - 内部元素定位/交互逻辑
+- 只是把竞品的非-CDP / agent-facing 设计借到了 OpenPage 当前 CLI surface。
+
+### Next steps
+1. 继续审计剩余历史文档，标注 historical 或降噪
+2. 继续找下一批最值得借的非-CDP 外壳设计
+3. 做下一次 checkpoint commit

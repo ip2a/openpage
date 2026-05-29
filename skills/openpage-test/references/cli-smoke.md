@@ -32,7 +32,7 @@ When the crate built successfully on `2026-05-29`, the following runtime behavio
 
 - TCP daemon path: open page, read title, save screenshot, and the screenshot is visually correct
 - named-session CLI: `browser start`, `goto`, `url`, `title`, and `screenshot` succeed through the same TCP daemon-backed control path
-- AI-first snapshot ref flow: `snapshot` returns `@eN` refs and `click @e1` works through the daemon path
+- AI-first snapshot ref flow: `snapshot` returns structured `eN` refs plus `text` / `refs` metadata, and `click @e1` works through the daemon path
 - outer-shell borrowed features now available:
   - `batch`
   - `doctor`

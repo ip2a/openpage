@@ -7,7 +7,7 @@ use std::io::{BufRead, Write};
 use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use crate::browser::{DownloadFileExistsMode, LaunchOptions, LoadMode};
 use crate::cli::args::ServeArgs;
@@ -294,7 +294,7 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         "webpage.url" => Ok(json!({"url": page.url()?})),
         "webpage.title" => Ok(json!({"title": page.title()?})),
         "webpage.html" => Ok(json!({"html": page.html()?})),
-        "webpage.snapshot" => Ok(json!({"snapshot": state.run_js(agent_snapshot_script())?})),
+        "webpage.snapshot" => snapshot_payload(state),
         "webpage.json" => Ok(json!({"json": page.json()?})),
         "webpage.cookies" => Ok(json!({"cookies": page.cookies()?})),
         "webpage.set_cookie" | "cookies.set" => {
@@ -1140,6 +1140,125 @@ fn agent_snapshot_script() -> &'static str {
     "#
 }
 
+fn snapshot_payload(state: &ServeWebPage) -> OpenPageResult<Value> {
+    let snapshot = state.run_js(agent_snapshot_script())?;
+
+    let origin = state
+        .page
+        .url()
+        .ok()
+        .flatten()
+        .filter(|value| !value.is_empty());
+    let title = state
+        .page
+        .title()
+        .ok()
+        .flatten()
+        .filter(|value| !value.is_empty());
+
+    let mut payload = Map::new();
+    payload.insert("snapshot".to_string(), snapshot.clone());
+    if let Some(origin) = origin.as_deref() {
+        payload.insert("origin".to_string(), Value::String(origin.to_string()));
+    }
+    if let Some(title) = title.as_deref() {
+        payload.insert("title".to_string(), Value::String(title.to_string()));
+    }
+
+    if let Some(entries) = snapshot.as_array() {
+        payload.insert(
+            "text".to_string(),
+            Value::String(format_snapshot_text(entries, title.as_deref(), origin.as_deref())),
+        );
+        payload.insert("refs".to_string(), Value::Object(snapshot_refs(entries)));
+        payload.insert("interactive_count".to_string(), json!(entries.len()));
+    }
+
+    Ok(Value::Object(payload))
+}
+
+fn format_snapshot_text(entries: &[Value], title: Option<&str>, origin: Option<&str>) -> String {
+    let mut lines = Vec::new();
+    if let Some(title) = title {
+        lines.push(format!("Page: {title}"));
+    }
+    if let Some(origin) = origin {
+        lines.push(format!("URL: {origin}"));
+    }
+    if !lines.is_empty() {
+        lines.push(String::new());
+    }
+
+    if entries.is_empty() {
+        lines.push("No interactive elements found".to_string());
+        return lines.join("\n");
+    }
+
+    for entry in entries {
+        let Some(obj) = entry.as_object() else {
+            continue;
+        };
+        let ref_id = obj.get("ref").and_then(Value::as_str).unwrap_or("?");
+        let tag = obj.get("tag").and_then(Value::as_str).unwrap_or("unknown");
+        let text = obj.get("text").and_then(Value::as_str).unwrap_or("");
+        let attrs = obj.get("attrs").and_then(Value::as_object);
+
+        let mut line = format!("@{ref_id} [{tag}]");
+        if !text.is_empty() {
+            line.push(' ');
+            line.push('"');
+            line.push_str(&escape_snapshot_value(text));
+            line.push('"');
+        }
+
+        if let Some(attrs) = attrs {
+            for key in ["placeholder", "href", "value", "type", "name", "id", "class"] {
+                if let Some(value) = attrs.get(key).and_then(Value::as_str).filter(|s| !s.is_empty())
+                {
+                    line.push(' ');
+                    line.push_str(key);
+                    line.push_str("=\"");
+                    line.push_str(&escape_snapshot_value(value));
+                    line.push('"');
+                }
+            }
+        }
+
+        lines.push(line);
+    }
+
+    lines.join("\n")
+}
+
+fn snapshot_refs(entries: &[Value]) -> Map<String, Value> {
+    let mut refs = Map::new();
+    for entry in entries {
+        let Some(obj) = entry.as_object() else {
+            continue;
+        };
+        let Some(ref_id) = obj.get("ref").and_then(Value::as_str) else {
+            continue;
+        };
+
+        let mut ref_obj = Map::new();
+        if let Some(tag) = obj.get("tag").and_then(Value::as_str) {
+            ref_obj.insert("tag".to_string(), Value::String(tag.to_string()));
+        }
+        if let Some(text) = obj.get("text").and_then(Value::as_str) {
+            ref_obj.insert("text".to_string(), Value::String(text.to_string()));
+        }
+        if let Some(attrs) = obj.get("attrs").and_then(Value::as_object) {
+            ref_obj.insert("attrs".to_string(), Value::Object(attrs.clone()));
+        }
+        refs.insert(ref_id.to_string(), Value::Object(ref_obj));
+    }
+    refs
+}
+
+fn escape_snapshot_value(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 fn required_string_array(params: &Value, key: &str) -> OpenPageResult<Vec<String>> {
     let values = params
         .get(key)
@@ -1155,6 +1274,50 @@ fn required_string_array(params: &Value, key: &str) -> OpenPageResult<Vec<String
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_snapshot_text_includes_title_origin_refs_and_attrs() {
+        let entries = vec![
+            json!({
+                "ref": "e1",
+                "tag": "button",
+                "text": "Go",
+                "attrs": {"id": "go"}
+            }),
+            json!({
+                "ref": "e2",
+                "tag": "input",
+                "text": "",
+                "attrs": {"placeholder": "Email", "type": "text"}
+            }),
+        ];
+
+        let text = format_snapshot_text(&entries, Some("Example"), Some("https://example.com"));
+        assert!(text.contains("Page: Example"));
+        assert!(text.contains("URL: https://example.com"));
+        assert!(text.contains("@e1 [button] \"Go\" id=\"go\""));
+        assert!(text.contains("@e2 [input] placeholder=\"Email\" type=\"text\""));
+    }
+
+    #[test]
+    fn snapshot_refs_builds_ref_index() {
+        let entries = vec![json!({
+            "ref": "e3",
+            "tag": "a",
+            "text": "More",
+            "attrs": {"href": "https://example.com"}
+        })];
+
+        let refs = snapshot_refs(&entries);
+        assert_eq!(refs["e3"]["tag"], "a");
+        assert_eq!(refs["e3"]["text"], "More");
+        assert_eq!(refs["e3"]["attrs"]["href"], "https://example.com");
+    }
 }
 
 fn optional_string_array(params: &Value, key: &str) -> Option<Vec<String>> {
