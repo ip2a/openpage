@@ -347,3 +347,54 @@
 - Interpretation:
   - the CLI/daemon path is healthy
   - the current local browser-launch issue is environmental/configurational, not a protocol-regression signal
+
+## Borrowed non-CDP design audit update (2026-05-29, daemon inventory + doctor integration pass)
+- `rust/src/cli/connection.rs` already had a richer daemon-sidecar model in progress:
+  - `DaemonInventory`
+  - `IncompleteDaemonSession`
+  - `CleanedDaemonSession`
+  - `daemon_inventory()`
+- Before this pass, `rust/src/cli/doctor.rs` was still using its own older `discover_daemon_sessions()` scan and `daemon_status()` loop:
+  - no visibility into incomplete alive sessions
+  - no visibility into cleaned stale sidecars
+  - duplication between doctor and connection layer
+- This pass connected `doctor` to `daemon_inventory()` directly:
+  - healthy sessions now render as `daemon.session.*`
+  - alive but incomplete sidecars now render as `daemon.incomplete.*`
+  - dead/stale sidecars cleaned during the scan now render as `daemon.cleaned.*`
+  - old `discover_daemon_sessions()` was removed from `doctor.rs`
+- Local verification after the change:
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor`
+- Current local facts re-confirmed:
+  - `OPENPAGE_HOME=/Users/yuuu/.openpage`
+  - daemon sidecars currently live in `/Users/yuuu/.openpage/daemon`
+  - healthy sessions currently observed:
+    - `cli-more-states-2`
+    - `cli-state-queries`
+    - `human-flow`
+  - all 3 currently report:
+    - `alive=true`
+    - `ready=true`
+    - `version 0.1.0`
+  - browser config still loads from:
+    - `/Volumes/data0/data4work/2026_5/openpage/rust/configs.ini`
+  - current failure remains:
+    - configured executable `chrome` not found on this machine
+- Synthetic verification with temporary `OPENPAGE_HOME`:
+  - cleaned path:
+    - wrote invalid `.pid` + invalid `.port` + valid `.version`
+    - `doctor --quick` emitted `daemon.cleaned.dead`
+    - sidecar files were removed afterward
+  - incomplete path:
+    - started a real daemon in a temp home
+    - removed only its `.version`
+    - `doctor --quick` emitted `daemon.incomplete.doctor-live`
+- One follow-up command intended to re-run the incomplete-alive smoke hit a cargo artifact lock race:
+  - background `serve` was still compiling when `doctor` started
+  - the resulting output was discarded as invalid evidence
+- Conclusion:
+  - the TCP-only protocol path still holds
+  - the borrowed daemon-inventory design is now materially integrated, not just staged in `connection.rs`
+  - next valuable non-CDP work is docs/help/skills consistency and possibly surfacing richer inventory in more user-facing commands

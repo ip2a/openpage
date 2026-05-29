@@ -132,6 +132,37 @@ pub(crate) struct DaemonSessionInfo {
     pub log_path: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct IncompleteDaemonSession {
+    pub session: String,
+    pub pid_present: bool,
+    pub port_present: bool,
+    pub version_present: bool,
+    pub pid_valid: bool,
+    pub port_valid: bool,
+    pub alive: bool,
+    pub ready: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct CleanedDaemonSession {
+    pub session: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub(crate) struct DaemonInventory {
+    pub sessions: Vec<DaemonSessionInfo>,
+    pub incomplete: Vec<IncompleteDaemonSession>,
+    pub cleaned: Vec<CleanedDaemonSession>,
+}
+
+enum SidecarState<T> {
+    Missing,
+    Present(T),
+    Invalid,
+}
+
 #[cfg(unix)]
 fn is_pid_alive(pid: u32) -> bool {
     Command::new("kill")
@@ -220,9 +251,13 @@ pub(crate) fn daemon_status(session: &str) -> OpenPageResult<DaemonSessionInfo> 
 }
 
 pub(crate) fn list_daemons() -> OpenPageResult<Vec<DaemonSessionInfo>> {
+    Ok(daemon_inventory()?.sessions)
+}
+
+pub(crate) fn daemon_inventory() -> OpenPageResult<DaemonInventory> {
     let dir = daemon_dir()?;
     if !dir.exists() {
-        return Ok(Vec::new());
+        return Ok(DaemonInventory::default());
     }
 
     let mut sessions = std::collections::BTreeSet::new();
@@ -239,16 +274,140 @@ pub(crate) fn list_daemons() -> OpenPageResult<Vec<DaemonSessionInfo>> {
         }
     }
 
-    let mut infos = Vec::new();
+    let mut inventory = DaemonInventory::default();
     for session in sessions {
-        let info = daemon_status(&session)?;
-        if info.alive {
-            infos.push(info);
+        let pid_state = pid_sidecar_state(&session)?;
+        let port_state = port_sidecar_state(&session)?;
+        let version_state = version_sidecar_state(&session)?;
+
+        let pid_value = match &pid_state {
+            SidecarState::Present(value) => Some(*value),
+            _ => None,
+        };
+        let port_value = match &port_state {
+            SidecarState::Present(value) => Some(*value),
+            _ => None,
+        };
+
+        let ready = match port_value {
+            Some(port) => {
+                let socket = SocketAddr::from(([127, 0, 0, 1], port));
+                TcpStream::connect_timeout(&socket, Duration::from_millis(CONNECT_TIMEOUT_MS))
+                    .is_ok()
+            }
+            None => false,
+        };
+        let pid_alive = pid_value.map(is_pid_alive).unwrap_or(false);
+        let alive = ready || pid_alive;
+
+        let pid_present = !matches!(pid_state, SidecarState::Missing);
+        let port_present = !matches!(port_state, SidecarState::Missing);
+        let version_present = !matches!(version_state, SidecarState::Missing);
+        let pid_valid = !matches!(pid_state, SidecarState::Invalid);
+        let port_valid = !matches!(port_state, SidecarState::Invalid);
+        let complete =
+            pid_present && port_present && version_present && pid_valid && port_valid;
+
+        if alive && complete {
+            inventory.sessions.push(DaemonSessionInfo {
+                session: session.clone(),
+                port: port_value,
+                pid: pid_value,
+                version: match version_state {
+                    SidecarState::Present(version) => Some(version),
+                    SidecarState::Missing | SidecarState::Invalid => None,
+                },
+                alive,
+                ready,
+                log_path: log_path(&session)?.display().to_string(),
+            });
+        } else if alive {
+            inventory.incomplete.push(IncompleteDaemonSession {
+                session: session.clone(),
+                pid_present,
+                port_present,
+                version_present,
+                pid_valid,
+                port_valid,
+                alive,
+                ready,
+            });
         } else {
             let _ = cleanup_sidecars(&session);
+            inventory.cleaned.push(CleanedDaemonSession {
+                session: session.clone(),
+                reason: cleaned_reason(&pid_state, &port_state, version_present),
+            });
         }
     }
-    Ok(infos)
+
+    Ok(inventory)
+}
+
+fn pid_sidecar_state(session: &str) -> OpenPageResult<SidecarState<u32>> {
+    let path = pid_path(session)?;
+    match fs::read_to_string(&path) {
+        Ok(content) => match content.trim().parse::<u32>() {
+            Ok(value) => Ok(SidecarState::Present(value)),
+            Err(_) => Ok(SidecarState::Invalid),
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(SidecarState::Missing),
+        Err(err) => Err(OpenPageError::Io(err.to_string())),
+    }
+}
+
+fn port_sidecar_state(session: &str) -> OpenPageResult<SidecarState<u16>> {
+    let path = port_path(session)?;
+    match fs::read_to_string(&path) {
+        Ok(content) => match content.trim().parse::<u16>() {
+            Ok(value) => Ok(SidecarState::Present(value)),
+            Err(_) => Ok(SidecarState::Invalid),
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(SidecarState::Missing),
+        Err(err) => Err(OpenPageError::Io(err.to_string())),
+    }
+}
+
+fn version_sidecar_state(session: &str) -> OpenPageResult<SidecarState<String>> {
+    let path = version_path(session)?;
+    match fs::read_to_string(&path) {
+        Ok(content) => {
+            let version = content.trim().to_string();
+            if version.is_empty() {
+                Ok(SidecarState::Missing)
+            } else {
+                Ok(SidecarState::Present(version))
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(SidecarState::Missing),
+        Err(err) => Err(OpenPageError::Io(err.to_string())),
+    }
+}
+
+fn cleaned_reason(
+    pid_state: &SidecarState<u32>,
+    port_state: &SidecarState<u16>,
+    version_present: bool,
+) -> String {
+    let mut problems = Vec::new();
+    match pid_state {
+        SidecarState::Missing => problems.push("missing pid"),
+        SidecarState::Invalid => problems.push("invalid pid"),
+        SidecarState::Present(_) => {}
+    }
+    match port_state {
+        SidecarState::Missing => problems.push("missing port"),
+        SidecarState::Invalid => problems.push("invalid port"),
+        SidecarState::Present(_) => {}
+    }
+    if !version_present {
+        problems.push("missing version");
+    }
+    if problems.is_empty() {
+        "not alive".to_string()
+    } else {
+        problems.join(", ")
+    }
 }
 
 pub(crate) fn ensure_daemon(session: &str) -> OpenPageResult<DaemonStatus> {

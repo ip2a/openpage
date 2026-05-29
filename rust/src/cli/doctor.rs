@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -8,7 +7,7 @@ use serde_json::json;
 
 use crate::browser::{Browser, LaunchOptions};
 use crate::cli::args::DoctorArgs;
-use crate::cli::connection::{daemon_dir, daemon_status, openpage_home};
+use crate::cli::connection::{daemon_dir, daemon_inventory, openpage_home};
 use crate::cli::protocol::format_output_json;
 use crate::error::{OpenPageError, OpenPageResult};
 
@@ -183,8 +182,8 @@ fn daemon_checks(checks: &mut Vec<Check>) {
         return;
     }
 
-    let sessions = match discover_daemon_sessions(&path) {
-        Ok(sessions) => sessions,
+    let inventory = match daemon_inventory() {
+        Ok(inventory) => inventory,
         Err(err) => {
             checks.push(Check::new(
                 "daemon.sessions",
@@ -196,57 +195,83 @@ fn daemon_checks(checks: &mut Vec<Check>) {
         }
     };
 
-    if sessions.is_empty() {
+    for cleaned in &inventory.cleaned {
+        checks.push(Check::new(
+            format!("daemon.cleaned.{}", cleaned.session),
+            category,
+            Status::Warn,
+            format!(
+                "Cleaned stale daemon sidecars for session {} ({})",
+                cleaned.session, cleaned.reason
+            ),
+        ));
+    }
+
+    for incomplete in &inventory.incomplete {
+        checks.push(Check::new(
+            format!("daemon.incomplete.{}", incomplete.session),
+            category,
+            Status::Warn,
+            format!(
+                "Session {} has incomplete sidecars: pid_present={}, port_present={}, version_present={}, pid_valid={}, port_valid={}, alive={}, ready={}",
+                incomplete.session,
+                incomplete.pid_present,
+                incomplete.port_present,
+                incomplete.version_present,
+                incomplete.pid_valid,
+                incomplete.port_valid,
+                incomplete.alive,
+                incomplete.ready
+            ),
+        ));
+    }
+
+    if inventory.sessions.is_empty() {
+        let status = if inventory.cleaned.is_empty() && inventory.incomplete.is_empty() {
+            Status::Info
+        } else {
+            Status::Pass
+        };
         checks.push(Check::new(
             "daemon.sessions",
             category,
-            Status::Info,
-            format!("No daemon sidecars found in {}", path.display()),
+            status,
+            format!("No active healthy daemon sessions in {}", path.display()),
         ));
         return;
     }
 
-    for session in sessions {
-        match daemon_status(&session) {
-            Ok(status) => {
-                let version_note = match status.version.as_deref() {
-                    Some(version) if version == env!("CARGO_PKG_VERSION") => {
-                        format!("version {version}")
-                    }
-                    Some(version) => format!(
-                        "version {version} (CLI is {})",
-                        env!("CARGO_PKG_VERSION")
-                    ),
-                    None => "no version sidecar".to_string(),
-                };
-
-                let message = format!(
-                    "Session {}: alive={}, ready={}, port={:?}, pid={:?}, {}",
-                    status.session, status.alive, status.ready, status.port, status.pid, version_note
-                );
-
-                let check_status = if status.ready {
-                    Status::Pass
-                } else if status.alive {
-                    Status::Warn
-                } else {
-                    Status::Warn
-                };
-
-                checks.push(Check::new(
-                    format!("daemon.session.{}", status.session),
-                    category,
-                    check_status,
-                    message,
-                ));
+    for session in &inventory.sessions {
+        let version_note = match session.version.as_deref() {
+            Some(version) if version == env!("CARGO_PKG_VERSION") => {
+                format!("version {version}")
             }
-            Err(err) => checks.push(Check::new(
-                format!("daemon.session.{session}"),
-                category,
-                Status::Warn,
-                err.to_string(),
-            )),
-        }
+            Some(version) => format!("version {version} (CLI is {})", env!("CARGO_PKG_VERSION")),
+            None => "no version sidecar".to_string(),
+        };
+
+        let check_status = if session.ready
+            && matches!(session.version.as_deref(), Some(version) if version == env!("CARGO_PKG_VERSION"))
+        {
+            Status::Pass
+        } else {
+            Status::Warn
+        };
+
+        checks.push(Check::new(
+            format!("daemon.session.{}", session.session),
+            category,
+            check_status,
+            format!(
+                "Session {}: alive={}, ready={}, port={:?}, pid={:?}, {}",
+                session.session,
+                session.alive,
+                session.ready,
+                session.port,
+                session.pid,
+                version_note
+            ),
+        ));
     }
 }
 
@@ -396,23 +421,6 @@ fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
             ));
         }
     }
-}
-
-fn discover_daemon_sessions(path: &Path) -> OpenPageResult<Vec<String>> {
-    let mut sessions = BTreeSet::new();
-    for entry in fs::read_dir(path)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        for suffix in [".port", ".pid", ".version"] {
-            if let Some(session) = name.strip_suffix(suffix) {
-                if !session.is_empty() {
-                    sessions.insert(session.to_string());
-                }
-            }
-        }
-    }
-    Ok(sessions.into_iter().collect())
 }
 
 fn doctor_temp_dir(label: &str) -> PathBuf {

@@ -444,3 +444,75 @@
 1. 继续做 README / skills / 帮助 / 文档一致性补齐
 2. 继续评估 daemon 基础设施还要不要补更完整的 inventory / cleanup / maybe idle timeout 暴露
 3. 做新的 checkpoint commit
+
+## 2026-05-29 — Session 7
+
+### Goal in focus
+- 继续核实“唯一 TCP daemon 路径”当前在本机是否稳定
+- 把已写好的 daemon inventory 真正接到 `doctor`
+- 把这轮本机真实状态写回长期跟踪文件
+
+### Work completed
+- 读取并复核当前长期跟踪文件：
+  - `task_plan.md`
+  - `notes.md`
+  - `claude-progress.txt`
+  - `feature_list.json`
+- 重新审计当前 `rust/src/cli/connection.rs` / `rust/src/cli/doctor.rs` / `rust/src/cli/mod.rs` / `rust/src/cli/oneshot.rs` / `rust/src/cli/serve.rs`
+- 重新确认当前 CLI 执行面没有回退到旧浏览器直连路径：
+  - `oneshot.rs` 没有 `Browser::connect`
+  - 没有 `open_page()`
+  - 没有 `load_session()`
+  - 只剩 `session_file()` 用于 `browser stop` 顺手清理旧遗留文件
+- 完成 `doctor` 与 `daemon_inventory()` 的正式集成：
+  - `doctor.rs` 不再自维护旧的 `discover_daemon_sessions()`
+  - 增加 `daemon.cleaned.*` 输出
+  - 增加 `daemon.incomplete.*` 输出
+  - healthy sessions 继续输出 `daemon.session.*`
+- 新增并确认竞品借鉴文档：
+  - `竞品文档-考虑借鉴的部分v1.md`
+
+### Verification
+- `cargo check --manifest-path rust/Cargo.toml`
+- 本机真实 doctor：
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor`
+- 本机当前实际状态确认：
+  - `~/.openpage/daemon` 当前有 3 组完整 sidecar
+  - sessions:
+    - `cli-more-states-2`
+    - `cli-state-queries`
+    - `human-flow`
+  - 三者都报告：
+    - `alive=true`
+    - `ready=true`
+    - `version 0.1.0`
+  - 当前 browser config 来源：
+    - `/Volumes/data0/data4work/2026_5/openpage/rust/configs.ini`
+  - 当前唯一明确失败点：
+    - `browser_path=chrome` 在本机不可解析
+- 合成 sidecar smoke：
+  - invalid `.pid/.port` + dead session
+    - `doctor --quick` 输出 `daemon.cleaned.dead`
+    - sidecar 会被清理
+  - alive daemon + missing `.version`
+    - `doctor --quick` 输出 `daemon.incomplete.doctor-live`
+
+### Current conclusions
+- 当前“唯一 TCP daemon 路径”在 CLI 执行面仍然成立，没有回退。
+- `daemon_inventory()` 现在已经不只是 connection 层内部工具，而是被 `doctor` 实际消费。
+- 当前本机最主要的问题不是协议路径，而是浏览器配置：
+  - `chrome` 这个可执行名在本机不可用。
+- 这次工作继续严格遵守了边界：
+  - 借的是竞品的 daemon/doctor 外壳设计
+  - 没有引入竞品的 CDP / element / interaction 内核
+
+### Errors encountered
+- 一次补充的 incomplete-alive 验证脚本因为 `cargo run` 并发编译锁竞态，导致后台 `serve` 尚未写出 sidecar 时 `doctor` 就先执行了。
+- 该次输出已明确废弃，没有作为证据引用。
+- 过程中产生的临时 `serve` 进程已主动清理，未保留污染本机状态。
+
+### Next steps
+1. 更新 README / skills / help / 相关文档，确保对外只表达 TCP 唯一路径和当前已借入的非-CDP 设计
+2. 评估是否要把 inventory 进一步暴露到 `browser list` 之外的用户面
+3. 做一个只包含相关文件的 checkpoint commit
