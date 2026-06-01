@@ -3,14 +3,18 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::browser::{
     Browser, LaunchOptions, OPENPAGE_BROWSER_PATH_ENV, browser_path_env_override,
 };
 use crate::cli::args::DoctorArgs;
-use crate::cli::connection::{DaemonSessionInfo, daemon_dir, daemon_inventory, openpage_home};
-use crate::cli::protocol::format_output_json;
+use crate::cli::connection::{
+    daemon_dir, daemon_inventory, daemon_inventory_payload_json, daemon_session_fix,
+    daemon_session_reasons, daemon_session_state, force_cleanup_daemon, incomplete_daemon_fix,
+    incomplete_daemon_reasons, openpage_home,
+};
+use crate::cli::protocol::print_output_json;
 use crate::error::{OpenPageError, OpenPageResult};
 
 #[derive(Clone, Copy)]
@@ -40,6 +44,42 @@ struct Check {
     message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     fix: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    state: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reasons: Option<Vec<&'static str>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    alive: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ready: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pid: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    port: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version_matches_current_cli: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    log_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pid_present: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    port_present: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version_present: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pid_valid: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    port_valid: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    browser_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resolved_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suggested_path: Option<String>,
 }
 
 impl Check {
@@ -55,11 +95,92 @@ impl Check {
             status: status.as_str(),
             message: message.into(),
             fix: None,
+            session: None,
+            state: None,
+            reasons: None,
+            alive: None,
+            ready: None,
+            pid: None,
+            port: None,
+            version: None,
+            version_matches_current_cli: None,
+            log_path: None,
+            pid_present: None,
+            port_present: None,
+            version_present: None,
+            pid_valid: None,
+            port_valid: None,
+            browser_path: None,
+            resolved_path: None,
+            suggested_path: None,
         }
     }
 
     fn with_fix(mut self, fix: impl Into<String>) -> Self {
         self.fix = Some(fix.into());
+        self
+    }
+
+    fn with_session(mut self, session: impl Into<String>) -> Self {
+        self.session = Some(session.into());
+        self
+    }
+
+    fn with_state(mut self, state: &'static str) -> Self {
+        self.state = Some(state);
+        self
+    }
+
+    fn with_reasons(mut self, reasons: Vec<&'static str>) -> Self {
+        if !reasons.is_empty() {
+            self.reasons = Some(reasons);
+        }
+        self
+    }
+
+    fn with_daemon_session_info(
+        mut self,
+        session: &crate::cli::connection::DaemonSessionInfo,
+    ) -> Self {
+        self.alive = Some(session.alive);
+        self.ready = Some(session.ready);
+        self.pid = session.pid;
+        self.port = session.port;
+        self.version = session.version.clone();
+        self.version_matches_current_cli = Some(
+            session.version.as_deref() == Some(env!("CARGO_PKG_VERSION")),
+        );
+        self.log_path = Some(session.log_path.clone());
+        self
+    }
+
+    fn with_incomplete_daemon_info(
+        mut self,
+        incomplete: &crate::cli::connection::IncompleteDaemonSession,
+    ) -> Self {
+        self.alive = Some(incomplete.alive);
+        self.ready = Some(incomplete.ready);
+        self.log_path = Some(incomplete.log_path.clone());
+        self.pid_present = Some(incomplete.pid_present);
+        self.port_present = Some(incomplete.port_present);
+        self.version_present = Some(incomplete.version_present);
+        self.pid_valid = Some(incomplete.pid_valid);
+        self.port_valid = Some(incomplete.port_valid);
+        self
+    }
+
+    fn with_browser_path(mut self, browser_path: impl Into<String>) -> Self {
+        self.browser_path = Some(browser_path.into());
+        self
+    }
+
+    fn with_resolved_path(mut self, resolved_path: impl Into<String>) -> Self {
+        self.resolved_path = Some(resolved_path.into());
+        self
+    }
+
+    fn with_suggested_path(mut self, suggested_path: impl Into<String>) -> Self {
+        self.suggested_path = Some(suggested_path.into());
         self
     }
 }
@@ -82,24 +203,21 @@ pub fn run(args: DoctorArgs) -> OpenPageResult<i32> {
     let fixed = if args.fix { apply_fixes()? } else { Vec::new() };
     let mut checks = Vec::new();
     environment_checks(&mut checks);
-    daemon_checks(&mut checks);
+    let inventory = daemon_checks(&mut checks);
     browser_checks(&mut checks, args.quick);
 
     let summary = summarize(&checks);
     let success = summary.fail == 0;
 
-    println!(
-        "{}",
-        format_output_json(&json!({
-            "ok": success,
-            "result": {
-                "summary": summary,
-                "checks": checks,
-                "fixed": fixed,
-            }
-        }))
-        .map_err(|err| OpenPageError::Serialization(err.to_string()))?
-    );
+    print_output_json(&json!({
+        "ok": success,
+        "result": {
+            "summary": summary,
+            "checks": checks,
+            "fixed": fixed,
+            "inventory": inventory.as_ref().map(doctor_inventory_payload),
+        }
+    }));
 
     Ok(if success { 0 } else { 1 })
 }
@@ -107,6 +225,36 @@ pub fn run(args: DoctorArgs) -> OpenPageResult<i32> {
 fn apply_fixes() -> OpenPageResult<Vec<String>> {
     let mut fixed = Vec::new();
     fixed.extend(remove_legacy_session_files()?);
+    let inventory = daemon_inventory()?;
+    for cleaned in inventory.cleaned {
+        fixed.push(format!(
+            "Removed stale daemon sidecars for session {} ({})",
+            cleaned.session, cleaned.reason
+        ));
+    }
+    for incomplete in inventory.incomplete {
+        if incomplete.ready {
+            continue;
+        }
+        force_cleanup_daemon(&incomplete.session)?;
+        fixed.push(format!(
+            "Stopped and removed incomplete unready daemon session {}",
+            incomplete.session
+        ));
+    }
+    for session in inventory.sessions {
+        if session.version.as_deref() == Some(env!("CARGO_PKG_VERSION")) {
+            continue;
+        }
+        let found_version = session.version.as_deref().unwrap_or("<missing>");
+        force_cleanup_daemon(&session.session)?;
+        fixed.push(format!(
+            "Stopped incompatible daemon session {} (found version {}, current CLI {})",
+            session.session,
+            found_version,
+            env!("CARGO_PKG_VERSION")
+        ));
+    }
     Ok(fixed)
 }
 
@@ -136,6 +284,10 @@ fn summarize(checks: &[Check]) -> Summary {
         }
     }
     summary
+}
+
+fn doctor_inventory_payload(inventory: &crate::cli::connection::DaemonInventory) -> Value {
+    daemon_inventory_payload_json(inventory)
 }
 
 fn environment_checks(checks: &mut Vec<Check>) {
@@ -269,7 +421,7 @@ fn environment_checks(checks: &mut Vec<Check>) {
     }
 }
 
-fn daemon_checks(checks: &mut Vec<Check>) {
+fn daemon_checks(checks: &mut Vec<Check>) -> Option<crate::cli::connection::DaemonInventory> {
     let category = "Daemon";
     let path = match daemon_dir() {
         Ok(path) => path,
@@ -279,7 +431,7 @@ fn daemon_checks(checks: &mut Vec<Check>) {
                     "Resolve the environment error first so OpenPage can locate the daemon sidecar directory.",
                 ),
             );
-            return;
+            return None;
         }
     };
 
@@ -290,7 +442,7 @@ fn daemon_checks(checks: &mut Vec<Check>) {
             Status::Info,
             "No daemon directory yet; no sessions to inspect",
         ));
-        return;
+        return Some(crate::cli::connection::DaemonInventory::default());
     }
 
     let inventory = match daemon_inventory() {
@@ -304,23 +456,28 @@ fn daemon_checks(checks: &mut Vec<Check>) {
                     ),
                 ),
             );
-            return;
+            return None;
         }
     };
 
     for cleaned in &inventory.cleaned {
-        checks.push(Check::new(
-            format!("daemon.cleaned.{}", cleaned.session),
-            category,
-            Status::Warn,
-            format!(
-                "Cleaned stale daemon sidecars for session {} ({})",
-                cleaned.session, cleaned.reason
-            ),
-        ));
+        checks.push(
+            Check::new(
+                format!("daemon.cleaned.{}", cleaned.session),
+                category,
+                Status::Warn,
+                format!(
+                    "Cleaned stale daemon sidecars for session {} ({})",
+                    cleaned.session, cleaned.reason
+                ),
+            )
+            .with_session(cleaned.session.clone())
+            .with_state("cleaned"),
+        );
     }
 
     for incomplete in &inventory.incomplete {
+        let reasons = incomplete_daemon_reasons(incomplete);
         checks.push(
             Check::new(
                 format!("daemon.incomplete.{}", incomplete.session),
@@ -338,10 +495,11 @@ fn daemon_checks(checks: &mut Vec<Check>) {
                     incomplete.ready
                 ),
             )
-            .with_fix(format!(
-                "Run `openpage browser status --session {0}` to inspect the session. If it is no longer needed, run `openpage browser stop --session {0}` and rerun `openpage doctor --quick`.",
-                incomplete.session
-            )),
+            .with_session(incomplete.session.clone())
+            .with_state("incomplete")
+            .with_reasons(reasons)
+            .with_incomplete_daemon_info(incomplete)
+            .with_fix(incomplete_daemon_fix(incomplete)),
         );
     }
 
@@ -362,7 +520,7 @@ fn daemon_checks(checks: &mut Vec<Check>) {
                 "If you expected a session to be running, start one with `openpage browser start --session <name> --headless <url>` and rerun the audit.",
             ),
         );
-        return;
+        return Some(inventory);
     }
 
     for session in &inventory.sessions {
@@ -373,6 +531,8 @@ fn daemon_checks(checks: &mut Vec<Check>) {
             Some(version) => format!("version {version} (CLI is {})", env!("CARGO_PKG_VERSION")),
             None => "no version sidecar".to_string(),
         };
+        let state = daemon_session_state(session);
+        let reasons = daemon_session_reasons(session);
 
         let check_status = if session.ready
             && matches!(session.version.as_deref(), Some(version) if version == env!("CARGO_PKG_VERSION"))
@@ -387,15 +547,20 @@ fn daemon_checks(checks: &mut Vec<Check>) {
             category,
             check_status,
             format!(
-                "Session {}: alive={}, ready={}, port={:?}, pid={:?}, {}",
+                "Session {}: state={}, alive={}, ready={}, port={:?}, pid={:?}, {}",
                 session.session,
+                state,
                 session.alive,
                 session.ready,
                 session.port,
                 session.pid,
                 version_note
             ),
-        );
+        )
+        .with_session(session.session.clone())
+        .with_state(state)
+        .with_reasons(reasons)
+        .with_daemon_session_info(session);
 
         if let Some(fix) = daemon_session_fix(session) {
             checks.push(check.with_fix(fix));
@@ -403,30 +568,8 @@ fn daemon_checks(checks: &mut Vec<Check>) {
             checks.push(check);
         }
     }
-}
 
-fn daemon_session_fix(session: &DaemonSessionInfo) -> Option<String> {
-    let version_matches = matches!(
-        session.version.as_deref(),
-        Some(version) if version == env!("CARGO_PKG_VERSION")
-    );
-
-    if !version_matches {
-        return Some(format!(
-            "Run `openpage browser stop --session {0}` and then restart that session with the current CLI so its daemon sidecars are recreated with version {1}.",
-            session.session,
-            env!("CARGO_PKG_VERSION")
-        ));
-    }
-
-    if !session.ready {
-        return Some(format!(
-            "Run `openpage browser status --session {0}` and inspect {1}. If the daemon is stale or unhealthy, stop it with `openpage browser stop --session {0}` and restart it.",
-            session.session, session.log_path
-        ));
-    }
-
-    None
+    Some(inventory)
 }
 
 fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
@@ -465,18 +608,21 @@ fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
                 }
                 None => browser_path.clone(),
             };
-            checks.push(Check::new(
-                "browser.config",
-                category,
-                Status::Pass,
-                format!(
-                    "Loaded launch options from {} (browser_path={}, headless={}, auto_port={})",
-                    source,
-                    browser_path_display,
-                    options.is_headless(),
-                    options.is_auto_port()
-                ),
-            ));
+            checks.push(
+                Check::new(
+                    "browser.config",
+                    category,
+                    Status::Pass,
+                    format!(
+                        "Loaded launch options from {} (browser_path={}, headless={}, auto_port={})",
+                        source,
+                        browser_path_display,
+                        options.is_headless(),
+                        options.is_auto_port()
+                    ),
+                )
+                .with_browser_path(browser_path.clone()),
+            );
             options
         }
         Err(err) => {
@@ -506,47 +652,61 @@ fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
     let browser_exec = resolve_browser_executable(&browser_path);
     let browser_hint = suggested_browser_executable(&browser_path);
     match &browser_exec {
-        BrowserExecutable::Default => checks.push(Check::new(
-            "browser.executable",
-            category,
-            Status::Info,
-            "No explicit browser_path configured; live launch will rely on built-in browser resolution",
-        )),
-        BrowserExecutable::Found(path) => checks.push(Check::new(
-            "browser.executable",
-            category,
-            Status::Pass,
-            format!(
-                "Configured browser executable `{}` resolves to {}",
-                browser_path,
-                path.display()
-            ),
-        )),
+        BrowserExecutable::Default => checks.push(
+            Check::new(
+                "browser.executable",
+                category,
+                Status::Info,
+                "No explicit browser_path configured; live launch will rely on built-in browser resolution",
+            )
+            .with_browser_path(browser_path.clone()),
+        ),
+        BrowserExecutable::Found(path) => checks.push(
+            Check::new(
+                "browser.executable",
+                category,
+                Status::Pass,
+                format!(
+                    "Configured browser executable `{}` resolves to {}",
+                    browser_path,
+                    path.display()
+                ),
+            )
+            .with_browser_path(browser_path.clone())
+            .with_resolved_path(path.display().to_string()),
+        ),
         BrowserExecutable::Missing => {
             let fix = browser_executable_fix(&browser_path, browser_hint.as_deref());
-            checks.push(
-                Check::new(
-                    "browser.executable",
-                    category,
-                    Status::Fail,
-                    missing_browser_message(&browser_path, browser_hint.as_deref()),
-                )
-                .with_fix(fix),
+            let mut check = Check::new(
+                "browser.executable",
+                category,
+                Status::Fail,
+                missing_browser_message(&browser_path, browser_hint.as_deref()),
             )
+            .with_fix(fix)
+            .with_browser_path(browser_path.clone());
+            if let Some(path) = browser_hint.as_ref() {
+                check = check.with_suggested_path(path.display().to_string());
+            }
+            checks.push(check)
         }
     }
 
     if matches!(browser_exec, BrowserExecutable::Missing) {
         if let Some(path) = browser_hint.as_ref() {
-            checks.push(Check::new(
-                "browser.executable.hint",
-                category,
-                Status::Info,
-                format!(
-                    "Local browser candidate found at {}. Setting rust/configs.ini browser_path to this absolute path should work on this machine.",
-                    path.display()
-                ),
-            ));
+            checks.push(
+                Check::new(
+                    "browser.executable.hint",
+                    category,
+                    Status::Info,
+                    format!(
+                        "Local browser candidate found at {}. Setting rust/configs.ini browser_path to this absolute path should work on this machine.",
+                        path.display()
+                    ),
+                )
+                .with_browser_path(browser_path.clone())
+                .with_suggested_path(path.display().to_string()),
+            );
         }
     }
 
@@ -686,16 +846,13 @@ fn remove_legacy_session_files() -> OpenPageResult<Vec<String>> {
     let mut removed = Vec::new();
     for path in files {
         match fs::remove_file(&path) {
-            Ok(()) => removed.push(format!(
-                "Removed legacy session JSON {}",
-                path.display()
-            )),
+            Ok(()) => removed.push(format!("Removed legacy session JSON {}", path.display())),
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
             Err(err) => {
                 return Err(OpenPageError::Io(format!(
                     "failed to remove legacy session JSON {}: {err}",
                     path.display()
-                )))
+                )));
             }
         }
     }
@@ -775,8 +932,7 @@ fn missing_browser_message(browser_path: &str, hint: Option<&Path>) -> String {
         ),
         None => format!(
             "Configured browser executable `{}` was not found. Update rust/configs.ini browser_path, set {}=<absolute-browser-path> for this process, install the browser on PATH, or pass --browser-path explicitly.",
-            browser_path,
-            OPENPAGE_BROWSER_PATH_ENV
+            browser_path, OPENPAGE_BROWSER_PATH_ENV
         ),
     }
 }
@@ -793,8 +949,7 @@ fn browser_executable_fix(browser_path: &str, hint: Option<&Path>) -> String {
         ),
         None => format!(
             "Update rust/configs.ini browser_path to a real browser executable, set {}=<absolute-browser-path> for a process-local override, or rerun the command with --browser-path <absolute-browser-path>. If you want to keep `{}`, make sure it resolves on PATH.",
-            OPENPAGE_BROWSER_PATH_ENV,
-            browser_path
+            OPENPAGE_BROWSER_PATH_ENV, browser_path
         ),
     }
 }
@@ -914,13 +1069,17 @@ fn find_in_path(executable: &str) -> Option<PathBuf> {
 mod tests {
     use super::{
         BrowserLaunchGuard, Check, Status, TempDirGuard, browser_executable_fix,
-        browser_launch_fix, daemon_session_fix, legacy_session_files, missing_browser_message,
+        browser_launch_fix, daemon_checks, legacy_session_files, missing_browser_message,
         shell_safe_browser_path_arg, suggested_browser_executable_from_known_paths,
     };
-    use crate::cli::connection::DaemonSessionInfo;
+    use crate::cli::connection::{
+        DaemonSessionInfo, daemon_dir, daemon_session_fix, pid_path, port_path, version_path,
+    };
     use serde_json::json;
     use std::fs;
     use std::path::PathBuf;
+    #[cfg(unix)]
+    use std::process::Command;
     use std::sync::{Mutex, OnceLock};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1043,6 +1202,108 @@ mod tests {
         )
         .expect("serialize check with fix");
         assert_eq!(with_fix["fix"], "set browser_path");
+        assert!(with_fix.get("session").is_none());
+        assert!(with_fix.get("state").is_none());
+        assert!(with_fix.get("reasons").is_none());
+        assert!(with_fix.get("alive").is_none());
+        assert!(with_fix.get("ready").is_none());
+        assert!(with_fix.get("pid").is_none());
+        assert!(with_fix.get("port").is_none());
+        assert!(with_fix.get("version").is_none());
+        assert!(with_fix.get("version_matches_current_cli").is_none());
+        assert!(with_fix.get("log_path").is_none());
+        assert!(with_fix.get("pid_present").is_none());
+        assert!(with_fix.get("port_present").is_none());
+        assert!(with_fix.get("version_present").is_none());
+        assert!(with_fix.get("pid_valid").is_none());
+        assert!(with_fix.get("port_valid").is_none());
+        assert!(with_fix.get("browser_path").is_none());
+        assert!(with_fix.get("resolved_path").is_none());
+        assert!(with_fix.get("suggested_path").is_none());
+    }
+
+    #[test]
+    fn check_serializes_state_and_reasons_when_present() {
+        let value = serde_json::to_value(
+            Check::new("daemon.session.review", "Daemon", Status::Warn, "version mismatch")
+                .with_session("review")
+                .with_state("incompatible")
+                .with_reasons(vec!["version_mismatch"])
+                .with_fix("restart session"),
+        )
+        .expect("serialize check with state and reasons");
+
+        assert_eq!(value["session"], "review");
+        assert_eq!(value["state"], "incompatible");
+        assert_eq!(value["reasons"], json!(["version_mismatch"]));
+        assert_eq!(value["fix"], "restart session");
+    }
+
+    #[test]
+    fn check_serializes_daemon_runtime_fields_when_present() {
+        let value = serde_json::to_value(
+            Check::new("daemon.session.review", "Daemon", Status::Warn, "version mismatch")
+                .with_session("review")
+                .with_state("incompatible")
+                .with_reasons(vec!["version_mismatch"])
+                .with_daemon_session_info(&DaemonSessionInfo {
+                    session: "review".to_string(),
+                    port: Some(1234),
+                    pid: Some(5678),
+                    version: Some("0.0.1".to_string()),
+                    alive: true,
+                    ready: true,
+                    log_path: "/tmp/review.log".to_string(),
+                })
+                .with_fix("restart session"),
+        )
+        .expect("serialize check with daemon runtime fields");
+
+        assert_eq!(value["alive"], true);
+        assert_eq!(value["ready"], true);
+        assert_eq!(value["pid"], 5678);
+        assert_eq!(value["port"], 1234);
+        assert_eq!(value["version"], "0.0.1");
+        assert_eq!(value["version_matches_current_cli"], false);
+        assert_eq!(value["log_path"], "/tmp/review.log");
+    }
+
+    #[test]
+    fn check_serializes_browser_path_fields_when_present() {
+        let value = serde_json::to_value(
+            Check::new(
+                "browser.executable",
+                "Browser",
+                Status::Fail,
+                "bad browser path",
+            )
+            .with_browser_path("/tmp/dp-browser")
+            .with_suggested_path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+        )
+        .expect("serialize check with browser path fields");
+
+        assert_eq!(value["browser_path"], "/tmp/dp-browser");
+        assert_eq!(
+            value["suggested_path"],
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+        );
+        assert!(value.get("resolved_path").is_none());
+
+        let resolved = serde_json::to_value(
+            Check::new(
+                "browser.executable",
+                "Browser",
+                Status::Pass,
+                "browser found",
+            )
+            .with_browser_path("chrome")
+            .with_resolved_path("/usr/bin/chrome"),
+        )
+        .expect("serialize resolved browser path");
+
+        assert_eq!(resolved["browser_path"], "chrome");
+        assert_eq!(resolved["resolved_path"], "/usr/bin/chrome");
+        assert!(resolved.get("suggested_path").is_none());
     }
 
     #[test]
@@ -1124,6 +1385,7 @@ mod tests {
         let fix = daemon_session_fix(&session).expect("version-mismatched session should have fix");
         assert!(fix.contains("browser stop --session review"));
         assert!(fix.contains(env!("CARGO_PKG_VERSION")));
+        assert!(fix.contains("doctor --quick --fix"));
     }
 
     #[test]
@@ -1182,8 +1444,7 @@ mod tests {
         fs::write(&keep_json, "{}").expect("write keep.json");
         fs::write(&keep_txt, "x").expect("write other.txt");
 
-        let removed =
-            super::remove_legacy_session_files().expect("remove legacy session files");
+        let removed = super::remove_legacy_session_files().expect("remove legacy session files");
         assert_eq!(
             removed,
             vec![format!(
@@ -1194,6 +1455,105 @@ mod tests {
         assert!(!keep_json.exists());
         assert!(keep_txt.exists());
 
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn apply_fixes_reports_stale_daemon_sidecar_cleanup() {
+        let _guard = test_env_lock().lock().expect("lock test env");
+        let home = unique_openpage_home("fix-stale-daemon");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let session = "stale-daemon";
+        fs::write(port_path(session).expect("port path"), "9").expect("write port");
+        fs::write(pid_path(session).expect("pid path"), "999999").expect("write pid");
+        fs::write(
+            version_path(session).expect("version path"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("write version");
+
+        let fixed = super::apply_fixes().expect("apply fixes");
+        assert!(fixed.iter().any(|line| {
+            line.contains("Removed stale daemon sidecars for session stale-daemon")
+        }));
+        assert!(!port_path(session).expect("port path").exists());
+        assert!(!pid_path(session).expect("pid path").exists());
+        assert!(!version_path(session).expect("version path").exists());
+
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn apply_fixes_stops_incomplete_unready_daemon_session() {
+        let _guard = test_env_lock().lock().expect("lock test env");
+        let home = unique_openpage_home("fix-incomplete-daemon");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let mut child = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep child");
+
+        let session = "incomplete-daemon";
+        fs::write(port_path(session).expect("port path"), "9").expect("write port");
+        fs::write(
+            pid_path(session).expect("pid path"),
+            child.id().to_string(),
+        )
+        .expect("write pid");
+
+        let fixed = super::apply_fixes().expect("apply fixes");
+        assert!(fixed.iter().any(|line| {
+            line.contains("Stopped and removed incomplete unready daemon session incomplete-daemon")
+        }));
+        let status = child.wait().expect("wait for child to exit");
+        assert!(!status.success());
+        assert!(!port_path(session).expect("port path").exists());
+        assert!(!pid_path(session).expect("pid path").exists());
+        assert!(!version_path(session).expect("version path").exists());
+
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn apply_fixes_stops_incompatible_daemon_session() {
+        let _guard = test_env_lock().lock().expect("lock test env");
+        let home = unique_openpage_home("fix-incompatible-daemon");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
+        let port = listener.local_addr().expect("listener addr").port();
+        let mut child = Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn sleep child");
+
+        let session = "incompatible-daemon";
+        fs::write(port_path(session).expect("port path"), port.to_string()).expect("write port");
+        fs::write(
+            pid_path(session).expect("pid path"),
+            child.id().to_string(),
+        )
+        .expect("write pid");
+        fs::write(version_path(session).expect("version path"), "0.0.1").expect("write version");
+
+        let fixed = super::apply_fixes().expect("apply fixes");
+        assert!(fixed.iter().any(|line| {
+            line.contains("Stopped incompatible daemon session incompatible-daemon")
+        }));
+        let status = child.wait().expect("wait for child to exit");
+        assert!(!status.success());
+        assert!(!port_path(session).expect("port path").exists());
+        assert!(!pid_path(session).expect("pid path").exists());
+        assert!(!version_path(session).expect("version path").exists());
+
+        drop(listener);
         let _ = fs::remove_dir_all(home);
     }
 
@@ -1220,5 +1580,198 @@ mod tests {
             summary.fixable_ids,
             vec![String::from("b"), String::from("c")]
         );
+    }
+
+    #[test]
+    fn doctor_inventory_payload_includes_state_and_reasons() {
+        let inventory = crate::cli::connection::DaemonInventory {
+            sessions: vec![crate::cli::connection::DaemonSessionInfo {
+                session: "alpha".to_string(),
+                port: Some(1111),
+                pid: Some(2222),
+                version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                alive: true,
+                ready: true,
+                log_path: "/tmp/alpha.log".to_string(),
+            }],
+            incomplete: vec![crate::cli::connection::IncompleteDaemonSession {
+                session: "beta".to_string(),
+                pid_present: true,
+                port_present: true,
+                version_present: false,
+                pid_valid: true,
+                port_valid: true,
+                alive: true,
+                ready: false,
+                log_path: "/tmp/beta.log".to_string(),
+            }],
+            cleaned: vec![crate::cli::connection::CleanedDaemonSession {
+                session: "gamma".to_string(),
+                reason: "missing version".to_string(),
+            }],
+        };
+
+        let payload = super::doctor_inventory_payload(&inventory);
+        assert_eq!(payload["summary"]["healthy"], 1);
+        assert_eq!(payload["summary"]["incompatible"], 0);
+        assert_eq!(payload["summary"]["incomplete"], 1);
+        assert_eq!(payload["summary"]["cleaned"], 1);
+        assert_eq!(payload["summary"]["total"], 3);
+        assert_eq!(payload["sessions"][0]["state"], "healthy");
+        assert_eq!(payload["sessions"][0]["version_matches_current_cli"], true);
+        assert_eq!(payload["incomplete"][0]["state"], "incomplete");
+        assert_eq!(
+            payload["incomplete"][0]["reasons"],
+            json!(["missing_version", "daemon_not_ready"])
+        );
+        assert_eq!(payload["incomplete"][0]["log_path"], "/tmp/beta.log");
+        assert!(payload["incomplete"][0]["fix"]
+            .as_str()
+            .expect("incomplete fix should be present")
+            .contains("doctor --quick --fix"));
+        assert_eq!(payload["cleaned"][0]["state"], "cleaned");
+    }
+
+    #[test]
+    fn daemon_checks_include_machine_readable_state_and_reasons() {
+        let _guard = test_env_lock().lock().expect("lock test env");
+        let home = unique_openpage_home("daemon-check-shapes");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let healthy_listener =
+            std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind healthy listener");
+        let healthy_port = healthy_listener.local_addr().expect("healthy addr").port();
+        fs::write(port_path("healthy").expect("healthy port path"), healthy_port.to_string())
+            .expect("write healthy port");
+        fs::write(
+            pid_path("healthy").expect("healthy pid path"),
+            std::process::id().to_string(),
+        )
+        .expect("write healthy pid");
+        fs::write(
+            version_path("healthy").expect("healthy version path"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("write healthy version");
+
+        let incompatible_listener =
+            std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind incompatible listener");
+        let incompatible_port = incompatible_listener
+            .local_addr()
+            .expect("incompatible addr")
+            .port();
+        fs::write(
+            port_path("mismatch").expect("mismatch port path"),
+            incompatible_port.to_string(),
+        )
+        .expect("write mismatch port");
+        fs::write(
+            pid_path("mismatch").expect("mismatch pid path"),
+            std::process::id().to_string(),
+        )
+        .expect("write mismatch pid");
+        fs::write(
+            version_path("mismatch").expect("mismatch version path"),
+            "0.0.1",
+        )
+        .expect("write mismatch version");
+
+        fs::write(
+            port_path("incomplete").expect("incomplete port path"),
+            "9",
+        )
+        .expect("write incomplete port");
+        fs::write(
+            pid_path("incomplete").expect("incomplete pid path"),
+            std::process::id().to_string(),
+        )
+        .expect("write incomplete pid");
+
+        let mut checks = Vec::new();
+        let inventory = daemon_checks(&mut checks).expect("inventory should be present");
+        assert_eq!(inventory.sessions.len(), 2);
+        assert_eq!(inventory.incomplete.len(), 1);
+
+        let serialized = serde_json::to_value(&checks).expect("serialize checks");
+        let checks = serialized.as_array().expect("checks array");
+
+        let healthy = checks
+            .iter()
+            .find(|check| check["id"] == "daemon.session.healthy")
+            .expect("healthy check should exist");
+        assert_eq!(healthy["session"], "healthy");
+        assert_eq!(healthy["state"], "healthy");
+        assert_eq!(healthy["alive"], true);
+        assert_eq!(healthy["ready"], true);
+        assert_eq!(healthy["port"], healthy_port);
+        assert_eq!(healthy["pid"], std::process::id());
+        assert_eq!(healthy["version"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(healthy["version_matches_current_cli"], true);
+        assert_eq!(healthy["log_path"], daemon_dir().expect("daemon dir").join("healthy.log").display().to_string());
+        assert!(healthy.get("reasons").is_none());
+
+        let mismatch = checks
+            .iter()
+            .find(|check| check["id"] == "daemon.session.mismatch")
+            .expect("mismatch check should exist");
+        assert_eq!(mismatch["session"], "mismatch");
+        assert_eq!(mismatch["state"], "incompatible");
+        assert_eq!(mismatch["reasons"], json!(["version_mismatch"]));
+        assert_eq!(mismatch["alive"], true);
+        assert_eq!(mismatch["ready"], true);
+        assert_eq!(mismatch["port"], incompatible_port);
+        assert_eq!(mismatch["pid"], std::process::id());
+        assert_eq!(mismatch["version"], "0.0.1");
+        assert_eq!(mismatch["version_matches_current_cli"], false);
+        assert_eq!(mismatch["log_path"], daemon_dir().expect("daemon dir").join("mismatch.log").display().to_string());
+        assert!(mismatch["fix"]
+            .as_str()
+            .expect("mismatch fix should exist")
+            .contains("browser stop --session mismatch"));
+
+        let incomplete = checks
+            .iter()
+            .find(|check| check["id"] == "daemon.incomplete.incomplete")
+            .expect("incomplete check should exist");
+        assert_eq!(incomplete["session"], "incomplete");
+        assert_eq!(incomplete["state"], "incomplete");
+        assert_eq!(
+            incomplete["reasons"],
+            json!(["missing_version", "daemon_not_ready"])
+        );
+        assert_eq!(incomplete["alive"], true);
+        assert_eq!(incomplete["ready"], false);
+        assert_eq!(incomplete["pid_present"], true);
+        assert_eq!(incomplete["port_present"], true);
+        assert_eq!(incomplete["version_present"], false);
+        assert_eq!(incomplete["pid_valid"], true);
+        assert_eq!(incomplete["port_valid"], true);
+        assert_eq!(incomplete["log_path"], daemon_dir().expect("daemon dir").join("incomplete.log").display().to_string());
+        assert!(incomplete["fix"]
+            .as_str()
+            .expect("incomplete fix should exist")
+            .contains("doctor --quick --fix"));
+
+        drop(healthy_listener);
+        drop(incompatible_listener);
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn daemon_checks_return_empty_inventory_when_daemon_dir_is_missing() {
+        let _guard = test_env_lock().lock().expect("lock test env");
+        let home = unique_openpage_home("daemon-no-dir");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+
+        let mut checks = Vec::new();
+        let inventory = daemon_checks(&mut checks).expect("inventory should still be present");
+
+        assert!(inventory.sessions.is_empty());
+        assert!(inventory.incomplete.is_empty());
+        assert!(inventory.cleaned.is_empty());
+        assert!(checks
+            .iter()
+            .any(|check| check.id == "daemon.sessions" && check.status == "info"));
     }
 }

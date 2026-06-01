@@ -16,6 +16,12 @@ use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
 
 use crate::error::{OpenPageError, OpenPageResult};
+use crate::page::{execute_page_command_async, execute_page_command_blocking};
+use crate::settings::{
+    component_not_active_start_message, component_not_running_message,
+    component_not_running_with_error_message, component_state_lock_poisoned_message,
+    component_stopped_while_waiting_message, invalid_regex_message,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InterceptedRequestInfo {
@@ -67,8 +73,11 @@ impl InterceptFilters {
                 let mut compiled = Vec::with_capacity(targets.len());
                 for pattern in targets {
                     compiled.push(Regex::new(&pattern).map_err(|err| {
-                        OpenPageError::BrowserOperation(format!(
-                            "invalid intercept regex `{pattern}`: {err}"
+                        OpenPageError::BrowserOperation(invalid_regex_message(
+                            "intercept",
+                            "拦截规则",
+                            &pattern,
+                            &err.to_string(),
                         ))
                     })?);
                 }
@@ -180,9 +189,11 @@ impl Interceptor {
         resource_types: Option<Vec<String>>,
     ) -> OpenPageResult<()> {
         let filters = InterceptFilters::new(targets, is_regex, methods, resource_types)?;
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| intercept_state_lock_poisoned_error())?;
 
         state.queue.clear();
         state.pending_request_ids.clear();
@@ -204,17 +215,17 @@ impl Interceptor {
 
     pub fn wait(&self, timeout_ms: Option<u64>) -> OpenPageResult<Option<InterceptedRequest>> {
         let deadline = timeout_ms.map(|timeout| Instant::now() + Duration::from_millis(timeout));
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| intercept_state_lock_poisoned_error())?;
 
         if state.task.is_none() {
             return Err(interceptor_not_running_error(&state));
         }
         if !state.listening {
-            return Err(OpenPageError::BrowserOperation(
-                "interceptor is not active; call start() first".to_string(),
-            ));
+            return Err(interceptor_not_active_error());
         }
 
         loop {
@@ -231,16 +242,16 @@ impl Interceptor {
                 return Err(interceptor_not_running_error(&state));
             }
             if !state.listening {
-                return Err(OpenPageError::BrowserOperation(
-                    "interceptor stopped while waiting".to_string(),
-                ));
+                return Err(interceptor_stopped_while_waiting_error());
             }
 
             match deadline {
                 None => {
-                    state = self.shared.condvar.wait(state).map_err(|_| {
-                        OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-                    })?;
+                    state = self
+                        .shared
+                        .condvar
+                        .wait(state)
+                        .map_err(|_| intercept_state_lock_poisoned_error())?;
                 }
                 Some(deadline) => {
                     let now = Instant::now();
@@ -248,15 +259,11 @@ impl Interceptor {
                         return Ok(None);
                     }
                     let wait_for = deadline.saturating_duration_since(now);
-                    let result =
-                        self.shared
-                            .condvar
-                            .wait_timeout(state, wait_for)
-                            .map_err(|_| {
-                                OpenPageError::BrowserOperation(
-                                    "intercept state lock poisoned".to_string(),
-                                )
-                            })?;
+                    let result = self
+                        .shared
+                        .condvar
+                        .wait_timeout(state, wait_for)
+                        .map_err(|_| intercept_state_lock_poisoned_error())?;
                     state = result.0;
                     if result.1.timed_out() {
                         return Ok(None);
@@ -268,9 +275,11 @@ impl Interceptor {
 
     pub fn stop(&self) -> OpenPageResult<()> {
         let pending_ids = {
-            let mut state = self.shared.state.lock().map_err(|_| {
-                OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-            })?;
+            let mut state = self
+                .shared
+                .state
+                .lock()
+                .map_err(|_| intercept_state_lock_poisoned_error())?;
             let ids = state
                 .pending_request_ids
                 .iter()
@@ -304,23 +313,25 @@ impl Interceptor {
             .state
             .lock()
             .map(|state| state.listening)
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-            })
+            .map_err(|_| intercept_state_lock_poisoned_error())
     }
 
     pub fn pause(&self) -> OpenPageResult<()> {
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| intercept_state_lock_poisoned_error())?;
         state.paused = true;
         Ok(())
     }
 
     pub fn resume(&self) -> OpenPageResult<()> {
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| intercept_state_lock_poisoned_error())?;
         state.paused = false;
         self.shared.condvar.notify_all();
         Ok(())
@@ -331,9 +342,7 @@ impl Interceptor {
             .state
             .lock()
             .map(|state| state.paused)
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-            })
+            .map_err(|_| intercept_state_lock_poisoned_error())
     }
 }
 
@@ -393,13 +402,13 @@ impl InterceptedRequest {
     pub fn fail(&self, reason: ErrorReason) -> OpenPageResult<()> {
         with_pending_request(&self.shared, &self.info.request_id, || {
             let request_id = self.info.request_id.clone();
-            self.runtime.block_on(async {
-                self.page
-                    .execute(FailRequestParams::new(request_id, reason))
-                    .await
-                    .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
-                Ok(())
-            })
+            execute_page_command_blocking(
+                self.runtime.as_ref(),
+                &self.page,
+                FailRequestParams::new(request_id, reason),
+                "InterceptedRequest::fail()",
+            )?;
+            Ok(())
         })
     }
 
@@ -415,25 +424,25 @@ impl InterceptedRequest {
             let response_headers = headers.map(header_entries_from_map);
             let body = body.map(|value| BASE64_STANDARD.encode(value));
             let response_phrase = response_phrase.map(ToOwned::to_owned);
-            self.runtime.block_on(async {
-                let mut params = FulfillRequestParams::builder()
-                    .request_id(request_id)
-                    .response_code(response_code);
-                if let Some(response_headers) = response_headers {
-                    params = params.response_headers(response_headers);
-                }
-                if let Some(body) = body {
-                    params = params.body(body);
-                }
-                if let Some(response_phrase) = response_phrase {
-                    params = params.response_phrase(response_phrase);
-                }
-                self.page
-                    .execute(params.build().map_err(OpenPageError::BrowserOperation)?)
-                    .await
-                    .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
-                Ok(())
-            })
+            let mut params = FulfillRequestParams::builder()
+                .request_id(request_id)
+                .response_code(response_code);
+            if let Some(response_headers) = response_headers {
+                params = params.response_headers(response_headers);
+            }
+            if let Some(body) = body {
+                params = params.body(body);
+            }
+            if let Some(response_phrase) = response_phrase {
+                params = params.response_phrase(response_phrase);
+            }
+            execute_page_command_blocking(
+                self.runtime.as_ref(),
+                &self.page,
+                params.build().map_err(OpenPageError::BrowserOperation)?,
+                "InterceptedRequest::fulfill()",
+            )?;
+            Ok(())
         })
     }
 }
@@ -457,16 +466,20 @@ async fn on_request_paused(
     event: &EventRequestPaused,
 ) -> OpenPageResult<()> {
     if event.response_status_code.is_some() {
-        page.execute(ContinueRequestParams::new(event.request_id.clone()))
-            .await
-            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        execute_page_command_async(
+            page,
+            ContinueRequestParams::new(event.request_id.clone()),
+            "Interceptor::on_request_paused()",
+        )
+        .await?;
         return Ok(());
     }
 
     let info = {
-        let state = shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-        })?;
+        let state = shared
+            .state
+            .lock()
+            .map_err(|_| intercept_state_lock_poisoned_error())?;
         if !state.listening || state.paused {
             None
         } else {
@@ -498,27 +511,35 @@ async fn on_request_paused(
     };
 
     let Some(info) = info else {
-        page.execute(ContinueRequestParams::new(event.request_id.clone()))
-            .await
-            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        execute_page_command_async(
+            page,
+            ContinueRequestParams::new(event.request_id.clone()),
+            "Interceptor::on_request_paused()",
+        )
+        .await?;
         return Ok(());
     };
 
     let is_listening = {
-        let state = shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-        })?;
+        let state = shared
+            .state
+            .lock()
+            .map_err(|_| intercept_state_lock_poisoned_error())?;
         state.listening
     };
     if !is_listening {
-        page.execute(ContinueRequestParams::new(event.request_id.clone()))
-            .await
-            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        execute_page_command_async(
+            page,
+            ContinueRequestParams::new(event.request_id.clone()),
+            "Interceptor::on_request_paused()",
+        )
+        .await?;
         return Ok(());
     }
-    let mut state = shared.state.lock().map_err(|_| {
-        OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-    })?;
+    let mut state = shared
+        .state
+        .lock()
+        .map_err(|_| intercept_state_lock_poisoned_error())?;
     state.pending_request_ids.insert(info.request_id.clone());
     state.queue.push_back(info);
     shared.condvar.notify_all();
@@ -539,25 +560,26 @@ fn continue_request(
     let method = method.map(ToOwned::to_owned);
     let headers = headers.map(header_entries_from_map);
     let post_data = post_data.map(|value| BASE64_STANDARD.encode(value.as_bytes()));
-    runtime.block_on(async {
-        let mut params = ContinueRequestParams::builder().request_id(request_id);
-        if let Some(url) = url {
-            params = params.url(url);
-        }
-        if let Some(method) = method {
-            params = params.method(method);
-        }
-        if let Some(headers) = headers {
-            params = params.headers(headers);
-        }
-        if let Some(post_data) = post_data {
-            params = params.post_data(post_data);
-        }
-        page.execute(params.build().map_err(OpenPageError::BrowserOperation)?)
-            .await
-            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
-        Ok(())
-    })
+    let mut params = ContinueRequestParams::builder().request_id(request_id);
+    if let Some(url) = url {
+        params = params.url(url);
+    }
+    if let Some(method) = method {
+        params = params.method(method);
+    }
+    if let Some(headers) = headers {
+        params = params.headers(headers);
+    }
+    if let Some(post_data) = post_data {
+        params = params.post_data(post_data);
+    }
+    execute_page_command_blocking(
+        runtime.as_ref(),
+        page,
+        params.build().map_err(OpenPageError::BrowserOperation)?,
+        "Interceptor::continue_request()",
+    )?;
+    Ok(())
 }
 
 fn with_pending_request<F>(
@@ -569,9 +591,10 @@ where
     F: FnOnce() -> OpenPageResult<()>,
 {
     {
-        let mut state = shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-        })?;
+        let mut state = shared
+            .state
+            .lock()
+            .map_err(|_| intercept_state_lock_poisoned_error())?;
         if !state.pending_request_ids.remove(request_id) {
             return Err(OpenPageError::BrowserOperation(format!(
                 "intercepted request `{request_id}` is no longer pending"
@@ -585,9 +608,10 @@ where
             Ok(())
         }
         Err(err) => {
-            let mut state = shared.state.lock().map_err(|_| {
-                OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-            })?;
+            let mut state = shared
+                .state
+                .lock()
+                .map_err(|_| intercept_state_lock_poisoned_error())?;
             state.pending_request_ids.insert(request_id.to_string());
             shared.condvar.notify_all();
             Err(err)
@@ -599,9 +623,10 @@ fn set_interceptor_stopped(
     shared: &Arc<InterceptShared>,
     error: Option<String>,
 ) -> OpenPageResult<()> {
-    let mut state = shared.state.lock().map_err(|_| {
-        OpenPageError::BrowserOperation("intercept state lock poisoned".to_string())
-    })?;
+    let mut state = shared
+        .state
+        .lock()
+        .map_err(|_| intercept_state_lock_poisoned_error())?;
     state.listening = false;
     state.pending_request_ids.clear();
     state.task = None;
@@ -612,10 +637,32 @@ fn set_interceptor_stopped(
 
 fn interceptor_not_running_error(state: &InterceptState) -> OpenPageError {
     if let Some(error) = &state.last_error {
-        OpenPageError::BrowserOperation(format!("interceptor is not running: {error}"))
+        OpenPageError::BrowserOperation(component_not_running_with_error_message(
+            "interceptor",
+            "拦截器",
+            error,
+        ))
     } else {
-        OpenPageError::BrowserOperation("interceptor is not running".to_string())
+        OpenPageError::BrowserOperation(component_not_running_message("interceptor", "拦截器"))
     }
+}
+
+fn intercept_state_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "intercept state",
+        "拦截状态",
+    ))
+}
+
+fn interceptor_not_active_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_not_active_start_message("interceptor", "拦截器"))
+}
+
+fn interceptor_stopped_while_waiting_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_stopped_while_waiting_message(
+        "interceptor",
+        "拦截器",
+    ))
 }
 
 fn normalize_set(values: Option<Vec<String>>) -> Option<HashSet<String>> {
@@ -653,4 +700,37 @@ fn header_entries_from_map(headers: HashMap<String, String>) -> Vec<HeaderEntry>
 
 fn resource_type_to_string(value: &ResourceType) -> String {
     value.as_ref().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::settings::{Settings, scoped_test_settings};
+
+    use super::{InterceptFilters, InterceptState, interceptor_not_running_error};
+
+    #[test]
+    fn intercept_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english_regex = InterceptFilters::new(Some(vec!["(".to_string()]), true, None, None)
+            .expect_err("invalid regex should fail")
+            .to_string();
+        assert!(english_regex.contains("invalid intercept regex `(`"));
+
+        let mut state = InterceptState::default();
+        state.last_error = Some("boom".to_string());
+        let english_not_running = interceptor_not_running_error(&state).to_string();
+        assert!(english_not_running.contains("interceptor is not running: boom"));
+
+        Settings::set_language("cn");
+
+        let chinese_regex = InterceptFilters::new(Some(vec!["(".to_string()]), true, None, None)
+            .expect_err("invalid regex should fail in Chinese")
+            .to_string();
+        assert!(chinese_regex.contains("无效的拦截规则正则 `(`"));
+
+        let chinese_not_running = interceptor_not_running_error(&state).to_string();
+        assert!(chinese_not_running.contains("拦截器未运行: boom"));
+    }
 }

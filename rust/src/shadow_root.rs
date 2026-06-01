@@ -16,6 +16,11 @@ use crate::element_list::{
 };
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::{Locator, LocatorInput, LocatorKind, parse_optional_locator_input};
+use crate::page::execute_page_command_async;
+use crate::settings::{
+    javascript_execution_timed_out_message, shadow_root_object_id_unavailable_message,
+    shadow_root_xpath_traversal_not_implemented_message,
+};
 use crate::session::{
     SessionElement, SessionXPathResult, snapshot_fragment_find_all_with_base_url,
     snapshot_fragment_find_with_base_url, snapshot_fragment_query_xpath_with_base_url,
@@ -428,12 +433,14 @@ impl ShadowRoot {
     fn query_selector(&self, selector: &str) -> OpenPageResult<NodeId> {
         let root_node_id = self.current_node_id()?;
         let node_id = self.runtime.block_on(async {
-            let response = self
-                .page
-                .execute(QuerySelectorParams::new(root_node_id, selector.to_string()))
-                .await
-                .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
-            Ok::<NodeId, OpenPageError>(response.result.node_id)
+            let response = execute_page_command_async(
+                &self.page,
+                QuerySelectorParams::new(root_node_id, selector.to_string()),
+                "ShadowRoot::query_selector()",
+            )
+            .await
+            .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
+            Ok::<NodeId, OpenPageError>(response.node_id)
         })?;
         if *node_id.inner() == 0 {
             Err(OpenPageError::ElementNotFound(selector.to_string()))
@@ -445,39 +452,38 @@ impl ShadowRoot {
     fn query_selector_all(&self, selector: &str) -> OpenPageResult<Vec<Element>> {
         let root_node_id = self.current_node_id()?;
         let node_ids = self.runtime.block_on(async {
-            let response = self
-                .page
-                .execute(QuerySelectorAllParams::new(
-                    root_node_id,
-                    selector.to_string(),
-                ))
-                .await
-                .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
-            Ok::<Vec<NodeId>, OpenPageError>(response.result.node_ids)
+            let response = execute_page_command_async(
+                &self.page,
+                QuerySelectorAllParams::new(root_node_id, selector.to_string()),
+                "ShadowRoot::query_selector_all()",
+            )
+            .await
+            .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
+            Ok::<Vec<NodeId>, OpenPageError>(response.node_ids)
         })?;
         self.resolve_node_ids(&node_ids)
     }
 
     fn current_node_id(&self) -> OpenPageResult<NodeId> {
         self.runtime.block_on(async {
-            let resolved = self
-                .page
-                .execute(
-                    ResolveNodeParams::builder()
-                        .backend_node_id(self.backend_node_id)
-                        .build(),
-                )
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            let object_id = resolved.result.object.object_id.ok_or_else(|| {
-                OpenPageError::PageOperation("shadow root object id is unavailable".to_string())
+            let resolved = execute_page_command_async(
+                &self.page,
+                ResolveNodeParams::builder()
+                    .backend_node_id(self.backend_node_id)
+                    .build(),
+                "ShadowRoot::current_node_id()",
+            )
+            .await?;
+            let object_id = resolved.object.object_id.ok_or_else(|| {
+                OpenPageError::PageOperation(shadow_root_object_id_unavailable_message())
             })?;
-            let requested = self
-                .page
-                .execute(RequestNodeParams::new(object_id))
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            Ok::<NodeId, OpenPageError>(requested.result.node_id)
+            let requested = execute_page_command_async(
+                &self.page,
+                RequestNodeParams::new(object_id),
+                "ShadowRoot::current_node_id()",
+            )
+            .await?;
+            Ok::<NodeId, OpenPageError>(requested.node_id)
         })
     }
 
@@ -532,17 +538,16 @@ impl ShadowRoot {
             Some(timeout_ms) => {
                 tokio::time::timeout(Duration::from_millis(timeout_ms.max(1)), future)
                     .await
-                    .map_err(|_| {
-                        OpenPageError::Timeout("javascript execution timed out".to_string())
-                    })?
+                    .map_err(|_| OpenPageError::Timeout(javascript_execution_timed_out_message()))?
             }
             None => future.await,
         }
         .map_err(|err| OpenPageError::JavaScript(err.to_string()))?;
-        if let Some(details) = response.result.exception_details {
+        let response = response.result;
+        if let Some(details) = response.exception_details {
             return Err(OpenPageError::JavaScript(format!("{details:?}")));
         }
-        Ok(response.result)
+        Ok(response)
     }
 
     fn resolve_node_ids(&self, node_ids: &[NodeId]) -> OpenPageResult<Vec<Element>> {
@@ -559,14 +564,12 @@ impl ShadowRoot {
 
         self.runtime.block_on(async {
             for (node_id, marker) in &markers {
-                self.page
-                    .execute(SetAttributeValueParams::new(
-                        *node_id,
-                        MARKER_ATTRIBUTE,
-                        marker.clone(),
-                    ))
-                    .await
-                    .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                execute_page_command_async(
+                    &self.page,
+                    SetAttributeValueParams::new(*node_id, MARKER_ATTRIBUTE, marker.clone()),
+                    "ShadowRoot::resolve_node_ids()",
+                )
+                .await?;
             }
             Ok::<(), OpenPageError>(())
         })?;
@@ -595,10 +598,12 @@ impl ShadowRoot {
 
         let cleanup = self.runtime.block_on(async {
             for (node_id, _) in &markers {
-                let _ = self
-                    .page
-                    .execute(RemoveAttributeParams::new(*node_id, MARKER_ATTRIBUTE))
-                    .await;
+                let _ = execute_page_command_async(
+                    &self.page,
+                    RemoveAttributeParams::new(*node_id, MARKER_ATTRIBUTE),
+                    "ShadowRoot::resolve_node_ids()",
+                )
+                .await;
             }
             Ok::<(), OpenPageError>(())
         });
@@ -619,7 +624,7 @@ fn direct_child_selector(locator: Option<&str>) -> OpenPageResult<String> {
     match locator.kind() {
         LocatorKind::Css => Ok(format!(":scope > {}", locator.query())),
         LocatorKind::XPath => Err(OpenPageError::UnsupportedLocator(
-            "xpath shadow root traversal is not implemented yet".to_string(),
+            shadow_root_xpath_traversal_not_implemented_message(),
         )),
     }
 }
@@ -750,6 +755,7 @@ mod tests {
         build_js_invocation, direct_child_selector, normalize_axis_xpath,
         resolve_javascript_timeout_ms,
     };
+    use crate::settings::{Settings, scoped_test_settings};
     use serde_json::json;
 
     #[test]
@@ -773,6 +779,21 @@ mod tests {
             direct_child_selector(Some(".item")).expect("selector should build"),
             ":scope > .item"
         );
+    }
+
+    #[test]
+    fn direct_child_selector_localizes_xpath_unsupported_error() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let error = direct_child_selector(Some("xpath://div"))
+            .expect_err("xpath child traversal should not be supported");
+        assert!(error.to_string().contains("not implemented yet"));
+
+        Settings::set_language("cn");
+        let error = direct_child_selector(Some("xpath://div"))
+            .expect_err("xpath child traversal should not be supported");
+        assert!(error.to_string().contains("暂未实现"));
     }
 
     #[test]

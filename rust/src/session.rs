@@ -26,21 +26,156 @@ use skyscraper::xpath::grammar::{
 use url::Url;
 
 use crate::element_list::{
-    ElementsOneOwned, ElementsOneRuntimeConfig, ElementsOneRuntimeConfigHandle,
-    elements_one_should_raise_when_missing,
+    ElementsOneOwned, ElementsOneRuntimeConfigHandle, elements_one_should_raise_when_missing,
 };
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::{
     Locator, LocatorBatchInput, LocatorInput, LocatorKind, LocatorMatch, collect_locator_matches,
     parse_locator_batch_input, parse_optional_locator_input,
 };
+use crate::settings::{
+    component_state_lock_poisoned_message,
+    cookie_name_empty_message, cookie_requires_url_or_domain_message,
+    cookie_text_separator_conflict_message, cookie_value_empty_message,
+    default_none_element_runtime_config, invalid_file_url_message, invalid_url_message,
+    session_page_no_current_url_message, session_page_no_loaded_document_message,
+    session_cookie_requires_url_or_domain_message,
+};
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
+
+pub type SessionResponseHook = Arc<dyn Fn(SessionHookEvent) + Send + Sync + 'static>;
+
+#[derive(Clone, Debug)]
+pub struct SessionHookEvent {
+    pub requested_url: String,
+    pub response: SessionResponseInfo,
+    pub raw_data: Arc<Vec<u8>>,
+}
+
+#[derive(Clone, Default)]
+pub struct SessionHooks {
+    response: Vec<SessionResponseHook>,
+}
+
+impl std::fmt::Debug for SessionHooks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionHooks")
+            .field("response_hooks", &self.response.len())
+            .finish()
+    }
+}
+
+impl SessionHooks {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add_response<F>(&mut self, hook: F) -> &mut Self
+    where
+        F: Fn(SessionHookEvent) + Send + Sync + 'static,
+    {
+        self.response.push(Arc::new(hook));
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.response.is_empty()
+    }
+
+    pub fn response_count(&self) -> usize {
+        self.response.len()
+    }
+
+    fn extend_response_hooks(&mut self, other: &SessionHooks) {
+        self.response.extend(other.response.iter().cloned());
+    }
+
+    fn response_hooks(&self) -> &[SessionResponseHook] {
+        &self.response
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum SessionCert {
     Pem(PathBuf),
     PemPair { cert: PathBuf, key: PathBuf },
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct SessionAdapter {
+    pub timeout_secs: Option<u64>,
+    pub http_proxy: Option<Option<String>>,
+    pub https_proxy: Option<Option<String>>,
+    pub verify: Option<bool>,
+    pub cert: Option<Option<SessionCert>>,
+    pub trust_env: Option<bool>,
+    pub max_redirects: Option<Option<usize>>,
+}
+
+impl SessionAdapter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set_timeout(&mut self, timeout_secs: u64) -> &mut Self {
+        self.timeout_secs = Some(timeout_secs);
+        self
+    }
+
+    pub fn set_proxies(
+        &mut self,
+        http_proxy: Option<String>,
+        https_proxy: Option<String>,
+    ) -> &mut Self {
+        self.http_proxy = Some(http_proxy);
+        self.https_proxy = Some(https_proxy);
+        self
+    }
+
+    pub fn set_verify(&mut self, verify: bool) -> &mut Self {
+        self.verify = Some(verify);
+        self
+    }
+
+    pub fn set_cert(&mut self, cert: Option<SessionCert>) -> &mut Self {
+        self.cert = Some(cert);
+        self
+    }
+
+    pub fn set_trust_env(&mut self, trust_env: bool) -> &mut Self {
+        self.trust_env = Some(trust_env);
+        self
+    }
+
+    pub fn set_max_redirects(&mut self, max_redirects: Option<usize>) -> &mut Self {
+        self.max_redirects = Some(max_redirects);
+        self
+    }
+
+    fn merged_client_options(&self, base: &SessionClientOptions) -> SessionClientOptions {
+        SessionClientOptions {
+            timeout_secs: self.timeout_secs.unwrap_or(base.timeout_secs),
+            http_proxy: self
+                .http_proxy
+                .clone()
+                .unwrap_or_else(|| base.http_proxy.clone()),
+            https_proxy: self
+                .https_proxy
+                .clone()
+                .unwrap_or_else(|| base.https_proxy.clone()),
+            verify: self.verify.unwrap_or(base.verify),
+            cert: self.cert.clone().unwrap_or_else(|| base.cert.clone()),
+            trust_env: self.trust_env.unwrap_or(base.trust_env),
+            max_redirects: self.max_redirects.unwrap_or(base.max_redirects),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SessionAdapterMount {
+    pub url_prefix: String,
+    pub adapter: SessionAdapter,
 }
 
 #[derive(Debug, Clone)]
@@ -57,9 +192,12 @@ pub struct SessionOptions {
     pub params: Vec<(String, String)>,
     pub verify: bool,
     pub auth: Option<(String, String)>,
+    pub hooks: SessionHooks,
+    pub stream: bool,
     pub cert: Option<SessionCert>,
     pub trust_env: bool,
     pub max_redirects: Option<usize>,
+    pub adapters: Vec<SessionAdapterMount>,
     pub source_ini_path: Option<PathBuf>,
 }
 
@@ -72,6 +210,51 @@ pub struct SessionRequestOptions {
     pub headers: Vec<(String, String)>,
     pub params: Vec<(String, String)>,
     pub auth: Option<(String, String)>,
+    pub hooks: Option<SessionHooks>,
+    pub stream: Option<bool>,
+}
+
+pub enum CookieInput<'a> {
+    Text(&'a str),
+    SessionCookie(&'a SessionCookieParam),
+    SessionCookies(&'a [SessionCookieParam]),
+    Json(&'a Value),
+}
+
+impl<'a> From<&'a str> for CookieInput<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::Text(value)
+    }
+}
+
+impl<'a> From<&'a String> for CookieInput<'a> {
+    fn from(value: &'a String) -> Self {
+        Self::Text(value)
+    }
+}
+
+impl<'a> From<&'a SessionCookieParam> for CookieInput<'a> {
+    fn from(value: &'a SessionCookieParam) -> Self {
+        Self::SessionCookie(value)
+    }
+}
+
+impl<'a> From<&'a [SessionCookieParam]> for CookieInput<'a> {
+    fn from(value: &'a [SessionCookieParam]) -> Self {
+        Self::SessionCookies(value)
+    }
+}
+
+impl<'a> From<&'a Vec<SessionCookieParam>> for CookieInput<'a> {
+    fn from(value: &'a Vec<SessionCookieParam>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl<'a> From<&'a Value> for CookieInput<'a> {
+    fn from(value: &'a Value) -> Self {
+        Self::Json(value)
+    }
 }
 
 impl Default for SessionOptions {
@@ -89,15 +272,22 @@ impl Default for SessionOptions {
             params: Vec::new(),
             verify: true,
             auth: None,
+            hooks: SessionHooks::default(),
+            stream: false,
             cert: None,
             trust_env: true,
             max_redirects: Some(30),
+            adapters: Vec::new(),
             source_ini_path: None,
         }
     }
 }
 
 impl SessionOptions {
+    pub fn new(read_file: bool, ini_path: Option<&Path>) -> OpenPageResult<Self> {
+        Self::from_ini_options(read_file, ini_path)
+    }
+
     pub fn from_ini_options(read_file: bool, ini_path: Option<&Path>) -> OpenPageResult<Self> {
         if read_file {
             Self::from_ini(ini_path)
@@ -168,8 +358,16 @@ impl SessionOptions {
         self
     }
 
-    pub fn set_cookies(&mut self, cookies: &[SessionCookieParam]) -> &mut Self {
-        self.cookies = cookies.to_vec();
+    pub fn set_cookies<'a, C>(&mut self, cookies: C) -> OpenPageResult<&mut Self>
+    where
+        C: Into<CookieInput<'a>>,
+    {
+        self.cookies = cookie_input_to_params(cookies.into(), None)?;
+        Ok(self)
+    }
+
+    pub fn clear_cookies(&mut self) -> &mut Self {
+        self.cookies.clear();
         self
     }
 
@@ -207,6 +405,20 @@ impl SessionOptions {
         self
     }
 
+    pub fn set_hooks(&mut self, hooks: SessionHooks) -> &mut Self {
+        self.hooks = hooks;
+        self
+    }
+
+    pub fn hooks(&self) -> &SessionHooks {
+        &self.hooks
+    }
+
+    pub fn set_stream(&mut self, stream: bool) -> &mut Self {
+        self.stream = stream;
+        self
+    }
+
     pub fn set_params(&mut self, params: &[(String, String)]) -> &mut Self {
         self.params = params.to_vec();
         self
@@ -230,6 +442,22 @@ impl SessionOptions {
     pub fn set_max_redirects(&mut self, max_redirects: Option<usize>) -> &mut Self {
         self.max_redirects = max_redirects;
         self
+    }
+
+    pub fn add_adapter(
+        &mut self,
+        url_prefix: impl Into<String>,
+        adapter: SessionAdapter,
+    ) -> &mut Self {
+        self.adapters.push(SessionAdapterMount {
+            url_prefix: url_prefix.into(),
+            adapter,
+        });
+        self
+    }
+
+    pub fn adapters(&self) -> &[SessionAdapterMount] {
+        &self.adapters
     }
 }
 
@@ -322,7 +550,7 @@ fn parse_session_options_ini(content: &str) -> OpenPageResult<SessionOptions> {
         options.set_headers(&parse_session_headers(headers)?);
     }
     if let Some(cookies) = ini_section_value(&ini, "session_options", "cookies") {
-        options.set_cookies(&parse_session_cookies(cookies)?);
+        options.set_cookies(&parse_session_cookies(cookies)?)?;
     }
     if let Some(user_agent) = ini_section_value(&ini, "session_options", "user_agent") {
         options.user_agent = parse_optional_ini_string(user_agent, "user_agent")?;
@@ -340,6 +568,11 @@ fn parse_session_options_ini(content: &str) -> OpenPageResult<SessionOptions> {
     }
     if let Some(cert) = ini_section_value(&ini, "session_options", "cert") {
         options.cert = parse_optional_ini_cert(cert)?;
+    }
+    if let Some(stream) = ini_section_value(&ini, "session_options", "stream") {
+        if let Some(stream) = parse_optional_ini_bool(stream)? {
+            options.stream = stream;
+        }
     }
     if let Some(trust_env) = ini_section_value(&ini, "session_options", "trust_env") {
         if let Some(trust_env) = parse_optional_ini_bool(trust_env)? {
@@ -434,6 +667,12 @@ fn serialize_session_options_ini(options: &SessionOptions, template: Option<&str
         "session_options",
         "cert",
         serialize_optional_cert(options.cert.as_ref()),
+    );
+    set_ini_value(
+        &mut ini,
+        "session_options",
+        "stream",
+        ini_bool(options.stream).to_string(),
     );
     set_ini_value(
         &mut ini,
@@ -880,6 +1119,415 @@ fn json_optional_bool(value: Option<&Value>, field: &str) -> OpenPageResult<Opti
     }
 }
 
+#[derive(Clone, Debug, Default)]
+struct CookieDraft {
+    name: String,
+    value: String,
+    url: Option<String>,
+    domain: Option<String>,
+    path: Option<String>,
+    secure: bool,
+    http_only: bool,
+    same_site: Option<String>,
+}
+
+pub(crate) fn cookie_input_to_params<'a>(
+    input: CookieInput<'a>,
+    default_url: Option<&str>,
+) -> OpenPageResult<Vec<SessionCookieParam>> {
+    cookie_input_to_params_internal(input, default_url, false)
+}
+
+pub(crate) fn cookie_input_to_params_allow_missing_scope<'a>(
+    input: CookieInput<'a>,
+) -> OpenPageResult<Vec<SessionCookieParam>> {
+    cookie_input_to_params_internal(input, None, true)
+}
+
+fn cookie_input_to_params_internal<'a>(
+    input: CookieInput<'a>,
+    default_url: Option<&str>,
+    allow_missing_scope: bool,
+) -> OpenPageResult<Vec<SessionCookieParam>> {
+    let mut cookies = match input {
+        CookieInput::Text(text) => parse_cookie_text_input(text)?,
+        CookieInput::SessionCookie(cookie) => vec![cookie.clone()],
+        CookieInput::SessionCookies(cookies) => cookies.to_vec(),
+        CookieInput::Json(value) => parse_cookie_json_input(value)?,
+    };
+    let default_url = default_url
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    for cookie in &mut cookies {
+        if cookie.url.is_none() && cookie.domain.is_none() {
+            cookie.url = default_url.clone();
+        }
+        if cookie.name.trim().is_empty() {
+            return Err(OpenPageError::Http(cookie_name_empty_message()));
+        }
+        if cookie.value.trim().is_empty() {
+            return Err(OpenPageError::Http(cookie_value_empty_message(
+                &cookie.name,
+            )));
+        }
+        if !allow_missing_scope && cookie.url.is_none() && cookie.domain.is_none() {
+            return Err(OpenPageError::Http(cookie_requires_url_or_domain_message(
+                &cookie.name,
+            )));
+        }
+    }
+    Ok(cookies)
+}
+
+fn parse_cookie_text_input(text: &str) -> OpenPageResult<Vec<SessionCookieParam>> {
+    let has_semicolon = text.contains(';');
+    let has_comma = text.contains(',');
+    if has_semicolon && has_comma {
+        return Err(OpenPageError::Http(cookie_text_separator_conflict_message()));
+    }
+
+    let segments: Vec<&str> = if has_comma {
+        text.split(',').collect()
+    } else {
+        text.split(';').collect()
+    };
+    let mut entries = Vec::new();
+    for raw in segments {
+        let raw = raw.trim();
+        if raw.is_empty() {
+            continue;
+        }
+        if let Some((name, value)) = raw.split_once('=') {
+            entries.push((
+                canonical_cookie_attr_key(name),
+                Some(value.trim().to_string()),
+            ));
+        } else {
+            entries.push((canonical_cookie_attr_key(raw), None));
+        }
+    }
+
+    if entries.is_empty() {
+        return Ok(Vec::new());
+    }
+    if entries
+        .iter()
+        .any(|(key, _)| key == "name" || key == "value")
+    {
+        return Ok(vec![cookie_draft_to_param(parse_single_cookie_entries(
+            &entries,
+            "cookie text",
+        )?)]);
+    }
+
+    let shared = parse_shared_cookie_entries(&entries, "cookie text")?;
+    let mut cookies = Vec::new();
+    for (key, value) in entries {
+        if is_shared_cookie_key(&key) {
+            continue;
+        }
+        let Some(value) = value else {
+            return Err(OpenPageError::Http(format!(
+                "invalid cookie text: `{key}` is missing a value"
+            )));
+        };
+        cookies.push(cookie_draft_to_param(CookieDraft {
+            name: key,
+            value,
+            url: shared.url.clone(),
+            domain: shared.domain.clone(),
+            path: shared.path.clone(),
+            secure: shared.secure,
+            http_only: shared.http_only,
+            same_site: shared.same_site.clone(),
+        }));
+    }
+    if cookies.is_empty() {
+        return Err(OpenPageError::Http(
+            "cookie text must contain at least one cookie assignment".to_string(),
+        ));
+    }
+    Ok(cookies)
+}
+
+fn parse_cookie_json_input(value: &Value) -> OpenPageResult<Vec<SessionCookieParam>> {
+    match value {
+        Value::Null => Ok(Vec::new()),
+        Value::String(text) => parse_cookie_text_input(text),
+        Value::Object(map) => parse_cookie_json_object(map),
+        Value::Array(items) => {
+            let mut cookies = Vec::new();
+            for item in items {
+                let item_cookies = parse_cookie_json_input(item)?;
+                if item_cookies.len() != 1 {
+                    return Err(OpenPageError::Http(
+                        "cookie list items must each describe exactly one cookie".to_string(),
+                    ));
+                }
+                cookies.extend(item_cookies);
+            }
+            Ok(cookies)
+        }
+        _ => Err(OpenPageError::Http(
+            "cookie input must be null, string, object, or array".to_string(),
+        )),
+    }
+}
+
+fn parse_cookie_json_object(
+    map: &serde_json::Map<String, Value>,
+) -> OpenPageResult<Vec<SessionCookieParam>> {
+    if map.contains_key("name") || map.contains_key("value") {
+        return Ok(vec![cookie_draft_to_param(parse_cookie_object(
+            map,
+            "cookie object",
+        )?)]);
+    }
+
+    let shared = parse_shared_cookie_object(map, "cookie object")?;
+    let mut cookies = Vec::new();
+    for (key, value) in map {
+        let canonical = canonical_cookie_attr_key(key);
+        if is_shared_cookie_key(&canonical) {
+            continue;
+        }
+        cookies.push(cookie_draft_to_param(CookieDraft {
+            name: key.trim().to_string(),
+            value: json_scalar_to_string(value, key)?,
+            url: shared.url.clone(),
+            domain: shared.domain.clone(),
+            path: shared.path.clone(),
+            secure: shared.secure,
+            http_only: shared.http_only,
+            same_site: shared.same_site.clone(),
+        }));
+    }
+    if cookies.is_empty() {
+        return Err(OpenPageError::Http(
+            "cookie object must contain at least one cookie assignment".to_string(),
+        ));
+    }
+    Ok(cookies)
+}
+
+fn parse_single_cookie_entries(
+    entries: &[(String, Option<String>)],
+    field: &str,
+) -> OpenPageResult<CookieDraft> {
+    let mut cookie = CookieDraft::default();
+    for (key, value) in entries {
+        match key.as_str() {
+            "name" => {
+                cookie.name = value.clone().unwrap_or_default();
+            }
+            "value" => {
+                cookie.value = value.clone().unwrap_or_default();
+            }
+            "url" => {
+                cookie.url = value.clone().filter(|value| !value.trim().is_empty());
+            }
+            "domain" => {
+                cookie.domain = value.clone().filter(|value| !value.trim().is_empty());
+            }
+            "path" => {
+                cookie.path = value.clone().filter(|value| !value.trim().is_empty());
+            }
+            "secure" => {
+                cookie.secure = parse_cookie_flag_value(value.as_deref(), field, "secure")?;
+            }
+            "http_only" => {
+                cookie.http_only = parse_cookie_flag_value(value.as_deref(), field, "http_only")?;
+            }
+            "same_site" => {
+                cookie.same_site = value.clone().filter(|value| !value.trim().is_empty());
+            }
+            "expires" | "expiry" | "max_age" => {}
+            other => {
+                if cookie.name.is_empty() {
+                    cookie.name = other.to_string();
+                    cookie.value = value.clone().unwrap_or_default();
+                }
+            }
+        }
+    }
+    if cookie.name.trim().is_empty() || cookie.value.trim().is_empty() {
+        return Err(OpenPageError::Http(format!(
+            "{field} must contain `name` and `value`"
+        )));
+    }
+    Ok(cookie)
+}
+
+fn parse_shared_cookie_entries(
+    entries: &[(String, Option<String>)],
+    field: &str,
+) -> OpenPageResult<CookieDraft> {
+    let mut shared = CookieDraft::default();
+    for (key, value) in entries {
+        match key.as_str() {
+            "url" => {
+                shared.url = value.clone().filter(|value| !value.trim().is_empty());
+            }
+            "domain" => {
+                shared.domain = value.clone().filter(|value| !value.trim().is_empty());
+            }
+            "path" => {
+                shared.path = value.clone().filter(|value| !value.trim().is_empty());
+            }
+            "secure" => {
+                shared.secure = parse_cookie_flag_value(value.as_deref(), field, "secure")?;
+            }
+            "http_only" => {
+                shared.http_only = parse_cookie_flag_value(value.as_deref(), field, "http_only")?;
+            }
+            "same_site" => {
+                shared.same_site = value.clone().filter(|value| !value.trim().is_empty());
+            }
+            "expires" | "expiry" | "max_age" => {}
+            _ => {}
+        }
+    }
+    Ok(shared)
+}
+
+fn parse_cookie_object(
+    map: &serde_json::Map<String, Value>,
+    field: &str,
+) -> OpenPageResult<CookieDraft> {
+    Ok(CookieDraft {
+        name: json_required_string(map.get("name"), &format!("{field}.name"))?,
+        value: json_required_string(map.get("value"), &format!("{field}.value"))?,
+        url: cookie_object_optional_string(map, &["url"], &format!("{field}.url"))?,
+        domain: cookie_object_optional_string(map, &["domain"], &format!("{field}.domain"))?,
+        path: cookie_object_optional_string(map, &["path"], &format!("{field}.path"))?,
+        secure: cookie_object_optional_bool(map, &["secure"], &format!("{field}.secure"))?
+            .unwrap_or(false),
+        http_only: cookie_object_optional_bool(
+            map,
+            &["http_only", "httpOnly", "httponly"],
+            &format!("{field}.http_only"),
+        )?
+        .unwrap_or(false),
+        same_site: cookie_object_optional_string(
+            map,
+            &["same_site", "sameSite", "samesite"],
+            &format!("{field}.same_site"),
+        )?,
+    })
+}
+
+fn parse_shared_cookie_object(
+    map: &serde_json::Map<String, Value>,
+    field: &str,
+) -> OpenPageResult<CookieDraft> {
+    Ok(CookieDraft {
+        name: String::new(),
+        value: String::new(),
+        url: cookie_object_optional_string(map, &["url"], &format!("{field}.url"))?,
+        domain: cookie_object_optional_string(map, &["domain"], &format!("{field}.domain"))?,
+        path: cookie_object_optional_string(map, &["path"], &format!("{field}.path"))?,
+        secure: cookie_object_optional_bool(map, &["secure"], &format!("{field}.secure"))?
+            .unwrap_or(false),
+        http_only: cookie_object_optional_bool(
+            map,
+            &["http_only", "httpOnly", "httponly"],
+            &format!("{field}.http_only"),
+        )?
+        .unwrap_or(false),
+        same_site: cookie_object_optional_string(
+            map,
+            &["same_site", "sameSite", "samesite"],
+            &format!("{field}.same_site"),
+        )?,
+    })
+}
+
+fn cookie_object_optional_string(
+    map: &serde_json::Map<String, Value>,
+    keys: &[&str],
+    field: &str,
+) -> OpenPageResult<Option<String>> {
+    for key in keys {
+        if let Some(value) = map.get(*key) {
+            return json_optional_string(Some(value), field);
+        }
+    }
+    Ok(None)
+}
+
+fn cookie_object_optional_bool(
+    map: &serde_json::Map<String, Value>,
+    keys: &[&str],
+    field: &str,
+) -> OpenPageResult<Option<bool>> {
+    for key in keys {
+        if let Some(value) = map.get(*key) {
+            return json_optional_bool(Some(value), field);
+        }
+    }
+    Ok(None)
+}
+
+fn canonical_cookie_attr_key(key: &str) -> String {
+    match key.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "httponly" => "http_only".to_string(),
+        "samesite" => "same_site".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn is_shared_cookie_key(key: &str) -> bool {
+    matches!(
+        key,
+        "name"
+            | "value"
+            | "url"
+            | "domain"
+            | "path"
+            | "secure"
+            | "http_only"
+            | "same_site"
+            | "expires"
+            | "expiry"
+            | "max_age"
+    )
+}
+
+fn parse_cookie_flag_value(value: Option<&str>, field: &str, attr: &str) -> OpenPageResult<bool> {
+    match value {
+        None => Ok(true),
+        Some(value) => parse_optional_ini_bool(value)?.ok_or_else(|| {
+            OpenPageError::Http(format!("invalid {field}.{attr}: expected boolean"))
+        }),
+    }
+}
+
+fn cookie_draft_to_param(cookie: CookieDraft) -> SessionCookieParam {
+    SessionCookieParam {
+        name: cookie.name.trim().to_string(),
+        value: cookie.value.trim().to_string(),
+        url: cookie
+            .url
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        domain: cookie
+            .domain
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        path: cookie
+            .path
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        secure: cookie.secure,
+        http_only: cookie.http_only,
+        same_site: cookie
+            .same_site
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+    }
+}
+
 fn serialize_string_map(entries: &[(String, String)]) -> String {
     let mut map = serde_json::Map::new();
     for (key, value) in entries {
@@ -952,9 +1600,17 @@ struct SessionClientOptions {
     max_redirects: Option<usize>,
 }
 
+#[derive(Debug, Clone)]
+struct SessionAdapterRuntimeMount {
+    url_prefix: String,
+    client: Client,
+}
+
 #[derive(Debug)]
 struct SessionState {
     client: Client,
+    adapter_clients: Vec<SessionAdapterRuntimeMount>,
+    adapter_mounts: Vec<SessionAdapterMount>,
     cookie_jar: Arc<SessionCookieJar>,
     timeout_secs: u64,
     user_agent: Option<String>,
@@ -967,6 +1623,8 @@ struct SessionState {
     params: Vec<(String, String)>,
     verify: bool,
     auth: Option<(String, String)>,
+    hooks: SessionHooks,
+    stream: bool,
     cert: Option<SessionCert>,
     trust_env: bool,
     max_redirects: Option<usize>,
@@ -980,6 +1638,7 @@ struct SessionState {
     body: Option<Arc<String>>,
     raw_data: Option<Arc<Vec<u8>>>,
     json: Option<Value>,
+    pending_response: Option<PendingSessionResponse>,
 }
 
 #[derive(Debug, Default)]
@@ -995,9 +1654,11 @@ struct SessionRequestContext {
     current_url: Option<String>,
     params: Vec<(String, String)>,
     auth: Option<(String, String)>,
+    hooks: SessionHooks,
     retry_times: usize,
     retry_interval_millis: u64,
     timeout_secs: Option<u64>,
+    stream: bool,
 }
 
 impl From<&SessionOptions> for SessionClientOptions {
@@ -1032,6 +1693,29 @@ impl From<&SessionState> for SessionClientOptions {
 pub struct SessionPage {
     inner: Arc<Mutex<SessionState>>,
     none_element_config: ElementsOneRuntimeConfigHandle,
+}
+
+#[derive(Clone, Debug)]
+pub struct SessionHandle {
+    inner: Arc<Mutex<SessionState>>,
+    none_element_config: ElementsOneRuntimeConfigHandle,
+}
+
+impl SessionHandle {
+    pub fn page(&self) -> SessionPage {
+        SessionPage {
+            inner: Arc::clone(&self.inner),
+            none_element_config: Arc::clone(&self.none_element_config),
+        }
+    }
+
+    pub fn snapshot(&self) -> OpenPageResult<SessionRuntimeInfo> {
+        self.page().session()
+    }
+
+    pub fn response(&self) -> OpenPageResult<Option<SessionResponseInfo>> {
+        self.page().response()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -1100,10 +1784,22 @@ pub struct SessionRuntimeInfo {
     pub params: Vec<(String, String)>,
     pub verify: bool,
     pub auth: Option<(String, String)>,
+    pub stream: bool,
     pub cert: Option<SessionCert>,
     pub trust_env: bool,
     pub max_redirects: Option<usize>,
+    pub adapters: Vec<SessionAdapterMount>,
     pub current_url: Option<String>,
+}
+
+struct PendingSessionResponse {
+    response: reqwest::blocking::Response,
+}
+
+impl std::fmt::Debug for PendingSessionResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PendingSessionResponse").finish()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1149,8 +1845,11 @@ impl SessionPage {
     pub fn new(options: SessionOptions) -> OpenPageResult<Self> {
         let cookie_jar = Arc::new(SessionCookieJar::default());
         initialize_session_cookies(&cookie_jar, &options.cookies)?;
-        let client = build_session_client(
-            &SessionClientOptions::from(&options),
+        let client_options = SessionClientOptions::from(&options);
+        let client = build_session_client(&client_options, Arc::clone(&cookie_jar))?;
+        let adapter_clients = build_session_adapter_clients(
+            &options.adapters,
+            &client_options,
             Arc::clone(&cookie_jar),
         )?;
         let download_path = normalize_session_download_path(&options.download_path)?;
@@ -1163,6 +1862,8 @@ impl SessionPage {
         Ok(Self {
             inner: Arc::new(Mutex::new(SessionState {
                 client,
+                adapter_clients,
+                adapter_mounts: options.adapters,
                 cookie_jar,
                 timeout_secs: options.timeout_secs,
                 user_agent: options.user_agent,
@@ -1176,6 +1877,8 @@ impl SessionPage {
                 params: options.params,
                 verify: options.verify,
                 auth: options.auth,
+                hooks: options.hooks,
+                stream: options.stream,
                 cert: options.cert,
                 trust_env: options.trust_env,
                 max_redirects: options.max_redirects,
@@ -1188,9 +1891,14 @@ impl SessionPage {
                 body: None,
                 raw_data: None,
                 json: None,
+                pending_response: None,
             })),
-            none_element_config: Arc::new(Mutex::new(ElementsOneRuntimeConfig::default())),
+            none_element_config: Arc::new(Mutex::new(default_none_element_runtime_config())),
         })
+    }
+
+    pub fn from_session_handle(handle: SessionHandle) -> Self {
+        handle.page()
     }
 
     pub fn get(&self, url: &str) -> OpenPageResult<bool> {
@@ -1296,6 +2004,13 @@ impl SessionPage {
         Ok(self.lock_state()?.status_code)
     }
 
+    pub fn session_handle(&self) -> SessionHandle {
+        SessionHandle {
+            inner: Arc::clone(&self.inner),
+            none_element_config: Arc::clone(&self.none_element_config),
+        }
+    }
+
     pub fn session(&self) -> OpenPageResult<SessionRuntimeInfo> {
         let state = self.lock_state()?;
         let cookie_jar = state.cookie_jar.clone();
@@ -1318,9 +2033,11 @@ impl SessionPage {
             params: state.params.clone(),
             verify: state.verify,
             auth: state.auth.clone(),
+            stream: state.stream,
             cert: state.cert.clone(),
             trust_env: state.trust_env,
             max_redirects: state.max_redirects,
+            adapters: state.adapter_mounts.clone(),
             current_url: state.url.clone(),
         };
         drop(state);
@@ -1357,6 +2074,23 @@ impl SessionPage {
         }))
     }
 
+    pub fn add_adapter(
+        &self,
+        url_prefix: impl Into<String>,
+        adapter: SessionAdapter,
+    ) -> OpenPageResult<()> {
+        let mut state = self.lock_state()?;
+        state.adapter_mounts.push(SessionAdapterMount {
+            url_prefix: url_prefix.into(),
+            adapter,
+        });
+        rebuild_session_client(&mut state)
+    }
+
+    pub fn adapters(&self) -> OpenPageResult<Vec<SessionAdapterMount>> {
+        Ok(self.lock_state()?.adapter_mounts.clone())
+    }
+
     pub fn set_none_element_value(&self, value: Option<&str>, on_off: bool) -> OpenPageResult<()> {
         self.none_element_config
             .lock()
@@ -1365,9 +2099,10 @@ impl SessionPage {
                 config.return_value_enabled = on_off;
             })
             .map_err(|_| {
-                OpenPageError::PageOperation(
-                    "none element runtime config lock poisoned".to_string(),
-                )
+                OpenPageError::PageOperation(component_state_lock_poisoned_message(
+                    "none element runtime config",
+                    "未找到元素运行时配置",
+                ))
             })
     }
 
@@ -1378,9 +2113,10 @@ impl SessionPage {
                 config.raise_when_not_found = on_off;
             })
             .map_err(|_| {
-                OpenPageError::PageOperation(
-                    "none element runtime config lock poisoned".to_string(),
-                )
+                OpenPageError::PageOperation(component_state_lock_poisoned_message(
+                    "none element runtime config",
+                    "未找到元素运行时配置",
+                ))
             })
     }
 
@@ -1393,8 +2129,9 @@ impl SessionPage {
     }
 
     pub fn html(&self) -> OpenPageResult<String> {
-        Ok(self
-            .lock_state()?
+        let mut state = self.lock_state()?;
+        ensure_response_body_loaded(&mut state)?;
+        Ok(state
             .body
             .as_ref()
             .map(|body| body.as_ref().clone())
@@ -1402,8 +2139,9 @@ impl SessionPage {
     }
 
     pub fn raw_data(&self) -> OpenPageResult<Vec<u8>> {
-        Ok(self
-            .lock_state()?
+        let mut state = self.lock_state()?;
+        ensure_response_body_loaded(&mut state)?;
+        Ok(state
             .raw_data
             .as_ref()
             .map(|body| body.as_ref().clone())
@@ -1419,7 +2157,9 @@ impl SessionPage {
     }
 
     pub fn json(&self) -> OpenPageResult<Option<Value>> {
-        Ok(self.lock_state()?.json.clone())
+        let mut state = self.lock_state()?;
+        ensure_response_body_loaded(&mut state)?;
+        Ok(state.json.clone())
     }
 
     pub fn title(&self) -> OpenPageResult<Option<String>> {
@@ -1492,7 +2232,9 @@ impl SessionPage {
         let Some(url) = self.url()? else {
             return Ok(Vec::new());
         };
-        let url = Url::parse(&url).map_err(|err| OpenPageError::Http(err.to_string()))?;
+        let url = Url::parse(&url).map_err(|err| {
+            OpenPageError::Http(invalid_url_message(&url, Some(&err.to_string())))
+        })?;
         Ok(cookie_jar.matching_cookies(&url))
     }
 
@@ -1555,6 +2297,24 @@ impl SessionPage {
     pub fn set_auth(&self, auth: Option<(String, String)>) -> OpenPageResult<()> {
         self.lock_state()?.auth = auth;
         Ok(())
+    }
+
+    pub fn set_hooks(&self, hooks: SessionHooks) -> OpenPageResult<()> {
+        self.lock_state()?.hooks = hooks;
+        Ok(())
+    }
+
+    pub fn hooks(&self) -> OpenPageResult<SessionHooks> {
+        Ok(self.lock_state()?.hooks.clone())
+    }
+
+    pub fn set_stream(&self, stream: bool) -> OpenPageResult<()> {
+        self.lock_state()?.stream = stream;
+        Ok(())
+    }
+
+    pub fn stream(&self) -> OpenPageResult<bool> {
+        Ok(self.lock_state()?.stream)
     }
 
     pub fn set_proxies(
@@ -1629,7 +2389,8 @@ impl SessionPage {
     }
 
     pub fn cookie_header(&self, url: &str) -> OpenPageResult<Option<String>> {
-        let url = Url::parse(url).map_err(|err| OpenPageError::Http(err.to_string()))?;
+        let url = Url::parse(url)
+            .map_err(|err| OpenPageError::Http(invalid_url_message(url, Some(&err.to_string()))))?;
         let jar = self.lock_state()?.cookie_jar.clone();
         jar.cookie_header(&url)
             .map(|value| {
@@ -1642,7 +2403,8 @@ impl SessionPage {
     }
 
     pub fn set_cookie_header(&self, url: &str, cookie_header: &str) -> OpenPageResult<()> {
-        let url = Url::parse(url).map_err(|err| OpenPageError::Http(err.to_string()))?;
+        let url = Url::parse(url)
+            .map_err(|err| OpenPageError::Http(invalid_url_message(url, Some(&err.to_string()))))?;
         let jar = self.lock_state()?.cookie_jar.clone();
         for cookie in cookie_header
             .split(';')
@@ -1650,6 +2412,22 @@ impl SessionPage {
             .filter(|item| !item.is_empty())
         {
             jar.add_cookie_str(cookie, &url);
+        }
+        Ok(())
+    }
+
+    pub fn set_cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()>
+    where
+        C: Into<CookieInput<'a>>,
+    {
+        let current_url = self
+            .url()?
+            .filter(|url| url.starts_with("http://") || url.starts_with("https://"));
+        let cookies = cookie_input_to_params(cookies.into(), current_url.as_deref())?;
+        let jar = self.lock_state()?.cookie_jar.clone();
+        for cookie in &cookies {
+            let url = cookie_scope_url_from_param(cookie)?;
+            jar.add_cookie_str(&cookie_param_to_set_cookie(cookie), &url);
         }
         Ok(())
     }
@@ -1681,18 +2459,13 @@ impl SessionPage {
 
     pub fn clear_cookies(&self) -> OpenPageResult<()> {
         let mut state = self.lock_state()?;
-        let cookie_jar = Arc::new(SessionCookieJar::default());
-        let client_options = SessionClientOptions::from(&*state);
-        state.client = build_session_client(&client_options, Arc::clone(&cookie_jar))?;
-        state.cookie_jar = cookie_jar;
-        Ok(())
+        state.cookie_jar = Arc::new(SessionCookieJar::default());
+        rebuild_session_client(&mut state)
     }
 
     pub fn close(&self) -> OpenPageResult<()> {
         let mut state = self.lock_state()?;
-        let client_options = SessionClientOptions::from(&*state);
-        state.client = build_session_client(&client_options, Arc::clone(&state.cookie_jar))?;
-        Ok(())
+        rebuild_session_client(&mut state)
     }
 
     pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
@@ -1797,11 +2570,12 @@ impl SessionPage {
     }
 
     fn body_arc(&self) -> OpenPageResult<Arc<String>> {
-        self.lock_state()?
-            .body
+        let mut state = self.lock_state()?;
+        ensure_response_body_loaded(&mut state)?;
+        state.body
             .as_ref()
             .cloned()
-            .ok_or_else(|| OpenPageError::Http("session page has no loaded document".to_string()))
+            .ok_or_else(|| OpenPageError::Http(session_page_no_loaded_document_message()))
     }
 
     fn base_url_arc(&self) -> OpenPageResult<Option<Arc<String>>> {
@@ -1813,9 +2587,12 @@ impl SessionPage {
     }
 
     fn lock_state(&self) -> OpenPageResult<std::sync::MutexGuard<'_, SessionState>> {
-        self.inner
-            .lock()
-            .map_err(|_| OpenPageError::Http("session state lock poisoned".to_string()))
+        self.inner.lock().map_err(|_| {
+            OpenPageError::Http(component_state_lock_poisoned_message(
+                "session state",
+                "会话状态",
+            ))
+        })
     }
 
     fn cookie_scope_url(&self, url: Option<&str>) -> OpenPageResult<Url> {
@@ -1823,9 +2600,7 @@ impl SessionPage {
             Some(url) => Url::parse(url).map_err(|err| OpenPageError::Http(err.to_string())),
             None => {
                 let current_url = self.lock_state()?.url.clone().ok_or_else(|| {
-                    OpenPageError::Http(
-                        "session page has no current url; provide url explicitly".to_string(),
-                    )
+                    OpenPageError::Http(session_page_no_current_url_message())
                 })?;
                 Url::parse(&current_url).map_err(|err| OpenPageError::Http(err.to_string()))
             }
@@ -1834,14 +2609,19 @@ impl SessionPage {
 
     fn request_context(
         &self,
+        requested_url: &str,
         request_options: Option<&SessionRequestOptions>,
     ) -> OpenPageResult<SessionRequestContext> {
         let state = self.lock_state()?;
         let request_options = request_options.cloned().unwrap_or_default();
         let mut params = state.params.clone();
         params.extend(request_options.params);
+        let mut hooks = state.hooks.clone();
+        if let Some(request_hooks) = request_options.hooks.as_ref() {
+            hooks.extend_response_hooks(request_hooks);
+        }
         Ok(SessionRequestContext {
-            client: state.client.clone(),
+            client: session_client_for_url(&state, requested_url),
             user_agent: request_options
                 .user_agent
                 .or_else(|| state.user_agent.clone()),
@@ -1849,11 +2629,13 @@ impl SessionPage {
             current_url: state.url.clone(),
             params,
             auth: request_options.auth.or_else(|| state.auth.clone()),
+            hooks,
             retry_times: request_options.retry_times.unwrap_or(state.retry_times),
             retry_interval_millis: request_options
                 .retry_interval_millis
                 .unwrap_or(state.retry_interval_millis),
             timeout_secs: request_options.timeout_secs,
+            stream: request_options.stream.unwrap_or(state.stream),
         })
     }
 
@@ -1866,13 +2648,17 @@ impl SessionPage {
     where
         F: FnMut(&SessionRequestContext) -> OpenPageResult<reqwest::blocking::Response>,
     {
-        let context = self.request_context(request_options)?;
+        let context = self.request_context(requested_url, request_options)?;
         let retry_times = context.retry_times;
         let retry_interval_millis = context.retry_interval_millis;
         for attempt in 0..=retry_times {
             match send(&context) {
                 Ok(response) => {
-                    let ok = self.store_response(requested_url, response)?;
+                    let ok = if context.stream && context.hooks.is_empty() {
+                        self.store_streaming_response(requested_url, response)?
+                    } else {
+                        self.store_response(requested_url, response, &context.hooks)?
+                    };
                     if ok || attempt == retry_times {
                         return Ok(ok);
                     }
@@ -1900,7 +2686,7 @@ impl SessionPage {
         request_options: Option<&SessionRequestOptions>,
         explicit_target: Option<PathBuf>,
     ) -> OpenPageResult<String> {
-        let context = self.request_context(request_options)?;
+        let context = self.request_context(requested_url, request_options)?;
         let retry_times = context.retry_times;
         let retry_interval_millis = context.retry_interval_millis;
 
@@ -1924,6 +2710,51 @@ impl SessionPage {
             match response {
                 Ok(response) => {
                     let status_code = response.status().as_u16();
+                    let final_url = response.url().to_string();
+                    let response_headers = response
+                        .headers()
+                        .iter()
+                        .map(|(name, value)| {
+                            (
+                                name.as_str().to_string(),
+                                value.to_str().unwrap_or_default().to_string(),
+                            )
+                        })
+                        .collect::<Vec<_>>();
+                    let content_type = response
+                        .headers()
+                        .get(CONTENT_TYPE)
+                        .and_then(|value| value.to_str().ok())
+                        .map(str::to_string);
+                    let content_disposition = response
+                        .headers()
+                        .get(CONTENT_DISPOSITION)
+                        .and_then(|value| value.to_str().ok())
+                        .map(str::to_string);
+                    let raw_data = Arc::new(
+                        response
+                            .bytes()
+                            .map_err(|err| OpenPageError::Http(format!("{err:?}")))?
+                            .to_vec(),
+                    );
+                    run_response_hooks(
+                        &context.hooks,
+                        SessionHookEvent {
+                            requested_url: request_url.clone(),
+                            response: SessionResponseInfo {
+                                url: Some(if final_url.is_empty() {
+                                    request_url.clone()
+                                } else {
+                                    final_url.clone()
+                                }),
+                                status_code: Some(status_code),
+                                headers: response_headers,
+                                content_type: content_type.clone(),
+                                encoding: None,
+                            },
+                            raw_data: Arc::clone(&raw_data),
+                        },
+                    );
                     if !(200..400).contains(&status_code) {
                         if attempt == retry_times {
                             return Err(OpenPageError::Http(format!(
@@ -1931,31 +2762,18 @@ impl SessionPage {
                             )));
                         }
                     } else {
-                        let final_url = response.url().to_string();
-                        let content_type = response
-                            .headers()
-                            .get(CONTENT_TYPE)
-                            .and_then(|value| value.to_str().ok())
-                            .map(str::to_string);
                         let filename = suggested_session_download_filename(
-                            response
-                                .headers()
-                                .get(CONTENT_DISPOSITION)
-                                .and_then(|value| value.to_str().ok()),
+                            content_disposition.as_deref(),
                             &request_url,
                             &final_url,
                         );
-                        let body = response
-                            .bytes()
-                            .map_err(|err| OpenPageError::Http(format!("{err:?}")))?
-                            .to_vec();
                         let target_path = self
                             .resolve_session_download_target(explicit_target.as_ref(), &filename)?;
                         if let Some(parent) = target_path.parent() {
                             std::fs::create_dir_all(parent)
                                 .map_err(|err| OpenPageError::Io(err.to_string()))?;
                         }
-                        std::fs::write(&target_path, &body)
+                        std::fs::write(&target_path, raw_data.as_ref())
                             .map_err(|err| OpenPageError::Io(err.to_string()))?;
 
                         let path = target_path.display().to_string();
@@ -1971,7 +2789,7 @@ impl SessionPage {
                             filename,
                             content_type,
                             status_code,
-                            total_bytes: body.len() as u64,
+                            total_bytes: raw_data.len() as u64,
                         };
                         self.lock_state()?.last_download = Some(download);
                         return Ok(path);
@@ -1998,6 +2816,7 @@ impl SessionPage {
         &self,
         requested_url: &str,
         response: reqwest::blocking::Response,
+        hooks: &SessionHooks,
     ) -> OpenPageResult<bool> {
         let final_url = response.url().to_string();
         let status = response.status().as_u16();
@@ -2016,10 +2835,12 @@ impl SessionPage {
             .get(CONTENT_TYPE)
             .and_then(|value| value.to_str().ok())
             .map(str::to_string);
-        let raw_data = response
-            .bytes()
-            .map_err(|err| OpenPageError::Http(format!("{err:?}")))?
-            .to_vec();
+        let raw_data = Arc::new(
+            response
+                .bytes()
+                .map_err(|err| OpenPageError::Http(format!("{err:?}")))?
+                .to_vec(),
+        );
 
         let mut state = self.lock_state()?;
         state.url = Some(if final_url.is_empty() {
@@ -2030,7 +2851,61 @@ impl SessionPage {
         state.status_code = Some(status);
         state.response_headers = response_headers;
         state.response_content_type = content_type;
-        state.raw_data = Some(Arc::new(raw_data));
+        state.pending_response = None;
+        state.raw_data = Some(Arc::clone(&raw_data));
+        refresh_state_body_encoding(&mut state);
+        let hook_event = SessionHookEvent {
+            requested_url: requested_url.to_string(),
+            response: SessionResponseInfo {
+                url: state.url.clone(),
+                status_code: state.status_code,
+                headers: state.response_headers.clone(),
+                content_type: state.response_content_type.clone(),
+                encoding: state.encoding.clone(),
+            },
+            raw_data,
+        };
+        drop(state);
+        run_response_hooks(hooks, hook_event);
+        Ok((200..400).contains(&status))
+    }
+
+    fn store_streaming_response(
+        &self,
+        requested_url: &str,
+        response: reqwest::blocking::Response,
+    ) -> OpenPageResult<bool> {
+        let final_url = response.url().to_string();
+        let status = response.status().as_u16();
+        let response_headers = response
+            .headers()
+            .iter()
+            .map(|(name, value)| {
+                (
+                    name.as_str().to_string(),
+                    value.to_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect::<Vec<_>>();
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
+
+        let mut state = self.lock_state()?;
+        state.url = Some(if final_url.is_empty() {
+            requested_url.to_string()
+        } else {
+            final_url
+        });
+        state.status_code = Some(status);
+        state.response_headers = response_headers;
+        state.response_content_type = content_type;
+        state.raw_data = None;
+        state.body = None;
+        state.json = None;
+        state.pending_response = Some(PendingSessionResponse { response });
         refresh_state_body_encoding(&mut state);
         Ok((200..400).contains(&status))
     }
@@ -2055,6 +2930,7 @@ impl SessionPage {
         state.status_code = Some(200);
         state.response_headers = Vec::new();
         state.response_content_type = None;
+        state.pending_response = None;
         state.raw_data = Some(Arc::new(raw_data));
         refresh_state_body_encoding(&mut state);
         Ok(true)
@@ -2262,10 +3138,7 @@ fn cookie_scope_url_from_param(cookie: &SessionCookieParam) -> OpenPageResult<Ur
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| {
-            OpenPageError::Http(format!(
-                "session cookie `{}` requires either url or domain",
-                cookie.name
-            ))
+            OpenPageError::Http(session_cookie_requires_url_or_domain_message(&cookie.name))
         })?;
     let host = domain.trim_start_matches('.');
     let scheme = if cookie.secure { "https" } else { "http" };
@@ -3104,7 +3977,40 @@ pub fn cookies_from_header(url: &str, cookie_header: &str) -> OpenPageResult<Vec
 fn rebuild_session_client(state: &mut SessionState) -> OpenPageResult<()> {
     let client_options = SessionClientOptions::from(&*state);
     state.client = build_session_client(&client_options, Arc::clone(&state.cookie_jar))?;
+    state.adapter_clients = build_session_adapter_clients(
+        &state.adapter_mounts,
+        &client_options,
+        Arc::clone(&state.cookie_jar),
+    )?;
     Ok(())
+}
+
+fn build_session_adapter_clients(
+    mounts: &[SessionAdapterMount],
+    base_options: &SessionClientOptions,
+    cookie_jar: Arc<SessionCookieJar>,
+) -> OpenPageResult<Vec<SessionAdapterRuntimeMount>> {
+    mounts
+        .iter()
+        .map(|mount| {
+            let client_options = mount.adapter.merged_client_options(base_options);
+            let client = build_session_client(&client_options, Arc::clone(&cookie_jar))?;
+            Ok(SessionAdapterRuntimeMount {
+                url_prefix: mount.url_prefix.clone(),
+                client,
+            })
+        })
+        .collect()
+}
+
+fn session_client_for_url(state: &SessionState, requested_url: &str) -> Client {
+    state
+        .adapter_clients
+        .iter()
+        .filter(|mount| requested_url.starts_with(&mount.url_prefix))
+        .max_by_key(|mount| mount.url_prefix.len())
+        .map(|mount| mount.client.clone())
+        .unwrap_or_else(|| state.client.clone())
 }
 
 fn build_session_client(
@@ -3213,6 +4119,15 @@ fn merge_request_headers(
     merged
 }
 
+fn run_response_hooks(hooks: &SessionHooks, event: SessionHookEvent) {
+    if hooks.is_empty() {
+        return;
+    }
+    for hook in hooks.response_hooks() {
+        hook(event.clone());
+    }
+}
+
 fn effective_request_headers(
     headers: &[(String, String)],
     current_url: Option<&str>,
@@ -3249,7 +4164,9 @@ fn default_referer_header(
         return Ok(Some(current_url.to_string()));
     }
 
-    let parsed = Url::parse(request_url).map_err(|err| OpenPageError::Http(err.to_string()))?;
+    let parsed = Url::parse(request_url).map_err(|err| {
+        OpenPageError::Http(invalid_url_message(request_url, Some(&err.to_string())))
+    })?;
     let Some(host) = parsed.host_str() else {
         return Ok(None);
     };
@@ -3286,7 +4203,8 @@ fn append_query_params(target: &str, params: &[(String, String)]) -> OpenPageRes
         return Ok(target.to_string());
     }
 
-    let mut url = Url::parse(target).map_err(|err| OpenPageError::Http(err.to_string()))?;
+    let mut url = Url::parse(target)
+        .map_err(|err| OpenPageError::Http(invalid_url_message(target, Some(&err.to_string()))))?;
     {
         let mut query = url.query_pairs_mut();
         for (name, value) in params {
@@ -3297,17 +4215,18 @@ fn append_query_params(target: &str, params: &[(String, String)]) -> OpenPageRes
 }
 
 fn resolve_local_file_path(target: &str) -> OpenPageResult<Option<std::path::PathBuf>> {
-    if let Some(path) = target.strip_prefix("file://") {
-        let url = if path.starts_with('/') {
-            Url::parse(target)
-        } else {
-            Url::parse(&format!("file:///{path}"))
+    if target.starts_with("file://") {
+        let url = Url::parse(target).map_err(|err| {
+            OpenPageError::Io(invalid_file_url_message(target, Some(&err.to_string())))
+        })?;
+        match url.host_str() {
+            None | Some("localhost") => {}
+            Some(_) => return Err(OpenPageError::Io(invalid_file_url_message(target, None))),
         }
-        .map_err(|err| OpenPageError::Io(err.to_string()))?;
         return url
             .to_file_path()
             .map(Some)
-            .map_err(|_| OpenPageError::Io(format!("invalid file url: {target}")));
+            .map_err(|_| OpenPageError::Io(invalid_file_url_message(target, None)));
     }
 
     let path = Path::new(target);
@@ -3346,6 +4265,18 @@ fn remove_cookie_from_header(cookie_header: &str, name: &str) -> String {
 }
 
 fn detect_body_encoding(content_type: Option<&str>, body: &[u8]) -> Option<String> {
+    if let Some(encoding) = declared_content_type_encoding(content_type) {
+        return Some(encoding);
+    }
+
+    if std::str::from_utf8(body).is_ok() {
+        return Some("utf-8".to_string());
+    }
+
+    None
+}
+
+fn declared_content_type_encoding(content_type: Option<&str>) -> Option<String> {
     if let Some(content_type) = content_type {
         for part in content_type.split(';').skip(1) {
             let trimmed = part.trim();
@@ -3360,11 +4291,6 @@ fn detect_body_encoding(content_type: Option<&str>, body: &[u8]) -> Option<Strin
             }
         }
     }
-
-    if std::str::from_utf8(body).is_ok() {
-        return Some("utf-8".to_string());
-    }
-
     None
 }
 
@@ -3391,7 +4317,11 @@ fn resolve_effective_encoding(
 
 fn refresh_state_body_encoding(state: &mut SessionState) {
     let Some(raw_data) = state.raw_data.as_ref() else {
-        state.encoding = None;
+        state.encoding = state
+            .forced_encoding
+            .as_ref()
+            .map(|value| value.to_ascii_lowercase())
+            .or_else(|| declared_content_type_encoding(state.response_content_type.as_deref()));
         state.body = None;
         state.json = None;
         return;
@@ -3408,6 +4338,24 @@ fn refresh_state_body_encoding(state: &mut SessionState) {
     state.encoding = encoding;
     state.body = Some(Arc::new(text));
     state.json = parsed_json;
+}
+
+fn ensure_response_body_loaded(state: &mut SessionState) -> OpenPageResult<()> {
+    if state.raw_data.is_some() || state.pending_response.is_none() {
+        return Ok(());
+    }
+
+    let pending = state.pending_response.take().expect("pending response checked");
+    let raw_data = Arc::new(
+        pending
+            .response
+            .bytes()
+            .map_err(|err| OpenPageError::Http(format!("{err:?}")))?
+            .to_vec(),
+    );
+    state.raw_data = Some(raw_data);
+    refresh_state_body_encoding(state);
+    Ok(())
 }
 
 pub fn snapshot_root(html: &str) -> OpenPageResult<SessionElement> {
@@ -4776,14 +5724,19 @@ fn nearest_parent_element(element: ElementRef<'_>) -> Option<ElementRef<'_>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        SessionCert, SessionCookieParam, SessionElement, SessionOptions, SessionPage,
-        SessionRequestOptions, SessionXPathResult, cookie_assignment, remove_cookie_from_header,
-        resolve_session_options_ini_path, snapshot_find, snapshot_find_all, snapshot_fragment_find,
-        snapshot_fragment_root, snapshot_fragment_root_with_base_url, snapshot_root,
+        CookieInput, SessionAdapter, SessionAdapterMount, SessionCert, SessionCookieParam,
+        SessionElement, SessionHandle, SessionHooks, SessionOptions, SessionPage,
+        SessionRequestOptions, SessionXPathResult, append_query_params, cookie_assignment,
+        cookie_input_to_params, default_referer_header, remove_cookie_from_header,
+        resolve_local_file_path, resolve_session_options_ini_path, snapshot_find,
+        snapshot_find_all, snapshot_fragment_find, snapshot_fragment_root,
+        snapshot_fragment_root_with_base_url, snapshot_root,
     };
-    use crate::{By, ElementsListExt, LocatorInput, OpenPageError};
+    use crate::settings::scoped_test_settings;
+    use crate::{By, ElementsListExt, LocatorInput, OpenPageError, Settings};
     use base64::Engine;
     use base64::prelude::BASE64_STANDARD;
+    use serde_json::json;
     use std::env;
     use std::fs;
     use std::io::{Read, Write};
@@ -4826,9 +5779,19 @@ mod tests {
             .map_err(|_| OpenPageError::PageOperation("session state lock poisoned".to_string()))?;
         state.url = url.map(str::to_string);
         state.response_content_type = Some("text/html; charset=utf-8".to_string());
+        state.pending_response = None;
         state.raw_data = Some(Arc::new(html.as_bytes().to_vec()));
         super::refresh_state_body_encoding(&mut state);
         Ok(())
+    }
+
+    fn poison_mutex<T: Send + 'static>(mutex: Arc<Mutex<T>>) {
+        let join = thread::spawn(move || {
+            let _guard = mutex.lock().expect("lock poisoned test mutex");
+            panic!("poison mutex");
+        })
+        .join();
+        assert!(join.is_err(), "poison helper thread should panic");
     }
 
     #[test]
@@ -4917,6 +5880,39 @@ mod tests {
             .filter_one()
             .attr("data-role", "missing", true)
             .expect_err("session missing filter should raise");
+        assert!(
+            matches!(error, OpenPageError::ElementNotFound(_)),
+            "unexpected session filter error: {error}"
+        );
+    }
+
+    #[test]
+    fn session_page_inherits_global_raise_when_ele_not_found_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_raise_when_ele_not_found(true);
+
+        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        load_session_html_for_test(
+            &page,
+            r#"
+            <html>
+              <body>
+                <div class="item" data-role="keep">Alpha</div>
+                <div class="item" data-role="other">Beta</div>
+              </body>
+            </html>
+            "#,
+            Some("https://example.com/items"),
+        )
+        .expect("load session html");
+
+        let error = page
+            .find_all(".item")
+            .expect("session items")
+            .filter_one()
+            .attr("data-role", "missing", true)
+            .expect_err("session missing filter should use global raise setting");
         assert!(
             matches!(error, OpenPageError::ElementNotFound(_)),
             "unexpected session filter error: {error}"
@@ -5315,13 +6311,135 @@ mod tests {
         assert!(options.cookies.is_empty());
         assert!(options.params.is_empty());
         assert!(options.auth.is_none());
+        assert!(options.hooks().is_empty());
+        assert!(!options.stream);
         assert!(options.http_proxy.is_none());
         assert!(options.https_proxy.is_none());
+        assert!(options.adapters().is_empty());
+    }
+
+    #[test]
+    fn session_options_response_hooks_fire_for_page_requests() {
+        let captured = Arc::new(Mutex::new(Vec::<(
+            String,
+            Option<String>,
+            Option<u16>,
+            String,
+        )>::new()));
+        let captured_for_hook = Arc::clone(&captured);
+        let mut hooks = SessionHooks::new();
+        hooks.add_response(move |event| {
+            let body = String::from_utf8(event.raw_data.as_ref().clone()).expect("hook body utf8");
+            captured_for_hook
+                .lock()
+                .expect("lock hook capture")
+                .push((
+                    event.requested_url,
+                    event.response.url.clone(),
+                    event.response.status_code,
+                    body,
+                ));
+        });
+
+        let mut options = SessionOptions::default();
+        options.set_hooks(hooks);
+        let page = SessionPage::new(options).expect("session page");
+        let (address, handle) = spawn_capture_server("200 OK", "hooked");
+        let url = format!("{address}/hook");
+
+        assert!(page.get(&url).expect("request with response hook"));
+        handle.join().expect("server thread");
+
+        let records = captured.lock().expect("lock hook records");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].0, url);
+        assert_eq!(records[0].1.as_deref(), Some(records[0].0.as_str()));
+        assert_eq!(records[0].2, Some(200));
+        assert_eq!(records[0].3, "hooked");
+    }
+
+    #[test]
+    fn session_request_options_response_hooks_extend_runtime_hooks() {
+        let labels = Arc::new(Mutex::new(Vec::<String>::new()));
+        let labels_for_runtime = Arc::clone(&labels);
+        let labels_for_request = Arc::clone(&labels);
+
+        let mut runtime_hooks = SessionHooks::new();
+        runtime_hooks.add_response(move |_| {
+            labels_for_runtime
+                .lock()
+                .expect("lock runtime labels")
+                .push("runtime".to_string());
+        });
+
+        let mut request_hooks = SessionHooks::new();
+        request_hooks.add_response(move |_| {
+            labels_for_request
+                .lock()
+                .expect("lock request labels")
+                .push("request".to_string());
+        });
+
+        let mut options = SessionOptions::default();
+        options.set_hooks(runtime_hooks);
+        let page = SessionPage::new(options).expect("session page");
+        let request_options = SessionRequestOptions {
+            hooks: Some(request_hooks),
+            ..SessionRequestOptions::default()
+        };
+        let (address, handle) = spawn_capture_server("200 OK", "hooks");
+        let url = format!("{address}/extend");
+
+        assert!(
+            page.get_with_options(&url, &request_options)
+                .expect("request with runtime + request hooks")
+        );
+        handle.join().expect("server thread");
+
+        let labels = labels.lock().expect("lock response hook labels");
+        assert_eq!(labels.as_slice(), ["runtime", "request"]);
+    }
+
+    #[test]
+    fn session_options_save_does_not_persist_hooks() {
+        let dir = make_temp_dir("session-hooks-save");
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("session.ini");
+
+        let mut hooks = SessionHooks::new();
+        hooks.add_response(|_| {});
+        let mut adapter = SessionAdapter::new();
+        adapter.set_timeout(27).set_verify(false);
+
+        let mut options = SessionOptions::default();
+        options
+            .set_user_agent(Some("OpenPage/HookSave".to_string()))
+            .set_hooks(hooks)
+            .set_stream(true)
+            .add_adapter("http://example.test/api/", adapter);
+
+        let saved_path = options
+            .save(Some(path.as_path()))
+            .expect("save session options with hooks");
+        let loaded = SessionOptions::from_ini(Some(saved_path.as_path()))
+            .expect("reload session options without persisted hooks");
+
+        assert_eq!(loaded.user_agent.as_deref(), Some("OpenPage/HookSave"));
+        assert!(loaded.hooks().is_empty());
+        assert!(loaded.stream);
+        assert!(loaded.adapters().is_empty());
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn session_options_builder_methods_update_runtime_configuration_fields() {
         let mut options = SessionOptions::default();
+        let mut adapter = SessionAdapter::new();
+        adapter
+            .set_timeout(17)
+            .set_verify(false)
+            .set_max_redirects(Some(1));
         let cookies = vec![SessionCookieParam {
             name: "sid".to_string(),
             value: "abc".to_string(),
@@ -5339,8 +6457,11 @@ mod tests {
             .set_headers(&[("Accept".to_string(), "text/html".to_string())])
             .set_a_header("accept", "application/json")
             .set_a_header("X-Test", "1")
-            .remove_a_header("x-test")
+            .remove_a_header("x-test");
+        options
             .set_cookies(&cookies)
+            .expect("set session option cookies");
+        options
             .set_retry(Some(6), Some(125))
             .set_proxies(Some("http://127.0.0.1:8080".to_string()), None)
             .set_download_path("downloads")
@@ -5350,8 +6471,10 @@ mod tests {
                 "client.pem",
             ))))
             .set_verify(false)
+            .set_stream(true)
             .set_trust_env(false)
-            .set_max_redirects(Some(5));
+            .set_max_redirects(Some(5))
+            .add_adapter("http://example.test/api/", adapter.clone());
 
         assert_eq!(options.timeout_secs, 21);
         assert_eq!(options.user_agent.as_deref(), Some("OpenPage/Test"));
@@ -5375,11 +6498,289 @@ mod tests {
             Some(SessionCert::Pem(std::path::PathBuf::from("client.pem")))
         );
         assert!(!options.verify);
+        assert!(options.stream);
         assert!(!options.trust_env);
         assert_eq!(options.max_redirects, Some(5));
+        assert_eq!(
+            options.adapters(),
+            &[SessionAdapterMount {
+                url_prefix: "http://example.test/api/".to_string(),
+                adapter,
+            }]
+        );
 
         options.clear_headers();
         assert!(options.headers.is_empty());
+    }
+
+    #[test]
+    fn cookie_input_parser_accepts_text_and_json_formats() {
+        let from_text = cookie_input_to_params(
+            CookieInput::from("host=1; path=/shared"),
+            Some("https://www.example.test/shared/page"),
+        )
+        .expect("parse single cookie text");
+        assert_eq!(from_text.len(), 1);
+        assert_eq!(from_text[0].name, "host");
+        assert_eq!(from_text[0].value, "1");
+        assert_eq!(
+            from_text[0].url.as_deref(),
+            Some("https://www.example.test/shared/page")
+        );
+        assert_eq!(from_text[0].path.as_deref(), Some("/shared"));
+
+        let multi_json = json!({
+            "sid": "abc",
+            "token": "xyz",
+            "domain": ".example.test",
+            "path": "/",
+            "secure": true,
+            "httpOnly": true,
+            "sameSite": "Strict"
+        });
+        let from_json =
+            cookie_input_to_params(CookieInput::from(&multi_json), None).expect("parse json");
+        assert_eq!(from_json.len(), 2);
+        assert!(
+            from_json
+                .iter()
+                .all(|cookie| cookie.domain.as_deref() == Some(".example.test"))
+        );
+        assert!(
+            from_json
+                .iter()
+                .all(|cookie| cookie.path.as_deref() == Some("/"))
+        );
+        assert!(from_json.iter().all(|cookie| cookie.secure));
+        assert!(from_json.iter().all(|cookie| cookie.http_only));
+        assert!(
+            from_json
+                .iter()
+                .all(|cookie| cookie.same_site.as_deref() == Some("Strict"))
+        );
+
+        let mixed_list = json!([
+            "alpha=1; domain=alpha.test; path=/",
+            {"name": "beta", "value": "2", "url": "https://beta.test/", "same_site": "Lax"}
+        ]);
+        let list_cookies = cookie_input_to_params(CookieInput::from(&mixed_list), None)
+            .expect("parse mixed cookie list");
+        assert_eq!(list_cookies.len(), 2);
+        assert!(list_cookies.iter().any(|cookie| cookie.name == "alpha"));
+        assert!(
+            list_cookies.iter().any(|cookie| {
+                cookie.name == "beta" && cookie.same_site.as_deref() == Some("Lax")
+            })
+        );
+    }
+
+    #[test]
+    fn cookie_input_validation_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let missing_name = [SessionCookieParam {
+            name: " ".to_string(),
+            value: "1".to_string(),
+            url: None,
+            domain: Some("example.test".to_string()),
+            path: None,
+            secure: false,
+            http_only: false,
+            same_site: None,
+        }];
+        let english_empty_name =
+            cookie_input_to_params(CookieInput::from(missing_name.as_slice()), None)
+                .expect_err("cookie name validation should fail")
+                .to_string();
+        assert!(english_empty_name.contains("cookie name cannot be empty"));
+
+        let english_scope = cookie_input_to_params(CookieInput::from("sid=1"), None)
+            .expect_err("cookie scope validation should fail")
+            .to_string();
+        assert!(english_scope.contains("cookie `sid` requires either url or domain"));
+
+        let english_separators = cookie_input_to_params(CookieInput::from("a=1; b=2, c=3"), None)
+            .expect_err("cookie separator validation should fail")
+            .to_string();
+        assert!(english_separators.contains("cookie text cannot mix ';' and ',' separators"));
+
+        Settings::set_language("cn");
+
+        let chinese_empty_name =
+            cookie_input_to_params(CookieInput::from(missing_name.as_slice()), None)
+                .expect_err("cookie name validation should fail in Chinese")
+                .to_string();
+        assert!(chinese_empty_name.contains("cookie 名称不能为空"));
+        assert!(chinese_empty_name.contains("HTTP 操作失败"));
+
+        let chinese_scope = cookie_input_to_params(CookieInput::from("sid=1"), None)
+            .expect_err("cookie scope validation should fail in Chinese")
+            .to_string();
+        assert!(chinese_scope.contains("cookie `sid` 必须设置 url 或 domain"));
+
+        let chinese_separators = cookie_input_to_params(CookieInput::from("a=1; b=2, c=3"), None)
+            .expect_err("cookie separator validation should fail in Chinese")
+            .to_string();
+        assert!(chinese_separators.contains("cookie 文本不能同时混用 ';' 和 ',' 分隔符"));
+    }
+
+    #[test]
+    fn session_url_validation_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let page = SessionPage::new(SessionOptions::default()).expect("create session page");
+
+        let english_cookie_header = page
+            .cookie_header("not a url")
+            .expect_err("cookie_header() should reject invalid url")
+            .to_string();
+        assert!(english_cookie_header.contains("invalid url `not a url`"));
+
+        let english_set_cookie_header = page
+            .set_cookie_header("not a url", "sid=1")
+            .expect_err("set_cookie_header() should reject invalid url")
+            .to_string();
+        assert!(english_set_cookie_header.contains("invalid url `not a url`"));
+
+        let english_referer = default_referer_header(None, "not a url")
+            .expect_err("default_referer_header() should reject invalid url")
+            .to_string();
+        assert!(english_referer.contains("invalid url `not a url`"));
+
+        let english_query = append_query_params("not a url", &[("q".to_string(), "1".to_string())])
+            .expect_err("append_query_params() should reject invalid url")
+            .to_string();
+        assert!(english_query.contains("invalid url `not a url`"));
+
+        let english_file = resolve_local_file_path("file://example.com/path")
+            .expect_err("resolve_local_file_path() should reject invalid file url")
+            .to_string();
+        assert!(english_file.contains("invalid file url: file://example.com/path"));
+
+        Settings::set_language("cn");
+
+        let chinese_cookie_header = page
+            .cookie_header("not a url")
+            .expect_err("cookie_header() should reject invalid url in Chinese")
+            .to_string();
+        assert!(chinese_cookie_header.contains("无效的 url `not a url`"));
+        assert!(chinese_cookie_header.contains("HTTP 操作失败"));
+
+        let chinese_set_cookie_header = page
+            .set_cookie_header("not a url", "sid=1")
+            .expect_err("set_cookie_header() should reject invalid url in Chinese")
+            .to_string();
+        assert!(chinese_set_cookie_header.contains("无效的 url `not a url`"));
+
+        let chinese_referer = default_referer_header(None, "not a url")
+            .expect_err("default_referer_header() should reject invalid url in Chinese")
+            .to_string();
+        assert!(chinese_referer.contains("无效的 url `not a url`"));
+
+        let chinese_query = append_query_params("not a url", &[("q".to_string(), "1".to_string())])
+            .expect_err("append_query_params() should reject invalid url in Chinese")
+            .to_string();
+        assert!(chinese_query.contains("无效的 url `not a url`"));
+
+        let chinese_file = resolve_local_file_path("file://example.com/path")
+            .expect_err("resolve_local_file_path() should reject invalid file url in Chinese")
+            .to_string();
+        assert!(chinese_file.contains("无效的 file url: file://example.com/path"));
+    }
+
+    #[test]
+    fn session_host_runtime_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let page = SessionPage::new(SessionOptions::default()).expect("create session page");
+
+        let english_title = page
+            .title()
+            .expect_err("title() should fail before any document is loaded")
+            .to_string();
+        assert!(english_title.contains("session page has no loaded document"));
+
+        let english_set_cookie = page
+            .set_cookie("sid", "1", None, None, None)
+            .expect_err("set_cookie() should require an explicit scope before navigation")
+            .to_string();
+        assert!(english_set_cookie.contains(
+            "session page has no current url; provide url explicitly"
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese_title = page
+            .title()
+            .expect_err("title() should fail in Chinese before any document is loaded")
+            .to_string();
+        assert!(chinese_title.contains("session 页面还没有已加载文档"));
+        assert!(chinese_title.contains("HTTP 操作失败"));
+
+        let chinese_set_cookie = page
+            .set_cookie("sid", "1", None, None, None)
+            .expect_err("set_cookie() should require an explicit scope in Chinese")
+            .to_string();
+        assert!(chinese_set_cookie.contains("session 页面没有当前 url；请显式传入 url"));
+        assert!(chinese_set_cookie.contains("HTTP 操作失败"));
+    }
+
+    #[test]
+    fn session_lock_poisoned_runtime_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let page = SessionPage::new(SessionOptions::default()).expect("create session page");
+        poison_mutex(Arc::clone(&page.none_element_config));
+
+        let english = page
+            .set_none_element_value(Some("missing"), true)
+            .expect_err("set_none_element_value() should surface poisoned config")
+            .to_string();
+        assert!(english.contains("none element runtime config lock poisoned"));
+
+        Settings::set_language("cn");
+
+        let chinese = page
+            .set_raise_when_ele_not_found(true)
+            .expect_err("set_raise_when_ele_not_found() should localize poisoned config")
+            .to_string();
+        assert!(chinese.contains("未找到元素运行时配置锁已损坏"));
+    }
+
+    #[test]
+    fn session_options_set_cookies_accepts_multi_format_inputs() {
+        let mut options = SessionOptions::default();
+        options
+            .set_cookies("sid=abc; domain=.example.test; path=/shared; secure; httpOnly")
+            .expect("set cookies from text");
+        assert_eq!(options.cookies.len(), 1);
+        assert_eq!(options.cookies[0].name, "sid");
+        assert_eq!(options.cookies[0].domain.as_deref(), Some(".example.test"));
+        assert!(options.cookies[0].secure);
+        assert!(options.cookies[0].http_only);
+
+        let cookies = json!({
+            "api": "1",
+            "domain": "api.example.test",
+            "path": "/"
+        });
+        options
+            .set_cookies(&cookies)
+            .expect("replace cookies from json");
+        assert_eq!(options.cookies.len(), 1);
+        assert_eq!(options.cookies[0].name, "api");
+        assert_eq!(
+            options.cookies[0].domain.as_deref(),
+            Some("api.example.test")
+        );
+        assert_eq!(options.cookies[0].path.as_deref(), Some("/"));
+
+        options.clear_cookies();
+        assert!(options.cookies.is_empty());
     }
 
     #[test]
@@ -5519,6 +6920,34 @@ mod tests {
     }
 
     #[test]
+    fn session_options_new_matches_from_ini_options_semantics() {
+        let dir = make_temp_dir("session-options-new-wrapper");
+        let config_path = dir.join("session.ini");
+        let mut options = SessionOptions::default();
+        options
+            .set_user_agent(Some("OpenPage/SessionNew".to_string()))
+            .set_auth(Some(("alice".to_string(), "secret".to_string())));
+        options
+            .save(Some(config_path.as_path()))
+            .expect("write wrapped session ini");
+
+        let loaded = SessionOptions::new(true, Some(config_path.as_path()))
+            .expect("load session options via new()");
+        let defaults = SessionOptions::new(false, Some(config_path.as_path()))
+            .expect("default session options");
+
+        assert_eq!(loaded.user_agent.as_deref(), Some("OpenPage/SessionNew"));
+        assert_eq!(
+            loaded.auth.as_ref(),
+            Some(&("alice".to_string(), "secret".to_string()))
+        );
+        assert!(defaults.user_agent.is_none());
+        assert!(defaults.auth.is_none());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn session_options_save_preserves_browser_sections_from_template_ini() {
         let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -5548,8 +6977,11 @@ mod tests {
             .expect("load DrissionPage reference session options ini");
         options
             .set_download_path("downloads")
-            .set_user_agent(Some("OpenPage/SessionIni".to_string()))
+            .set_user_agent(Some("OpenPage/SessionIni".to_string()));
+        options
             .set_cookies(&cookies)
+            .expect("set ini session cookies");
+        options
             .set_auth(Some(("alice".to_string(), "secret".to_string())))
             .set_params(&[("page".to_string(), "2".to_string())])
             .set_cert(Some(SessionCert::PemPair {
@@ -5796,6 +7228,55 @@ mod tests {
     }
 
     #[test]
+    fn session_page_set_cookies_accepts_text_and_json_inputs() {
+        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        {
+            let mut state = page.lock_state().expect("lock state");
+            state.url = Some("https://www.example.test/shared/page".to_string());
+        }
+
+        page.set_cookies("host=1; path=/shared")
+            .expect("set host cookie from text");
+        let shared = json!({
+            "shared": "2",
+            "domain": "example.test",
+            "path": "/shared",
+            "secure": true,
+            "httpOnly": true,
+            "sameSite": "Strict"
+        });
+        page.set_cookies(&shared)
+            .expect("set shared cookie from json");
+
+        let cookies = page.cookies().expect("current cookies");
+        assert_eq!(cookies.len(), 2);
+        assert!(cookies.iter().any(|cookie| {
+            cookie.name == "host" && cookie.domain.as_deref() == Some("www.example.test")
+        }));
+        assert!(cookies.iter().any(|cookie| {
+            cookie.name == "shared" && cookie.domain.as_deref() == Some("example.test")
+        }));
+
+        let detailed = page.cookies_detailed(false).expect("detailed cookies");
+        let host = detailed
+            .iter()
+            .find(|cookie| cookie.name == "host")
+            .expect("host cookie");
+        assert_eq!(host.path.as_deref(), Some("/shared"));
+        assert!(!host.secure);
+        assert!(!host.http_only);
+
+        let shared = detailed
+            .iter()
+            .find(|cookie| cookie.name == "shared")
+            .expect("shared cookie");
+        assert_eq!(shared.path.as_deref(), Some("/shared"));
+        assert!(shared.secure);
+        assert!(shared.http_only);
+        assert_eq!(shared.same_site.as_deref(), Some("Strict"));
+    }
+
+    #[test]
     fn session_get_retries_failed_responses_until_success() {
         let attempts = Arc::new(AtomicUsize::new(0));
         let (url, handle) = spawn_retry_server(
@@ -5846,6 +7327,9 @@ mod tests {
             "<html><head><title>Local File</title></head><body>openpage</body></html>",
         );
         let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let file_url = Url::from_file_path(&path)
+            .expect("build local file url")
+            .to_string();
 
         assert!(
             page.get(path.to_str().expect("path str"))
@@ -5861,6 +7345,8 @@ mod tests {
                 .expect("current url")
                 .starts_with("file://")
         );
+        assert!(page.get(&file_url).expect("load file url"));
+        assert_eq!(page.url().expect("url").as_deref(), Some(file_url.as_str()));
 
         let _ = fs::remove_file(path);
     }
@@ -5897,6 +7383,11 @@ mod tests {
 
     #[test]
     fn session_runtime_snapshot_exposes_current_configuration_and_cookies() {
+        let mut adapter = SessionAdapter::new();
+        adapter
+            .set_timeout(7)
+            .set_verify(false)
+            .set_max_redirects(Some(2));
         let page = SessionPage::new(SessionOptions {
             timeout_secs: 21,
             user_agent: Some("OpenPage/TestAgent".to_string()),
@@ -5922,8 +7413,13 @@ mod tests {
             params: vec![("page".to_string(), "2".to_string())],
             verify: false,
             auth: Some(("alice".to_string(), "secret".to_string())),
+            stream: true,
             trust_env: false,
             max_redirects: Some(5),
+            adapters: vec![SessionAdapterMount {
+                url_prefix: "http://example.test/api/".to_string(),
+                adapter: adapter.clone(),
+            }],
             ..SessionOptions::default()
         })
         .expect("session page");
@@ -5954,6 +7450,7 @@ mod tests {
             snapshot.auth,
             Some(("alice".to_string(), "secret".to_string()))
         );
+        assert!(snapshot.stream);
         assert!(snapshot.cert.is_none());
         assert!(!snapshot.trust_env);
         assert_eq!(snapshot.max_redirects, Some(5));
@@ -5972,6 +7469,73 @@ mod tests {
         assert_eq!(snapshot.cookies[0].name, "sid".to_string());
         assert_eq!(snapshot.cookies[0].value, "abc".to_string());
         assert_eq!(snapshot.cookies[0].same_site.as_deref(), Some("Lax"));
+        assert_eq!(
+            snapshot.adapters,
+            vec![SessionAdapterMount {
+                url_prefix: "http://example.test/api/".to_string(),
+                adapter,
+            }]
+        );
+    }
+
+    #[test]
+    fn session_handle_can_spawn_new_page_sharing_runtime_state() {
+        let page1 = SessionPage::new(SessionOptions::default()).expect("session page");
+        page1
+            .set_header("x-shared", "page1")
+            .expect("set shared header");
+        page1
+            .set_cookies("sid=abc; url=http://example.test/")
+            .expect("set shared cookie");
+
+        let handle = page1.session_handle();
+        let page2 = SessionPage::from_session_handle(handle.clone());
+
+        assert_eq!(page2.stream().expect("initial stream"), false);
+        page2.set_stream(true).expect("enable shared stream");
+        assert!(page1.stream().expect("stream visible across pages"));
+
+        let snapshot = handle.snapshot().expect("session snapshot");
+        assert!(
+            snapshot
+                .headers
+                .iter()
+                .any(|(name, value)| name == "x-shared" && value == "page1")
+        );
+        assert!(
+            snapshot
+                .cookies
+                .iter()
+                .any(|cookie| cookie.name == "sid" && cookie.value == "abc")
+        );
+
+        let (address, server) = spawn_capture_server("200 OK", "shared session");
+        assert!(page1.get(&address).expect("shared request"));
+
+        let response = page2
+            .response()
+            .expect("shared response result")
+            .expect("shared response");
+        assert_eq!(response.status_code, Some(200));
+        assert_eq!(handle.response().expect("handle response"), Some(response));
+
+        let _ = server.join().expect("server thread");
+    }
+
+    #[test]
+    fn session_handle_page_roundtrip_preserves_identity() {
+        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let handle = page.session_handle();
+        let cloned_page = handle.page();
+        let second_handle: SessionHandle = cloned_page.session_handle();
+
+        cloned_page.set_timeout(27).expect("set shared timeout");
+
+        assert_eq!(
+            second_handle.snapshot().expect("snapshot").timeout_secs,
+            27
+        );
+        assert_eq!(page.timeout_secs().expect("page timeout"), 27);
     }
 
     #[test]
@@ -6008,6 +7572,76 @@ mod tests {
             .expect("authorization separator");
         let expected = BASE64_STANDARD.encode("alice:secret");
         assert_eq!(value.trim(), format!("Basic {expected}"));
+    }
+
+    #[test]
+    fn session_stream_option_defers_body_loading_until_needed() {
+        let (address, handle) = spawn_capture_server("200 OK", "streamed");
+        let page = SessionPage::new(SessionOptions {
+            stream: true,
+            ..SessionOptions::default()
+        })
+        .expect("session page");
+
+        assert!(page.get(&address).expect("streaming request"));
+        {
+            let state = page.lock_state().expect("lock session state");
+            assert_eq!(state.status_code, Some(200));
+            assert!(state.pending_response.is_some());
+            assert!(state.raw_data.is_none());
+            assert!(state.body.is_none());
+            assert_eq!(state.encoding.as_deref(), Some("utf-8"));
+        }
+        assert_eq!(page.response().expect("response").and_then(|r| r.encoding), Some("utf-8".to_string()));
+        assert_eq!(page.html().expect("load streamed body"), "streamed".to_string());
+        {
+            let state = page.lock_state().expect("lock session state");
+            assert!(state.pending_response.is_none());
+            assert!(state.raw_data.is_some());
+            assert!(state.body.is_some());
+        }
+
+        handle.join().expect("server thread");
+    }
+
+    #[test]
+    fn session_request_options_stream_override_disables_lazy_loading() {
+        let (address, handle) = spawn_capture_server("200 OK", "override");
+        let page = SessionPage::new(SessionOptions {
+            stream: true,
+            ..SessionOptions::default()
+        })
+        .expect("session page");
+        let request_options = SessionRequestOptions {
+            stream: Some(false),
+            ..SessionRequestOptions::default()
+        };
+
+        assert!(
+            page.get_with_options(&address, &request_options)
+                .expect("request with stream override")
+        );
+        {
+            let state = page.lock_state().expect("lock session state");
+            assert!(state.pending_response.is_none());
+            assert!(state.raw_data.is_some());
+            assert_eq!(state.body.as_deref().map(AsRef::as_ref), Some("override"));
+        }
+
+        handle.join().expect("server thread");
+    }
+
+    #[test]
+    fn session_page_set_stream_updates_runtime_stream_behavior() {
+        let (address, handle) = spawn_capture_server("200 OK", "runtime-stream");
+        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+
+        page.set_stream(true).expect("enable runtime stream");
+        assert!(page.stream().expect("runtime stream getter"));
+        assert!(page.get(&address).expect("runtime streaming request"));
+        assert!(page.lock_state().expect("lock session state").pending_response.is_some());
+
+        handle.join().expect("server thread");
     }
 
     #[test]
@@ -6326,6 +7960,66 @@ mod tests {
             request.lines().next().expect("request line"),
             "GET http://example.test/proxy-path HTTP/1.1"
         );
+    }
+
+    #[test]
+    fn session_add_adapter_routes_matching_urls_through_proxy_and_updates_snapshot() {
+        let (proxy_url, handle) = spawn_capture_server("200 OK", "adapter");
+        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let mut adapter = SessionAdapter::new();
+        adapter.set_proxies(Some(proxy_url.clone()), None);
+
+        page.add_adapter("http://example.test/api/", adapter.clone())
+            .expect("add runtime adapter");
+
+        assert_eq!(
+            page.adapters().expect("runtime adapters"),
+            vec![SessionAdapterMount {
+                url_prefix: "http://example.test/api/".to_string(),
+                adapter: adapter.clone(),
+            }]
+        );
+        assert_eq!(
+            page.session().expect("session snapshot").adapters,
+            vec![SessionAdapterMount {
+                url_prefix: "http://example.test/api/".to_string(),
+                adapter,
+            }]
+        );
+
+        assert!(
+            page.get("http://example.test/api/items")
+                .expect("request through mounted adapter")
+        );
+        assert_eq!(page.html().expect("response body"), "adapter".to_string());
+
+        let request = handle.join().expect("server thread");
+        assert_eq!(
+            request.lines().next().expect("request line"),
+            "GET http://example.test/api/items HTTP/1.1"
+        );
+    }
+
+    #[test]
+    fn session_adapter_uses_longest_matching_url_prefix() {
+        let (address, handle) = spawn_delayed_server(Duration::from_millis(1500));
+        let mut broad_adapter = SessionAdapter::new();
+        broad_adapter.set_timeout(1);
+        let mut specific_adapter = SessionAdapter::new();
+        specific_adapter.set_timeout(3);
+        let mut options = SessionOptions::default();
+        options
+            .add_adapter(address.clone(), broad_adapter)
+            .add_adapter(format!("{address}/api/"), specific_adapter);
+        let page = SessionPage::new(options).expect("session page");
+
+        assert!(
+            page.get(&format!("{address}/api/items"))
+                .expect("request should use most specific adapter timeout")
+        );
+        assert_eq!(page.html().expect("response body"), "slow".to_string());
+
+        handle.join().expect("server thread");
     }
 
     #[test]

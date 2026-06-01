@@ -23,6 +23,17 @@ use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
 
 use crate::error::{OpenPageError, OpenPageResult};
+use crate::page::execute_page_command_async;
+use crate::settings::{
+    component_not_running_message, component_state_lock_poisoned_message,
+    invalid_screencast_data_url_message, screencast_already_running_message,
+    screencast_capture_path_unavailable_message, screencast_empty_mime_type_message,
+    screencast_ffmpeg_encode_failed_message, screencast_ffmpeg_spawn_failed_message,
+    screencast_mode_change_while_running_message, screencast_mode_output_suffix_message,
+    screencast_no_frames_message, screencast_output_path_unavailable_message,
+    screencast_requires_save_path_message, screencast_save_path_must_be_directory_message,
+    unsupported_screencast_output_suffix_message,
+};
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ScreencastMode {
@@ -76,7 +87,7 @@ impl Screencast {
         let mut state = lock_state(&self.shared)?;
         if state.running {
             return Err(OpenPageError::BrowserOperation(
-                "cannot change screencast mode while recording".to_string(),
+                screencast_mode_change_while_running_message(),
             ));
         }
         state.mode = mode;
@@ -99,7 +110,7 @@ impl Screencast {
             let mut state = lock_state(&self.shared)?;
             if state.running {
                 return Err(OpenPageError::BrowserOperation(
-                    "screencast is already running".to_string(),
+                    screencast_already_running_message(),
                 ));
             }
 
@@ -110,10 +121,7 @@ impl Screencast {
                     resolved
                 }
                 None => state.save_path.clone().ok_or_else(|| {
-                    OpenPageError::BrowserOperation(
-                        "screencast requires a save path; call start(Some(path)) or set_save_path() first"
-                            .to_string(),
-                    )
+                    OpenPageError::BrowserOperation(screencast_requires_save_path_message())
                 })?,
             };
 
@@ -150,7 +158,7 @@ impl Screencast {
         let page = self.page.clone();
         let shared = Arc::clone(&self.shared);
         let capture_dir = capture_path.ok_or_else(|| {
-            OpenPageError::BrowserOperation("screencast capture path is unavailable".to_string())
+            OpenPageError::BrowserOperation(screencast_capture_path_unavailable_message())
         })?;
         let handle = self.runtime.spawn(async move {
             let result = match mode {
@@ -200,13 +208,14 @@ impl Screencast {
         let (mode, output_dir, capture_path, handle) = {
             let mut state = lock_state(&self.shared)?;
             if !state.running {
-                return Err(OpenPageError::BrowserOperation(
-                    "screencast is not running".to_string(),
-                ));
+                return Err(OpenPageError::BrowserOperation(component_not_running_message(
+                    "screencast",
+                    "录屏",
+                )));
             }
             state.running = false;
             let output_dir = state.active_path.clone().ok_or_else(|| {
-                OpenPageError::BrowserOperation("screencast output path is unavailable".to_string())
+                OpenPageError::BrowserOperation(screencast_output_path_unavailable_message())
             })?;
             (
                 state.mode,
@@ -234,9 +243,7 @@ impl Screencast {
                 }
                 wait_for_task(&self.runtime, handle);
                 let capture_dir = capture_path.ok_or_else(|| {
-                    OpenPageError::BrowserOperation(
-                        "screencast capture path is unavailable".to_string(),
-                    )
+                    OpenPageError::BrowserOperation(screencast_capture_path_unavailable_message())
                 })?;
                 let video_path = build_video_output_path(mode, &output_dir, video_name, suffix)?;
                 let encode_result = encode_frames_output(&capture_dir, &video_path, codec);
@@ -361,17 +368,20 @@ async fn stop_js_screencast(page: OxPage) -> OpenPageResult<JsVideoPayload> {
         .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
     if payload.mime_type.is_empty() {
         return Err(OpenPageError::BrowserOperation(
-            "js screencast returned an empty mime type".to_string(),
+            screencast_empty_mime_type_message(),
         ));
     }
     Ok(payload)
 }
 
 async fn stop_cdp_screencast(page: OxPage) -> OpenPageResult<()> {
-    page.execute(StopScreencastParams::default())
-        .await
-        .map(|_| ())
-        .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+    execute_page_command_async(
+        &page,
+        StopScreencastParams::default(),
+        "Screencast::stop_cdp_screencast()",
+    )
+    .await?;
+    Ok(())
 }
 
 async fn evaluate_with_user_gesture(page: &OxPage, expression: &str) -> OpenPageResult<Value> {
@@ -422,15 +432,16 @@ async fn run_frugal_imgs_screencast(
         .await
         .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
 
-    page.execute(
+    execute_page_command_async(
+        &page,
         StartScreencastParams::builder()
             .format(StartScreencastFormat::Jpeg)
             .quality(100)
             .every_nth_frame(1)
             .build(),
+        "Screencast::run_frugal_imgs_screencast()",
     )
-    .await
-    .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+    .await?;
 
     let mut index = 0_u64;
 
@@ -452,9 +463,12 @@ async fn run_frugal_imgs_screencast(
         fs::write(frame_output_path(&capture_dir, index), bytes)?;
         index += 1;
 
-        page.execute(ScreencastFrameAckParams::new(event.session_id))
-            .await
-            .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+        execute_page_command_async(
+            &page,
+            ScreencastFrameAckParams::new(event.session_id),
+            "Screencast::run_frugal_imgs_screencast()",
+        )
+        .await?;
     }
 
     Ok(())
@@ -470,11 +484,9 @@ fn build_video_output_path(
         .unwrap_or(mode.default_suffix())
         .trim_start_matches('.');
     if !mode.supports_suffix(suffix) {
-        return Err(OpenPageError::UnsupportedOperation(format!(
-            "screencast mode {:?} only supports .{} output",
-            mode,
-            mode.default_suffix()
-        )));
+        return Err(OpenPageError::UnsupportedOperation(
+            screencast_mode_output_suffix_message(&format!("{mode:?}"), mode.default_suffix()),
+        ));
     }
 
     let file_name = match video_name {
@@ -496,7 +508,7 @@ fn encode_frames_as_gif(capture_dir: &Path, output_path: &Path) -> OpenPageResul
     let frame_paths = collect_frame_paths(capture_dir)?;
     if frame_paths.is_empty() {
         return Err(OpenPageError::BrowserOperation(
-            "screencast did not capture any frames".to_string(),
+            screencast_no_frames_message(),
         ));
     }
 
@@ -538,9 +550,9 @@ fn encode_frames_output(
     if suffix.eq_ignore_ascii_case("mp4") {
         return encode_frames_as_mp4(capture_dir, output_path, codec);
     }
-    Err(OpenPageError::UnsupportedOperation(format!(
-        "unsupported screencast output suffix: .{suffix}"
-    )))
+    Err(OpenPageError::UnsupportedOperation(
+        unsupported_screencast_output_suffix_message(suffix),
+    ))
 }
 
 fn encode_frames_as_mp4(
@@ -551,7 +563,7 @@ fn encode_frames_as_mp4(
     let frame_paths = collect_frame_paths(capture_dir)?;
     if frame_paths.is_empty() {
         return Err(OpenPageError::BrowserOperation(
-            "screencast did not capture any frames".to_string(),
+            screencast_no_frames_message(),
         ));
     }
 
@@ -576,13 +588,15 @@ fn encode_frames_as_mp4(
         .current_dir(capture_dir)
         .status()
         .map_err(|err| {
-            OpenPageError::BrowserOperation(format!("failed to run ffmpeg for screencast: {err}"))
+            OpenPageError::BrowserOperation(screencast_ffmpeg_spawn_failed_message(
+                &err.to_string(),
+            ))
         })?;
 
     if !status.success() {
-        return Err(OpenPageError::BrowserOperation(format!(
-            "ffmpeg failed to encode screencast output with status {status}"
-        )));
+        return Err(OpenPageError::BrowserOperation(
+            screencast_ffmpeg_encode_failed_message(&status.to_string()),
+        ));
     }
 
     Ok(())
@@ -607,7 +621,7 @@ fn collect_frame_paths(capture_dir: &Path) -> OpenPageResult<Vec<PathBuf>> {
 fn decode_data_url(data_url: &str) -> OpenPageResult<Vec<u8>> {
     let (_, payload) = data_url
         .split_once(',')
-        .ok_or_else(|| OpenPageError::Serialization("invalid screencast data URL".to_string()))?;
+        .ok_or_else(|| OpenPageError::Serialization(invalid_screencast_data_url_message()))?;
     BASE64_STANDARD
         .decode(payload)
         .map_err(|err| OpenPageError::Serialization(err.to_string()))
@@ -651,10 +665,12 @@ fn timestamp_nanos() -> u128 {
 fn lock_state(
     shared: &Arc<ScreencastShared>,
 ) -> OpenPageResult<std::sync::MutexGuard<'_, ScreencastState>> {
-    shared
-        .state
-        .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("screencast state lock poisoned".to_string()))
+    shared.state.lock().map_err(|_| {
+        OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+            "screencast state",
+            "录屏状态",
+        ))
+    })
 }
 
 fn is_running(shared: &Arc<ScreencastShared>) -> OpenPageResult<bool> {
@@ -679,7 +695,7 @@ fn wait_for_task(runtime: &Arc<Runtime>, handle: Option<JoinHandle<()>>) {
 fn prepare_output_dir(path: &Path) -> OpenPageResult<PathBuf> {
     if path.exists() && path.is_file() {
         return Err(OpenPageError::BrowserOperation(
-            "screencast save path must be a directory".to_string(),
+            screencast_save_path_must_be_directory_message(),
         ));
     }
     fs::create_dir_all(path)?;
@@ -701,6 +717,7 @@ mod tests {
         ScreencastMode, build_video_output_path, decode_data_url, encode_frames_output,
         frame_output_path, prepare_output_dir,
     };
+    use crate::settings::{Settings, scoped_test_settings};
 
     fn temp_path(label: &str) -> std::path::PathBuf {
         let suffix = SystemTime::now()
@@ -726,11 +743,17 @@ mod tests {
 
     #[test]
     fn prepare_output_dir_rejects_file_path() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
         let path = temp_path("screencast-file");
         fs::write(&path, b"test").expect("write file");
 
         let error = prepare_output_dir(&path).expect_err("file path should fail");
         assert!(error.to_string().contains("directory"));
+
+        Settings::set_language("cn");
+        let error = prepare_output_dir(&path).expect_err("file path should fail");
+        assert!(error.to_string().contains("目录"));
 
         let _ = fs::remove_file(&path);
     }
@@ -791,6 +814,8 @@ mod tests {
 
     #[test]
     fn encode_frames_output_rejects_unknown_suffix() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
         let capture_dir = temp_path("screencast-capture");
         fs::create_dir_all(&capture_dir).expect("create capture dir");
 
@@ -802,6 +827,55 @@ mod tests {
                 .contains("unsupported screencast output suffix")
         );
 
+        Settings::set_language("cn");
+        let error = encode_frames_output(&capture_dir, Path::new("/tmp/demo/capture.avi"), None)
+            .expect_err("unknown suffix should fail");
+        assert!(error.to_string().contains("不支持的录屏输出后缀"));
+
+        let _ = fs::remove_dir_all(&capture_dir);
+    }
+
+    #[test]
+    fn build_video_output_path_localizes_mode_suffix_error() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let error = build_video_output_path(
+            ScreencastMode::JsVideo,
+            Path::new("/tmp/demo"),
+            Some("capture"),
+            Some("mp4"),
+        )
+        .expect_err("mp4 should not be supported for js video");
+        assert!(error.to_string().contains("only supports .webm output"));
+
+        Settings::set_language("cn");
+        let error = build_video_output_path(
+            ScreencastMode::JsVideo,
+            Path::new("/tmp/demo"),
+            Some("capture"),
+            Some("mp4"),
+        )
+        .expect_err("mp4 should not be supported for js video");
+        assert!(error.to_string().contains("仅支持 .webm 输出"));
+    }
+
+    #[test]
+    fn encode_frames_output_localizes_missing_frames_error() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+        let capture_dir = temp_path("screencast-no-frames");
+        fs::create_dir_all(&capture_dir).expect("create capture dir");
+
+        let error = encode_frames_output(&capture_dir, Path::new("/tmp/demo/capture.mp4"), None)
+            .expect_err("empty capture dir should fail");
+        assert!(error.to_string().contains("did not capture any frames"));
+
+        Settings::set_language("cn");
+        let error = encode_frames_output(&capture_dir, Path::new("/tmp/demo/capture.mp4"), None)
+            .expect_err("empty capture dir should fail");
+        assert!(error.to_string().contains("没有捕获到任何帧"));
+
         let _ = fs::remove_dir_all(&capture_dir);
     }
 
@@ -809,5 +883,18 @@ mod tests {
     fn decode_data_url_returns_payload_bytes() {
         let data = decode_data_url("data:video/webm;base64,aGVsbG8=").expect("decode data url");
         assert_eq!(data, b"hello");
+    }
+
+    #[test]
+    fn decode_data_url_localizes_invalid_data_error() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let error = decode_data_url("bad-data").expect_err("invalid data url should fail");
+        assert!(error.to_string().contains("invalid screencast data URL"));
+
+        Settings::set_language("cn");
+        let error = decode_data_url("bad-data").expect_err("invalid data url should fail");
+        assert!(error.to_string().contains("无效的录屏 data URL"));
     }
 }

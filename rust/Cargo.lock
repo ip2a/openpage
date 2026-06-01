@@ -1286,7 +1286,10 @@ dependencies = [
  "ego-tree",
  "encoding_rs",
  "futures",
+ "getrandom 0.2.17",
  "image",
+ "libc",
+ "publicsuffix",
  "pyo3",
  "pyo3-build-config",
  "regex",
@@ -1299,6 +1302,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "url",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

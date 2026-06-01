@@ -1441,3 +1441,1363 @@
 - Interpretation:
   - the TCP daemon path is now more resilient to daemon death between initial ensure and request send
   - this is a direct borrow of competitor outer-shell thinking, not of competitor CDP or element internals
+
+
+## Local truth refresh (2026-05-30, browser stop lifecycle pass)
+- This pass focused on shutdown semantics for named-session CLI flows.
+- Motivation:
+  - `browser stop` previously tried `webpage.quit`, then best-effort `daemon.shutdown`, then blindly removed sidecars
+  - that left a gap where an alive but unresponsive daemon could survive behind a success-shaped CLI result
+- Landed changes:
+  - `rust/src/cli/connection.rs`
+    - added `shutdown_daemon(...)`
+    - graceful path: send `daemon.shutdown` directly when the daemon is ready
+    - verification path: poll until the daemon is actually gone
+    - fallback path: if still alive, force stale kill and cleanup
+    - returned structured result with `had_daemon` / `forced`
+  - `rust/src/cli/oneshot.rs`
+    - `browser stop` now uses `shutdown_daemon(...)`
+    - JSON result now includes `had_daemon` and `forced`
+  - `skills/openpage-test/references/session-management.md`
+    - active docs now explain that browser stop first tries graceful shutdown and falls back to forced cleanup when needed
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml cli::connection::tests:: -- --nocapture`
+    - passed
+    - includes `shutdown_daemon_cleans_stale_sidecars_when_process_is_gone`
+  - `cargo check --manifest-path rust/Cargo.toml`
+    - passed
+  - `OPENPAGE_BROWSER_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start --session stop-shell-check --headless https://example.com`
+    - passed
+  - same machine + `browser stop --session stop-shell-check`
+    - returned `{ "stopped": true, "had_daemon": true, "forced": false, ... }`
+  - same machine + `browser list`
+    - no longer contained `stop-shell-check`
+- Interpretation:
+  - stop semantics now match the same “graceful first, force if necessary” outer-shell philosophy already used in stale-daemon startup recovery
+  - this is still non-CDP shell work only
+
+## Local truth refresh (2026-05-30, compat-only audit + local-state recheck)
+- This pass was a repo-local truth refresh, not a new protocol change.
+- Motivation:
+  - verify the current dirty worktree still has one active TCP execution path
+  - verify the `dp` helper is now visibly compat-only instead of silently looking like a second surface
+  - write the refreshed local-machine facts into the persistent tracking files and borrow-analysis document
+- Current local machine truth rechecked during this pass:
+  - `cargo check --manifest-path rust/Cargo.toml`
+    - passed
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+    - returned 6 healthy sessions
+    - 0 incomplete
+    - 0 cleaned
+    - current healthy sessions were:
+      - `cli-more-states-2`
+      - `cli-state-queries`
+      - `definitely-missing`
+      - `human-flow`
+      - `smoke-history2`
+      - `smoke-shot`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - failed only at `browser.executable`
+    - the failing configured executable in the current dirty worktree is `/tmp/dp-browser`
+  - `OPENPAGE_BROWSER_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - passed
+  - same env override + `browser start --session latest-local-audit --headless https://example.com`
+    - passed
+  - same env override + `title --session latest-local-audit`
+    - returned `Example Domain`
+  - same env override + `browser stop --session latest-local-audit`
+    - returned `forced=false` and `had_daemon=true`
+  - `browser list` after that stop
+    - no longer contained `latest-local-audit`
+- Additional protocol-surface verification:
+  - `cargo test --manifest-path rust/Cargo.toml rejects_legacy_page_get_command -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rejects_legacy_page_url_command -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rejects_legacy_page_title_command -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rejects_legacy_page_screenshot_command -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rejects_serve_stdio_flag -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml dp_compat_help_marks_surface_as_compat_only -- --nocapture`
+  - all passed
+- Interpretation:
+  - the active CLI truth is still a single TCP daemon execution path
+  - `dp` is now guarded as compat-only in both help text and tests, so it should not be treated as a second protocol branch
+  - the suspicious session name `definitely-missing` is not evidence of broken state by itself; current runtime checks say it is alive and ready
+  - the next safe borrow target remains outer-shell only: connection / doctor / protocol / agent docs
+  - do not borrow competitor `cli/src/native/*`, CDP transport, locator logic, or interaction internals
+
+## Local truth refresh (2026-05-30, dp entry tightening pass)
+- This pass was a small active-surface cleanup after the local-state audit.
+- Motivation:
+  - the repo already described `dp` as compat-only
+  - but `rust/src/cli/mod.rs` still allowed the `openpage` binary to silently enter compat mode when root flags like `--set-browser-path` were passed
+  - that kept a second user-facing entry shape alive even though the protocol truth was supposed to be unique
+- Landed change:
+  - `rust/src/cli/mod.rs`
+    - `should_use_dp_compat_mode(...)` now returns true only when the executable stem is `dp`
+    - the active `openpage` binary no longer accepts `dp` compat flags as a hidden fallback path
+  - updated unit test:
+    - `detects_dp_compat_mode_only_for_dp_binary`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml detects_dp_compat_mode_only_for_dp_binary -- --nocapture`
+    - passed
+  - `cargo test --manifest-path rust/Cargo.toml dp_compat_help_marks_surface_as_compat_only -- --nocapture`
+    - passed
+  - `cargo check --manifest-path rust/Cargo.toml`
+    - passed
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- --set-browser-path /tmp/chrome`
+    - now fails with `unexpected argument '--set-browser-path' found`
+- Interpretation:
+  - this is a small but real protocol-surface cleanup
+  - `dp` remains available as a compat helper binary
+  - `openpage` no longer has a hidden root-flag side door into compat behavior
+  - this stays within the outer shell and does not touch browser/CDP/element internals
+
+## Local truth refresh (2026-05-30, top-level parse JSON shell pass)
+- This pass continued the same outer-shell borrowing direction, but at the CLI parser boundary.
+- Motivation:
+  - runtime failures already returned stable JSON with `error.kind`
+  - but clap parse/input failures still escaped as raw human-oriented text
+  - that meant removed legacy surfaces like `page url` and rejected compat flags like `--set-browser-path` did not use the same machine-facing shell as the active TCP CLI
+- Landed changes:
+  - `rust/src/cli/mod.rs`
+    - added `clap_error_payload(...)`
+    - added `print_clap_error(...)`
+    - `run_from_args(...)` and `run_dp_compat_from_args(...)` now route non-help/version clap failures through:
+      - `{"ok":false,"error":{"kind":"invalid_input","message":"..."}}`
+    - help/version still keep the normal clap text output
+  - active docs updated:
+    - `README.md`
+    - `skills/openpage-test/references/cli-smoke.md`
+    - `竞品文档-考虑借鉴的部分v1.md`
+- Verification:
+  - `rustfmt rust/src/cli/mod.rs`
+    - passed
+  - `cargo test --manifest-path rust/Cargo.toml parse_errors_render_machine_friendly_json_shell -- --nocapture`
+    - passed
+  - `cargo test --manifest-path rust/Cargo.toml help_output_keeps_text_shell -- --nocapture`
+    - passed
+  - `cargo test --manifest-path rust/Cargo.toml detects_dp_compat_mode_only_for_dp_binary -- --nocapture`
+    - passed
+  - `cargo test --manifest-path rust/Cargo.toml dp_compat_help_marks_surface_as_compat_only -- --nocapture`
+    - passed
+  - `cargo check --manifest-path rust/Cargo.toml`
+    - passed
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- page url`
+    - now returns JSON with `error.kind="invalid_input"`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- --set-browser-path /tmp/chrome`
+    - now returns JSON with `error.kind="invalid_input"`
+- Interpretation:
+  - this is still outer-shell only
+  - removed legacy CLI surfaces no longer escape as a different error medium
+  - the active machine interface is more uniform without borrowing any competitor browser, CDP, snapshot, element, or interaction internals
+
+## Local truth refresh (2026-05-30, protocol/doc sync recheck)
+
+- Intent:
+  - recheck the current machine-local runtime truth before touching more outer-shell work
+  - patch active docs/tracking files so they stop repeating stale `browser_path=chrome` wording
+  - record the current protocol-shell truth for raw TCP clients, not just the named-session CLI
+- Commands run:
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `sed -n '1,220p' rust/configs.ini`
+  - `ls -la ~/.openpage/daemon`
+  - `ls -la ~/.openpage/sessions`
+- Observed runtime truth:
+  - `rust/configs.ini` currently resolves to `browser_path=/tmp/dp-browser`
+  - `browser list` returned 6 healthy sessions, 0 incomplete, 0 cleaned:
+    - `cli-more-states-2`
+    - `cli-state-queries`
+    - `definitely-missing`
+    - `human-flow`
+    - `smoke-history2`
+    - `smoke-shot`
+  - `doctor --quick` returned exactly 1 fail:
+    - `browser.executable`
+    - the failing configured executable is `/tmp/dp-browser`
+  - with `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, `doctor --quick` returned all pass except the expected `browser.launch` info skip
+  - `~/.openpage/sessions` still exists but is empty, so `env.legacy_sessions` is currently `pass`, not a warn/fail item
+  - `~/.openpage/daemon` still contains both active sidecars and many historical log files, so inventory/doctor remain necessary even though the active sessions are healthy
+- Doc/tracking cleanup made from that evidence:
+  - `README.md`
+    - stable `error.kind` list now explicitly includes raw TCP daemon `invalid_json` and `tcp_error`
+  - `skills/openpage-test/references/cli-smoke.md`
+    - common-failure text no longer hardcodes the old `chrome` wording
+    - now records the current dirty-worktree failure target `/tmp/dp-browser`
+    - now explains raw TCP `invalid_json` and `tcp_error`
+  - `task_plan.md`
+    - current-state bullets now use `/tmp/dp-browser` instead of stale `chrome` wording where they were describing present truth
+    - status now records that this turn rechecked `browser list`, plain `doctor --quick`, and override `doctor --quick`
+- Interpretation:
+  - the active protocol shell is still single-path TCP
+  - the remaining red item on this machine is still browser executable resolution, not protocol drift
+  - the active docs now better match the current dirty worktree and the current daemon error surface
+
+## Local truth refresh (2026-05-30, latest protocol audit recheck)
+
+- Intent:
+  - re-verify the current local protocol truth before borrowing more competitor outer-shell pieces
+  - record the latest machine-local daemon inventory so the tracking docs stop lagging the runtime
+  - confirm whether old protocol wording is still live code, intentionally rejected documentation, or archived residue
+- Commands run:
+  - `git status --short`
+  - `rg -n "serve --stdio|page get|page url|page title|page screenshot|open_page\\(|load_session\\(|save_session\\(|Browser::connect\\(" rust README.md skills rust_progress_report.md 协议迁移审计-v1.md -g '!**/target/**'`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed runtime truth:
+  - the repo is still very dirty; this remains a path-focused task and is not ready for a broad git checkpoint
+  - `browser list` now returns 7 healthy sessions, 0 incomplete, 0 cleaned:
+    - `cli-more-states-2`
+    - `cli-state-queries`
+    - `definitely-missing`
+    - `human-flow`
+    - `smoke-history2`
+    - `smoke-shot`
+    - `smoke_eval_5554`
+  - `definitely-missing` is still healthy despite the suspicious name; current evidence says `alive=true` and `ready=true`
+  - `doctor --quick` still returns exactly 1 fail:
+    - `browser.executable`
+    - the failing configured executable is still `/tmp/dp-browser`
+  - `cargo check` passed on the current dirty worktree
+- Active-surface grep interpretation:
+  - live code hits for old protocol wording are still limited to the reject tests in `rust/src/cli/oneshot.rs`
+  - active user-facing doc hits remain intentional removed-surface notes in:
+    - `README.md`
+    - `skills/openpage-test/references/cli-smoke.md`
+  - the bulk of remaining `serve --stdio` / `page *` / one-shot attach wording still lives in:
+    - `rust_progress_report.md`
+    - `协议迁移审计-v1.md`
+    - tracking files like `task_plan.md`, `notes.md`, `claude-progress.txt`
+- Interpretation:
+  - the unique active CLI/daemon protocol is still TCP-only
+  - there is still no evidence of the old execution path becoming active again
+  - the next useful work remains outer-shell cleanup and selective borrowing, not browser/CDP/element rework
+
+## Local truth refresh (2026-05-30, compiled help surface + skill doc sync)
+
+- Intent:
+  - verify the compiled help text still encodes the same single-protocol truth as the implementation
+  - update active agent-facing smoke docs with the latest local runtime evidence instead of stale session counts
+- Commands run:
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- --help`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --help`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+- Observed truth:
+  - `cargo check` passed on the current dirty worktree
+  - compiled `openpage --help` now explicitly says:
+    - the active CLI protocol is TCP-backed daemon only
+    - there is no separate stdio daemon mode
+    - there is no direct browser-execution CLI path
+  - compiled `openpage serve --help` now explicitly says:
+    - TCP-only daemon mode
+    - `--port 0` requests an OS-assigned port
+    - the removed `serve --stdio` surface stays rejected
+  - `browser list` still returned 7 healthy sessions, 0 incomplete, 0 cleaned:
+    - `cli-more-states-2`
+    - `cli-state-queries`
+    - `definitely-missing`
+    - `human-flow`
+    - `smoke-history2`
+    - `smoke-shot`
+    - `smoke_eval_5554`
+  - `doctor --quick` still failed only at `browser.executable=/tmp/dp-browser`
+- Doc cleanup made from that evidence:
+  - `README.md`
+    - now says the compiled help text itself is part of the protocol guardrail
+  - `skills/openpage-test/references/cli-smoke.md`
+    - now includes `smoke_eval_5554` in the latest local runtime inventory
+    - now records that compiled `openpage --help` / `serve --help` carry the TCP-only truth directly
+  - `竞品文档-考虑借鉴的部分v1.md`
+    - now records CLI help as another active guardrail worth preserving when borrowing outer-shell design
+- Interpretation:
+  - single-protocol truth is now aligned across implementation, parser tests, compiled help text, README, and active smoke docs
+  - the remaining live issue on this machine is still browser executable resolution, not protocol ambiguity
+
+## Active-session boundary sync (2026-05-30)
+
+- Intent:
+  - sync the latest shell-level session bootstrap rule into active docs/help so later work does not accidentally revive the old silent auto-start behavior
+  - keep the borrowing boundary explicit: shell/session lifecycle only, not browser/CDP internals
+- Current implementation truth:
+  - `rust/src/cli/oneshot.rs::rpc_webpage()` now routes through `send_request_existing(...)`
+  - `rust/src/cli/oneshot.rs::run_goto()` still uses `ensure_webpage_session(...)`, so `goto` remains a narrow bootstrap path
+  - `rust/src/cli/oneshot.rs::start_browser()` remains the explicit bootstrap path
+  - `rust/src/cli/connection.rs::ensure_existing_daemon()` is the guardrail that produces the inactive-session failure
+- Files updated from that truth:
+  - `rust/src/cli/args.rs`
+  - `rust/src/cli/mod.rs`
+  - `README.md`
+  - `skills/openpage-test/references/session-management.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - `竞品文档-考虑借鉴的部分v1.md`
+- Why this matters:
+  - it is a direct competitor-inspired outer-shell refinement
+  - it keeps TCP daemon lifecycle predictable
+  - it does not touch `browser.rs`, `page.rs`, `element.rs`, or any CDP/locator internals
+
+## Local truth refresh (2026-05-30, compile gate recovery + latest runtime inventory)
+
+- Intent:
+  - restore a verifiable local baseline before claiming anything about the current TCP-only protocol surface
+  - sync the latest machine-local runtime truth back into the persistent files instead of leaving them at the previous 7-session snapshot
+- Commands run:
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- --help`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --help`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rpc_webpage_rejects_inactive_session_without_creating_sidecars -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml dp_compat_help_marks_surface_as_compat_only -- --nocapture`
+- Compile blockers fixed first:
+  - `rust/src/browser.rs::tab_infos()` needed an explicit `Ok::<Vec<TabInfo>, OpenPageError>(...)`
+  - `rust/src/browser.rs::wait_for_new_tab()` had stale call sites after `find_new_tab_id(..., explicit_current_tab: bool)` changed shape
+  - this was a minimal compile-gate repair only; it did not change CLI/daemon protocol intent
+- Observed runtime truth after the repair:
+  - `cargo check` passed again on the current dirty worktree
+  - `browser list` now returns 8 healthy sessions, 0 incomplete, 0 cleaned:
+    - `cli-more-states-2`
+    - `cli-state-queries`
+    - `definitely-missing`
+    - `human-flow`
+    - `human-gap-check`
+    - `smoke-history2`
+    - `smoke-shot`
+    - `smoke_eval_5554`
+  - `definitely-missing` still must not be deleted by name alone; runtime evidence still says `alive=true` and `ready=true`
+  - plain `doctor --quick` still fails only at `browser.executable=/tmp/dp-browser`
+  - with `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, `doctor --quick` passes
+  - compiled `openpage --help` still says:
+    - active CLI protocol = TCP-backed daemon only
+    - there is no separate stdio daemon mode
+    - there is no direct browser-execution CLI path
+  - compiled `openpage serve --help` still says:
+    - TCP-only daemon mode
+    - `--port 0` uses an OS-assigned port
+    - removed `serve --stdio` stays rejected
+  - the 3 targeted tests above all passed again
+- Interpretation:
+  - the active TCP daemon shell is still single-path after the latest local recheck
+  - the current machine-local red item is still browser executable resolution, not protocol drift
+  - the latest runtime inventory is now 8 healthy sessions, but that remains runtime-local truth rather than a repository invariant
+
+## Local truth refresh (2026-05-31, current worktree re-audit)
+
+- Intent:
+  - replace the previous session's stale compile-blocker assumption with current evidence
+  - record one concrete shell-only integration pattern that already exists locally and does not require competitor native runtime borrowing
+- Commands run:
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rpc_webpage_rejects_inactive_session_without_creating_sidecars -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml dp_compat_help_marks_surface_as_compat_only -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml parses_permissions_set -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml parses_clipboard_write -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- --help`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --help`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start https://example.com --session latest-local-audit-20260531 --headless`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' cargo run --manifest-path rust/Cargo.toml --bin openpage -- title --session latest-local-audit-20260531`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser stop --session latest-local-audit-20260531`
+- Current worktree truth:
+  - `cargo check` passes again; the previous `oneshot.rs` non-exhaustive `Clipboard` / `Permissions` blocker is no longer current
+  - compiled `openpage --help` still states:
+    - active CLI protocol = TCP-backed daemon only
+    - no separate stdio daemon mode
+    - no direct browser-execution CLI path
+  - compiled `openpage serve --help` still states:
+    - TCP-only daemon mode
+    - removed `serve --stdio` stays rejected
+  - `browser list` currently returns 15 healthy sessions, 0 incomplete, 0 cleaned
+  - plain `doctor --quick` still fails only at `browser.executable=/tmp/dp-browser`
+  - with `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, `doctor --quick` passes
+  - the ordered smoke `browser start -> title -> browser stop` passes with the same override, and `title` returns `Example Domain`
+- Concrete shell-only integration pattern already present:
+  - `rust/src/cli/args.rs` exposes `Clipboard` and `Permissions`
+  - `rust/src/cli/oneshot.rs` routes them only through daemon RPC
+  - `rust/src/cli/serve.rs` dispatches only to `page.clipboard_*` / `page.set_permission` / `page.reset_permissions`
+  - `rust/src/webpage.rs` wraps the capability in driver mode
+  - `rust/src/page.rs` owns the real implementation and runtime regression coverage
+- Interpretation:
+  - this is the right borrowing direction for OpenPage: shell/control-plane design only
+  - there is no need to import `agent-browser` native action / CDP / locator code for this class of feature
+  - the remaining machine-local red item is still browser executable resolution, not protocol multiplicity
+
+## Local truth refresh (2026-05-31, browser-logs shell pass)
+
+- Intent:
+  - verify the newly added `browser logs` shell surface rather than assuming the earlier patch compiled cleanly
+  - record the latest machine-local session inventory and doctor summary in the same pass
+- Commands run:
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo test --manifest-path rust/Cargo.toml parses_browser_logs_tail -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_log_tail_keeps_last_lines -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_log_tail_handles_zero_and_large_limits -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rpc_webpage_rejects_inactive_session_without_creating_sidecars -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml dp_compat_help_marks_surface_as_compat_only -- --nocapture`
+  - `rust/target/debug/openpage browser list`
+  - `rust/target/debug/openpage doctor --quick`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' rust/target/debug/openpage doctor --quick`
+  - `rust/target/debug/openpage browser logs --session human-flow --tail 20`
+  - `rust/target/debug/openpage browser logs --session clipboard-probe-20260531 --tail 20`
+  - `rust/target/debug/openpage --help`
+  - `rust/target/debug/openpage serve --help`
+- Observed runtime truth:
+  - `cargo check` passed
+  - both new `browser logs` tests passed
+  - the three existing protocol/compat guard tests passed again
+  - `browser list` now returns 17 healthy sessions, 0 incomplete, 0 cleaned:
+    - `cli-more-states-2`
+    - `cli-state-queries`
+    - `clipboard-probe-20260531`
+    - `definitely-missing`
+    - `human-clipboard-audit-20260531`
+    - `human-flow`
+    - `human-gap-check`
+    - `human-window-audit-20260531`
+    - `human-window-audit-20260531-b`
+    - `human-window-audit-20260531-c`
+    - `human-window-smoke-20260531`
+    - `human-window-switch-20260531`
+    - `local-audit-20260531-seq`
+    - `local-audit-20260531-tcp`
+    - `smoke-history2`
+    - `smoke-shot`
+    - `smoke_eval_5554`
+  - plain `doctor --quick` still reports:
+    - `pass=21`
+    - `warn=0`
+    - `fail=1`
+    - `info=1`
+    - `total=23`
+    - `fail_ids=["browser.executable"]`
+    - `fixable_ids=["browser.executable","browser.launch"]`
+    - current failing configured executable remains `/tmp/dp-browser`
+  - override `doctor --quick` still reports:
+    - `fail=0`
+    - `info=1`
+    - `fixable_ids=["browser.launch"]`
+  - `browser logs --session human-flow --tail 20` returned:
+    - `exists=false`
+    - `content=null`
+    - meaning that session currently has no persisted stderr log file
+  - `browser logs --session clipboard-probe-20260531 --tail 20` returned:
+    - `exists=true`
+    - tailed content containing `WebSocket protocol error: Connection reset without closing handshake`
+  - compiled help still states:
+    - active CLI protocol = TCP-backed daemon only
+    - removed `serve --stdio` stays rejected
+- Interpretation:
+  - `browser logs` is a valid next borrow target because it is pure shell/control-plane behavior
+  - the new surface is useful for diagnosing daemon sessions without importing any competitor browser runtime code
+  - protocol uniqueness is still defended by the existing help + tests; the new command does not create a second execution path
+
+## Local truth refresh (2026-05-31, post-element-compile-recovery recheck)
+
+- Intent:
+  - re-verify the current worktree after the latest compile-recovery edit rather than assuming earlier notes are still current
+  - sync the latest local runtime truth into tracking docs without widening the implementation scope
+- Commands run:
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rpc_webpage_rejects_inactive_session_without_creating_sidecars -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml dp_compat_help_marks_surface_as_compat_only -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml parses_browser_logs_tail -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_log_tail_keeps_last_lines -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_log_tail_handles_zero_and_large_limits -- --nocapture`
+  - `rust/target/debug/openpage browser list`
+  - `rust/target/debug/openpage doctor --quick`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' rust/target/debug/openpage doctor --quick`
+  - `rust/target/debug/openpage browser logs --session human-flow --tail 20`
+  - `rust/target/debug/openpage browser logs --session clipboard-probe-20260531 --tail 20`
+  - `rust/target/debug/openpage --help`
+  - `rust/target/debug/openpage serve --help`
+- Current worktree truth:
+  - `cargo check` passes
+  - the current worktree includes a minimal compile-recovery adjustment in `rust/src/element.rs`:
+    - `Frame::new(...)` now receives `Arc::clone(self.none_element_runtime_config_handle())`
+    - this is a signature-alignment fix only, not a protocol or borrow-boundary change
+  - all protocol/compat guard tests above pass again
+  - all three `browser logs` parse/tail tests pass again
+  - `browser list` still returns 17 healthy sessions, 0 incomplete, 0 cleaned
+  - plain `doctor --quick` still reports:
+    - `pass=21`
+    - `warn=0`
+    - `fail=1`
+    - `info=1`
+    - `total=23`
+    - `fail_ids=["browser.executable"]`
+    - `fixable_ids=["browser.executable","browser.launch"]`
+    - current failing configured executable remains `/tmp/dp-browser`
+  - override `doctor --quick` now explicitly reports:
+    - `pass=22`
+    - `warn=0`
+    - `fail=0`
+    - `info=1`
+    - `total=23`
+    - `fixable_ids=["browser.launch"]`
+  - `browser logs --session human-flow --tail 20` still returns `exists=false` and `content=null`
+  - `browser logs --session clipboard-probe-20260531 --tail 20` still returns `exists=true` and tailed stderr containing `Connection reset without closing handshake`
+  - compiled help still states:
+    - active CLI protocol = TCP-backed daemon only
+    - removed `serve --stdio` stays rejected
+- Interpretation:
+  - the active protocol truth is still single-path TCP
+  - the latest compile-recovery fix did not reopen any browser/CDP/locator borrowing question
+  - the correct next borrow direction remains shell/control-plane only: `connection.rs`, `doctor.rs`, output governance, and agent-facing docs
+
+## Local truth refresh (2026-05-31, doctor-fix verification pass)
+
+- Intent:
+  - verify the latest `doctor --quick --fix` borrow point with current worktree evidence instead of treating the earlier handoff as sufficient proof
+  - confirm the active CLI still rejects removed protocol surfaces at runtime, not just in tests and docs
+- Commands run:
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo test --manifest-path rust/Cargo.toml apply_fixes_reports_stale_daemon_sidecar_cleanup -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml apply_fixes_stops_incomplete_unready_daemon_session -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- --help`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --help`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- page url`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --stdio`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor`
+  - synthetic smoke with a temporary `OPENPAGE_HOME=/tmp/openpage-doctor-fix-*` containing:
+    - `sessions/legacy-a.json`
+    - `daemon/stale-daemon.pid`
+    - `daemon/stale-daemon.port`
+    - a live `/bin/sleep 30` process wired to `daemon/incomplete-daemon.pid`
+    - `daemon/incomplete-daemon.port`
+    - then `openpage doctor --quick --fix`
+- Observed truth:
+  - `cargo check` passed
+  - both new `apply_fixes_*` tests passed
+  - `openpage page url` returned top-level JSON with `error.kind="invalid_input"`
+  - `openpage serve --stdio` returned top-level JSON with `error.kind="invalid_input"`
+  - `browser list` still returns 17 healthy sessions, 0 incomplete, 0 cleaned
+  - plain `doctor --quick` still reports:
+    - `pass=21`
+    - `warn=0`
+    - `fail=1`
+    - `info=1`
+    - `total=23`
+    - `fail_ids=["browser.executable"]`
+    - `fixable_ids=["browser.executable","browser.launch"]`
+    - current failing configured executable remains `/tmp/dp-browser`
+  - override `doctor --quick` still reports `fail=0`
+  - override full `doctor` now also reports `fail=0` and `pass=23`, including a successful live headless launch smoke
+  - synthetic `doctor --quick --fix` returned `fixed[]` entries for:
+    - removing `sessions/legacy-a.json`
+    - removing stale sidecars for `stale-daemon`
+    - stopping and removing incomplete unready session `incomplete-daemon`
+  - after that synthetic fix:
+    - the spawned `sleep` PID was no longer alive
+    - `find "$tmp" -maxdepth 3 -type f` returned no remaining sidecar files
+    - a second `doctor --quick` against the same temp home showed no legacy-session or incomplete-sidecar residue
+- Interpretation:
+  - `doctor --quick --fix` is now proven as a shell-only borrow point, not just a speculative design match
+  - the new fix path stays inside sidecars / daemon lifecycle and does not cross into OpenPage browser/CDP/locator internals
+  - the active protocol truth remains single-path TCP, and removed surfaces are still rejected at runtime in the same JSON shell
+
+## Local truth refresh (2026-05-31, stop-all shell borrow pass)
+
+- Intent:
+  - verify the next non-CDP borrow point with current worktree evidence
+  - keep the implementation strictly in CLI shell / daemon inventory / shutdown control flow
+- Commands run:
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo build --manifest-path rust/Cargo.toml --bin openpage`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser stop --help`
+  - `cargo test --manifest-path rust/Cargo.toml parses_browser_stop_all -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_stop_all_sessions_deduplicates_and_keeps_alive_incomplete_sessions -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml parses_batch_with_commands -- --nocapture`
+  - synthetic smoke with `OPENPAGE_HOME=/tmp/openpage-stop-all-*`:
+    - start two raw daemons via `rust/target/debug/openpage serve --session alpha --port 0` and `... beta ...`
+    - `rust/target/debug/openpage browser list`
+    - `rust/target/debug/openpage browser stop --all`
+    - `rust/target/debug/openpage browser list`
+    - `kill -0 <pid>` checks for both daemon pids
+  - synthetic single-session regression with `OPENPAGE_HOME=/tmp/openpage-stop-one-*`:
+    - `serve --session review --port 0`
+    - `browser stop --session review`
+    - `browser list`
+- Observed truth:
+  - `cargo check` passed
+  - `cargo build --bin openpage` passed
+  - `browser stop --help` now shows:
+    - `--session <SESSION>`
+    - `--all`
+  - `parses_browser_stop_all` passed
+  - `browser_stop_all_sessions_deduplicates_and_keeps_alive_incomplete_sessions` passed
+  - `parses_batch_with_commands` passed again, so batch strings containing `browser stop` still parse after the stop-args change
+  - synthetic stop-all smoke returned:
+    - initial `browser list` with healthy `alpha` and `beta`
+    - `browser stop --all` result `{"stopped":2,"sessions":["alpha","beta"],"failed":[],"all_stopped":true}`
+    - follow-up `browser list` with `sessions=[]`
+    - both daemon pids were no longer alive
+  - synthetic single-session regression returned:
+    - `browser stop --session review` result with `had_daemon=true` and `forced=false`
+    - follow-up `browser list` empty
+- Interpretation:
+  - `browser stop --all` is now verified as another shell-only borrow point
+  - the new path stays entirely in daemon inventory + shutdown orchestration
+  - no browser/CDP/locator/interaction internals were imported or replaced
+
+## Local truth refresh (2026-05-31, browser-list summary pass)
+
+- Intent:
+  - make the current local runtime truth easier for agents/scripts to consume without changing protocol uniqueness or browser internals
+- Commands run:
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo test --manifest-path rust/Cargo.toml browser_inventory_summary_counts_all_categories -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - synthetic smoke with `OPENPAGE_HOME=/tmp/openpage-list-summary-*`:
+    - `rust/target/debug/openpage serve --session summary-check --port 0`
+    - `rust/target/debug/openpage browser list`
+- Observed truth:
+  - `cargo check` passed
+  - `browser_inventory_summary_counts_all_categories` passed
+  - current-machine `browser list` now reports:
+    - `summary.healthy=17`
+    - `summary.incomplete=0`
+    - `summary.cleaned=0`
+    - `summary.total=17`
+  - synthetic single-session smoke reports:
+    - `summary.healthy=1`
+    - `summary.incomplete=0`
+    - `summary.cleaned=0`
+    - `summary.total=1`
+- Interpretation:
+  - `browser list` now gives a stable machine-friendly summary layer on top of the existing inventory truth
+  - this is a shell/output enhancement only; it does not touch browser/CDP/locator internals
+
+## Local truth refresh (2026-05-31, browser-status state pass)
+
+- Intent:
+  - expose a cleaner session-state truth for agents/scripts without changing any browser/CDP/locator internals
+- Commands run:
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo test --manifest-path rust/Cargo.toml incomplete_session_reasons_report_missing_version_and_not_ready -- --nocapture`
+  - `cargo build --manifest-path rust/Cargo.toml --bin openpage`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser status --help`
+  - synthetic smoke with `OPENPAGE_HOME=/tmp/openpage-status-shapes-*`:
+    - `rust/target/debug/openpage serve --session healthy --port 0`
+    - one live incomplete session via `/bin/sleep 30` + `.pid/.port` and no `.version`
+    - `rust/target/debug/openpage browser status --session healthy`
+    - `rust/target/debug/openpage browser status --session incomplete`
+    - `rust/target/debug/openpage browser status --session missing`
+- Observed truth:
+  - `cargo check` passed
+  - `incomplete_session_reasons_report_missing_version_and_not_ready` passed
+  - synthetic healthy status returned `state="healthy"`
+  - synthetic incomplete status returned:
+    - `state="incomplete"`
+    - `reasons=["missing_version","daemon_not_ready"]`
+    - raw `incomplete` sidecar booleans
+  - synthetic missing status returned `state="inactive"`
+- Interpretation:
+  - `browser status` now exposes a stable machine-friendly state layer on top of daemon lifecycle truth
+  - this is still a shell/control-plane enhancement only
+
+## Local truth refresh (2026-05-31, browser-list entry-state pass)
+
+- Intent:
+  - make the current local daemon inventory easier to consume entry-by-entry, not just via top-level counts
+  - keep the change strictly in shell/output shaping
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml browser_inventory_ -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml incomplete_session_reasons_ -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --stdio`
+- Observed truth:
+  - both inventory tests passed:
+    - `browser_inventory_summary_counts_all_categories`
+    - `browser_inventory_payload_includes_state_and_reasons`
+  - `incomplete_session_reasons_report_missing_version_and_not_ready` passed again
+  - while re-running the deprecated-surface guard, the current worktree exposed a shell-layer compile blocker:
+    - `DownloadsCommand::Open(_)` / `Reveal(_)` existed in `args.rs`
+    - `run_downloads(...)` had not covered those variants
+  - that blocker is now minimally repaired in `rust/src/cli/oneshot.rs`:
+    - `downloads open` resolves a tracked download path and opens it with the OS default app
+    - `downloads reveal` resolves a tracked download path and reveals its parent location through the OS shell
+  - `download_final_path_requires_non_empty_path` now passes
+  - current-machine `browser list` now reports every healthy `sessions[]` entry with `state="healthy"`
+  - current-machine runtime remains:
+    - `summary.healthy=17`
+    - `summary.incomplete=0`
+    - `summary.cleaned=0`
+    - `summary.total=17`
+  - `openpage_help_marks_tcp_daemon_as_only_active_protocol` passes again
+  - `openpage page url` still returns `error.kind="invalid_input"`
+  - `serve --stdio` still returns the unified JSON error shell with `error.kind="invalid_input"`
+  - user-side git activity is still live:
+    - `ps -axo pid,ppid,command | rg 'git add -p|index.lock'`
+    - still shows `git add -p rust/src/cli/oneshot.rs` as pid `22000`
+- Interpretation:
+  - this is another shell-only borrow point from the competitor's session-inventory ergonomics
+  - it improves local-state observability without touching browser/CDP/locator/interaction internals
+  - the active protocol surface remains uniquely TCP-backed
+
+## Local truth refresh (2026-05-31, browser-logs state-alignment pass)
+
+- Intent:
+  - align the shell-level diagnostics surfaces so `browser logs` and `browser status` speak the same state taxonomy
+  - keep the change strictly in CLI payload shaping and log reading
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml browser_logs_payload_preserves_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_log_tail_keeps_last_lines -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_log_tail_handles_zero_and_large_limits -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser logs --session human-flow --tail 5`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- page url`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --stdio`
+- Observed truth:
+  - `browser_logs_payload_preserves_state_and_reasons` passed
+  - both existing log-tail tests passed again
+  - `browser logs --session human-flow --tail 5` now returns:
+    - `state="healthy"`
+    - `exists=false`
+    - `content=null`
+    - `path="/Users/yuuu/.openpage/daemon/human-flow.log"`
+  - that means the current `human-flow` daemon is healthy, but there is no persisted stderr log file for it yet
+  - `openpage_help_marks_tcp_daemon_as_only_active_protocol` passed again
+  - both removed surfaces still reject at runtime with the unified JSON shell:
+    - `openpage page url` → `error.kind="invalid_input"`
+    - `openpage serve --stdio` → `error.kind="invalid_input"`
+- Interpretation:
+  - this is another shell-only borrow point from the competitor's diagnostics ergonomics
+  - it keeps all session-debugging surfaces on the same state taxonomy without touching browser/CDP/locator internals
+
+## Local truth refresh (2026-05-31, doctor-inventory pass)
+
+- Intent:
+  - make `doctor --quick` itself expose the current daemon runtime truth, not just check-oriented findings
+  - keep the change strictly in doctor payload shaping on top of the existing inventory scan
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml doctor_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml summarize_counts_info_fixable_and_total -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- page url`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --stdio`
+- Observed truth:
+  - `doctor_inventory_payload_includes_state_and_reasons` passed
+  - `summarize_counts_info_fixable_and_total` still passed after the doctor payload change
+  - `doctor --quick` now returns a top-level `inventory` block
+  - on the current machine that block reports:
+    - `summary.healthy=17`
+    - `summary.incomplete=0`
+    - `summary.cleaned=0`
+    - `summary.total=17`
+  - healthy `inventory.sessions[]` entries now also carry `state="healthy"`
+  - in the same runtime payload, the only fail still remains:
+    - `browser.executable`
+    - configured path `/tmp/dp-browser`
+  - `openpage_help_marks_tcp_daemon_as_only_active_protocol` passed again
+  - both removed surfaces still reject with the unified JSON shell:
+    - `openpage page url` → `error.kind="invalid_input"`
+    - `openpage serve --stdio` → `error.kind="invalid_input"`
+- Interpretation:
+  - this is another shell-only borrow point from the competitor's diagnostics ergonomics
+  - it shortens the path from “run doctor” to “see the actual local daemon truth” without touching browser/CDP/locator internals
+
+## Local truth refresh (2026-05-31, shared reason-taxonomy pass)
+
+- Intent:
+  - stop letting `browser list/status/logs` and `doctor` each maintain their own copy of incomplete-session `reasons[]`
+  - move that truth to the sidecar/inventory layer itself
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml incomplete_daemon_reasons_report_missing_version_and_not_ready -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_inventory_payload_json_includes_states_and_summary -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml doctor_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `rust/target/debug/openpage browser list`
+  - `rust/target/debug/openpage doctor --quick`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- page url`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --stdio`
+- Observed truth:
+  - `connection.rs` now owns:
+    - shared incomplete-session `reasons[]`
+    - shared inventory `summary`
+    - shared inventory payload JSON shaping
+  - all four targeted tests passed
+  - current runtime still agrees across surfaces:
+    - `browser list` summary → `healthy=17 / incomplete=0 / cleaned=0 / total=17`
+    - `doctor --quick` inventory summary → `healthy=17 / incomplete=0 / cleaned=0 / total=17`
+  - `doctor --quick` still has exactly one fail id:
+    - `browser.executable`
+  - removed surfaces still reject with the unified JSON shell:
+    - `openpage page url` → `error.kind="invalid_input"`
+    - `openpage serve --stdio` → `error.kind="invalid_input"`
+  - user-side git activity is still live:
+    - `git add -p rust/src/cli/oneshot.rs`
+    - pid `22000`
+- Interpretation:
+  - this is a control-plane truth-source consolidation, not a browser-kernel change
+  - it reduces drift risk for future agent sessions while keeping the TCP-only execution model intact
+
+## Local truth refresh (2026-05-31, browser-log content boundary pass)
+
+- Intent:
+  - extend the existing agent-friendly output boundary / truncate chain to daemon log text too
+  - keep the change strictly in CLI JSON output shaping
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml format_output_json_wraps_content_field_with_boundaries -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml format_output_json_truncates_content_field -- --nocapture`
+  - `OPENPAGE_CONTENT_BOUNDARIES=1 OPENPAGE_MAX_OUTPUT_CHARS=40 cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser logs --session clipboard-probe-20260531 --tail 20`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --stdio`
+- Observed truth:
+  - both new `protocol.rs` tests passed
+  - real CLI output now shows that `browser logs` `content` is filtered through the same mechanism:
+    - `_boundary.keys=["content"]`
+    - wrapped `OPENPAGE_PAGE_CONTENT ... key=content`
+    - truncation marker showing `40 of 92 chars`
+  - the runtime sample used:
+    - session `clipboard-probe-20260531`
+    - persisted log file exists on this machine
+  - `openpage_help_marks_tcp_daemon_as_only_active_protocol` passed again
+  - removed surfaces still reject with `error.kind="invalid_input"`:
+    - `openpage page url`
+    - `openpage serve --stdio`
+- Interpretation:
+  - this is an agent-facing output-shell enhancement, not a browser/runtime change
+  - it brings daemon log text under the same trust-boundary model as page text/html output
+
+## Local truth refresh (2026-05-31, competitor borrow doc sync)
+
+- Intent:
+  - make the competitor-analysis deliverable directly reusable for future copy/micro-tune work
+  - keep the boundary explicit between borrowable shell/control-plane code and non-borrowable browser/runtime code
+- Files updated:
+  - `竞品文档-考虑借鉴的部分v1.md`
+- Added structure:
+  - a front-loaded quick-reference table mapping:
+    - competitor file
+    - recommended borrow action
+    - OpenPage landing file
+    - hard boundary/rule
+- Interpretation:
+  - this is documentation hardening, not an implementation change
+  - it reduces the risk that a later session copies from `agent-browser` at the wrong layer
+
+## Local truth refresh (2026-05-31, AI-first snapshot shell pass)
+
+- Intent:
+  - borrow more of the competitor's agent-facing snapshot contract
+  - keep the implementation inside OpenPage's own DOM/JS shell instead of adopting competitor native/CDP internals
+- Code changed:
+  - `rust/src/cli/serve.rs`
+- Behavior now verified:
+  - `snapshot` entries can now carry `label`, `checked`, `selected`, and `disabled`
+  - text formatting now surfaces those fields in the compact `@eN ...` summary
+  - the snapshot pass now clears existing `data-op-ref` attributes before minting the next ref set
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml format_snapshot_text_includes_title_origin_refs_and_attrs -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml snapshot_refs_builds_ref_index -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rpc_webpage_rejects_inactive_session_without_creating_sidecars -- --nocapture`
+  - runtime smoke with `browser start -> snapshot -> browser stop` on a data URL page containing:
+    - labeled email input
+    - checked checkbox
+    - disabled button
+  - runtime smoke with `snapshot -> js mutate -> snapshot -> click @e1 -> js read dataset.clicked`
+- Observed truth:
+  - real snapshot JSON now included:
+    - `label: "Email"`
+    - `checked: true`
+    - `disabled: true`
+  - real compact snapshot text now included:
+    - `@e1 [input] label="Email" type="email" placeholder="Work email" id="email"`
+    - `@e2 [input] type="checkbox" id="agree" checked`
+    - `@e3 [button] "Continue" id="go" disabled`
+  - dynamic-page smoke after removing the old element's `role` and `onclick` showed:
+    - second snapshot shrank from `interactive_count=2` to `interactive_count=1`
+    - `@e1` was reassigned to the remaining live button
+    - clicking `@e1` set `dataset.clicked` to `new`
+- Interpretation:
+  - this is a clean outer-shell borrow point
+  - it improves ref lifecycle safety and agent readability without touching browser/CDP/locator/interaction internals
+
+## Local truth refresh (2026-05-31, version-mismatch daemon guard pass)
+
+- Intent:
+  - tighten the single active TCP daemon protocol so follow-up `--session` commands cannot keep talking to a live old-version daemon
+  - keep the change entirely in the daemon/session control plane
+- Code changed:
+  - `rust/src/cli/connection.rs`
+- Behavior now verified:
+  - `ensure_existing_daemon()` now rejects a ready-but-version-mismatched daemon
+  - `browser status` / `browser list` now surface:
+    - `state="incompatible"`
+    - `reasons=["version_mismatch"]`
+    - `version_matches_current_cli=false`
+  - summary payloads now also count `incompatible`
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml ensure_existing_daemon_rejects_version_mismatch -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_inventory_payload_marks_version_mismatch_as_incompatible -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_status_payload_json_marks_version_mismatch_as_incompatible -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml doctor_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rpc_webpage_rejects_inactive_session_without_creating_sidecars -- --nocapture`
+  - runtime smoke under temporary `OPENPAGE_HOME`:
+    - `browser start --session version-guard-smoke --headless https://example.com`
+    - overwrite `daemon/version-guard-smoke.version` with `0.0.1`
+    - `browser status --session version-guard-smoke`
+    - `browser list`
+    - `title --session version-guard-smoke`
+    - `browser stop --session version-guard-smoke`
+- Observed truth:
+  - before mutation:
+    - `browser status` returned `state="healthy"` and `version_matches_current_cli=true`
+  - after mutation:
+    - `browser status` returned `state="incompatible"` and `reasons=["version_mismatch"]`
+    - `browser list` returned `summary.incompatible=1`
+    - `title --session version-guard-smoke` failed with restart guidance instead of talking to the stale daemon
+- Interpretation:
+  - this is a stronger protocol-uniqueness guard, not just a nicer inventory payload
+  - it prevents mixed-version daemon follow-up traffic without touching browser/CDP/interaction internals
+
+## Local truth refresh (2026-05-31, doctor quick-fix incompatible-session pass)
+
+- Intent:
+  - close the operational gap after version-mismatch fail-fast
+  - make `doctor --quick --fix` the unified cleanup path for incompatible daemon sessions too
+- Code changed:
+  - `rust/src/cli/doctor.rs`
+- Behavior now verified:
+  - `doctor --quick --fix` now stops incompatible live daemon sessions whose sidecar version does not match the current CLI
+  - daemon warning text now makes the state explicit as `state=incompatible`
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml apply_fixes_stops_incompatible_daemon_session -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml apply_fixes_stops_incomplete_unready_daemon_session -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml ensure_existing_daemon_rejects_version_mismatch -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - synthetic runtime smoke under temporary `OPENPAGE_HOME`:
+    - `browser start --session doctor-fix-mismatch --headless https://example.com`
+    - overwrite `daemon/doctor-fix-mismatch.version` with `0.0.1`
+    - `doctor --quick`
+    - `doctor --quick --fix`
+    - `doctor --quick`
+    - `browser list`
+- Observed truth:
+  - before fix:
+    - `doctor --quick` reported `daemon.session.doctor-fix-mismatch`
+    - its message included `state=incompatible`
+    - inventory summary reported `incompatible=1`
+  - during fix:
+    - `fixed[]` included `Stopped incompatible daemon session doctor-fix-mismatch (found version 0.0.1, current CLI 0.1.0)`
+  - after fix:
+    - `doctor --quick` reported no daemon warnings for that synthetic home
+    - `browser list` returned `sessions=[]`
+    - `summary.incompatible=0`
+- Interpretation:
+  - this completes the control-plane cleanup path for stale daemon version drift
+  - it still does not touch browser/CDP/locator/interaction internals
+
+## Local truth refresh (2026-05-31, active-doc sync + browser-logs incompatible test)
+
+- Intent:
+  - keep the active skill/install guidance aligned with the new `doctor --quick --fix` behavior
+  - add one more shell-level regression guard for incompatible session diagnostics
+- Code/docs changed:
+  - `rust/src/cli/oneshot.rs`
+  - `skills/openpage-test/SKILL.md`
+  - `skills/openpage-test/references/install.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Behavior now verified:
+  - `browser logs` payload preserves `state="incompatible"` and `reasons=["version_mismatch"]`
+  - active usage docs now describe `doctor --quick --fix` as handling incompatible daemon sessions too
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml browser_logs_payload_preserves_incompatible_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_logs_payload_preserves_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- page url`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --stdio`
+- Observed truth:
+  - the new `browser_logs_payload_preserves_incompatible_state_and_reasons` test passed
+  - removed legacy surfaces still reject with `error.kind="invalid_input"`
+  - the active skill/install/smoke docs now explicitly include incompatible daemon sessions in the `doctor --quick --fix` cleanup path
+- Interpretation:
+  - this is small but important context hygiene for future agent sessions
+  - it keeps the repo-local “truth in docs” aligned with the implemented control-plane behavior
+
+## Local truth refresh (2026-05-31, shared session-fix guidance pass)
+
+- Intent:
+  - stop making callers reconstruct next actions from `state` and `reasons` alone
+  - move session-level fix guidance into the shared control-plane truth
+- Code changed:
+  - `rust/src/cli/connection.rs`
+  - `rust/src/cli/doctor.rs`
+  - `rust/src/cli/oneshot.rs`
+- Behavior now verified:
+  - `browser status` / `browser logs` / `browser list` now preserve a shared machine-readable `fix` string when action is needed
+  - `doctor` now reuses the same session-level fix guidance for daemon session warnings instead of maintaining a separate local copy
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml daemon_inventory_payload_json_includes_states_and_summary -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_inventory_payload_marks_version_mismatch_as_incompatible -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_status_payload_json_marks_incomplete_with_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_status_payload_json_marks_inactive_when_absent -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_status_payload_json_marks_version_mismatch_as_incompatible -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_logs_payload_preserves_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_logs_payload_preserves_incompatible_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml doctor_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - runtime smoke under temporary `OPENPAGE_HOME`:
+    - `browser start --session status-fix-guidance --headless https://example.com`
+    - overwrite `daemon/status-fix-guidance.version` with `0.0.1`
+    - `browser status --session status-fix-guidance`
+    - `browser logs --session status-fix-guidance --tail 5`
+    - `browser list`
+    - `browser stop --session status-fix-guidance`
+- Observed truth:
+  - `browser status` returned:
+    - `state="incompatible"`
+    - `reasons=["version_mismatch"]`
+    - `fix="Run openpage browser stop ... restart ..."`
+  - `browser logs` preserved the same `fix`
+  - `browser list` preserved the same `fix` on the session entry
+  - the new logs/state tests passed after the refactor, and the earlier unused-import warning in `doctor.rs` was removed
+- Interpretation:
+  - this is a stronger agent-facing control-plane borrow point than raw `state` alone
+  - it keeps fix guidance consistent across status/logs/list/doctor without touching browser/CDP/locator/interaction internals
+
+## Local truth refresh (2026-05-31, competitor borrow doc rewritten as copy-ready matrix)
+
+- Intent:
+  - turn the competitor notes into a practical decision file instead of a loose research memo
+  - make future borrowing decisions checkable before code changes
+- Files reviewed again:
+  - competitor:
+    - `参考项目/agent-browser-main/cli/src/connection.rs`
+    - `参考项目/agent-browser-main/cli/src/doctor/mod.rs`
+    - `参考项目/agent-browser-main/cli/src/doctor/launch.rs`
+    - `参考项目/agent-browser-main/cli/src/output.rs`
+    - `参考项目/agent-browser-main/cli/src/main.rs`
+    - `参考项目/agent-browser-main/cli/src/commands.rs`
+  - openpage:
+    - `rust/src/cli/connection.rs`
+    - `rust/src/cli/doctor.rs`
+    - `rust/src/cli/protocol.rs`
+    - `rust/src/cli/serve.rs`
+    - `rust/src/cli/oneshot.rs`
+- Deliverable updated:
+  - `竞品文档-考虑借鉴的部分v1.md`
+- New structure now captured in that file:
+  - borrow boundary table
+  - priority matrix
+  - competitor file to OpenPage landing map
+  - copy-ready vs idea-only vs forbidden split
+  - TCP-only adaptation constraints
+- Interpretation:
+  - the strongest borrow points remain `connection.rs`, `doctor/*`, `output.rs`, top-level error shell, and agent-facing docs
+  - `cli/src/native/*` remains outside the allowed borrow boundary
+
+## Local truth refresh (2026-05-31, structured `error.fix` + raw-detail daemon error propagation)
+
+- Intent:
+  - tighten the top-level JSON error shell so callers can use machine-readable next-step guidance
+  - stop daemon-response errors from drifting through double-prefixed message wrapping on the local CLI path
+- Files changed:
+  - `rust/src/cli/protocol.rs`
+  - `rust/src/cli/oneshot.rs`
+  - `README.md`
+  - `skills/openpage-test/references/session-management.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - `竞品文档-考虑借鉴的部分v1.md`
+- New behavior now verified:
+  - top-level direct CLI failures such as inactive/missing session now include `error.fix`
+  - version-mismatch follow-up failures now include the full stop/restart guidance in `error.fix`
+  - daemon-side `response_openpage_error(...)` now sends raw detail plus optional `fix`, so the local CLI path does not produce a double-prefixed message when reconstructing and reserializing the error
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml structured_fix -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rpc_webpage_rejects_inactive_session_without_creating_sidecars -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime smoke:
+    - `OPENPAGE_HOME=/tmp/openpage-cli-missing-fix ... openpage title --session missing`
+    - `openpage serve --stdio`
+    - `openpage page url`
+    - synthetic mismatch session under temporary `OPENPAGE_HOME` with `.version=0.0.1`
+- Observed truth:
+  - missing session now returns JSON with `error.kind="browser_operation"` and `error.fix="Start it with ..."`
+  - version-mismatch follow-up now returns JSON with full `error.fix` containing both stop/restart and doctor cleanup guidance
+  - removed legacy surfaces still reject with `error.kind="invalid_input"`
+- Interpretation:
+  - this is a shell/protocol hardening step, not a browser/runtime change
+  - it makes the unique TCP daemon path easier for scripts/agents to consume without string scraping
+
+## Local truth refresh (2026-05-31, omit empty top-level `error.fix`)
+
+- Intent:
+  - align top-level direct CLI error JSON with daemon `ResponseError` shape
+  - avoid forcing callers to special-case `fix: null`
+- Files changed:
+  - `rust/src/cli/protocol.rs`
+  - `README.md`
+  - `skills/openpage-test/references/session-management.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - `竞品文档-考虑借鉴的部分v1.md`
+- New behavior now verified:
+  - when a control-plane recovery hint exists, top-level JSON still includes `error.fix`
+  - when no such hint exists, top-level JSON now omits `error.fix` instead of emitting `null`
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml simple_error_omits_fix_when_absent -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml structured_fix -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime smoke:
+    - `openpage title --session missing`
+    - `openpage serve --stdio`
+    - `openpage page url`
+- Observed truth:
+  - missing session still returns `error.fix`
+  - removed surfaces still reject with `error.kind="invalid_input"`
+  - those invalid-input payloads no longer include `fix: null`
+- Interpretation:
+  - this is another pure protocol-shell cleanup step
+  - it keeps the unique TCP daemon JSON surface tighter for automation
+
+## Local truth refresh (2026-05-31, direct error now exposes `state/reasons`)
+
+- Intent:
+  - make direct follow-up command failures speak the same control-plane language as `browser status` / `browser logs` / `browser list`
+  - keep this strictly in the shell/protocol layer
+- Files changed:
+  - `rust/src/cli/protocol.rs`
+  - `rust/src/cli/oneshot.rs`
+  - `README.md`
+  - `skills/openpage-test/references/session-management.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - `竞品文档-考虑借鉴的部分v1.md`
+- New behavior now verified:
+  - known session-control failures now also include top-level `error.state`
+  - incompatible failures now also include stable `error.reasons=["version_mismatch"]`
+  - inactive failures now include `error.state="inactive"` without a fake `reasons=[]`
+  - removed legacy surfaces still reject as plain `invalid_input` without unrelated session state
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml 'state_and_reasons' -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml structured_fix -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime smoke:
+    - `openpage title --session missing`
+    - synthetic mismatch session with `.version=0.0.1`
+    - `openpage serve --stdio`
+- Observed truth:
+  - missing session now returns `error.state="inactive"`
+  - version mismatch now returns `error.state="incompatible"` + `error.reasons=["version_mismatch"]`
+  - removed surfaces still reject with `error.kind="invalid_input"` and no session-state baggage
+- Interpretation:
+  - this is a stronger machine-readable borrow point than `error.fix` alone
+  - it keeps direct failure payloads aligned with the same control-plane truth used elsewhere
+
+## Local truth refresh (2026-05-31, daemon-related `doctor.checks[]` now carry `state/reasons`)
+
+- Intent:
+  - align doctor's check-oriented output with the same control-plane truth already used by inventory/status/logs/direct-error
+  - keep this scoped to daemon-related checks only
+- Files changed:
+  - `rust/src/cli/connection.rs`
+  - `rust/src/cli/doctor.rs`
+  - `README.md`
+  - `skills/openpage-test/references/session-management.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - `竞品文档-考虑借鉴的部分v1.md`
+- New behavior now verified:
+  - daemon-related doctor checks now also carry machine-readable `state`
+  - incompatible daemon checks now also carry `reasons=["version_mismatch"]`
+  - incomplete daemon checks now also carry the same stable incomplete-session reason taxonomy
+  - non-daemon checks are unchanged
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml daemon_checks_include_machine_readable_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml check_serializes_state_and_reasons_when_present -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml doctor_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime smoke with temporary `OPENPAGE_HOME` and a version-mismatched daemon session
+- Observed truth:
+  - `openpage doctor --quick` now returns a `daemon.session.*` check with:
+    - `state="incompatible"`
+    - `reasons=["version_mismatch"]`
+    - full `fix`
+  - removed protocol surfaces remain rejected and unaffected by this change
+- Interpretation:
+  - this extends the shared control-plane taxonomy into doctor's primary `checks[]` surface
+  - it is still a pure shell/control-plane borrow point
+
+## Local truth refresh (2026-05-31, machine-readable `session` for direct error + doctor daemon checks)
+
+- Intent:
+  - stop making callers recover the session name from free-form `message` or from `daemon.session.<name>` ids
+  - keep this limited to session/control-plane surfaces
+- Files changed:
+  - `rust/src/cli/protocol.rs`
+  - `rust/src/cli/doctor.rs`
+  - `README.md`
+  - `skills/openpage-test/references/session-management.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - `竞品文档-考虑借鉴的部分v1.md`
+- New behavior now verified:
+  - known session-control direct errors now include `error.session`
+  - daemon-related doctor checks now include `session`
+  - state/reasons/fix behavior from the previous turns remains intact
+- Commands run:
+  - exact targeted tests only:
+    - `simple_openpage_error_exposes_structured_fix_for_session_guidance`
+    - `simple_openpage_error_exposes_state_and_reasons_for_version_mismatch`
+    - `response_openpage_error_uses_raw_detail_and_structured_fix`
+    - `response_result_preserves_structured_fix_without_double_prefix`
+    - `response_result_reconstructed_error_keeps_state_and_reasons_for_incompatible_session`
+    - `check_serializes_state_and_reasons_when_present`
+    - `daemon_checks_include_machine_readable_state_and_reasons`
+    - `openpage_help_marks_tcp_daemon_as_only_active_protocol`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime smoke:
+    - `openpage title --session missing`
+    - synthetic mismatch session + `openpage doctor --quick`
+- Observed truth:
+  - missing session now returns `error.session="missing"`
+  - synthetic mismatch doctor run now returns a daemon check with `session="session-field-smoke"`
+  - removed protocol surfaces remain rejected and unaffected
+- Important note:
+  - a broad `cargo test ... 'session' ...` filter also matched unrelated pre-existing repo tests and produced noise unrelated to this shell/protocol work; use exact test names for this track
+- Interpretation:
+  - this is another pure machine-readable control-plane improvement
+  - it reduces parsing work for agents/scripts without changing browser/runtime internals
+
+## Local truth refresh (2026-05-31, `doctor.inventory` stays present when daemon dir is absent)
+
+- Intent:
+  - make doctor's inventory shape as stable as `browser list`
+  - avoid a special `null` branch for the empty/no-daemon-dir case
+- Files changed:
+  - `rust/src/cli/doctor.rs`
+  - `README.md`
+  - `skills/openpage-test/references/session-management.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - `竞品文档-考虑借鉴的部分v1.md`
+- New behavior now verified:
+  - when the daemon directory does not exist yet, `doctor --quick` now still returns `inventory` as an object
+  - that object has zero counts and empty arrays instead of collapsing to `null`
+- Commands run:
+  - `cargo test --manifest-path rust/Cargo.toml daemon_checks_return_empty_inventory_when_daemon_dir_is_missing -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_checks_include_machine_readable_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime smoke:
+    - `OPENPAGE_HOME=/tmp/openpage-doctor-empty-shape openpage doctor --quick`
+- Observed truth:
+  - `doctor --quick` now returns `inventory.summary.total=0` with empty arrays when no daemon dir exists
+  - the surrounding info check `daemon.sessions` still remains intact
+- Interpretation:
+  - this is another pure machine-friendly output-shape improvement
+  - it keeps doctor closer to the same inventory contract as `browser list`
+
+## Competitor-doc refresh (2026-05-31, borrow/copy boundaries rewritten)
+
+- Intent:
+  - turn the existing competitor notes into a direct implementation checklist
+  - make it explicit what can be copied, what must stay OpenPage-native, and which files are involved
+- Files changed:
+  - `竞品文档-考虑借鉴的部分v1.md`
+  - `task_plan.md`
+  - `notes.md`
+  - `claude-progress.txt`
+- Source-of-truth note:
+  - local `.codegraph/codegraph.db` only covers part of the current OpenPage repo and does not index the reference project
+  - codegraph also appears stale for at least some current OpenPage files, so final competitor conclusions were taken from real source files, not the graph index alone
+- Main output now captured in the doc:
+  - first-tier copy candidates:
+    - `参考项目/agent-browser-main/cli/src/connection.rs`
+    - `参考项目/agent-browser-main/cli/src/doctor/mod.rs`
+    - `参考项目/agent-browser-main/cli/src/doctor/launch.rs`
+    - selected helper functions from `参考项目/agent-browser-main/cli/src/output.rs`
+  - keep-as-OpenPage-native boundary:
+    - `参考项目/agent-browser-main/cli/src/native/*`
+    - browser/CDP/locator/interaction/snapshot runtime internals
+  - landing files on the OpenPage side:
+    - `rust/src/cli/connection.rs`
+    - `rust/src/cli/doctor.rs`
+    - `rust/src/cli/protocol.rs`
+    - `rust/src/cli/mod.rs`
+    - `rust/src/cli/oneshot.rs`
+    - `skills/openpage-test/*`
+- Interpretation:
+  - the competitor is most useful as a TCP-daemon CLI shell reference, not as a browser runtime reference
+
+## Local truth resync (2026-05-31, runtime-only audit; no code edits)
+
+- Intent:
+  - re-sync the repo-local tracking files to the machine's current runtime truth
+  - avoid touching `rust/src/cli/oneshot.rs` while local interactive staging is still active
+- Commands run:
+  - `rust/target/debug/openpage --help`
+  - `rust/target/debug/openpage serve --help`
+  - `rust/target/debug/openpage browser list`
+  - `rust/target/debug/openpage doctor --quick`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' rust/target/debug/openpage doctor --quick`
+  - `rust/target/debug/openpage serve --stdio`
+  - `rust/target/debug/openpage page url`
+- Observed truth:
+  - `browser list` currently returns `healthy=18 / incompatible=0 / incomplete=0 / cleaned=0 / total=18`
+  - current healthy session names include the prior 17-session set plus `hist-smoke`
+  - plain `doctor --quick` currently returns `pass=22 / warn=0 / fail=1 / info=1 / total=24`
+  - the only fail is still `browser.executable`, tied to the current machine-local dirty config `browser_path=/tmp/dp-browser`
+  - with `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`, `doctor --quick` becomes `pass=23 / warn=0 / fail=0 / info=1 / total=24`
+  - removed `serve --stdio` and old `page url` still return the unified JSON shell with `error.kind="invalid_input"`
+- Git-safety note:
+  - `git add -p rust/src/cli/oneshot.rs` is still active locally
+  - this audit deliberately avoided editing `rust/src/cli/oneshot.rs` or doing any broad staging/reset operation
+- Files synced from this audit:
+  - `task_plan.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  - `竞品文档-考虑借鉴的部分v1.md`
+  - `notes.md`
+  - `claude-progress.txt`
+- Next shell-only borrow point after staging is safe:
+  - preserve daemon `session/state/reasons/fix` context more directly across `ResponseError -> response_result(...) -> simple_openpage_error(...)`
+  - keep this scoped to `rust/src/cli/protocol.rs` and `rust/src/cli/oneshot.rs`
+
+## Doctor browser-path field cleanup (2026-06-01)
+
+- Intent:
+  - finish the interrupted `rust/src/cli/doctor.rs` patch without touching runtime internals or `rust/src/cli/oneshot.rs`
+  - make doctor browser-path checks more machine-readable for agent/script consumers
+- Code change:
+  - completed `Check` field initialization for:
+    - `browser_path`
+    - `resolved_path`
+    - `suggested_path`
+  - left the runtime/browser/CDP/locator/interaction stack untouched
+- Verification:
+  - `cargo check --manifest-path rust/Cargo.toml` now passes again
+  - default machine state:
+    - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - `browser.config.browser_path="/tmp/dp-browser"`
+    - `browser.executable.browser_path="/tmp/dp-browser"`
+  - process-local override state:
+    - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - `browser.executable.resolved_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`
+  - hint-path state:
+    - temp project dir with `dp_configs.ini` containing `[chromium_options] browser_path = chrome`
+    - `/Volumes/data0/data4work/2026_5/openpage/rust/target/debug/openpage doctor --quick`
+    - `browser.executable.suggested_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`
+    - `browser.executable.hint.suggested_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`
+- Constraints still in force:
+  - local `git add -p rust/src/cli/oneshot.rs` remains active
+  - no edits were made to `rust/src/cli/oneshot.rs`
+- Interpretation:
+  - this is a valid non-CDP borrow from the competitor's doctor/control-plane shape
+  - the next worthwhile borrow point is still direct-error context preservation in `protocol.rs` / `oneshot.rs`, once the local interactive staging risk is gone

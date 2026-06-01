@@ -157,6 +157,10 @@ cargo run --manifest-path rust/Cargo.toml --bin openpage -- --help
 All user-facing CLI commands now route through the same TCP daemon execution path. There is no
 separate stdio daemon mode or direct browser-execution path for the CLI surface.
 
+The repository also ships a small `dp` compatibility helper binary for DrissionPage-style config
+and launch tasks. Treat it as compat-only glue. It is not a second OpenPage protocol surface and
+it does not replace the TCP daemon CLI below.
+
 Long-lived agent control over the NDJSON TCP daemon:
 
 ```bash
@@ -169,17 +173,74 @@ Daemon-backed one-command-at-a-time browser control:
 OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start --session agent --headless
 OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list
 OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser status --session agent
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser logs --session agent --tail 20
 OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- goto https://example.com --session agent
 OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- title --session agent
 OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- js document.title --session agent
 OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser stop --session agent
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser stop --all
 ```
 
 `browser list` now returns:
 
-- `sessions` — healthy daemon-backed sessions
-- `incomplete` — alive daemons with incomplete sidecars
-- `cleaned` — stale sidecars cleaned during the scan
+- `summary` — machine-friendly counts for `healthy`, `incompatible`, `incomplete`, `cleaned`, and `total`
+- `sessions` — ready daemon-backed sessions, each with:
+  - `state="healthy"` when its daemon version matches the current CLI
+  - `state="incompatible"` plus `reasons=["version_mismatch"]` when the session is still alive but was started by a different CLI version
+  - `fix` when the session needs an explicit stop/restart action
+- `incomplete` — alive daemons with incomplete sidecars, each with `state="incomplete"` and stable `reasons`
+- `cleaned` — stale sidecars cleaned during the scan, each with `state="cleaned"`
+
+`browser logs --session ... [--tail N]` returns:
+
+- sidecar-backed daemon metadata for that session, including the same shell-level `state`
+- the same machine-readable `fix` guidance as `browser status` when a stop/restart action is recommended
+- `exists=true` plus tailed log content when a persisted daemon stderr log is present
+- `exists=false` and `content=null` when the session has no persisted log file yet
+- when the session is incomplete, the same stable `reasons` from `browser status` are preserved here too
+- when `OPENPAGE_CONTENT_BOUNDARIES=1` or `OPENPAGE_MAX_OUTPUT_CHARS` is set, the log `content`
+  field also goes through the same boundary / truncate filters as page text payloads
+
+`browser status --session ...` now also returns a machine-friendly `state`:
+
+- `healthy` — the session is present in the healthy daemon inventory
+- `incompatible` — the daemon is still live, but its recorded daemon version does not match the current CLI version
+- `incomplete` — the daemon looks alive but its sidecars are incomplete or the daemon is not ready
+- `inactive` — no live daemon is currently associated with that session name
+
+When the session needs an explicit next step, these payloads now also include a machine-readable
+`fix` string. This keeps `browser status`, `browser logs`, and `browser list` aligned with the
+same control-plane guidance instead of making callers reconstruct the next action from `state`
+and `reasons` alone.
+
+When the state is `incompatible`, follow-up `--session` commands now fail fast and tell you to
+stop and restart that session with the current CLI instead of silently talking to a stale daemon.
+
+When the state is `incomplete`, the payload also includes:
+
+- `incomplete` — the raw sidecar completeness booleans
+- `reasons` — stable shell-level reason strings such as `missing_version` or `daemon_not_ready`
+
+`browser stop --all` is a shell-only cleanup convenience:
+
+- it stops every active daemon-backed session discovered in the current `OPENPAGE_HOME`
+- it reuses the same graceful shutdown path as `browser stop --session ...`
+- it does not import or replace any browser/CDP/locator internals
+
+Session bootstrap rule:
+
+- `browser start` is the explicit bootstrap entry for a named session
+- `goto --session ...` may also bootstrap a missing session before navigating
+- follow-up commands such as `title`, `snapshot`, `click`, `html`, `js`, and `screenshot` require an already active session
+- if that session is missing, those follow-up commands now fail fast with `error.kind="browser_operation"` instead of silently creating a fresh daemon/browser
+- for known session-control failures, the same top-level JSON error now also carries `error.session`
+  so callers do not need to scrape the free-form message to recover the session name
+- when that failure has a known control-plane recovery step, the same top-level JSON error now also carries
+  `error.fix`, so callers do not need to scrape the free-form message to find the restart/start guidance
+- for known session-control failures, the same top-level JSON error now also carries `error.state`
+  and stable `error.reasons` when applicable, so callers can branch on the same control-plane
+  truth they already get from `browser status` / `browser logs` / `browser list`
+- when there is no such recovery hint, `error.fix` is omitted instead of emitted as `null`
 
 Batch multiple commands in one invocation:
 
@@ -213,9 +274,23 @@ The current CLI intentionally rejects the removed legacy surfaces:
 - `page title`
 - `page screenshot`
 
-For runtime JSON failures, the active CLI/daemon shell now emits stable
-`error.kind` values such as:
+Those removed surfaces and other top-level CLI input failures now return
+machine-friendly JSON with `error.kind="invalid_input"`.
 
+Help and version output still stay in plain clap text.
+
+The compiled help text is now part of the protocol guardrail too:
+
+- `openpage --help` explicitly says the active CLI protocol is TCP-backed daemon only
+- `openpage --help` explicitly says only `browser start` and `goto` may bootstrap a missing session
+- `openpage serve --help` explicitly says the removed `serve --stdio` surface stays rejected
+
+For JSON failures from the active CLI shell, and for raw TCP daemon request or
+transport failures, the runtime now emits stable `error.kind` values such as:
+
+- `invalid_input`
+- `invalid_json`
+- `tcp_error`
 - `unsupported_operation`
 - `browser_operation`
 - `timeout`
@@ -227,10 +302,38 @@ For runtime JSON failures, the active CLI/daemon shell now emits stable
 - environment and daemon sidecar locations
 - legacy session JSON files under `OPENPAGE_HOME/sessions` that no longer drive the active TCP CLI path
 - optional `--fix` cleanup for those legacy session JSON files
+- optional `--fix` cleanup for incomplete daemon sessions that are alive but not ready
 - optional `OPENPAGE_BROWSER_PATH` process-local override for machine-specific browser locations
 - active healthy daemon sessions
 - incomplete daemon sidecars that still point to a live daemon
 - stale daemon sidecars cleaned during the audit
+- daemon log paths that can be inspected with `openpage browser logs --session ...`
+- daemon-related `checks[]` entries that now also carry the same machine-readable `state` /
+  `reasons` fields when the check is about a concrete daemon session or incomplete sidecar set
+- when a daemon-related check is about a concrete session, it now also carries `session`
+  directly instead of forcing callers to parse `id` or `message`
+- browser-related `checks[]` entries now also carry machine-readable browser-path fields:
+  - `browser.config` and `browser.executable` carry `browser_path`
+  - `browser.executable` carries `resolved_path` when the configured executable resolves
+  - `browser.executable` and `browser.executable.hint` carry `suggested_path` when doctor
+    found a usable local browser candidate for a missing alias such as `chrome`
+- a machine-readable `inventory` block that mirrors the current daemon runtime truth:
+  - even when no daemon directory exists yet, `inventory` now stays present as an empty object
+    with zero counts instead of falling back to `null`
+  - `summary { healthy, incompatible, incomplete, cleaned, total }`
+  - `sessions[]` with `state="healthy"` or `state="incompatible"`
+  - `incomplete[]` with `state="incomplete"` and stable `reasons[]`
+  - `fix` whenever a listed session needs a stop/restart or cleanup action
+  - `cleaned[]` with `state="cleaned"`
+  - those `reasons[]` now use the same shell-level taxonomy as `browser status` and `browser logs`
+
+`doctor --quick --fix` is intentionally narrow:
+
+- it removes legacy session JSON residue from the removed one-shot CLI path
+- it records stale sidecars cleaned during the daemon inventory walk
+- it stops incompatible daemon sessions whose sidecar version does not match the current CLI version
+- it stops and removes incomplete daemon sessions only when they are alive but not ready
+- it does not touch healthy ready daemon sessions whose version already matches the current CLI
 
 Runtime launch now uses the same launch-config chain as `doctor`:
 
@@ -253,12 +356,19 @@ AI-first snapshot output now includes:
 - `snapshot` — structured interactive-element array with stable `eN` refs
 - `text` — compact text summary suitable for LLM consumption
 - `refs` — ref-indexed object summary for direct follow-up actions
+- `label` / `checked` / `selected` / `disabled` metadata when the element state is available
 - `origin` / `title` — best-effort page context metadata when available
 
 When `OPENPAGE_CONTENT_BOUNDARIES=1` is enabled and OpenPage knows the current
 origin, boundary metadata now also carries that origin so models can separate
 page payloads from tool output more reliably without treating the content as
-trusted.
+trusted. The same boundary / truncate filters now also apply to daemon log
+`content` output from `browser logs`.
+
+Every fresh `snapshot` pass also clears previously assigned `data-op-ref`
+markers before minting the next ref set. This keeps `@eN` refs aligned with the
+current interactive snapshot instead of leaving stale markers behind on elements
+that are no longer part of the active ref map.
 
 For repo-local agent usage guidance, see:
 

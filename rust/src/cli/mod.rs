@@ -7,10 +7,15 @@ mod oneshot;
 mod serve;
 
 use clap::Parser;
-use clap::error::ErrorKind;
+use clap::error::{Error as ClapError, ErrorKind};
+use serde_json::json;
+use std::ffi::{OsStr, OsString};
+use std::path::{Path, PathBuf};
 
-use crate::cli::args::{Cli, Command};
+use crate::cli::args::{Cli, Command, CompatCli};
+use crate::cli::protocol::{print_output_json, simple_ok};
 use crate::error::{OpenPageError, OpenPageResult};
+use crate::{Browser, LaunchOptions, configs_to_here};
 
 pub fn run() -> OpenPageResult<i32> {
     run_from_args(std::env::args_os())
@@ -21,58 +26,374 @@ where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
+    let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
+
+    if should_use_dp_compat_mode(&args) {
+        return run_dp_compat_from_args(&args);
+    }
+
     let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
-        Err(err)
-            if matches!(
-                err.kind(),
-                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
-            ) =>
-        {
-            err.print()
-                .map_err(|err| OpenPageError::Io(err.to_string()))?;
-            return Ok(0);
-        }
-        Err(err) => {
-            err.print()
-                .map_err(|err| OpenPageError::Io(err.to_string()))?;
-            return Ok(err.exit_code());
-        }
+        Err(err) => return print_clap_error(err),
     };
 
     match cli.command {
         Command::Serve(args) => match serve::run(args) {
             Ok(()) => Ok(0),
             Err(err) => {
-                println!(
-                    "{}",
-                    protocol::format_output_json(&protocol::simple_openpage_error(&err))
-                        .map_err(|err| OpenPageError::Serialization(err.to_string()))?
-                );
+                print_output_json(&protocol::simple_openpage_error(&err));
                 Ok(1)
             }
         },
         Command::Doctor(args) => match doctor::run(args) {
             Ok(code) => Ok(code),
             Err(err) => {
-                println!(
-                    "{}",
-                    protocol::format_output_json(&protocol::simple_openpage_error(&err))
-                        .map_err(|err| OpenPageError::Serialization(err.to_string()))?
-                );
+                print_output_json(&protocol::simple_openpage_error(&err));
                 Ok(1)
             }
         },
         command => match oneshot::run(command) {
             Ok(code) => Ok(code),
             Err(err) => {
-                println!(
-                    "{}",
-                    protocol::format_output_json(&protocol::simple_openpage_error(&err))
-                        .map_err(|err| OpenPageError::Serialization(err.to_string()))?
-                );
+                print_output_json(&protocol::simple_openpage_error(&err));
                 Ok(1)
             }
         },
+    }
+}
+
+fn should_use_dp_compat_mode(args: &[OsString]) -> bool {
+    if executable_stem(args) != Some("dp") {
+        return false;
+    }
+
+    if dp_help_requested(args) {
+        return true;
+    }
+
+    match first_cli_arg(args).and_then(OsStr::to_str) {
+        Some(
+            "-p" | "--set-browser-path" | "-u" | "--set-user-path" | "-c" | "--configs-to-here"
+            | "-l" | "--launch-browser",
+        ) => true,
+        _ => false,
+    }
+}
+
+fn dp_help_requested(args: &[OsString]) -> bool {
+    if executable_stem(args) != Some("dp") {
+        return false;
+    }
+    matches!(
+        first_cli_arg(args).and_then(OsStr::to_str),
+        None | Some("-h" | "--help")
+    )
+}
+
+fn executable_stem(args: &[OsString]) -> Option<&str> {
+    let arg0 = args.first()?;
+    Path::new(arg0)
+        .file_stem()
+        .and_then(OsStr::to_str)
+        .filter(|stem| !stem.is_empty())
+}
+
+fn first_cli_arg(args: &[OsString]) -> Option<&OsStr> {
+    args.get(1).map(|value| value.as_os_str())
+}
+
+fn run_dp_compat_from_args(args: &[OsString]) -> OpenPageResult<i32> {
+    let cli = match CompatCli::try_parse_from(args.iter().cloned()) {
+        Ok(cli) => cli,
+        Err(err) => return print_clap_error(err),
+    };
+
+    run_dp_compat(cli)?;
+    Ok(0)
+}
+
+fn run_dp_compat(cli: CompatCli) -> OpenPageResult<()> {
+    let mut result = serde_json::Map::new();
+
+    if cli.set_browser_path.is_some() || cli.set_user_path.is_some() {
+        let saved = update_dp_compat_launch_paths(
+            cli.set_browser_path.as_deref(),
+            cli.set_user_path.as_deref(),
+            None,
+        )?;
+        result.insert(
+            "config".to_string(),
+            json!({
+                "updated": true,
+                "saved_to": saved.to_string_lossy(),
+                "browser_path": cli.set_browser_path.as_ref().map(|path| path.to_string_lossy().to_string()),
+                "user_data_path": cli.set_user_path.as_ref().map(|path| path.to_string_lossy().to_string()),
+            }),
+        );
+    }
+
+    if cli.configs_to_here {
+        let copied = configs_to_here(None)?;
+        result.insert(
+            "configs_to_here".to_string(),
+            json!({
+                "saved_to": copied.to_string_lossy(),
+            }),
+        );
+    }
+
+    if let Some(port) = cli.launch_browser {
+        result.insert(
+            "launch_browser".to_string(),
+            launch_dp_compat_browser(port, None)?,
+        );
+    }
+
+    print_json_value(simple_ok(serde_json::Value::Object(result)))
+}
+
+fn update_dp_compat_launch_paths(
+    browser_path: Option<&Path>,
+    user_data_path: Option<&Path>,
+    ini_path: Option<&Path>,
+) -> OpenPageResult<PathBuf> {
+    let mut options = load_dp_compat_launch_options(None, ini_path)?;
+    if let Some(path) = browser_path {
+        options.set_browser_path(path);
+    }
+    if let Some(path) = user_data_path {
+        options.set_user_data_path(path);
+    }
+    options.save(ini_path)
+}
+
+fn load_dp_compat_launch_options(
+    launch_browser_port: Option<u16>,
+    ini_path: Option<&Path>,
+) -> OpenPageResult<LaunchOptions> {
+    let mut options = LaunchOptions::from_ini(ini_path)?;
+    if let Some(port) = launch_browser_port.filter(|port| *port > 0) {
+        options.set_local_port(port);
+    }
+    Ok(options)
+}
+
+fn launch_dp_compat_browser(
+    launch_browser_port: u16,
+    ini_path: Option<&Path>,
+) -> OpenPageResult<serde_json::Value> {
+    let options = load_dp_compat_launch_options(Some(launch_browser_port), ini_path)?;
+    let address = options.address();
+    let browser = Browser::launch(options)?;
+    let result = json!({
+        "launched": true,
+        "address": address,
+        "browser_pid": browser.browser_pid(),
+        "headless": browser.is_headless(),
+    });
+    std::mem::forget(browser);
+    Ok(result)
+}
+
+fn print_json_value(value: serde_json::Value) -> OpenPageResult<()> {
+    print_output_json(&value);
+    Ok(())
+}
+
+fn clap_error_payload(err: &ClapError) -> Option<serde_json::Value> {
+    if matches!(
+        err.kind(),
+        ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+    ) {
+        return None;
+    }
+
+    Some(protocol::simple_error("invalid_input", err.to_string()))
+}
+
+fn print_clap_error(err: ClapError) -> OpenPageResult<i32> {
+    let exit_code = err.exit_code();
+    if let Some(payload) = clap_error_payload(&err) {
+        print_json_value(payload)?;
+        return Ok(exit_code);
+    }
+
+    err.print()
+        .map_err(|err| OpenPageError::Io(err.to_string()))?;
+    Ok(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::{Parser, error::ErrorKind};
+    use std::fs;
+    use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::{
+        CompatCli, clap_error_payload, dp_help_requested, load_dp_compat_launch_options,
+        should_use_dp_compat_mode, update_dp_compat_launch_paths,
+    };
+    use crate::LaunchOptions;
+    use crate::cli::args::Cli;
+
+    fn temp_dir(name: &str) -> std::path::PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("openpage-cli-{name}-{suffix}"));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[test]
+    fn detects_dp_compat_mode_only_for_dp_binary() {
+        assert!(should_use_dp_compat_mode(&[
+            "dp".into(),
+            "--set-browser-path".into(),
+            "/tmp/chrome".into(),
+        ]));
+        assert!(!should_use_dp_compat_mode(&[
+            "openpage".into(),
+            "--set-browser-path".into(),
+            "/tmp/chrome".into(),
+        ]));
+        assert!(!should_use_dp_compat_mode(&[
+            "openpage".into(),
+            "browser".into(),
+            "start".into(),
+        ]));
+    }
+
+    #[test]
+    fn detects_dp_help_only_for_dp_binary() {
+        assert!(dp_help_requested(&["dp".into(), "--help".into()]));
+        assert!(dp_help_requested(&["dp".into()]));
+        assert!(!dp_help_requested(&["openpage".into(), "--help".into()]));
+    }
+
+    #[test]
+    fn parses_dp_compat_flags() {
+        let cli = CompatCli::try_parse_from([
+            "dp",
+            "-p",
+            "/tmp/chrome",
+            "-u",
+            "/tmp/user",
+            "-c",
+            "-l",
+            "9333",
+        ])
+        .expect("parse dp compat cli");
+
+        assert_eq!(
+            cli.set_browser_path.as_deref(),
+            Some(Path::new("/tmp/chrome"))
+        );
+        assert_eq!(cli.set_user_path.as_deref(), Some(Path::new("/tmp/user")));
+        assert!(cli.configs_to_here);
+        assert_eq!(cli.launch_browser, Some(9333));
+    }
+
+    #[test]
+    fn dp_compat_help_marks_surface_as_compat_only() {
+        let err = CompatCli::try_parse_from(["dp", "--help"]).expect_err("help exits early");
+        assert!(matches!(err.kind(), ErrorKind::DisplayHelp));
+        let help = err.to_string();
+        assert!(help.contains("Compatibility only."));
+        assert!(help.contains("active TCP daemon workflow"));
+    }
+
+    #[test]
+    fn parse_errors_render_machine_friendly_json_shell() {
+        let err = Cli::try_parse_from(["openpage", "page", "url"]).expect_err("parse fails");
+        let payload = clap_error_payload(&err).expect("json payload for parse error");
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["error"]["kind"], "invalid_input");
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .expect("string message")
+                .contains("unrecognized subcommand 'page'")
+        );
+    }
+
+    #[test]
+    fn help_output_keeps_text_shell() {
+        let err = Cli::try_parse_from(["openpage", "--help"]).expect_err("help exits early");
+        assert!(matches!(err.kind(), ErrorKind::DisplayHelp));
+        assert!(clap_error_payload(&err).is_none());
+    }
+
+    #[test]
+    fn openpage_help_marks_tcp_daemon_as_only_active_protocol() {
+        let err = Cli::try_parse_from(["openpage", "--help"]).expect_err("help exits early");
+        assert!(matches!(err.kind(), ErrorKind::DisplayHelp));
+        let help = err.to_string();
+        assert!(help.contains("Active CLI protocol: TCP-backed daemon only."));
+        assert!(help.contains("Bootstrap commands:"));
+        assert!(help.contains("already active session"));
+        assert!(help.contains("Removed on purpose and rejected:"));
+        assert!(help.contains("serve --stdio"));
+        assert!(help.contains("page get"));
+        assert!(help.contains("`dp` is compatibility glue only."));
+    }
+
+    #[test]
+    fn serve_help_marks_stdio_surface_as_removed() {
+        let err =
+            Cli::try_parse_from(["openpage", "serve", "--help"]).expect_err("help exits early");
+        assert!(matches!(err.kind(), ErrorKind::DisplayHelp));
+        let help = err.to_string();
+        assert!(help.contains("TCP-only daemon mode."));
+        assert!(help.contains("serve --stdio"));
+        assert!(help.contains("active OpenPage daemon protocol remains unique"));
+    }
+
+    #[test]
+    fn dp_compat_path_update_persists_browser_and_user_data_paths() {
+        let dir = temp_dir("compat-save");
+        let config_path = dir.join("dp.ini");
+        LaunchOptions::default()
+            .save(Some(config_path.as_path()))
+            .expect("seed config");
+
+        let saved = update_dp_compat_launch_paths(
+            Some(Path::new("/tmp/compat-browser")),
+            Some(Path::new("/tmp/compat-user")),
+            Some(config_path.as_path()),
+        )
+        .expect("update compat config");
+
+        let loaded =
+            LaunchOptions::from_ini(Some(config_path.as_path())).expect("reload compat config");
+        assert_eq!(saved, config_path);
+        assert_eq!(loaded.browser_path(), "/tmp/compat-browser");
+        assert_eq!(loaded.user_data_path(), "/tmp/compat-user");
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn dp_compat_launch_options_keep_configured_port_for_zero_and_override_nonzero() {
+        let dir = temp_dir("compat-port");
+        let config_path = dir.join("dp.ini");
+        let mut options = LaunchOptions::default();
+        options.set_local_port(9555);
+        options
+            .save(Some(config_path.as_path()))
+            .expect("seed config");
+
+        let keep = load_dp_compat_launch_options(Some(0), Some(config_path.as_path()))
+            .expect("load config port");
+        let override_port = load_dp_compat_launch_options(Some(9333), Some(config_path.as_path()))
+            .expect("load override port");
+
+        assert_eq!(keep.address(), "127.0.0.1:9555");
+        assert_eq!(override_port.address(), "127.0.0.1:9333");
+        assert_eq!(override_port.remote_debugging_port, Some(9333));
+
+        let _ = fs::remove_dir_all(dir);
     }
 }

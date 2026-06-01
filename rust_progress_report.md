@@ -1,4 +1,4 @@
-# OpenPage Rust 版本进度审查报告
+# [ARCHIVED] OpenPage Rust 版本进度审查报告
 
 > 历史文档说明（2026-05-29）：本报告保留的是 **协议迁移前** 的阶段性审查结论。
 > 其中关于 `serve --stdio`、one-shot attach、`page get/page url/page title/page screenshot`
@@ -8,6 +8,18 @@
 > - `claude-progress.txt`
 > - `rust/src/cli/*`
 > 为准。
+>
+> 当前覆盖事实（2026-05-30）：
+> - 活跃 CLI 用户面只保留 **TCP daemon** 心智
+> - `serve --stdio` 已不再是当前可用主路径
+> - named-session CLI 只是同一 TCP daemon 执行路径的高层包装
+> - 如果你在读这份文档，请把下面出现的旧命令视为**历史样本**，不要直接拿来执行当前仓库
+> - 当前运行与诊断应优先看：
+>   - `README.md`
+>   - `skills/openpage-test/*`
+>   - `task_plan.md`
+>   - `notes.md`
+>   - `claude-progress.txt`
 
 日期: 2026-05-21
 

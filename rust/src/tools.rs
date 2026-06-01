@@ -105,6 +105,75 @@ pub enum TreeSource<'a> {
     ShadowRoot(&'a ShadowRoot),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TreeTextInput {
+    Disabled,
+    Full,
+    Limit(usize),
+}
+
+impl From<bool> for TreeTextInput {
+    fn from(value: bool) -> Self {
+        if value { Self::Full } else { Self::Disabled }
+    }
+}
+
+impl From<usize> for TreeTextInput {
+    fn from(value: usize) -> Self {
+        if value == 0 {
+            Self::Disabled
+        } else {
+            Self::Limit(value)
+        }
+    }
+}
+
+impl From<u32> for TreeTextInput {
+    fn from(value: u32) -> Self {
+        Self::from(value as usize)
+    }
+}
+
+impl From<u64> for TreeTextInput {
+    fn from(value: u64) -> Self {
+        if value == 0 {
+            Self::Disabled
+        } else {
+            Self::Limit(value as usize)
+        }
+    }
+}
+
+impl From<i32> for TreeTextInput {
+    fn from(value: i32) -> Self {
+        if value <= 0 {
+            Self::Disabled
+        } else {
+            Self::Limit(value as usize)
+        }
+    }
+}
+
+impl From<i64> for TreeTextInput {
+    fn from(value: i64) -> Self {
+        if value <= 0 {
+            Self::Disabled
+        } else {
+            Self::Limit(value as usize)
+        }
+    }
+}
+
+impl From<isize> for TreeTextInput {
+    fn from(value: isize) -> Self {
+        if value <= 0 {
+            Self::Disabled
+        } else {
+            Self::Limit(value as usize)
+        }
+    }
+}
+
 impl<'a> From<&'a Page> for TreeSource<'a> {
     fn from(value: &'a Page) -> Self {
         Self::Page(value)
@@ -327,11 +396,13 @@ where
     get_blob_with_runner(url, as_bytes, |script| source.run_js(script))
 }
 
-pub fn tree<'a, S>(source: S, text: bool, show_js: bool, show_css: bool) -> OpenPageResult<String>
+pub fn tree<'a, S, T>(source: S, text: T, show_js: bool, show_css: bool) -> OpenPageResult<String>
 where
     S: Into<TreeSource<'a>>,
+    T: Into<TreeTextInput>,
 {
     let source = source.into();
+    let text = text.into();
     let root = source.snapshot_root()?;
     let mut lines = vec![format_tree_label(&root, text, show_js, show_css)?];
     append_tree_children(&root, "", text, show_js, show_css, &mut lines)?;
@@ -499,13 +570,12 @@ fn decode_blob_fetch_result(result: Value, as_bytes: bool) -> OpenPageResult<Ele
 }
 
 fn decode_blob_data_url(data_url: &str, as_bytes: bool) -> OpenPageResult<ElementResource> {
-    if !as_bytes {
-        return Ok(ElementResource::Text(data_url.to_string()));
-    }
-
     let (_, payload) = data_url.split_once(',').ok_or_else(|| {
         OpenPageError::Serialization("blob data URL is missing a comma separator".to_string())
     })?;
+    if !as_bytes {
+        return Ok(ElementResource::Text(payload.to_string()));
+    }
     let bytes = BASE64_STANDARD
         .decode(payload)
         .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
@@ -515,7 +585,7 @@ fn decode_blob_data_url(data_url: &str, as_bytes: bool) -> OpenPageResult<Elemen
 fn append_tree_children(
     element: &SessionElement,
     prefix: &str,
-    text: bool,
+    text: TreeTextInput,
     show_js: bool,
     show_css: bool,
     lines: &mut Vec<String>,
@@ -545,7 +615,7 @@ fn append_tree_children(
 
 fn format_tree_label(
     element: &SessionElement,
-    text: bool,
+    text: TreeTextInput,
     show_js: bool,
     show_css: bool,
 ) -> OpenPageResult<String> {
@@ -562,14 +632,22 @@ fn format_tree_label(
         format!("<{tag} {attrs}>")
     };
 
-    if text && should_include_tree_text(&tag, show_js, show_css) {
+    if text != TreeTextInput::Disabled && should_include_tree_text(&tag, show_js, show_css) {
         if let Some(text_value) = direct_tree_text(element)? {
             label.push(' ');
-            label.push_str(&text_value);
+            label.push_str(tree_text_output(&text_value, text).as_str());
         }
     }
 
     Ok(label.replace('\n', " "))
+}
+
+fn tree_text_output(text: &str, mode: TreeTextInput) -> String {
+    match mode {
+        TreeTextInput::Disabled => String::new(),
+        TreeTextInput::Full => text.to_string(),
+        TreeTextInput::Limit(limit) => text.chars().take(limit).collect(),
+    }
 }
 
 fn should_include_tree_text(tag: &str, show_js: bool, show_css: bool) -> bool {
@@ -594,9 +672,10 @@ fn direct_tree_text(element: &SessionElement) -> OpenPageResult<Option<String>> 
 #[cfg(test)]
 mod tests {
     use super::{
-        By, DEFAULT_PROJECT_CONFIGS_NAME, Keys, MakeSessionEleResult, build_blob_fetch_script,
-        configs_to_here, decode_blob_fetch_result, format_tree_label, get_blob_with_runner,
-        make_session_ele, make_session_ele_by, resolve_configs_to_here_target, tree, wait_until,
+        By, DEFAULT_PROJECT_CONFIGS_NAME, Keys, MakeSessionEleResult, TreeTextInput,
+        build_blob_fetch_script, configs_to_here, decode_blob_fetch_result, format_tree_label,
+        get_blob_with_runner, make_session_ele, make_session_ele_by,
+        resolve_configs_to_here_target, tree, tree_text_output, wait_until,
     };
     use serde_json::Value;
     use std::fs;
@@ -671,16 +750,13 @@ mod tests {
     }
 
     #[test]
-    fn get_blob_keeps_data_url_string_when_as_bytes_is_false() {
+    fn get_blob_returns_base64_payload_when_as_bytes_is_false() {
         let result = get_blob_with_runner("blob:https://example.com/demo", false, |_| {
             Ok(Value::String("data:text/plain;base64,aGVsbG8=".to_string()))
         })
-        .expect("blob text should keep data url");
+        .expect("blob text should keep base64 payload");
 
-        assert_eq!(
-            result,
-            ElementResource::Text("data:text/plain;base64,aGVsbG8=".to_string())
-        );
+        assert_eq!(result, ElementResource::Text("aGVsbG8=".to_string()));
     }
 
     #[test]
@@ -748,6 +824,40 @@ mod tests {
     }
 
     #[test]
+    fn tree_text_can_be_truncated_by_length_input() {
+        let root = snapshot_root(r#"<html><body><div id="main">abcdef</div></body></html>"#)
+            .expect("snapshot root");
+
+        let rendered = tree(&root, 3usize, false, false).expect("render tree with truncated text");
+
+        assert!(rendered.contains("<div id='main'> abc"));
+        assert!(!rendered.contains("abcdef"));
+    }
+
+    #[test]
+    fn tree_text_zero_and_negative_inputs_disable_text_output() {
+        let root = snapshot_root(r#"<html><body><div id="main">abcdef</div></body></html>"#)
+            .expect("snapshot root");
+
+        let zero_rendered = tree(&root, 0usize, false, false).expect("render tree with zero limit");
+        let negative_rendered =
+            tree(&root, -1isize, false, false).expect("render tree with negative limit");
+
+        assert_eq!(
+            zero_rendered,
+            "<html>\n├───<head>\n└───<body>\n    └───<div id='main'>"
+        );
+        assert_eq!(negative_rendered, zero_rendered);
+    }
+
+    #[test]
+    fn tree_text_mode_helper_matches_reference_semantics() {
+        assert_eq!(tree_text_output("abcdef", TreeTextInput::Disabled), "");
+        assert_eq!(tree_text_output("abcdef", TreeTextInput::Full), "abcdef");
+        assert_eq!(tree_text_output("abcdef", TreeTextInput::Limit(3)), "abc");
+    }
+
+    #[test]
     fn format_tree_label_omits_text_when_script_and_style_are_hidden() {
         let script = snapshot_find(
             r#"<html><body><script type="text/javascript">const x = 1;</script></body></html>"#,
@@ -755,7 +865,8 @@ mod tests {
         )
         .expect("snapshot script");
 
-        let label = format_tree_label(&script, true, false, false).expect("format script label");
+        let label = format_tree_label(&script, TreeTextInput::Full, false, false)
+            .expect("format script label");
 
         assert_eq!(label, "<script type='text/javascript'>");
     }

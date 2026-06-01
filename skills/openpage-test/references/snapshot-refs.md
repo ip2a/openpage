@@ -30,6 +30,7 @@ Current OpenPage snapshot output includes:
 - `snapshot` — structured interactive-element array
 - `text` — compact ref-oriented summary
 - `refs` — object keyed by `eN`
+- `label` / `checked` / `selected` / `disabled` metadata when available
 - `origin` — best-effort page origin
 - `title` — best-effort page title
 - `interactive_count` — count of interactive entries
@@ -46,13 +47,13 @@ Typical shape:
     "text": "@e1 [a] \"Docs\"\n@e2 [input] placeholder=\"Search\"\n@e3 [button] \"Submit\"",
     "refs": {
       "e1": { "tag": "a", "text": "Docs" },
-      "e2": { "tag": "input", "placeholder": "Search" },
-      "e3": { "tag": "button", "text": "Submit" }
+      "e2": { "tag": "input", "label": "Search", "placeholder": "Search" },
+      "e3": { "tag": "button", "text": "Submit", "disabled": true }
     },
     "snapshot": [
       { "ref": "e1", "tag": "a", "text": "Docs" },
-      { "ref": "e2", "tag": "input", "placeholder": "Search" },
-      { "ref": "e3", "tag": "button", "text": "Submit" }
+      { "ref": "e2", "tag": "input", "label": "Search", "placeholder": "Search" },
+      { "ref": "e3", "tag": "button", "text": "Submit", "disabled": true }
     ]
   }
 }
@@ -78,6 +79,12 @@ Re-snapshot after:
 - major dynamic re-render
 
 If the page changes, assume the old ref map is stale.
+
+OpenPage now clears previously assigned `data-op-ref` attributes at the start
+of every new `snapshot` pass before minting the next ref set. That does not
+make old refs safe to reuse — you should still treat them as stale — but it
+does reduce the chance of dynamic pages keeping leftover ref markers on
+elements that are no longer in the current interactive snapshot.
 
 ## Best practices
 

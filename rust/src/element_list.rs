@@ -1686,10 +1686,7 @@ impl<'a, T> From<ElementsOne<'a, T>> for Option<&'a T> {
 impl<'a> ElementsOne<'a, Element> {
     pub fn click(&self) -> OpenPageResult<bool> {
         match self.element {
-            Some(element) => {
-                element.click()?;
-                Ok(true)
-            }
+            Some(element) => element.click_with_options(Some(false), None, true),
             None => Ok(false),
         }
     }
@@ -2226,10 +2223,21 @@ impl<'a> ElementsOne<'a, Element> {
 impl<'a> ElementsOneClicker<'a, Element> {
     pub fn left(&self) -> OpenPageResult<bool> {
         match self.element {
-            Some(element) => {
-                element.clicker().left()?;
-                Ok(true)
-            }
+            Some(element) => element.clicker().left(),
+            None => Ok(false),
+        }
+    }
+
+    pub fn left_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => element
+                .clicker()
+                .left_with_options(by_js, timeout_ms, wait_stop),
             None => Ok(false),
         }
     }
@@ -3082,10 +3090,7 @@ impl<'a> ElementsOneSelector<'a, Element> {
 impl<'a> ElementsOne<'a, WebElement> {
     pub fn click(&self) -> OpenPageResult<bool> {
         match self.element {
-            Some(element) => {
-                element.click()?;
-                Ok(true)
-            }
+            Some(element) => element.click_with_options(Some(false), None, true),
             None => Ok(false),
         }
     }
@@ -3622,10 +3627,21 @@ impl<'a> ElementsOne<'a, WebElement> {
 impl<'a> ElementsOneClicker<'a, WebElement> {
     pub fn left(&self) -> OpenPageResult<bool> {
         match self.element {
-            Some(element) => {
-                element.clicker().left()?;
-                Ok(true)
-            }
+            Some(element) => element.clicker().left(),
+            None => Ok(false),
+        }
+    }
+
+    pub fn left_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => element
+                .clicker()
+                .left_with_options(by_js, timeout_ms, wait_stop),
             None => Ok(false),
         }
     }

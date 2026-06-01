@@ -30,6 +30,14 @@ pub struct Response {
 pub struct ResponseError {
     pub kind: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fix: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasons: Option<Vec<String>>,
 }
 
 impl Response {
@@ -43,6 +51,27 @@ impl Response {
     }
 
     pub fn error(id: Option<Value>, kind: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::error_with_fix(id, kind, message, None::<String>)
+    }
+
+    pub fn error_with_fix(
+        id: Option<Value>,
+        kind: impl Into<String>,
+        message: impl Into<String>,
+        fix: Option<String>,
+    ) -> Self {
+        Self::error_with_context(id, kind, message, fix, None::<String>, None::<String>, None)
+    }
+
+    pub fn error_with_context(
+        id: Option<Value>,
+        kind: impl Into<String>,
+        message: impl Into<String>,
+        fix: Option<String>,
+        session: Option<String>,
+        state: Option<String>,
+        reasons: Option<Vec<String>>,
+    ) -> Self {
         Self {
             id,
             ok: false,
@@ -50,6 +79,10 @@ impl Response {
             error: Some(ResponseError {
                 kind: kind.into(),
                 message: message.into(),
+                fix,
+                session,
+                state,
+                reasons,
             }),
         }
     }
@@ -63,13 +96,45 @@ pub fn simple_ok(result: Value) -> Value {
 }
 
 pub fn simple_error(kind: impl Into<String>, message: impl Into<String>) -> Value {
-    serde_json::json!({
-        "ok": false,
-        "error": {
-            "kind": kind.into(),
-            "message": message.into(),
-        },
-    })
+    simple_error_with_fix(kind, message, None::<String>)
+}
+
+pub fn simple_error_with_fix(
+    kind: impl Into<String>,
+    message: impl Into<String>,
+    fix: Option<String>,
+) -> Value {
+    simple_error_with_context(kind, message, fix, None::<String>, None::<String>, None)
+}
+
+pub fn simple_error_with_context(
+    kind: impl Into<String>,
+    message: impl Into<String>,
+    fix: Option<String>,
+    session: Option<String>,
+    state: Option<String>,
+    reasons: Option<Vec<String>>,
+) -> Value {
+    let mut error = serde_json::Map::new();
+    error.insert("kind".to_string(), Value::String(kind.into()));
+    error.insert("message".to_string(), Value::String(message.into()));
+    if let Some(fix) = fix {
+        error.insert("fix".to_string(), Value::String(fix));
+    }
+    if let Some(session) = session {
+        error.insert("session".to_string(), Value::String(session));
+    }
+    if let Some(state) = state {
+        error.insert("state".to_string(), Value::String(state));
+    }
+    if let Some(reasons) = reasons.filter(|value| !value.is_empty()) {
+        error.insert("reasons".to_string(), serde_json::json!(reasons));
+    }
+
+    let mut payload = serde_json::Map::new();
+    payload.insert("ok".to_string(), Value::Bool(false));
+    payload.insert("error".to_string(), Value::Object(error));
+    Value::Object(payload)
 }
 
 pub fn openpage_error_kind(error: &OpenPageError) -> &'static str {
@@ -89,11 +154,166 @@ pub fn openpage_error_kind(error: &OpenPageError) -> &'static str {
 }
 
 pub fn simple_openpage_error(error: &OpenPageError) -> Value {
-    simple_error(openpage_error_kind(error), error.to_string())
+    let context = openpage_error_context(error);
+    simple_error_with_context(
+        openpage_error_kind(error),
+        error.to_string(),
+        context.fix.map(ToString::to_string),
+        context.session.map(ToString::to_string),
+        context.state.map(ToString::to_string),
+        if context.reasons.is_empty() {
+            None
+        } else {
+            Some(
+                context
+                    .reasons
+                    .iter()
+                    .map(|reason| reason.to_string())
+                    .collect::<Vec<_>>(),
+            )
+        },
+    )
 }
 
 pub fn response_openpage_error(id: Option<Value>, error: &OpenPageError) -> Response {
-    Response::error(id, openpage_error_kind(error), error.to_string())
+    let context = openpage_error_context(error);
+    Response::error_with_context(
+        id,
+        openpage_error_kind(error),
+        openpage_error_detail(error),
+        context.fix.map(ToString::to_string),
+        context.session.map(ToString::to_string),
+        context.state.map(ToString::to_string),
+        if context.reasons.is_empty() {
+            None
+        } else {
+            Some(
+                context
+                    .reasons
+                    .iter()
+                    .map(|reason| reason.to_string())
+                    .collect::<Vec<_>>(),
+            )
+        },
+    )
+}
+
+pub fn openpage_error_from_kind(kind: &str, message: impl Into<String>) -> OpenPageError {
+    let message = message.into();
+    match kind {
+        "browser_launch" => OpenPageError::BrowserLaunch(message),
+        "browser_operation" => OpenPageError::BrowserOperation(message),
+        "page_operation" => OpenPageError::PageOperation(message),
+        "element_not_found" => OpenPageError::ElementNotFound(message),
+        "unsupported_locator" => OpenPageError::UnsupportedLocator(message),
+        "unsupported_operation" => OpenPageError::UnsupportedOperation(message),
+        "javascript" => OpenPageError::JavaScript(message),
+        "http" => OpenPageError::Http(message),
+        "io" | "tcp_error" => OpenPageError::Io(message),
+        "timeout" => OpenPageError::Timeout(message),
+        "serialization" | "invalid_json" => OpenPageError::Serialization(message),
+        _ => OpenPageError::BrowserOperation(format!("{kind}: {message}")),
+    }
+}
+
+pub fn openpage_error_from_structured(
+    kind: &str,
+    message: impl Into<String>,
+    fix: Option<&str>,
+) -> OpenPageError {
+    let mut message = message.into();
+    if let Some(fix) = fix.filter(|value| !value.is_empty()) {
+        if !message.contains(fix) {
+            if message.ends_with('.') {
+                message.push(' ');
+                message.push_str(fix);
+            } else {
+                message.push_str(". ");
+                message.push_str(fix);
+            }
+        }
+    }
+    openpage_error_from_kind(kind, message)
+}
+
+fn openpage_error_detail(error: &OpenPageError) -> &str {
+    match error {
+        OpenPageError::BrowserLaunch(detail)
+        | OpenPageError::BrowserOperation(detail)
+        | OpenPageError::PageOperation(detail)
+        | OpenPageError::ElementNotFound(detail)
+        | OpenPageError::UnsupportedLocator(detail)
+        | OpenPageError::UnsupportedOperation(detail)
+        | OpenPageError::JavaScript(detail)
+        | OpenPageError::Http(detail)
+        | OpenPageError::Io(detail)
+        | OpenPageError::Timeout(detail)
+        | OpenPageError::Serialization(detail) => detail,
+    }
+}
+
+fn openpage_error_fix(error: &OpenPageError) -> Option<&str> {
+    let detail = match error {
+        OpenPageError::BrowserOperation(detail) => detail,
+        _ => return None,
+    };
+
+    if !detail.starts_with("session `") {
+        return None;
+    }
+
+    let (_, fix) = detail.split_once(". ")?;
+    if !fix.contains("`openpage ") {
+        return None;
+    }
+    Some(fix)
+}
+
+#[derive(Default)]
+struct ErrorContext<'a> {
+    fix: Option<&'a str>,
+    session: Option<&'a str>,
+    state: Option<&'static str>,
+    reasons: Vec<&'static str>,
+}
+
+fn openpage_error_context(error: &OpenPageError) -> ErrorContext<'_> {
+    let detail = match error {
+        OpenPageError::BrowserOperation(detail) => detail,
+        _ => return ErrorContext::default(),
+    };
+
+    let mut context = ErrorContext {
+        fix: openpage_error_fix(error),
+        session: session_name_from_detail(detail),
+        ..ErrorContext::default()
+    };
+
+    if !detail.starts_with("session `") {
+        return context;
+    }
+
+    if detail.contains(" is backed by daemon version ") {
+        context.state = Some("incompatible");
+        context.reasons.push("version_mismatch");
+    } else if detail.contains(" exists but its daemon is not ready") {
+        context.state = Some("incomplete");
+        context.reasons.push("daemon_not_ready");
+    } else if detail.contains(" is not active") {
+        context.state = Some("inactive");
+    }
+
+    context
+}
+
+fn session_name_from_detail(detail: &str) -> Option<&str> {
+    let rest = detail.strip_prefix("session `")?;
+    let (session, _) = rest.split_once('`')?;
+    if session.is_empty() {
+        None
+    } else {
+        Some(session)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -182,7 +402,7 @@ fn apply_output_filters(value: &mut Value) {
         .map(str::to_string);
 
     let mut wrapped_keys = Vec::new();
-    for key in ["html", "text", "value"] {
+    for key in ["html", "text", "value", "content"] {
         let Some(current) = result_obj.get_mut(key) else {
             continue;
         };
@@ -219,9 +439,21 @@ pub fn format_output_json(value: &Value) -> Result<String, serde_json::Error> {
     serde_json::to_string(&filtered)
 }
 
+pub fn serialize_output_json(value: &Value) -> String {
+    format_output_json(value).unwrap_or_else(|_| {
+        r#"{"ok":false,"error":{"kind":"serialization","message":"serialization error: failed to serialize CLI JSON output"}}"#
+            .to_string()
+    })
+}
+
+pub fn print_output_json(value: &Value) {
+    println!("{}", serialize_output_json(value));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn parses_request_with_defaults() {
@@ -306,6 +538,55 @@ mod tests {
     }
 
     #[test]
+    fn format_output_json_wraps_content_field_with_boundaries() {
+        unsafe {
+            std::env::set_var("OPENPAGE_CONTENT_BOUNDARIES", "1");
+        }
+        let formatted = format_output_json(&serde_json::json!({
+            "ok": true,
+            "result": {
+                "content": "daemon log line"
+            }
+        }))
+        .expect("format output");
+        unsafe {
+            std::env::remove_var("OPENPAGE_CONTENT_BOUNDARIES");
+        }
+
+        let parsed: Value = serde_json::from_str(&formatted).expect("parse formatted json");
+        assert_eq!(parsed["result"]["_boundary"]["keys"], json!(["content"]));
+        let wrapped = parsed["result"]["content"]
+            .as_str()
+            .expect("wrapped content should be a string");
+        assert!(wrapped.contains("key=content"));
+        assert!(wrapped.contains("daemon log line"));
+    }
+
+    #[test]
+    fn format_output_json_truncates_content_field() {
+        unsafe {
+            std::env::set_var("OPENPAGE_MAX_OUTPUT_CHARS", "5");
+        }
+        let formatted = format_output_json(&serde_json::json!({
+            "ok": true,
+            "result": {
+                "content": "abcdefghij"
+            }
+        }))
+        .expect("format output");
+        unsafe {
+            std::env::remove_var("OPENPAGE_MAX_OUTPUT_CHARS");
+        }
+
+        let parsed: Value = serde_json::from_str(&formatted).expect("parse formatted json");
+        let truncated = parsed["result"]["content"]
+            .as_str()
+            .expect("truncated content should be a string");
+        assert!(truncated.starts_with("abcde"));
+        assert!(truncated.contains("[truncated: showing 5 of 10 chars."));
+    }
+
+    #[test]
     fn openpage_error_kind_maps_variants_to_stable_strings() {
         let cases = vec![
             (
@@ -357,6 +638,153 @@ mod tests {
         assert_eq!(
             payload["error"]["message"],
             "unsupported operation: batch cannot execute serve"
+        );
+        assert!(payload["error"].get("fix").is_none());
+    }
+
+    #[test]
+    fn simple_error_omits_fix_when_absent() {
+        let payload = simple_error("invalid_input", "unexpected argument");
+
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["error"]["kind"], "invalid_input");
+        assert_eq!(payload["error"]["message"], "unexpected argument");
+        assert!(payload["error"].get("fix").is_none());
+        assert!(payload["error"].get("session").is_none());
+        assert!(payload["error"].get("state").is_none());
+        assert!(payload["error"].get("reasons").is_none());
+    }
+
+    #[test]
+    fn simple_openpage_error_exposes_structured_fix_for_session_guidance() {
+        let error = OpenPageError::BrowserOperation(
+            "session `review` is not active. Start it with `openpage browser start --session review` before retrying.".to_string(),
+        );
+        let payload = simple_openpage_error(&error);
+
+        assert_eq!(payload["error"]["kind"], "browser_operation");
+        assert_eq!(payload["error"]["session"], "review");
+        assert_eq!(payload["error"]["state"], "inactive");
+        assert!(payload["error"].get("reasons").is_none());
+        assert_eq!(
+            payload["error"]["fix"],
+            "Start it with `openpage browser start --session review` before retrying."
+        );
+        assert_eq!(
+            payload["error"]["message"],
+            "browser operation failed: session `review` is not active. Start it with `openpage browser start --session review` before retrying."
+        );
+    }
+
+    #[test]
+    fn reconstructs_openpage_error_from_structured_kind() {
+        let error = openpage_error_from_kind("element_not_found", "missing #submit");
+        match error {
+            OpenPageError::ElementNotFound(message) => {
+                assert_eq!(message, "missing #submit");
+            }
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn reconstructs_unknown_kind_as_browser_operation() {
+        let error = openpage_error_from_kind("daemon_state", "not ready");
+        match error {
+            OpenPageError::BrowserOperation(message) => {
+                assert_eq!(message, "daemon_state: not ready");
+            }
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn reconstructs_openpage_error_from_structured_fix() {
+        let error = openpage_error_from_structured(
+            "browser_operation",
+            "session `review` is not active",
+            Some("Start it with `openpage browser start --session review` before retrying."),
+        );
+        match error {
+            OpenPageError::BrowserOperation(message) => {
+                assert_eq!(
+                    message,
+                    "session `review` is not active. Start it with `openpage browser start --session review` before retrying."
+                );
+            }
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn response_openpage_error_uses_raw_detail_and_structured_fix() {
+        let error = OpenPageError::BrowserOperation(
+            "session `review` is not active. Start it with `openpage browser start --session review` before retrying.".to_string(),
+        );
+        let response = response_openpage_error(Some(serde_json::json!("cli")), &error);
+
+        assert!(!response.ok);
+        assert_eq!(
+            response.error.as_ref().map(|error| error.kind.as_str()),
+            Some("browser_operation")
+        );
+        assert_eq!(
+            response
+                .error
+                .as_ref()
+                .map(|error| error.message.as_str()),
+            Some(
+                "session `review` is not active. Start it with `openpage browser start --session review` before retrying."
+            )
+        );
+        assert_eq!(
+            response.error.as_ref().and_then(|error| error.fix.as_deref()),
+            Some("Start it with `openpage browser start --session review` before retrying.")
+        );
+        assert_eq!(
+            response.error.as_ref().and_then(|error| error.session.as_deref()),
+            Some("review")
+        );
+        assert_eq!(
+            response.error.as_ref().and_then(|error| error.state.as_deref()),
+            Some("inactive")
+        );
+        assert!(response
+            .error
+            .as_ref()
+            .and_then(|error| error.reasons.as_ref())
+            .is_none());
+    }
+
+    #[test]
+    fn simple_openpage_error_exposes_state_and_reasons_for_version_mismatch() {
+        let error = OpenPageError::BrowserOperation(
+            "session `review` is backed by daemon version 0.0.1 but the current CLI expects 0.1.0. Run `openpage browser stop --session review` and then restart that session with the current CLI so its daemon sidecars are recreated with version 0.1.0. Or run `openpage doctor --quick --fix` if you want the CLI to stop the stale daemon for you.".to_string(),
+        );
+        let payload = simple_openpage_error(&error);
+
+        assert_eq!(payload["error"]["kind"], "browser_operation");
+        assert_eq!(payload["error"]["session"], "review");
+        assert_eq!(payload["error"]["state"], "incompatible");
+        assert_eq!(payload["error"]["reasons"], json!(["version_mismatch"]));
+        assert!(payload["error"]["fix"]
+            .as_str()
+            .expect("fix should be present")
+            .contains("browser stop --session review"));
+    }
+
+    #[test]
+    fn serialize_output_json_matches_format_output_json_for_normal_payloads() {
+        let value = serde_json::json!({
+            "ok": true,
+            "result": {
+                "text": "hello"
+            }
+        });
+
+        assert_eq!(
+            serialize_output_json(&value),
+            format_output_json(&value).expect("format output")
         );
     }
 }

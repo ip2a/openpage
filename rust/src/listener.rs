@@ -18,6 +18,10 @@ use tokio::task::JoinHandle;
 use url::Url;
 
 use crate::error::{OpenPageError, OpenPageResult};
+use crate::page::execute_page_command_async;
+use crate::settings::{
+    component_not_running_message, component_not_running_with_error_message, invalid_regex_message,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ListenerRequest {
@@ -394,8 +398,11 @@ impl ListenerFilters {
                 let mut compiled = Vec::with_capacity(targets.len());
                 for pattern in targets {
                     compiled.push(Regex::new(&pattern).map_err(|err| {
-                        OpenPageError::BrowserOperation(format!(
-                            "invalid listener regex `{pattern}`: {err}"
+                        OpenPageError::BrowserOperation(invalid_regex_message(
+                            "listener",
+                            "监听规则",
+                            &pattern,
+                            &err.to_string(),
                         ))
                     })?);
                 }
@@ -1300,9 +1307,13 @@ fn scope_matches_frame(scope_frame_id: Option<&str>, event_frame_id: Option<&str
 
 fn listener_not_running_error(state: &ListenerState) -> OpenPageError {
     if let Some(error) = &state.last_error {
-        OpenPageError::BrowserOperation(format!("listener is not running: {error}"))
+        OpenPageError::BrowserOperation(component_not_running_with_error_message(
+            "listener",
+            "监听器",
+            error,
+        ))
     } else {
-        OpenPageError::BrowserOperation("listener is not running".to_string())
+        OpenPageError::BrowserOperation(component_not_running_message("listener", "监听器"))
     }
 }
 
@@ -1573,33 +1584,41 @@ async fn fetch_response_body(
     page: &OxPage,
     event: &EventLoadingFinished,
 ) -> Option<(String, bool)> {
-    let response = page
-        .execute(GetResponseBodyParams::new(event.request_id.clone()))
-        .await
-        .ok()?;
-    Some((response.result.body, response.result.base64_encoded))
+    let response = execute_page_command_async(
+        page,
+        GetResponseBodyParams::new(event.request_id.clone()),
+        "Listener::fetch_response_body()",
+    )
+    .await
+    .ok()?;
+    Some((response.body, response.base64_encoded))
 }
 
 async fn fetch_request_post_data(page: &OxPage, event: &EventLoadingFinished) -> Option<String> {
-    let response = page
-        .execute(GetRequestPostDataParams::new(event.request_id.clone()))
-        .await
-        .ok()?;
-    Some(response.result.post_data)
+    let response = execute_page_command_async(
+        page,
+        GetRequestPostDataParams::new(event.request_id.clone()),
+        "Listener::fetch_request_post_data()",
+    )
+    .await
+    .ok()?;
+    Some(response.post_data)
 }
 
 #[cfg(test)]
 mod tests {
     use std::{collections::HashMap, sync::Arc};
 
+    use crate::settings::{Settings, scoped_test_settings};
+
     use super::{
         ListenerAssociatedCookie, ListenerFilters, ListenerRequest, ListenerRequestExtraInfo,
         ListenerResponse, ListenerResponseExtraInfo, ListenerShared, ListenerState, PendingPacket,
-        apply_response_extra_info, headers_to_map, listener_request_extra_info_from_cdp,
-        listener_response_extra_info_from_cdp, listener_response_from_cdp, on_loading_failed,
-        on_request_will_be_sent, on_request_will_be_sent_extra_info,
-        on_response_received_extra_info, preserve_existing_response_extra_info,
-        update_listener_filters,
+        apply_response_extra_info, headers_to_map, listener_not_running_error,
+        listener_request_extra_info_from_cdp, listener_response_extra_info_from_cdp,
+        listener_response_from_cdp, on_loading_failed, on_request_will_be_sent,
+        on_request_will_be_sent_extra_info, on_response_received_extra_info,
+        preserve_existing_response_extra_info, update_listener_filters,
     };
     use chromiumoxide::cdp::browser_protocol::network::{
         EventLoadingFailed, EventRequestWillBeSent, EventRequestWillBeSentExtraInfo,
@@ -1684,6 +1703,32 @@ mod tests {
                 .matches("http://127.0.0.1/api/data", "GET", Some("XHR")),
             None
         );
+    }
+
+    #[test]
+    fn listener_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english_regex = ListenerFilters::new(Some(vec!["(".to_string()]), true, None, None)
+            .expect_err("invalid regex should fail")
+            .to_string();
+        assert!(english_regex.contains("invalid listener regex `(`"));
+
+        let mut state = ListenerState::new(None, "tab-1".to_string());
+        state.last_error = Some("boom".to_string());
+        let english_not_running = listener_not_running_error(&state).to_string();
+        assert!(english_not_running.contains("listener is not running: boom"));
+
+        Settings::set_language("cn");
+
+        let chinese_regex = ListenerFilters::new(Some(vec!["(".to_string()]), true, None, None)
+            .expect_err("invalid regex should fail in Chinese")
+            .to_string();
+        assert!(chinese_regex.contains("无效的监听规则正则 `(`"));
+
+        let chinese_not_running = listener_not_running_error(&state).to_string();
+        assert!(chinese_not_running.contains("监听器未运行: boom"));
     }
 
     #[test]

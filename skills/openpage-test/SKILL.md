@@ -27,7 +27,7 @@ This skill is the repo-local testing playbook for OpenPage. It treats the Rust c
 6. Prefer this verification order:
    - `cargo check --manifest-path rust/Cargo.toml`
    - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
-   - if `doctor --quick` only complains about legacy session JSON residue, rerun `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick --fix`
+   - if `doctor --quick` only complains about legacy session JSON residue, incompatible daemon sessions, or incomplete unready daemon sessions, rerun `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick --fix`
    - `cargo test --manifest-path rust/Cargo.toml`
    - `cargo check --manifest-path rust/Cargo.toml --features python-module`
    - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor`

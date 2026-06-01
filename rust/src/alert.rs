@@ -10,6 +10,8 @@ use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
 
 use crate::error::{OpenPageError, OpenPageResult};
+use crate::page::execute_page_command_async;
+use crate::settings::{component_state_lock_poisoned_message, default_auto_handle_alert};
 
 #[derive(Clone, Debug)]
 struct PendingAlertAction {
@@ -53,6 +55,14 @@ pub struct AlertTracker {
 impl AlertTracker {
     pub fn new(runtime: Arc<Runtime>, page: OxPage) -> Self {
         let shared = Arc::new(AlertShared::new());
+        if let Some(accept) = default_auto_handle_alert()
+            && let Ok(mut state) = shared.state.lock()
+        {
+            state.auto_action = Some(PendingAlertAction {
+                accept,
+                prompt_text: None,
+            });
+        }
         let tracker = Self {
             runtime: Arc::clone(&runtime),
             page: page.clone(),
@@ -139,7 +149,12 @@ impl AlertTracker {
             .state
             .lock()
             .map(|state| state.has_alert)
-            .map_err(|_| OpenPageError::BrowserOperation("alert state lock poisoned".to_string()))
+            .map_err(|_| {
+                OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                    "alert state",
+                    "弹窗状态",
+                ))
+            })
     }
 
     pub fn alert_text(&self) -> OpenPageResult<Option<String>> {
@@ -147,7 +162,12 @@ impl AlertTracker {
             .state
             .lock()
             .map(|state| state.message.clone())
-            .map_err(|_| OpenPageError::BrowserOperation("alert state lock poisoned".to_string()))
+            .map_err(|_| {
+                OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                    "alert state",
+                    "弹窗状态",
+                ))
+            })
     }
 
     pub fn handle_alert(
@@ -158,7 +178,10 @@ impl AlertTracker {
     ) -> OpenPageResult<Option<String>> {
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("alert state lock poisoned".to_string())
+            OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                "alert state",
+                "弹窗状态",
+            ))
         })?;
 
         loop {
@@ -186,7 +209,10 @@ impl AlertTracker {
                 .condvar
                 .wait_timeout(state, wait_for)
                 .map_err(|_| {
-                    OpenPageError::BrowserOperation("alert state lock poisoned".to_string())
+                    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                        "alert state",
+                        "弹窗状态",
+                    ))
                 })?;
             state = result.0;
             if result.1.timed_out() {
@@ -201,7 +227,10 @@ impl AlertTracker {
         prompt_text: Option<&str>,
     ) -> OpenPageResult<()> {
         let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("alert state lock poisoned".to_string())
+            OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                "alert state",
+                "弹窗状态",
+            ))
         })?;
         state.pending_next = Some(PendingAlertAction {
             accept,
@@ -216,7 +245,10 @@ impl AlertTracker {
         prompt_text: Option<&str>,
     ) -> OpenPageResult<()> {
         let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("alert state lock poisoned".to_string())
+            OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                "alert state",
+                "弹窗状态",
+            ))
         })?;
         state.auto_action = accept.map(|accept| PendingAlertAction {
             accept,
@@ -228,7 +260,10 @@ impl AlertTracker {
     pub fn wait_for_alert_closed(&self, timeout_ms: u64) -> OpenPageResult<bool> {
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("alert state lock poisoned".to_string())
+            OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                "alert state",
+                "弹窗状态",
+            ))
         })?;
         let mut seen_open = state.has_alert;
 
@@ -253,7 +288,10 @@ impl AlertTracker {
                 .condvar
                 .wait_timeout(state, wait_for)
                 .map_err(|_| {
-                    OpenPageError::BrowserOperation("alert state lock poisoned".to_string())
+                    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                        "alert state",
+                        "弹窗状态",
+                    ))
                 })?;
             state = result.0;
             if result.1.timed_out() {
@@ -272,7 +310,9 @@ async fn handle_dialog(
     if let Some(prompt_text) = prompt_text {
         params.prompt_text = Some(prompt_text.to_string());
     }
-    page.execute(params).await.map_err(|err| err.to_string())?;
+    execute_page_command_async(page, params, "AlertTracker::handle_dialog()")
+        .await
+        .map_err(|err| err.to_string())?;
     Ok(())
 }
 

@@ -16,6 +16,14 @@ use tokio::task::JoinHandle;
 
 use crate::browser::Browser;
 use crate::error::{OpenPageError, OpenPageResult};
+use crate::settings::component_state_lock_poisoned_message;
+
+fn download_state_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "download state",
+        "下载状态",
+    ))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DownloadState {
@@ -221,9 +229,7 @@ impl DownloadStore {
             .state
             .lock()
             .map(|state| state.order.clone())
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-            })
+            .map_err(|_| download_state_lock_poisoned_error())
     }
 
     pub(crate) fn last_guid(&self) -> OpenPageResult<Option<String>> {
@@ -231,18 +237,14 @@ impl DownloadStore {
             .state
             .lock()
             .map(|state| state.order.last().cloned())
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-            })
+            .map_err(|_| download_state_lock_poisoned_error())
     }
 
     pub(crate) fn info(&self, guid: &str) -> OpenPageResult<DownloadInfo> {
         self.shared
             .state
             .lock()
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-            })?
+            .map_err(|_| download_state_lock_poisoned_error())?
             .missions
             .get(guid)
             .cloned()
@@ -256,9 +258,7 @@ impl DownloadStore {
             .state
             .lock()
             .map(|state| state.completed_order.len())
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-            })
+            .map_err(|_| download_state_lock_poisoned_error())
     }
 
     pub(crate) fn started_len(&self) -> OpenPageResult<usize> {
@@ -266,9 +266,39 @@ impl DownloadStore {
             .state
             .lock()
             .map(|state| state.order.len())
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("download state lock poisoned".to_string())
+            .map_err(|_| download_state_lock_poisoned_error())
+    }
+
+    pub(crate) fn clear_finished(&self) -> OpenPageResult<usize> {
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| download_state_lock_poisoned_error())?;
+        let finished = state
+            .order
+            .iter()
+            .filter(|guid| {
+                state
+                    .missions
+                    .get(*guid)
+                    .is_some_and(|mission| mission.state != DownloadState::Running)
             })
+            .cloned()
+            .collect::<Vec<_>>();
+        let removed = finished.len();
+        if removed == 0 {
+            return Ok(0);
+        }
+        for guid in &finished {
+            state.missions.remove(guid);
+        }
+        state.order.retain(|guid| !finished.iter().any(|item| item == guid));
+        state
+            .completed_order
+            .retain(|guid| !finished.iter().any(|item| item == guid));
+        self.shared.condvar.notify_all();
+        Ok(removed)
     }
 
     pub(crate) fn running_ids(&self) -> OpenPageResult<Vec<String>> {
@@ -283,9 +313,7 @@ impl DownloadStore {
                     .map(|mission| mission.guid.clone())
                     .collect()
             })
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-            })
+            .map_err(|_| download_state_lock_poisoned_error())
     }
 
     pub(crate) fn wait_for_name(
@@ -327,9 +355,11 @@ impl DownloadStore {
         state: DownloadState,
         final_path: String,
     ) -> OpenPageResult<()> {
-        let mut store = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-        })?;
+        let mut store = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| download_state_lock_poisoned_error())?;
         let mission = store.missions.get_mut(guid).ok_or_else(|| {
             OpenPageError::BrowserOperation(format!("download `{guid}` was not found"))
         })?;
@@ -408,9 +438,7 @@ impl DownloadStore {
                     .map(|mission| mission.guid.clone())
                     .collect()
             })
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-            })
+            .map_err(|_| download_state_lock_poisoned_error())
     }
 
     pub(crate) fn wait_until_idle_in_frames(
@@ -419,9 +447,11 @@ impl DownloadStore {
         timeout_ms: u64,
     ) -> OpenPageResult<bool> {
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| download_state_lock_poisoned_error())?;
 
         loop {
             if state
@@ -453,9 +483,7 @@ impl DownloadStore {
                 .shared
                 .condvar
                 .wait_timeout(state, remaining)
-                .map_err(|_| {
-                    OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-                })?;
+                .map_err(|_| download_state_lock_poisoned_error())?;
             state = result.0;
             if result.1.timed_out() {
                 return Ok(state
@@ -473,9 +501,11 @@ impl DownloadStore {
 
     pub(crate) fn wait_until_idle(&self, timeout_ms: u64) -> OpenPageResult<bool> {
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| download_state_lock_poisoned_error())?;
 
         loop {
             if state
@@ -502,9 +532,7 @@ impl DownloadStore {
                 .shared
                 .condvar
                 .wait_timeout(state, remaining)
-                .map_err(|_| {
-                    OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-                })?;
+                .map_err(|_| download_state_lock_poisoned_error())?;
             state = result.0;
             if result.1.timed_out() {
                 return Ok(state
@@ -520,9 +548,11 @@ impl DownloadStore {
         F: Fn(&DownloadManagerState) -> Option<DownloadInfo>,
     {
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| download_state_lock_poisoned_error())?;
 
         loop {
             if let Some(info) = predicate(&state) {
@@ -547,9 +577,7 @@ impl DownloadStore {
                 .shared
                 .condvar
                 .wait_timeout(state, remaining)
-                .map_err(|_| {
-                    OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-                })?;
+                .map_err(|_| download_state_lock_poisoned_error())?;
             state = result.0;
             if result.1.timed_out() {
                 return Err(OpenPageError::Timeout(
@@ -563,9 +591,11 @@ impl DownloadStore {
     where
         F: Fn(&DownloadManagerState) -> Option<DownloadInfo>,
     {
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| download_state_lock_poisoned_error())?;
 
         loop {
             if let Some(info) = predicate(&state) {
@@ -578,9 +608,11 @@ impl DownloadStore {
                 )));
             }
 
-            state = self.shared.condvar.wait(state).map_err(|_| {
-                OpenPageError::BrowserOperation("download state lock poisoned".to_string())
-            })?;
+            state = self
+                .shared
+                .condvar
+                .wait(state)
+                .map_err(|_| download_state_lock_poisoned_error())?;
         }
     }
 }
@@ -668,7 +700,7 @@ fn on_download_will_begin(
     let mut state = shared
         .state
         .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("download state lock poisoned".to_string()))?;
+        .map_err(|_| download_state_lock_poisoned_error())?;
     let mission = state
         .missions
         .entry(event.guid.clone())
@@ -699,7 +731,7 @@ fn on_download_progress(
     let mut state = shared
         .state
         .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("download state lock poisoned".to_string()))?;
+        .map_err(|_| download_state_lock_poisoned_error())?;
 
     let mission = state
         .missions
@@ -742,7 +774,7 @@ fn mark_tracker_stopped(shared: &Arc<DownloadShared>, error: Option<String>) -> 
     let mut state = shared
         .state
         .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("download state lock poisoned".to_string()))?;
+        .map_err(|_| download_state_lock_poisoned_error())?;
     state.last_error = error;
     shared.condvar.notify_all();
     Ok(())
@@ -764,5 +796,49 @@ fn download_rate(info: &DownloadInfo) -> Option<f64> {
             Some(((info.received_bytes as f64 / total_bytes as f64) * 10000.0).round() / 100.0)
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DownloadStore;
+    use crate::settings::scoped_test_settings;
+    use crate::Settings;
+    use std::sync::Arc;
+    use std::thread;
+
+    fn poison_download_state(store: &DownloadStore) {
+        let state = Arc::clone(&store.shared.state);
+        let join = thread::spawn(move || {
+            let _guard = state.lock().expect("lock download state for poison test");
+            panic!("poison download state");
+        })
+        .join();
+        assert!(join.is_err(), "poison helper thread should panic");
+    }
+
+    #[test]
+    fn download_state_lock_poisoned_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let store = DownloadStore::new();
+        poison_download_state(&store);
+
+        let english = store
+            .mission_ids()
+            .expect_err("mission_ids() should surface poisoned download state")
+            .to_string();
+        assert!(english.contains("download state lock poisoned"));
+        assert!(english.contains("Browser operation failed"));
+
+        Settings::set_language("cn");
+
+        let chinese = store
+            .mission_ids()
+            .expect_err("mission_ids() should localize poisoned download state")
+            .to_string();
+        assert!(chinese.contains("下载状态锁已损坏"));
+        assert!(chinese.contains("浏览器操作失败"));
     }
 }

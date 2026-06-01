@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -38,17 +39,28 @@ use crate::locator::{
     Locator, LocatorBatchInput, LocatorInput, LocatorKind, LocatorMatch, collect_locator_matches,
     parse_locator_batch_input, parse_optional_locator_input,
 };
-use crate::page::{ActionsInput, Frame, Page};
+use crate::page::{
+    ActionsInput, Frame, Page, PageFrameTarget, execute_page_command_async,
+    execute_page_command_blocking, frame_locator_input,
+};
 use crate::session::{
     SessionElement, SessionXPathResult, snapshot_fragment_find_all_with_base_url,
     snapshot_fragment_find_with_base_url, snapshot_fragment_query_xpath_with_base_url,
     snapshot_fragment_root_with_base_url,
+};
+use crate::settings::{
+    click_failed_hidden_or_disabled_message, click_failed_no_rect_message,
+    click_failed_should_raise, element_html_unavailable_message,
+    element_no_visible_rect_message, element_resource_unavailable_message,
+    element_tag_name_unavailable_message, frame_index_must_start_message,
+    frame_index_out_of_range_message, no_new_tab_message, wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
 
 const MARKER_ATTRIBUTE: &str = "data-openpage-marker";
 static NEXT_MARKER_BATCH: AtomicU64 = AtomicU64::new(1);
+const DEFAULT_CLICK_TIMEOUT_MS: u64 = 1_500;
 const MODIFIER_ALT: i64 = 1;
 const MODIFIER_CTRL: i64 = 2;
 const MODIFIER_META: i64 = 4;
@@ -247,24 +259,86 @@ impl Element {
     }
 
     pub fn click(&self) -> OpenPageResult<()> {
+        let _ = self.click_with_options(Some(false), None, true)?;
+        Ok(())
+    }
+
+    pub fn click_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
         if self.click_option_via_select()? {
-            return Ok(());
+            return Ok(true);
         }
-        match self.runtime.block_on(async {
-            self.inner
-                .click()
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            Ok::<(), OpenPageError>(())
-        }) {
-            Ok(()) => Ok(()),
-            Err(err) if err.to_string().contains("not visible") => {
-                // fallback: JS click for elements hidden by CSS but event-ready
-                self.run_js("this.click(); return true;")?;
-                Ok(())
+        if by_js == Some(true) {
+            self.run_js("this.click(); return true;")?;
+            return Ok(true);
+        }
+
+        let timeout_ms = timeout_ms.unwrap_or(DEFAULT_CLICK_TIMEOUT_MS).max(1);
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+        let mut has_rect = self.has_rect()?;
+        while !has_rect && Instant::now() < deadline {
+            sleep(Duration::from_millis(1));
+            has_rect = self.has_rect()?;
+        }
+
+        if !has_rect {
+            if by_js == Some(false) {
+                return Err(OpenPageError::PageOperation(click_failed_no_rect_message()));
             }
-            Err(err) => Err(err),
+            self.run_js("this.click(); return true;")?;
+            return Ok(true);
         }
+
+        if wait_stop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if !remaining.is_zero() {
+                let _ = self.wait_until_stop_moving(remaining.as_millis() as u64);
+            }
+        }
+
+        self.scroll_to_see(Some(false))?;
+
+        let mut can_click = self.is_enabled()? && self.is_displayed()?;
+        while !can_click && Instant::now() < deadline {
+            sleep(Duration::from_millis(1));
+            can_click = self.is_enabled()? && self.is_displayed()?;
+        }
+
+        if !can_click {
+            if by_js == Some(false) {
+                return Self::click_failed_result(&click_failed_hidden_or_disabled_message());
+            }
+            self.run_js("this.click(); return true;")?;
+            return Ok(true);
+        }
+
+        if !self.is_in_viewport()? {
+            self.run_js("this.click(); return true;")?;
+            return Ok(true);
+        }
+
+        if by_js != Some(false) && self.is_covered().unwrap_or(false) {
+            self.run_js("this.click(); return true;")?;
+            return Ok(true);
+        }
+
+        match self.click_at_runtime(None, None, MouseButton::Left, 1) {
+            Ok(()) => Ok(true),
+            Err(err) => Self::click_failed_outcome(err, false),
+        }
+    }
+
+    pub fn click_left_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        self.click_with_options(by_js, timeout_ms, wait_stop)
     }
 
     fn click_option_via_select(&self) -> OpenPageResult<bool> {
@@ -288,6 +362,22 @@ impl Element {
         )
     }
 
+    fn click_failed_result(message: &str) -> OpenPageResult<bool> {
+        if click_failed_should_raise() {
+            Err(OpenPageError::PageOperation(message.to_string()))
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn click_failed_outcome<T>(err: OpenPageError, fallback: T) -> OpenPageResult<T> {
+        if click_failed_should_raise() {
+            Err(err)
+        } else {
+            Ok(fallback)
+        }
+    }
+
     pub fn click_at(
         &self,
         offset_x: Option<f64>,
@@ -303,6 +393,19 @@ impl Element {
         let button = button.parse::<MouseButton>().map_err(|_| {
             OpenPageError::PageOperation(format!("unsupported mouse button: {button}"))
         })?;
+        match self.click_at_runtime(offset_x, offset_y, button, count) {
+            Ok(()) => Ok(()),
+            Err(err) => Self::click_failed_outcome(err, ()),
+        }
+    }
+
+    fn click_at_runtime(
+        &self,
+        offset_x: Option<f64>,
+        offset_y: Option<f64>,
+        button: MouseButton,
+        count: u32,
+    ) -> OpenPageResult<()> {
         self.runtime.block_on(async {
             self.inner
                 .scroll_into_view()
@@ -359,13 +462,13 @@ impl Element {
         } else {
             self.focus_or_click()?;
         }
-        self.runtime.block_on(async {
-            self.page
-                .execute(InsertTextParams::new(text.to_string()))
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            Ok(())
-        })
+        execute_page_command_blocking(
+            self.runtime.as_ref(),
+            &self.page,
+            InsertTextParams::new(text.to_string()),
+            "Element::input_with_options()",
+        )?;
+        Ok(())
     }
 
     pub fn input_keys_with_options(
@@ -481,7 +584,8 @@ impl Element {
         as_expr: bool,
         timeout_ms: Option<u64>,
     ) -> OpenPageResult<()> {
-        let js = build_js_invocation(script, args, as_expr)?;
+        let script = load_javascript_source(script)?;
+        let js = build_js_invocation(script.as_ref(), args, as_expr)?;
         let timeout_ms = Some(resolve_javascript_timeout_ms(
             timeout_ms,
             self.javascript_timeout_ms,
@@ -500,18 +604,18 @@ impl Element {
                 "set_file_input_files() requires at least one file".to_string(),
             ));
         }
-        self.runtime.block_on(async {
-            let params = SetFileInputFilesParams::builder()
-                .files(files)
-                .backend_node_id(self.inner.backend_node_id)
-                .build()
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            self.page
-                .execute(params)
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            Ok(())
-        })
+        let params = SetFileInputFilesParams::builder()
+            .files(files)
+            .backend_node_id(self.inner.backend_node_id)
+            .build()
+            .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+        execute_page_command_blocking(
+            self.runtime.as_ref(),
+            &self.page,
+            params,
+            "Element::set_file_input_files()",
+        )?;
+        Ok(())
     }
 
     pub fn press_key(&self, key: &str) -> OpenPageResult<()> {
@@ -540,7 +644,7 @@ impl Element {
                 "tagName did not return a string: {value}"
             ))),
             None => Err(OpenPageError::ElementNotFound(
-                "element tagName is unavailable".to_string(),
+                element_tag_name_unavailable_message(),
             )),
         }
     }
@@ -565,7 +669,7 @@ impl Element {
 
     pub fn snapshot_root(&self) -> OpenPageResult<SessionElement> {
         let html = self.html()?.ok_or_else(|| {
-            OpenPageError::ElementNotFound("element html is unavailable".to_string())
+            OpenPageError::ElementNotFound(element_html_unavailable_message())
         })?;
         let base_url = value_as_optional_string(self.property("baseURI")?, "baseURI")?;
         snapshot_fragment_root_with_base_url(&html, base_url.as_deref())
@@ -573,7 +677,7 @@ impl Element {
 
     pub fn snapshot_find(&self, locator: &str) -> OpenPageResult<SessionElement> {
         let html = self.html()?.ok_or_else(|| {
-            OpenPageError::ElementNotFound("element html is unavailable".to_string())
+            OpenPageError::ElementNotFound(element_html_unavailable_message())
         })?;
         let base_url = value_as_optional_string(self.property("baseURI")?, "baseURI")?;
         snapshot_fragment_find_with_base_url(&html, locator, base_url.as_deref())
@@ -581,7 +685,7 @@ impl Element {
 
     pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
         let html = self.html()?.ok_or_else(|| {
-            OpenPageError::ElementNotFound("element html is unavailable".to_string())
+            OpenPageError::ElementNotFound(element_html_unavailable_message())
         })?;
         let base_url = value_as_optional_string(self.property("baseURI")?, "baseURI")?;
         snapshot_fragment_find_all_with_base_url(&html, locator, base_url.as_deref())
@@ -606,7 +710,7 @@ impl Element {
         expression: &str,
     ) -> OpenPageResult<Vec<SessionXPathResult>> {
         let html = self.html()?.ok_or_else(|| {
-            OpenPageError::ElementNotFound("element html is unavailable".to_string())
+            OpenPageError::ElementNotFound(element_html_unavailable_message())
         })?;
         let base_url = value_as_optional_string(self.property("baseURI")?, "baseURI")?;
         snapshot_fragment_query_xpath_with_base_url(&html, expression, base_url.as_deref())
@@ -722,11 +826,11 @@ impl Element {
     }
 
     pub fn css_path(&self) -> OpenPageResult<String> {
-        value_as_string(self.run_js(element_path_script(false))?, "css path")
+        self.path_via_page_marker(false)
     }
 
     pub fn xpath(&self) -> OpenPageResult<String> {
-        value_as_string(self.run_js(element_path_script(true))?, "xpath")
+        self.path_via_page_marker(true)
     }
 
     pub fn comments(&self) -> OpenPageResult<Vec<String>> {
@@ -895,7 +999,7 @@ impl Element {
         rename: bool,
     ) -> OpenPageResult<PathBuf> {
         let data = self.src(timeout_ms, true)?.ok_or_else(|| {
-            OpenPageError::PageOperation("element resource is unavailable".to_string())
+            OpenPageError::PageOperation(element_resource_unavailable_message())
         })?;
 
         let tag = self.tag()?;
@@ -926,18 +1030,16 @@ impl Element {
 
     pub fn shadow_root(&self) -> OpenPageResult<Option<ShadowRoot>> {
         self.runtime.block_on(async {
-            let response = self
-                .page
-                .execute(
-                    DescribeNodeParams::builder()
-                        .backend_node_id(self.inner.backend_node_id)
-                        .pierce(true)
-                        .build(),
-                )
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            let response = execute_page_command_async(
+                &self.page,
+                DescribeNodeParams::builder()
+                    .backend_node_id(self.inner.backend_node_id)
+                    .pierce(true)
+                    .build(),
+                "Element::shadow_root()",
+            )
+            .await?;
             let Some(shadow_root) = response
-                .result
                 .node
                 .shadow_roots
                 .and_then(|roots| roots.into_iter().next())
@@ -945,16 +1047,15 @@ impl Element {
                 return Ok(None);
             };
 
-            let remote = self
-                .page
-                .execute(
-                    chromiumoxide::cdp::browser_protocol::dom::ResolveNodeParams::builder()
-                        .backend_node_id(shadow_root.backend_node_id)
-                        .build(),
-                )
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            let remote_object_id = remote.result.object.object_id.ok_or_else(|| {
+            let remote = execute_page_command_async(
+                &self.page,
+                chromiumoxide::cdp::browser_protocol::dom::ResolveNodeParams::builder()
+                    .backend_node_id(shadow_root.backend_node_id)
+                    .build(),
+                "Element::shadow_root()",
+            )
+            .await?;
+            let remote_object_id = remote.object.object_id.ok_or_else(|| {
                 OpenPageError::PageOperation("shadow root object id is unavailable".to_string())
             })?;
 
@@ -1430,7 +1531,8 @@ impl Element {
         as_expr: bool,
         timeout_ms: Option<u64>,
     ) -> OpenPageResult<Value> {
-        let js = build_js_invocation(script, args, as_expr)?;
+        let script = load_javascript_source(script)?;
+        let js = build_js_invocation(script.as_ref(), args, as_expr)?;
         let timeout_ms = Some(resolve_javascript_timeout_ms(
             timeout_ms,
             self.javascript_timeout_ms,
@@ -1563,17 +1665,19 @@ impl Element {
             .ok_or_else(|| OpenPageError::PageOperation(format!("Key not found: {key}")))?;
         let key_down = build_key_event(definition, modifiers, false);
         let key_up = build_key_event(definition, modifiers, true);
-        self.runtime.block_on(async {
-            self.page
-                .execute(key_down)
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            self.page
-                .execute(key_up)
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            Ok(())
-        })
+        execute_page_command_blocking(
+            self.runtime.as_ref(),
+            &self.page,
+            key_down,
+            "Element::press_key_with_modifiers()",
+        )?;
+        execute_page_command_blocking(
+            self.runtime.as_ref(),
+            &self.page,
+            key_up,
+            "Element::press_key_with_modifiers()",
+        )?;
+        Ok(())
     }
 
     pub fn focus(&self) -> OpenPageResult<()> {
@@ -2797,6 +2901,18 @@ impl Element {
         }
     }
 
+    pub fn get_frame<'a, L>(&self, target: L) -> OpenPageResult<Frame>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        let frame_element = self.resolve_frame_target(target.into())?;
+        self.page_wrapper().frame_from_element(frame_element)
+    }
+
+    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<Frame> {
+        self.get_frame(index)
+    }
+
     pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<Element>>
     where
         L: Into<LocatorInput<'a>>,
@@ -2859,7 +2975,7 @@ impl Element {
             }
 
             if Instant::now() >= deadline {
-                return Ok(false);
+                return wait_timeout_result("Element::wait_until()", timeout_ms);
             }
             sleep(Duration::from_millis(50));
         }
@@ -2877,17 +2993,80 @@ impl Element {
         Ok(last)
     }
 
+    fn resolve_frame_target<'a>(&self, target: PageFrameTarget<'a>) -> OpenPageResult<Element> {
+        match target {
+            PageFrameTarget::Locator(locator) => {
+                let locator = frame_locator_input(locator)?;
+                self.find(locator.as_str())
+            }
+            PageFrameTarget::Index(index) => self.frame_element_by_index(index),
+            PageFrameTarget::Element(element) => self.find_frame_element_from_object(element),
+            PageFrameTarget::WebElement(element) => match element {
+                crate::webpage::WebElement::Browser(element) => {
+                    self.find_frame_element_from_object(element)
+                }
+                crate::webpage::WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
+                    "session-backed WebElement is not supported for driver element frame targeting"
+                        .to_string(),
+                )),
+            },
+            PageFrameTarget::Frame(frame) => {
+                self.find_frame_element_from_object(frame.frame_element())
+            }
+            PageFrameTarget::WebFrame(frame) => match frame {
+                crate::webpage::WebFrame::Browser(frame) => {
+                    self.find_frame_element_from_object(frame.frame_element())
+                }
+            },
+        }
+    }
+
+    fn frame_element_by_index(&self, index: isize) -> OpenPageResult<Element> {
+        if index == 0 {
+            return Err(OpenPageError::ElementNotFound(
+                frame_index_must_start_message(),
+            ));
+        }
+
+        let frames = self.find_all("css:iframe,frame")?;
+        let resolved_index = if index > 0 {
+            (index as usize).checked_sub(1)
+        } else {
+            frames.len().checked_sub(index.unsigned_abs())
+        };
+        resolved_index
+            .and_then(|resolved_index| frames.into_iter().nth(resolved_index))
+            .ok_or_else(|| {
+                OpenPageError::ElementNotFound(frame_index_out_of_range_message(index))
+            })
+    }
+
+    fn find_frame_element_from_object(&self, element: &Element) -> OpenPageResult<Element> {
+        let batch = next_marker_batch();
+        let marker = format!("{batch}-frame");
+        element.set_attr(MARKER_ATTRIBUTE, &marker)?;
+        let selector = format!(r#"css:[{MARKER_ATTRIBUTE}="{marker}"]"#);
+        let result = self.find(selector.as_str());
+        let cleanup = element.remove_attr(MARKER_ATTRIBUTE);
+        match (result, cleanup) {
+            (Ok(element), Ok(())) => Ok(element),
+            (Err(err), Ok(())) => Err(err),
+            (Ok(_), Err(err)) => Err(err),
+            (Err(err), Err(_)) => Err(err),
+        }
+    }
+
     fn offset_target_point(&self, x: Option<f64>, y: Option<f64>) -> OpenPageResult<(i64, i64)> {
         if x.is_none() && y.is_none() {
-            let (point_x, point_y) = self.rect_viewport_midpoint()?.ok_or_else(|| {
-                OpenPageError::PageOperation("element does not have a visible rect".to_string())
-            })?;
+            let (point_x, point_y) = self
+                .rect_viewport_midpoint()?
+                .ok_or_else(|| OpenPageError::PageOperation(element_no_visible_rect_message()))?;
             return Ok((point_x.round() as i64, point_y.round() as i64));
         }
 
-        let (left, top) = self.rect_viewport_location()?.ok_or_else(|| {
-            OpenPageError::PageOperation("element does not have a visible rect".to_string())
-        })?;
+        let (left, top) = self
+            .rect_viewport_location()?
+            .ok_or_else(|| OpenPageError::PageOperation(element_no_visible_rect_message()))?;
         Ok((
             (left + x.unwrap_or(0.0)).round() as i64,
             (top + y.unwrap_or(0.0)).round() as i64,
@@ -2896,15 +3075,15 @@ impl Element {
 
     fn offset_click_point(&self, x: Option<f64>, y: Option<f64>) -> OpenPageResult<(i64, i64)> {
         if x.is_none() && y.is_none() {
-            let (point_x, point_y) = self.rect_viewport_click_point()?.ok_or_else(|| {
-                OpenPageError::PageOperation("element does not have a visible rect".to_string())
-            })?;
+            let (point_x, point_y) = self
+                .rect_viewport_click_point()?
+                .ok_or_else(|| OpenPageError::PageOperation(element_no_visible_rect_message()))?;
             return Ok((point_x.round() as i64, point_y.round() as i64));
         }
 
-        let (left, top) = self.rect_viewport_location()?.ok_or_else(|| {
-            OpenPageError::PageOperation("element does not have a visible rect".to_string())
-        })?;
+        let (left, top) = self
+            .rect_viewport_location()?
+            .ok_or_else(|| OpenPageError::PageOperation(element_no_visible_rect_message()))?;
         Ok((
             (left + x.unwrap_or(0.0)).round() as i64,
             (top + y.unwrap_or(0.0)).round() as i64,
@@ -2940,9 +3119,9 @@ impl Element {
         }
 
         let locator = parse_optional_locator(locator)?;
-        let corners = self.rect_corners()?.ok_or_else(|| {
-            OpenPageError::PageOperation("element does not have a visible rect".to_string())
-        })?;
+        let corners = self
+            .rect_corners()?
+            .ok_or_else(|| OpenPageError::PageOperation(element_no_visible_rect_message()))?;
         let ((mut x, mut y), step_x, step_y) = relative_search_seed(&corners, direction);
 
         if let Some(pixels) = pixels {
@@ -3005,22 +3184,20 @@ impl Element {
     }
 
     fn element_at_point(&self, x: i64, y: i64) -> OpenPageResult<Option<(BackendNodeId, Element)>> {
-        let backend_node_id = self.runtime.block_on(async {
-            let response = self
-                .page
-                .execute(
-                    GetNodeForLocationParams::builder()
-                        .x(x)
-                        .y(y)
-                        .include_user_agent_shadow_dom(true)
-                        .ignore_pointer_events_none(false)
-                        .build()
-                        .map_err(OpenPageError::PageOperation)?,
-                )
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            Ok::<BackendNodeId, OpenPageError>(response.result.backend_node_id)
-        })?;
+        let params = GetNodeForLocationParams::builder()
+            .x(x)
+            .y(y)
+            .include_user_agent_shadow_dom(true)
+            .ignore_pointer_events_none(false)
+            .build()
+            .map_err(OpenPageError::PageOperation)?;
+        let backend_node_id = execute_page_command_blocking(
+            self.runtime.as_ref(),
+            &self.page,
+            params,
+            "Element::element_at_point()",
+        )?
+        .backend_node_id;
         let element = self.resolve_backend_node_id(backend_node_id)?;
         Ok(Some((backend_node_id, element)))
     }
@@ -3035,25 +3212,25 @@ impl Element {
         backend_node_id: BackendNodeId,
     ) -> OpenPageResult<chromiumoxide::cdp::browser_protocol::dom::NodeId> {
         self.runtime.block_on(async {
-            let resolved = self
-                .page
-                .execute(
-                    ResolveNodeParams::builder()
-                        .backend_node_id(backend_node_id)
-                        .build(),
-                )
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            let object_id = resolved.result.object.object_id.ok_or_else(|| {
+            let resolved = execute_page_command_async(
+                &self.page,
+                ResolveNodeParams::builder()
+                    .backend_node_id(backend_node_id)
+                    .build(),
+                "Element::resolve_backend_node_to_node_id()",
+            )
+            .await?;
+            let object_id = resolved.object.object_id.ok_or_else(|| {
                 OpenPageError::PageOperation("resolved node has no object id".to_string())
             })?;
-            let requested = self
-                .page
-                .execute(RequestNodeParams::new(object_id))
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            let requested = execute_page_command_async(
+                &self.page,
+                RequestNodeParams::new(object_id),
+                "Element::resolve_backend_node_to_node_id()",
+            )
+            .await?;
             Ok::<chromiumoxide::cdp::browser_protocol::dom::NodeId, OpenPageError>(
-                requested.result.node_id,
+                requested.node_id,
             )
         })
     }
@@ -3066,17 +3243,12 @@ impl Element {
         let batch = next_marker_batch();
         let marker = format!("{batch}-0");
 
-        self.runtime.block_on(async {
-            self.page
-                .execute(SetAttributeValueParams::new(
-                    node_id,
-                    MARKER_ATTRIBUTE,
-                    marker.clone(),
-                ))
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            Ok::<(), OpenPageError>(())
-        })?;
+        execute_page_command_blocking(
+            self.runtime.as_ref(),
+            &self.page,
+            SetAttributeValueParams::new(node_id, MARKER_ATTRIBUTE, marker.clone()),
+            "Element::resolve_node_id()",
+        )?;
 
         let element = self.runtime.block_on(async {
             let xpath = format!("//*[@{MARKER_ATTRIBUTE}='{marker}']");
@@ -3097,10 +3269,12 @@ impl Element {
         });
 
         let cleanup = self.runtime.block_on(async {
-            let _ = self
-                .page
-                .execute(RemoveAttributeParams::new(node_id, MARKER_ATTRIBUTE))
-                .await;
+            let _ = execute_page_command_async(
+                &self.page,
+                RemoveAttributeParams::new(node_id, MARKER_ATTRIBUTE),
+                "Element::resolve_node_id()",
+            )
+            .await;
             Ok::<(), OpenPageError>(())
         });
 
@@ -3146,17 +3320,83 @@ impl Element {
         }
     }
 
+    fn path_via_page_marker(&self, xpath: bool) -> OpenPageResult<String> {
+        let marker = format!("{}-path", next_marker_batch());
+        self.set_attr(MARKER_ATTRIBUTE, &marker)?;
+        let selector = format!(r#"[{MARKER_ATTRIBUTE}="{marker}"]"#);
+        let script = if xpath {
+            format!(
+                "(() => {{ \
+                    const el = document.querySelector({selector}); \
+                    if (!el || el.nodeType !== Node.ELEMENT_NODE) return null; \
+                    let path = ''; \
+                    let node = el; \
+                    while (node && node.nodeType === Node.ELEMENT_NODE) {{ \
+                        const tag = node.nodeName.toLowerCase(); \
+                        let sib = node; \
+                        let nth = 0; \
+                        while (sib) {{ \
+                            if (sib.nodeType === Node.ELEMENT_NODE && sib.nodeName.toLowerCase() === tag) nth += 1; \
+                            sib = sib.previousSibling; \
+                        }} \
+                        path = '/' + tag + '[' + nth + ']' + path; \
+                        node = node.parentNode; \
+                    }} \
+                    return path; \
+                }})()",
+                selector = json_string(&selector)?,
+            )
+        } else {
+            format!(
+                "(() => {{ \
+                    const el = document.querySelector({selector}); \
+                    if (!el || el.nodeType !== Node.ELEMENT_NODE) return null; \
+                    let path = ''; \
+                    let node = el; \
+                    while (node && node.nodeType === Node.ELEMENT_NODE) {{ \
+                        const id = node.getAttribute('id'); \
+                        if (id) {{ \
+                            path = '>' + node.tagName.toLowerCase() + '#' + id + path; \
+                            node = node.parentNode; \
+                            continue; \
+                        }} \
+                        let sib = node; \
+                        let nth = 0; \
+                        while (sib) {{ \
+                            if (sib.nodeType === Node.ELEMENT_NODE) nth += 1; \
+                            sib = sib.previousSibling; \
+                        }} \
+                        path = '>' + node.tagName.toLowerCase() + ':nth-child(' + nth + ')' + path; \
+                        node = node.parentNode; \
+                    }} \
+                    return path.startsWith('>') ? path.slice(1) : path; \
+                }})()",
+                selector = json_string(&selector)?,
+            )
+        };
+        let page = self.page_wrapper();
+        let result = page.run_js(&script);
+        let cleanup = self.remove_attr(MARKER_ATTRIBUTE);
+        let value = match (result, cleanup) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Err(err), Ok(())) => Err(err),
+            (Ok(_), Err(err)) => Err(err),
+            (Err(err), Err(_)) => Err(err),
+        }?;
+        value_as_string(value, if xpath { "xpath" } else { "css path" })
+    }
+
     fn viewport_point_to_screen(&self, point: (f64, f64)) -> OpenPageResult<Option<(f64, f64)>> {
-        let (viewport_screen_x, viewport_screen_y) = self
-            .top_viewport_screen_origin()
-            .map_err(|err| {
+        let (viewport_screen_x, viewport_screen_y) =
+            self.top_viewport_screen_origin().map_err(|err| {
                 OpenPageError::PageOperation(format!(
                     "resolve top viewport screen origin failed: {err}"
                 ))
             })?;
-        let Some((frame_offset_x, frame_offset_y)) = self.frame_viewport_offset().map_err(|err| {
-            OpenPageError::PageOperation(format!("resolve frame viewport offset failed: {err}"))
-        })?
+        let Some((frame_offset_x, frame_offset_y)) =
+            self.frame_viewport_offset().map_err(|err| {
+                OpenPageError::PageOperation(format!("resolve frame viewport offset failed: {err}"))
+            })?
         else {
             return Ok(None);
         };
@@ -3186,12 +3426,12 @@ impl Element {
             "top window viewport size with scrollbar",
         )?;
 
-        let (window_left, window_top) = if matches!(window_state.as_str(), "maximized" | "fullscreen")
-        {
-            (0.0, 0.0)
-        } else {
-            (window_left as f64 + 7.0, window_top as f64)
-        };
+        let (window_left, window_top) =
+            if matches!(window_state.as_str(), "maximized" | "fullscreen") {
+                (0.0, 0.0)
+            } else {
+                (window_left as f64 + 7.0, window_top as f64)
+            };
 
         let (window_width, window_height) = match window_state.as_str() {
             "fullscreen" => (window_width as f64, window_height as f64),
@@ -3208,9 +3448,9 @@ impl Element {
     fn frame_viewport_offset(&self) -> OpenPageResult<Option<(f64, f64)>> {
         let page = self.page_wrapper();
         let main_frame_id = page.main_frame_id()?;
-        let current_frame_id = self
-            .element_frame_id()
-            .map_err(|err| OpenPageError::PageOperation(format!("resolve element frame id failed: {err}")))?;
+        let current_frame_id = self.element_frame_id().map_err(|err| {
+            OpenPageError::PageOperation(format!("resolve element frame id failed: {err}"))
+        })?;
         if current_frame_id == main_frame_id {
             return Ok(Some((0.0, 0.0)));
         }
@@ -3264,9 +3504,10 @@ impl Element {
             return Ok(frame_id);
         }
         if value_as_bool(
-            self.run_js("return window.top === window;").map_err(|err| {
-                OpenPageError::PageOperation(format!("element top-frame check failed: {err}"))
-            })?,
+            self.run_js("return window.top === window;")
+                .map_err(|err| {
+                    OpenPageError::PageOperation(format!("element top-frame check failed: {err}"))
+                })?,
             "element top-frame check",
         )? {
             return Ok(main_frame_id);
@@ -3283,11 +3524,18 @@ impl Element {
                     continue;
                 }
                 let owner_element = self.frame_owner_element(&frame_id)?;
-                let frame = Frame::new(page.clone(), frame_id.clone(), owner_element);
+                let frame = Frame::new(
+                    page.clone(),
+                    frame_id.clone(),
+                    owner_element,
+                    Arc::clone(self.none_element_runtime_config_handle()),
+                );
                 match frame.find(selector.as_str()) {
                     Ok(_) => return Ok(Some(frame_id)),
                     Err(OpenPageError::ElementNotFound(_)) => {}
-                    Err(OpenPageError::JavaScript(message)) if message.contains("No value found") => {
+                    Err(OpenPageError::JavaScript(message))
+                        if message.contains("No value found") =>
+                    {
                         if deferred_scan_error.is_none() {
                             deferred_scan_error = Some(OpenPageError::PageOperation(format!(
                                 "scan frame {frame_id} for marker failed: javascript evaluation failed: {message}"
@@ -3297,7 +3545,7 @@ impl Element {
                     Err(err) => {
                         return Err(OpenPageError::PageOperation(format!(
                             "scan frame {frame_id} for marker failed: {err}"
-                        )))
+                        )));
                     }
                 }
             }
@@ -3316,13 +3564,10 @@ impl Element {
 
         let describe_result = |params: DescribeNodeParams| {
             self.runtime.block_on(async {
-                self.page
-                    .execute(params)
+                execute_page_command_async(&self.page, params, "Element::describe_frame_id()")
                     .await
-                    .map_err(|err| OpenPageError::PageOperation(err.to_string()))
                     .map(|response| {
                         response
-                            .result
                             .node
                             .frame_id
                             .map(|frame_id| frame_id.as_ref().to_string())
@@ -3334,7 +3579,9 @@ impl Element {
             DescribeNodeParams::builder()
                 .object_id(self.inner.remote_object_id.clone())
                 .build(),
-            DescribeNodeParams::builder().node_id(self.inner.node_id).build(),
+            DescribeNodeParams::builder()
+                .node_id(self.inner.node_id)
+                .build(),
             DescribeNodeParams::builder()
                 .backend_node_id(self.inner.backend_node_id)
                 .build(),
@@ -3355,18 +3602,19 @@ impl Element {
 
     fn frame_owner_element(&self, frame_id: &str) -> OpenPageResult<Element> {
         let (owner_node_id, owner_backend_node_id) = self.runtime.block_on(async {
-            let response = self
-                .page
-                .execute(GetFrameOwnerParams::new(FrameId::new(frame_id.to_string())))
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            let response = execute_page_command_async(
+                &self.page,
+                GetFrameOwnerParams::new(FrameId::new(frame_id.to_string())),
+                "Element::frame_owner_element()",
+            )
+            .await?;
             Ok::<
                 (
                     Option<chromiumoxide::cdp::browser_protocol::dom::NodeId>,
                     BackendNodeId,
                 ),
                 OpenPageError,
-            >((response.result.node_id, response.result.backend_node_id))
+            >((response.node_id, response.backend_node_id))
         })?;
         if let Some(node_id) = owner_node_id {
             self.resolve_node_id(node_id, "frame owner could not be resolved to an element")
@@ -3377,18 +3625,19 @@ impl Element {
 
     fn frame_owner_viewport_location(&self, frame_id: &str) -> OpenPageResult<Option<(f64, f64)>> {
         let (owner_node_id, owner_backend_node_id) = self.runtime.block_on(async {
-            let response = self
-                .page
-                .execute(GetFrameOwnerParams::new(FrameId::new(frame_id.to_string())))
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            let response = execute_page_command_async(
+                &self.page,
+                GetFrameOwnerParams::new(FrameId::new(frame_id.to_string())),
+                "Element::frame_owner_viewport_location()",
+            )
+            .await?;
             Ok::<
                 (
                     Option<chromiumoxide::cdp::browser_protocol::dom::NodeId>,
                     BackendNodeId,
                 ),
                 OpenPageError,
-            >((response.result.node_id, response.result.backend_node_id))
+            >((response.node_id, response.backend_node_id))
         })?;
 
         let model = self.runtime.block_on(async {
@@ -3399,14 +3648,16 @@ impl Element {
                     .backend_node_id(owner_backend_node_id)
                     .build()
             };
-            self.page
-                .execute(params)
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+            execute_page_command_async(
+                &self.page,
+                params,
+                "Element::frame_owner_viewport_location()",
+            )
+            .await
         });
         match model {
             Ok(response) => {
-                let quad = &response.result.model.border;
+                let quad = &response.model.border;
                 if quad.inner().len() < 2 {
                     return Err(OpenPageError::PageOperation(
                         "frame owner box model did not contain a valid quad".to_string(),
@@ -3433,9 +3684,7 @@ impl Element {
             })?
             .as_f64()
             .ok_or_else(|| {
-                OpenPageError::JavaScript(
-                    "top window devicePixelRatio was not numeric".to_string(),
-                )
+                OpenPageError::JavaScript("top window devicePixelRatio was not numeric".to_string())
             })
     }
 
@@ -3495,10 +3744,7 @@ impl Element {
             pressed.button = Some(button.clone());
             pressed.buttons = Some(buttons);
             pressed.click_count = Some(click_count.into());
-            self.page
-                .execute(pressed)
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            execute_page_command_async(&self.page, pressed, "Element::click_at_point()").await?;
 
             let mut released = DispatchMouseEventParams::new(
                 DispatchMouseEventType::MouseReleased,
@@ -3508,10 +3754,7 @@ impl Element {
             released.button = Some(button);
             released.buttons = Some(0);
             released.click_count = Some(click_count.into());
-            self.page
-                .execute(released)
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            execute_page_command_async(&self.page, released, "Element::click_at_point()").await?;
             Ok(())
         })
     }
@@ -3529,10 +3772,7 @@ impl Element {
             );
             pressed.button = Some(MouseButton::Left);
             pressed.click_count = Some(1);
-            self.page
-                .execute(pressed)
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            execute_page_command_async(&self.page, pressed, "Element::drag_between()").await?;
             Ok::<(), OpenPageError>(())
         })?;
 
@@ -3559,10 +3799,7 @@ impl Element {
                 DispatchMouseEventParams::new(DispatchMouseEventType::MouseReleased, end.x, end.y);
             released.button = Some(MouseButton::Left);
             released.click_count = Some(1);
-            self.page
-                .execute(released)
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            execute_page_command_async(&self.page, released, "Element::drag_between()").await?;
             Ok(())
         })
     }
@@ -3626,33 +3863,41 @@ impl Element {
         base64_to_bytes: bool,
     ) -> OpenPageResult<Option<ElementResource>> {
         let result = self.runtime.block_on(async {
-            let node = match self
-                .page
-                .execute(
-                    DescribeNodeParams::builder()
-                        .backend_node_id(self.inner.backend_node_id)
-                        .build(),
-                )
-                .await
+            let node = match execute_page_command_async(
+                &self.page,
+                DescribeNodeParams::builder()
+                    .backend_node_id(self.inner.backend_node_id)
+                    .build(),
+                "Element::try_resource_content()",
+            )
+            .await
             {
-                Ok(response) => response.result.node,
+                Ok(response) => response.node,
                 Err(_) => return Ok(None),
             };
 
             let frame_id = match node.frame_id {
                 Some(frame_id) => frame_id,
-                None => match self.page.execute(GetFrameTreeParams::default()).await {
-                    Ok(response) => response.result.frame_tree.frame.id,
+                None => match execute_page_command_async(
+                    &self.page,
+                    GetFrameTreeParams::default(),
+                    "Element::try_resource_content()",
+                )
+                .await
+                {
+                    Ok(response) => response.frame_tree.frame.id,
                     Err(_) => return Ok(None),
                 },
             };
 
-            let response = match self
-                .page
-                .execute(GetResourceContentParams::new(frame_id, src.to_string()))
-                .await
+            let response = match execute_page_command_async(
+                &self.page,
+                GetResourceContentParams::new(frame_id, src.to_string()),
+                "Element::try_resource_content()",
+            )
+            .await
             {
-                Ok(response) => response.result,
+                Ok(response) => response,
                 Err(_) => return Ok(None),
             };
 
@@ -3763,8 +4008,18 @@ impl<'a> ElementClicker<'a> {
         }
     }
 
-    pub fn left(&self) -> OpenPageResult<()> {
-        self.element.click_left()
+    pub fn left(&self) -> OpenPageResult<bool> {
+        self.left_with_options(Some(false), None, true)
+    }
+
+    pub fn left_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        self.element
+            .click_left_with_options(by_js, timeout_ms, wait_stop)
     }
 
     pub fn right(&self) -> OpenPageResult<()> {
@@ -3772,32 +4027,26 @@ impl<'a> ElementClicker<'a> {
     }
 
     pub fn middle(&self, get_tab: bool) -> OpenPageResult<Option<Page>> {
+        if get_tab && self.element.browser.as_ref().is_none() {
+            return Err(OpenPageError::UnsupportedOperation(
+                "clicker().middle(get_tab=true) is only available on browser-backed elements"
+                    .to_string(),
+            ));
+        }
         let timeout_ms = self.timeout_ms(None)?;
         let browser = self.element.browser.as_ref();
-        let current_tab_id = browser.map(|_| self.element.page.target_id().as_ref().to_string());
-        let middle_click_link = if self.element.tag()? == "a" {
-            self.element.link()?.filter(|link| {
-                let link = link.trim();
-                !link.is_empty() && !link.starts_with("javascript:")
-            })
-        } else {
-            None
+        let current_tab_id = match browser {
+            Some(browser) => Some(
+                browser
+                    .newest_tab_id()?
+                    .unwrap_or_else(|| self.element.page.target_id().as_ref().to_string()),
+            ),
+            None => None,
         };
-
-        if get_tab {
-            if let (Some(browser), Some(link)) = (browser, middle_click_link.clone()) {
-                return browser.new_tab(Some(&link), false, true).map(Some);
-            }
+        if get_tab && let Some(browser) = browser {
+            browser.activate_tab(self.element.page.target_id().as_ref())?;
         }
-
-        if let Err(err) = self.element.click_middle() {
-            if get_tab {
-                if let (Some(browser), Some(link)) = (browser, middle_click_link.clone()) {
-                    return browser.new_tab(Some(&link), false, true).map(Some);
-                }
-            }
-            return Err(err);
-        }
+        self.element.click_middle()?;
 
         let detect_timeout_ms = if get_tab {
             timeout_ms
@@ -3809,23 +4058,15 @@ impl<'a> ElementClicker<'a> {
                 browser.wait_for_new_tab(current_tab_id.as_deref(), detect_timeout_ms)?
             {
                 if get_tab {
-                    return browser.get_page(&target_id).map(Some);
-                }
-                return Ok(None);
-            }
-            if let Some(link) = middle_click_link {
-                let page = browser.new_tab(Some(&link), false, true)?;
-                if get_tab {
-                    return Ok(Some(page));
+                    return browser
+                        .wait_for_page(&target_id, detect_timeout_ms)
+                        .map(Some);
                 }
                 return Ok(None);
             }
         }
         if get_tab {
-            return Err(OpenPageError::UnsupportedOperation(
-                "clicker().middle(get_tab=true) is only available on browser-backed elements"
-                    .to_string(),
-            ));
+            return Err(OpenPageError::PageOperation(no_new_tab_message()));
         }
         Ok(None)
     }
@@ -3857,10 +4098,8 @@ impl<'a> ElementClicker<'a> {
             )
         })?;
         uploader.set_files(files)?;
-        if by_js {
-            self.element.run_js("this.click(); return true;")?;
-        } else {
-            self.element.click()?;
+        if !self.left_with_options(Some(by_js), Some(timeout_ms), true)? {
+            return Ok(false);
         }
         uploader.wait_until_inputted(timeout_ms)
     }
@@ -3896,27 +4135,15 @@ impl<'a> ElementClicker<'a> {
     ) -> OpenPageResult<Option<Page>> {
         let browser = self.browser()?;
         let timeout_ms = self.timeout_ms(timeout_ms)?;
-        let current_tab_id = self.element.page.target_id().as_ref().to_string();
-        let link = if self.element.tag()? == "a" {
-            self.element.link()?.filter(|link| {
-                let link = link.trim();
-                !link.is_empty() && !link.starts_with("javascript:")
-            })
-        } else {
-            None
-        };
-        if by_js {
-            self.element.run_js("this.click(); return true;")?;
-        } else {
-            self.element.click()?;
-        }
+        let current_tab_id = browser
+            .newest_tab_id()?
+            .unwrap_or_else(|| self.element.page.target_id().as_ref().to_string());
+        browser.activate_tab(self.element.page.target_id().as_ref())?;
+        let _ = self.left_with_options(Some(by_js), Some(timeout_ms), true)?;
         if let Some(target_id) = browser.wait_for_new_tab(Some(&current_tab_id), timeout_ms)? {
-            return browser.get_page(&target_id).map(Some);
+            return browser.wait_for_page(&target_id, timeout_ms).map(Some);
         }
-        if let Some(link) = link {
-            return browser.new_tab(Some(&link), false, true).map(Some);
-        }
-        Ok(None)
+        Err(OpenPageError::PageOperation(no_new_tab_message()))
     }
 }
 
@@ -4458,11 +4685,12 @@ fn value_as_usize(value: Value, name: &str) -> OpenPageResult<usize> {
     }
 }
 
+#[cfg(test)]
 fn element_path_script(xpath: bool) -> &'static str {
     if xpath {
         "function(){ \
             let el = this; \
-            if (!(el instanceof Element)) return null; \
+            if (!el || el.nodeType !== Node.ELEMENT_NODE) return null; \
             let path = ''; \
             while (el && el.nodeType === Node.ELEMENT_NODE) { \
                 const tag = el.nodeName.toLowerCase(); \
@@ -4480,7 +4708,7 @@ fn element_path_script(xpath: bool) -> &'static str {
     } else {
         "function(){ \
             let el = this; \
-            if (!(el instanceof Element)) return null; \
+            if (!el || el.nodeType !== Node.ELEMENT_NODE) return null; \
             let path = ''; \
             while (el && el.nodeType === Node.ELEMENT_NODE) { \
                 const id = el.getAttribute('id'); \
@@ -4563,7 +4791,11 @@ fn json_string(value: &str) -> OpenPageResult<String> {
     serde_json::to_string(value).map_err(|err| OpenPageError::Serialization(err.to_string()))
 }
 
-fn build_js_invocation(script: &str, args: &[Value], as_expr: bool) -> OpenPageResult<String> {
+pub(crate) fn build_js_invocation(
+    script: &str,
+    args: &[Value],
+    as_expr: bool,
+) -> OpenPageResult<String> {
     let args_json =
         serde_json::to_string(args).map_err(|err| OpenPageError::Serialization(err.to_string()))?;
     if as_expr {
@@ -4595,8 +4827,21 @@ fn parse_optional_locator(locator: Option<&str>) -> OpenPageResult<Option<Locato
     Locator::parse(locator).map(Some)
 }
 
-fn resolve_javascript_timeout_ms(requested: Option<u64>, default_timeout_ms: u64) -> u64 {
+pub(crate) fn resolve_javascript_timeout_ms(
+    requested: Option<u64>,
+    default_timeout_ms: u64,
+) -> u64 {
     requested.unwrap_or(default_timeout_ms).max(1)
+}
+
+pub(crate) fn load_javascript_source(script: &str) -> OpenPageResult<Cow<'_, str>> {
+    match fs::metadata(script) {
+        Ok(metadata) if metadata.is_file() => match fs::read_to_string(script) {
+            Ok(source) => Ok(Cow::Owned(source)),
+            Err(_) => Ok(Cow::Borrowed(script)),
+        },
+        _ => Ok(Cow::Borrowed(script)),
+    }
 }
 
 impl RelativeDirection {

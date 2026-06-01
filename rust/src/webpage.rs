@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread::sleep;
@@ -6,7 +7,10 @@ use std::time::{Duration, Instant};
 use chromiumoxide::Command;
 use serde_json::Value;
 
-use crate::browser::{Browser, LaunchOptions, TabInfo};
+use crate::browser::{
+    Browser, BrowserTabReference, BrowserTabSelector, BrowserTabTargetsInput, BrowserTabTypeInput,
+    DownloadFileExistsMode, LaunchOptions, TabInfo,
+};
 use crate::console::Console;
 use crate::download::DownloadMission;
 use crate::element::{Element, ElementClicker, ElementResource, SelectIndexInput};
@@ -19,12 +23,16 @@ use crate::locator::{
 };
 use crate::page::{
     Actions, ActionsInput, Frame, FrameRect, FrameScroller, FrameSetter, FrameStates, FrameWait,
-    Page, PageElementContent, PageElementInfo, PageElementTarget, PageFrameTarget,
-    PageSaveContent,
+    Page, PageElementContent, PageElementInfo, PageElementTarget, PageFrameTarget, PageSaveContent,
 };
 use crate::screencast::Screencast;
 use crate::session::{
-    CookieEntry, SessionDownload, SessionElement, SessionOptions, SessionPage, SessionXPathResult,
+    CookieEntry, CookieInput, SessionDownload, SessionElement, SessionOptions, SessionPage,
+    SessionXPathResult,
+};
+use crate::settings::{
+    component_state_lock_poisoned_message, timeout_must_be_non_negative_message,
+    wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 
@@ -98,6 +106,22 @@ pub struct WebElementWait<'a> {
     element: &'a WebElement,
 }
 
+pub struct WebPageScroller<'a> {
+    page: &'a WebPage,
+}
+
+pub struct WebPageSetter<'a> {
+    page: &'a WebPage,
+}
+
+pub struct WebPageWindowSetter<'a> {
+    page: &'a WebPage,
+}
+
+pub struct WebPageLoadModeSetter<'a> {
+    page: &'a WebPage,
+}
+
 pub enum WebSelectOptionInput<'a> {
     Single(&'a WebElement),
     Many(Vec<&'a WebElement>),
@@ -156,9 +180,10 @@ impl DisconnectedWebPage {
         if wait_ms > 0 {
             sleep(Duration::from_millis(wait_ms));
         }
-        let driver = self.browser.get_page(&self.target_id)?;
+        let browser = self.browser.reconnect()?;
+        let driver = browser.get_page(&self.target_id)?;
         Ok(WebPage {
-            browser: self.browser.clone(),
+            browser,
             driver,
             session: self.session.clone(),
             mode: Arc::clone(&self.mode),
@@ -176,6 +201,15 @@ impl WebFrame {
     pub fn set(&self) -> FrameSetter<'_> {
         match self {
             Self::Browser(frame) => frame.set(),
+        }
+    }
+
+    pub fn set_cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()>
+    where
+        C: Into<CookieInput<'a>>,
+    {
+        match self {
+            Self::Browser(frame) => frame.set_cookies(cookies),
         }
     }
 
@@ -228,6 +262,18 @@ impl WebFrame {
     pub fn tab_id(&self) -> String {
         match self {
             Self::Browser(frame) => frame.tab_id(),
+        }
+    }
+
+    pub fn set_none_element_value(&self, value: Option<&str>, on_off: bool) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.set_none_element_value(value, on_off),
+        }
+    }
+
+    pub fn set_raise_when_ele_not_found(&self, on_off: bool) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.set_raise_when_ele_not_found(on_off),
         }
     }
 
@@ -354,6 +400,103 @@ impl WebFrame {
     pub fn run_js(&self, expression: &str) -> OpenPageResult<Value> {
         match self {
             Self::Browser(frame) => frame.run_js(expression),
+        }
+    }
+
+    pub fn run_js_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<Value> {
+        match self {
+            Self::Browser(frame) => frame.run_js_with_args(script, args, as_expr),
+        }
+    }
+
+    pub fn run_js_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<Value> {
+        match self {
+            Self::Browser(frame) => frame.run_js_with_options(script, args, as_expr, timeout_ms),
+        }
+    }
+
+    pub fn run_js_loaded(&self, script: &str) -> OpenPageResult<Value> {
+        match self {
+            Self::Browser(frame) => frame.run_js_loaded(script),
+        }
+    }
+
+    pub fn run_js_loaded_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<Value> {
+        match self {
+            Self::Browser(frame) => frame.run_js_loaded_with_args(script, args, as_expr),
+        }
+    }
+
+    pub fn run_js_loaded_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<Value> {
+        match self {
+            Self::Browser(frame) => {
+                frame.run_js_loaded_with_options(script, args, as_expr, timeout_ms)
+            }
+        }
+    }
+
+    pub fn run_async_js(&self, script: &str) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.run_async_js(script),
+        }
+    }
+
+    pub fn run_async_js_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.run_async_js_with_args(script, args, as_expr),
+        }
+    }
+
+    pub fn run_async_js_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => {
+                frame.run_async_js_with_options(script, args, as_expr, timeout_ms)
+            }
+        }
+    }
+
+    pub fn add_init_js(&self, script: &str) -> OpenPageResult<String> {
+        match self {
+            Self::Browser(frame) => frame.add_init_js(script),
+        }
+    }
+
+    pub fn remove_init_js(&self, script_id: Option<&str>) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.remove_init_js(script_id),
         }
     }
 
@@ -989,6 +1132,27 @@ impl WebElement {
             Self::Session(element) => element
                 .ele(locator.raw())
                 .map(|value| value.map(Self::Session)),
+        }
+    }
+
+    pub fn get_frame<'a, L>(&self, target: L) -> OpenPageResult<WebFrame>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        match self {
+            Self::Browser(element) => element.get_frame(target).map(WebFrame::Browser),
+            Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
+                "get_frame() is only available in driver mode".to_string(),
+            )),
+        }
+    }
+
+    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
+        match self {
+            Self::Browser(element) => element.get_frame_by_index(index).map(WebFrame::Browser),
+            Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
+                "get_frame_by_index() is only available in driver mode".to_string(),
+            )),
         }
     }
 
@@ -1696,6 +1860,20 @@ impl WebElement {
         }
     }
 
+    pub fn click_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        match self {
+            Self::Browser(element) => element.click_with_options(by_js, timeout_ms, wait_stop),
+            Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
+                "click_with_options() is only available in driver mode".to_string(),
+            )),
+        }
+    }
+
     pub fn click_at(
         &self,
         offset_x: Option<f64>,
@@ -1725,6 +1903,20 @@ impl WebElement {
             Self::Browser(element) => element.click_left(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 "click_left() is only available in driver mode".to_string(),
+            )),
+        }
+    }
+
+    pub fn click_left_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        match self {
+            Self::Browser(element) => element.click_left_with_options(by_js, timeout_ms, wait_stop),
+            Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
+                "click_left_with_options() is only available in driver mode".to_string(),
             )),
         }
     }
@@ -2728,6 +2920,35 @@ impl WebElement {
     }
 }
 
+impl<'a> From<&'a WebPage> for BrowserTabSelector<'a> {
+    fn from(value: &'a WebPage) -> Self {
+        Self::Id(std::borrow::Cow::Owned(value.target_id()))
+    }
+}
+
+impl<'a> From<&'a WebPage> for BrowserTabTargetsInput<'a> {
+    fn from(value: &'a WebPage) -> Self {
+        Self::Single(BrowserTabSelector::from(value))
+    }
+}
+
+impl<'a> From<&'a [&'a WebPage]> for BrowserTabTargetsInput<'a> {
+    fn from(value: &'a [&'a WebPage]) -> Self {
+        Self::Many(
+            value
+                .iter()
+                .map(|item| BrowserTabSelector::from(*item))
+                .collect(),
+        )
+    }
+}
+
+impl<'a> From<&'a Vec<&'a WebPage>> for BrowserTabTargetsInput<'a> {
+    fn from(value: &'a Vec<&'a WebPage>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct WebPage {
     browser: Browser,
@@ -2737,6 +2958,24 @@ pub struct WebPage {
 }
 
 impl WebPage {
+    fn with_driver_page(&self, driver: Page) -> Self {
+        Self {
+            browser: self.browser.clone(),
+            driver,
+            session: self.session.clone(),
+            mode: Arc::clone(&self.mode),
+        }
+    }
+
+    fn mix_tab_reference(&self, reference: BrowserTabReference) -> BrowserTabReference {
+        match reference {
+            BrowserTabReference::Page(page) => {
+                BrowserTabReference::WebPage(self.with_driver_page(page))
+            }
+            other => other,
+        }
+    }
+
     pub fn new(
         mode: WebMode,
         launch_options: LaunchOptions,
@@ -2757,7 +2996,12 @@ impl WebPage {
         self.mode
             .lock()
             .map(|mode| *mode)
-            .map_err(|_| OpenPageError::BrowserOperation("webpage mode lock poisoned".to_string()))
+            .map_err(|_| {
+                OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                    "webpage mode",
+                    "网页模式",
+                ))
+            })
     }
 
     pub fn set_none_element_value(&self, value: Option<&str>, on_off: bool) -> OpenPageResult<()> {
@@ -2804,8 +3048,47 @@ impl WebPage {
         self.browser.tab_infos()
     }
 
-    pub fn latest_tab(&self) -> OpenPageResult<Option<crate::page::Page>> {
-        self.browser.latest_tab()
+    pub fn get_tab<'a, I, T>(
+        &self,
+        id_or_num: Option<I>,
+        title: Option<&str>,
+        url: Option<&str>,
+        tab_type: Option<T>,
+        as_id: bool,
+    ) -> OpenPageResult<Option<BrowserTabReference>>
+    where
+        I: Into<BrowserTabSelector<'a>>,
+        T: Into<BrowserTabTypeInput<'a>>,
+    {
+        self.browser
+            .get_tab(id_or_num, title, url, tab_type, as_id)
+            .map(|reference| reference.map(|reference| self.mix_tab_reference(reference)))
+    }
+
+    pub fn get_tabs<'a, T>(
+        &self,
+        title: Option<&str>,
+        url: Option<&str>,
+        tab_type: Option<T>,
+        as_id: bool,
+    ) -> OpenPageResult<Vec<BrowserTabReference>>
+    where
+        T: Into<BrowserTabTypeInput<'a>>,
+    {
+        self.browser
+            .get_tabs(title, url, tab_type, as_id)
+            .map(|references| {
+                references
+                    .into_iter()
+                    .map(|reference| self.mix_tab_reference(reference))
+                    .collect()
+            })
+    }
+
+    pub fn latest_tab(&self) -> OpenPageResult<Option<BrowserTabReference>> {
+        self.browser
+            .latest_tab()
+            .map(|reference| reference.map(|reference| self.mix_tab_reference(reference)))
     }
 
     pub fn new_tab(
@@ -2813,16 +3096,24 @@ impl WebPage {
         url: Option<&str>,
         new_window: bool,
         background: bool,
+        new_context: bool,
     ) -> OpenPageResult<crate::page::Page> {
-        self.browser.new_tab(url, new_window, background)
+        self.browser
+            .new_tab(url, new_window, background, new_context)
     }
 
-    pub fn activate_tab(&self, target_id: &str) -> OpenPageResult<()> {
-        self.browser.activate_tab(target_id)
+    pub fn activate_tab<'a, T>(&self, target: T) -> OpenPageResult<()>
+    where
+        T: Into<BrowserTabSelector<'a>>,
+    {
+        self.browser.activate_tab(target)
     }
 
-    pub fn close_tabs(&self, target_ids: &[String], others: bool) -> OpenPageResult<usize> {
-        self.browser.close_tabs(target_ids, others)
+    pub fn close_tabs<'a, T>(&self, targets: T, others: bool) -> OpenPageResult<usize>
+    where
+        T: Into<BrowserTabTargetsInput<'a>>,
+    {
+        self.browser.close_tabs(targets, others)
     }
 
     pub fn download_path(&self) -> OpenPageResult<Option<String>> {
@@ -2987,6 +3278,79 @@ impl WebPage {
         self.set_upload_files(files)
     }
 
+    pub fn retry_times(&self) -> OpenPageResult<usize> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.retry_times(),
+            WebMode::Session => self.session.retry_times(),
+        }
+    }
+
+    pub fn retry_interval(&self) -> OpenPageResult<f64> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.retry_interval(),
+            WebMode::Session => self
+                .session
+                .retry_interval_millis()
+                .map(|millis| millis as f64 / 1000.0),
+        }
+    }
+
+    pub fn set_retry(
+        &self,
+        retry_times: Option<usize>,
+        retry_interval_secs: Option<f64>,
+    ) -> OpenPageResult<()> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.set_retry(retry_times, retry_interval_secs),
+            WebMode::Session => self.session.set_retry(
+                retry_times,
+                retry_interval_secs
+                    .map(webpage_timeout_seconds_to_millis)
+                    .transpose()?,
+            ),
+        }
+    }
+
+    pub fn timeouts(&self) -> OpenPageResult<HashMap<&'static str, f64>> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.timeouts(),
+            WebMode::Session => Ok(HashMap::from([(
+                "base",
+                self.session.timeout_secs()? as f64,
+            )])),
+        }
+    }
+
+    pub fn set_timeouts(
+        &self,
+        base_secs: Option<f64>,
+        page_load_secs: Option<f64>,
+        script_secs: Option<f64>,
+    ) -> OpenPageResult<()> {
+        match self.mode()? {
+            WebMode::Driver => self
+                .driver
+                .set_timeouts(base_secs, page_load_secs, script_secs),
+            WebMode::Session => {
+                if page_load_secs.is_some() || script_secs.is_some() {
+                    return Err(OpenPageError::UnsupportedOperation(
+                        "set_timeouts(page_load/script) is only available in driver mode"
+                            .to_string(),
+                    ));
+                }
+                if let Some(base_secs) = base_secs {
+                    if !base_secs.is_finite() || base_secs.is_sign_negative() {
+                        return Err(OpenPageError::UnsupportedOperation(format!(
+                            "set_timeouts(base) requires a finite non-negative number, got {base_secs}"
+                        )));
+                    }
+                    self.session.set_timeout(base_secs.round() as u64)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
     pub fn load_mode(&self) -> OpenPageResult<String> {
         self.driver.load_mode()
     }
@@ -2997,6 +3361,10 @@ impl WebPage {
 
     pub fn window_state(&self) -> OpenPageResult<String> {
         self.driver.window_state()
+    }
+
+    pub fn window_id(&self) -> OpenPageResult<i64> {
+        self.driver.window_id()
     }
 
     pub fn window_size(&self) -> OpenPageResult<(i64, i64)> {
@@ -3039,6 +3407,18 @@ impl WebPage {
         self.driver.window_location_set(left, top)
     }
 
+    pub fn zoom_factor(&self) -> OpenPageResult<f64> {
+        self.driver.zoom_factor()
+    }
+
+    pub fn set_zoom_factor(&self, factor: f64) -> OpenPageResult<()> {
+        self.driver.set_zoom_factor(factor)
+    }
+
+    pub fn reset_zoom_factor(&self) -> OpenPageResult<()> {
+        self.driver.reset_zoom_factor()
+    }
+
     pub fn wait_for_download(
         &self,
         filename: Option<&str>,
@@ -3053,6 +3433,14 @@ impl WebPage {
 
     pub fn last_download(&self) -> OpenPageResult<Option<DownloadMission>> {
         self.browser.last_download()
+    }
+
+    pub fn clear_finished_downloads(&self) -> OpenPageResult<usize> {
+        self.browser.clear_finished_downloads()
+    }
+
+    pub fn cancel_download(&self, guid: &str) -> OpenPageResult<()> {
+        self.browser.cancel_download(guid)
     }
 
     pub fn last_session_download(&self) -> OpenPageResult<Option<SessionDownload>> {
@@ -3184,6 +3572,18 @@ impl WebPage {
         self.driver.browser_pid()
     }
 
+    pub fn process_id(&self) -> Option<u32> {
+        self.driver.process_id()
+    }
+
+    pub fn browser_version(&self) -> OpenPageResult<String> {
+        self.driver.browser_version()
+    }
+
+    pub fn address(&self) -> OpenPageResult<String> {
+        self.driver.address()
+    }
+
     pub fn user_agent(&self) -> OpenPageResult<Option<String>> {
         match self.mode()? {
             WebMode::Driver => Ok(Some(self.driver.user_agent()?)),
@@ -3233,7 +3633,8 @@ impl WebPage {
                 "save_with_options() is only available in driver mode".to_string(),
             ));
         }
-        self.driver.save_with_options(path, name, as_pdf, pdf_options)
+        self.driver
+            .save_with_options(path, name, as_pdf, pdf_options)
     }
 
     pub fn save_pdf(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
@@ -3292,6 +3693,24 @@ impl WebPage {
             .get_screenshot(path, name, full_page, left_top, right_bottom)
     }
 
+    pub fn scroll_position(&self) -> OpenPageResult<(f64, f64)> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "scroll_position() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.scroll_position()
+    }
+
+    pub fn viewport_size(&self) -> OpenPageResult<Option<(f64, f64)>> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "viewport_size() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.viewport_size()
+    }
+
     pub fn refresh(&self, ignore_cache: bool) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
@@ -3317,6 +3736,14 @@ impl WebPage {
             ));
         }
         self.driver.forward(steps)
+    }
+
+    pub fn scroll(&self) -> WebPageScroller<'_> {
+        WebPageScroller { page: self }
+    }
+
+    pub fn set(&self) -> WebPageSetter<'_> {
+        WebPageSetter { page: self }
     }
 
     pub fn scroll_to_top(&self) -> OpenPageResult<()> {
@@ -3434,6 +3861,16 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.driver.cookies(),
             WebMode::Session => self.session.cookies(),
+        }
+    }
+
+    pub fn set_cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()>
+    where
+        C: Into<CookieInput<'a>>,
+    {
+        match self.mode()? {
+            WebMode::Driver => self.driver.set_cookies(cookies),
+            WebMode::Session => self.session.set_cookies(cookies),
         }
     }
 
@@ -3650,7 +4087,10 @@ impl WebPage {
                         return Ok(true);
                     }
                     if Instant::now() >= deadline {
-                        return Ok(false);
+                        return wait_timeout_result(
+                            "WebPage::wait_for_elements_loaded()",
+                            timeout_ms,
+                        );
                     }
                     sleep(Duration::from_millis(50));
                 }
@@ -3682,9 +4122,8 @@ impl WebPage {
             target,
             timeout_ms,
             |driver, target, remaining| driver.wait_for_ele_hidden(target, remaining),
-            |page, locator, _remaining| match page.session.find(locator) {
-                Ok(_) => Ok(false),
-                Err(_) => Ok(true),
+            |page, locator, remaining| {
+                page.session_wait_until(remaining, || Ok(page.session.find(locator).is_err()))
             },
         )
     }
@@ -3714,9 +4153,7 @@ impl WebPage {
             timeout_ms,
             |driver, target, remaining| driver.wait_for_ele_deleted(target, remaining),
             |page, locator, remaining| {
-                page.session_wait_for_element(locator, remaining, |_ele| {
-                    Ok(page.session.find(locator).is_err())
-                })
+                page.session_wait_until(remaining, || Ok(page.session.find(locator).is_err()))
             },
         )
     }
@@ -3752,17 +4189,35 @@ impl WebPage {
         let target = target.into();
         match self.mode()? {
             WebMode::Driver => driver_wait(&self.driver, target, timeout_ms),
-            WebMode::Session => match target {
-                PageElementTarget::Locator(locator) => {
-                    let locator = Locator::from_input(locator)?.raw().to_string();
-                    session_wait(self, locator.as_str(), timeout_ms)
-                }
-                PageElementTarget::Element(_) | PageElementTarget::WebElement(_) => {
-                    Err(OpenPageError::UnsupportedOperation(
-                        "wait_for_ele_*() only supports element objects in driver mode".to_string(),
-                    ))
-                }
+            WebMode::Session => {
+                let locator = self.session_wait_target_locator(target)?;
+                session_wait(self, locator.as_str(), timeout_ms)
+            }
+        }
+    }
+
+    fn session_wait_target_locator<'a>(
+        &self,
+        target: PageElementTarget<'a>,
+    ) -> OpenPageResult<String> {
+        match target {
+            PageElementTarget::Locator(locator) => {
+                Ok(Locator::from_input(locator)?.raw().to_string())
+            }
+            PageElementTarget::SessionElement(element) => {
+                Ok(format!("xpath:{}", element.xpath()?))
+            }
+            PageElementTarget::WebElement(element) => match element {
+                WebElement::Session(element) => Ok(format!("xpath:{}", element.xpath()?)),
+                WebElement::Browser(_) => Err(OpenPageError::UnsupportedOperation(
+                    "browser-backed element object is not supported for session mode wait_for_ele_*()"
+                        .to_string(),
+                )),
             },
+            PageElementTarget::Element(_) => Err(OpenPageError::UnsupportedOperation(
+                "browser-backed element object is not supported for session mode wait_for_ele_*()"
+                    .to_string(),
+            )),
         }
     }
 
@@ -3783,10 +4238,30 @@ impl WebPage {
                 Err(_) => {
                     sleep(Duration::from_millis(50));
                     if Instant::now() >= deadline {
-                        return Ok(false);
+                        return wait_timeout_result(
+                            "WebPage::session_wait_for_element()",
+                            timeout_ms,
+                        );
                     }
                 }
             }
+        }
+    }
+
+    fn session_wait_until<F>(&self, timeout_ms: u64, check: F) -> OpenPageResult<bool>
+    where
+        F: Fn() -> OpenPageResult<bool>,
+    {
+        let timeout = Duration::from_millis(timeout_ms.max(1));
+        let deadline = Instant::now() + timeout;
+        loop {
+            if check()? {
+                return Ok(true);
+            }
+            if Instant::now() >= deadline {
+                return wait_timeout_result("WebPage::session_wait_until()", timeout_ms);
+            }
+            sleep(Duration::from_millis(50));
         }
     }
 
@@ -3987,31 +4462,52 @@ impl WebPage {
         }
     }
 
-    pub fn get_frame<'a, L>(&self, target: L) -> OpenPageResult<WebElement>
+    pub fn get_frame<'a, L>(&self, target: L) -> OpenPageResult<WebFrame>
     where
         L: Into<PageFrameTarget<'a>>,
     {
         match self.mode()? {
-            WebMode::Driver => self.driver.get_frame(target).map(WebElement::Browser),
+            WebMode::Driver => self.driver.get_frame(target).map(WebFrame::Browser),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 "get_frame() is only available in driver mode".to_string(),
             )),
         }
     }
 
-    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<WebElement> {
+    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
         match self.mode()? {
-            WebMode::Driver => self
-                .driver
-                .get_frame_by_index(index)
-                .map(WebElement::Browser),
+            WebMode::Driver => self.driver.get_frame_by_index(index).map(WebFrame::Browser),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 "get_frame_by_index() is only available in driver mode".to_string(),
             )),
         }
     }
 
-    pub fn get_frames<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
+    pub fn get_frame_ele<'a, L>(&self, target: L) -> OpenPageResult<WebElement>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        match self.mode()? {
+            WebMode::Driver => self.driver.get_frame_ele(target).map(WebElement::Browser),
+            WebMode::Session => Err(OpenPageError::UnsupportedOperation(
+                "get_frame_ele() is only available in driver mode".to_string(),
+            )),
+        }
+    }
+
+    pub fn get_frame_ele_by_index(&self, index: usize) -> OpenPageResult<WebElement> {
+        match self.mode()? {
+            WebMode::Driver => self
+                .driver
+                .get_frame_ele_by_index(index)
+                .map(WebElement::Browser),
+            WebMode::Session => Err(OpenPageError::UnsupportedOperation(
+                "get_frame_ele_by_index() is only available in driver mode".to_string(),
+            )),
+        }
+    }
+
+    pub fn get_frames<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebFrame>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -4019,9 +4515,24 @@ impl WebPage {
             WebMode::Driver => self
                 .driver
                 .get_frames(locator)
-                .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
+                .map(|frames| frames.into_iter().map(WebFrame::Browser).collect()),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 "get_frames() is only available in driver mode".to_string(),
+            )),
+        }
+    }
+
+    pub fn get_frame_eles<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        match self.mode()? {
+            WebMode::Driver => self
+                .driver
+                .get_frame_eles(locator)
+                .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
+            WebMode::Session => Err(OpenPageError::UnsupportedOperation(
+                "get_frame_eles() is only available in driver mode".to_string(),
             )),
         }
     }
@@ -4031,7 +4542,7 @@ impl WebPage {
         L: Into<PageFrameTarget<'a>>,
     {
         match self.mode()? {
-            WebMode::Driver => self.driver.get_frame_context(target).map(WebFrame::Browser),
+            WebMode::Driver => self.get_frame(target),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 "get_frame_context() is only available in driver mode".to_string(),
             )),
@@ -4040,10 +4551,7 @@ impl WebPage {
 
     pub fn get_frame_context_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
         match self.mode()? {
-            WebMode::Driver => self
-                .driver
-                .get_frame_context_by_index(index)
-                .map(WebFrame::Browser),
+            WebMode::Driver => self.get_frame_by_index(index),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 "get_frame_context_by_index() is only available in driver mode".to_string(),
             )),
@@ -4055,10 +4563,7 @@ impl WebPage {
         L: Into<LocatorInput<'a>>,
     {
         match self.mode()? {
-            WebMode::Driver => self
-                .driver
-                .get_frame_contexts(locator)
-                .map(|frames| frames.into_iter().map(WebFrame::Browser).collect()),
+            WebMode::Driver => self.get_frames(locator),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 "get_frame_contexts() is only available in driver mode".to_string(),
             )),
@@ -4123,6 +4628,114 @@ impl WebPage {
         self.driver.run_js(expression)
     }
 
+    pub fn run_js_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<Value> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "run_js_with_args() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.run_js_with_args(script, args, as_expr)
+    }
+
+    pub fn run_js_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<Value> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "run_js_with_options() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver
+            .run_js_with_options(script, args, as_expr, timeout_ms)
+    }
+
+    pub fn run_js_loaded(&self, script: &str) -> OpenPageResult<Value> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "run_js_loaded() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.run_js_loaded(script)
+    }
+
+    pub fn run_js_loaded_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<Value> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "run_js_loaded_with_args() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.run_js_loaded_with_args(script, args, as_expr)
+    }
+
+    pub fn run_js_loaded_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<Value> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "run_js_loaded_with_options() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver
+            .run_js_loaded_with_options(script, args, as_expr, timeout_ms)
+    }
+
+    pub fn run_async_js(&self, script: &str) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "run_async_js() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.run_async_js(script)
+    }
+
+    pub fn run_async_js_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "run_async_js_with_args() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.run_async_js_with_args(script, args, as_expr)
+    }
+
+    pub fn run_async_js_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "run_async_js_with_options() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver
+            .run_async_js_with_options(script, args, as_expr, timeout_ms)
+    }
+
     pub fn stop_loading(&self) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
@@ -4144,6 +4757,18 @@ impl WebPage {
         self.driver.execute_cdp(command)
     }
 
+    pub fn run_cdp<T>(&self, command: T) -> OpenPageResult<T::Response>
+    where
+        T: Command,
+    {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "run_cdp() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.run_cdp(command)
+    }
+
     pub fn execute_cdp_loaded<T>(&self, command: T) -> OpenPageResult<T::Response>
     where
         T: Command,
@@ -4154,6 +4779,18 @@ impl WebPage {
             ));
         }
         self.driver.execute_cdp_loaded(command)
+    }
+
+    pub fn run_cdp_loaded<T>(&self, command: T) -> OpenPageResult<T::Response>
+    where
+        T: Command,
+    {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "run_cdp_loaded() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.run_cdp_loaded(command)
     }
 
     pub fn set_user_agent(&self, user_agent: &str, platform: Option<&str>) -> OpenPageResult<()> {
@@ -4230,6 +4867,49 @@ impl WebPage {
             .clear_cache(session_storage, local_storage, cache, cookies)
     }
 
+    pub fn set_permission(
+        &self,
+        name: &str,
+        setting: &str,
+        origin: Option<&str>,
+        embedded_origin: Option<&str>,
+    ) -> OpenPageResult<String> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "set_permission() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver
+            .set_permission(name, setting, origin, embedded_origin)
+    }
+
+    pub fn reset_permissions(&self) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "reset_permissions() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.reset_permissions()
+    }
+
+    pub fn clipboard_read_text(&self) -> OpenPageResult<String> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "clipboard_read_text() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.clipboard_read_text()
+    }
+
+    pub fn clipboard_write_text(&self, text: &str) -> OpenPageResult<()> {
+        if self.mode()? != WebMode::Driver {
+            return Err(OpenPageError::UnsupportedOperation(
+                "clipboard_write_text() is only available in driver mode".to_string(),
+            ));
+        }
+        self.driver.clipboard_write_text(text)
+    }
+
     pub fn cookies_to_session(&self, copy_user_agent: bool) -> OpenPageResult<()> {
         let url = self.driver.url()?;
         if url.is_empty() {
@@ -4261,17 +4941,62 @@ impl WebPage {
         Ok(())
     }
 
+    pub fn close(&self, others: bool, session: bool) -> OpenPageResult<()> {
+        if others {
+            self.browser.close_tabs(&self.driver, true)?;
+            let target_id = self.driver.target_id();
+            let deadline = Instant::now() + Duration::from_millis(1_000);
+            loop {
+                let tab_ids = self.tab_ids()?;
+                if tab_ids.len() == 1 && tab_ids[0] == target_id {
+                    return Ok(());
+                }
+                if Instant::now() >= deadline {
+                    return Err(crate::settings::timeout_error("WebPage::close()", 1_000));
+                }
+                sleep(Duration::from_millis(20));
+            }
+        }
+
+        self.browser.close_tabs(&self.driver, false)?;
+        if session {
+            self.session.close()?;
+        }
+        Ok(())
+    }
+
+    pub fn close_driver(self) -> OpenPageResult<SessionPage> {
+        self.change_mode(Some(WebMode::Session), true, true)?;
+        let WebPage {
+            driver, session, ..
+        } = self;
+        let _ = driver
+            .execute_cdp(chromiumoxide::cdp::browser_protocol::browser::CloseParams::default());
+        Ok(session)
+    }
+
+    pub fn close_session(self) -> OpenPageResult<Page> {
+        self.change_mode(Some(WebMode::Driver), true, true)?;
+        let WebPage {
+            driver, session, ..
+        } = self;
+        session.close()?;
+        Ok(driver)
+    }
+
     pub fn quit(&self) -> OpenPageResult<()> {
         self.browser.close()
     }
 
     pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<Self> {
-        if wait_ms > 0 {
-            sleep(Duration::from_millis(wait_ms));
-        }
-        let driver = self.browser.get_page(&self.driver.target_id())?;
+        let driver = self.driver.reconnect(wait_ms)?;
+        let browser = driver.browser().cloned().ok_or_else(|| {
+            OpenPageError::UnsupportedOperation(
+                "reconnect() is only available in driver mode".to_string(),
+            )
+        })?;
         Ok(Self {
-            browser: self.browser.clone(),
+            browser,
             driver,
             session: self.session.clone(),
             mode: Arc::clone(&self.mode),
@@ -4317,7 +5042,7 @@ impl WebPage {
                 return Ok(true);
             }
             if Instant::now() >= deadline {
-                return Ok(false);
+                return wait_timeout_result("WebPage::wait_for_change()", timeout_ms);
             }
             sleep(Duration::from_millis(50));
         }
@@ -4325,7 +5050,10 @@ impl WebPage {
 
     fn set_mode(&self, mode: WebMode) -> OpenPageResult<()> {
         let mut current = self.mode.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("webpage mode lock poisoned".to_string())
+            OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                "webpage mode",
+                "网页模式",
+            ))
         })?;
         *current = mode;
         Ok(())
@@ -4342,8 +5070,18 @@ impl<'a> WebElementClicker<'a> {
         }
     }
 
-    pub fn left(&self) -> OpenPageResult<()> {
-        self.element.click_left()
+    pub fn left(&self) -> OpenPageResult<bool> {
+        self.left_with_options(Some(false), None, true)
+    }
+
+    pub fn left_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        self.element
+            .click_left_with_options(by_js, timeout_ms, wait_stop)
     }
 
     pub fn right(&self) -> OpenPageResult<()> {
@@ -4847,11 +5585,595 @@ impl WebElementWait<'_> {
     }
 }
 
+impl WebPageScroller<'_> {
+    pub fn to_top(&self) -> OpenPageResult<()> {
+        self.page.scroll_to_top()
+    }
+
+    pub fn to_bottom(&self) -> OpenPageResult<()> {
+        self.page.scroll_to_bottom()
+    }
+
+    pub fn to_half(&self) -> OpenPageResult<()> {
+        self.page.scroll_to_half()
+    }
+
+    pub fn to_rightmost(&self) -> OpenPageResult<()> {
+        self.page.scroll_to_rightmost()
+    }
+
+    pub fn to_leftmost(&self) -> OpenPageResult<()> {
+        self.page.scroll_to_leftmost()
+    }
+
+    pub fn to_location(&self, x: f64, y: f64) -> OpenPageResult<()> {
+        self.page.scroll_to_location(x, y)
+    }
+
+    pub fn up(&self, pixels: f64) -> OpenPageResult<()> {
+        self.page.scroll_up(pixels)
+    }
+
+    pub fn down(&self, pixels: f64) -> OpenPageResult<()> {
+        self.page.scroll_down(pixels)
+    }
+
+    pub fn left(&self, pixels: f64) -> OpenPageResult<()> {
+        self.page.scroll_left(pixels)
+    }
+
+    pub fn right(&self, pixels: f64) -> OpenPageResult<()> {
+        self.page.scroll_right(pixels)
+    }
+}
+
+impl WebPageSetter<'_> {
+    pub fn window(&self) -> WebPageWindowSetter<'_> {
+        WebPageWindowSetter { page: self.page }
+    }
+
+    pub fn load_mode(&self) -> WebPageLoadModeSetter<'_> {
+        WebPageLoadModeSetter { page: self.page }
+    }
+
+    pub fn blocked_urls(&self, patterns: &[String]) -> OpenPageResult<()> {
+        self.page.set_blocked_urls(patterns)
+    }
+
+    pub fn headers(&self, headers: &[(String, String)]) -> OpenPageResult<()> {
+        self.page.set_headers(headers)
+    }
+
+    pub fn user_agent(&self, user_agent: &str, platform: Option<&str>) -> OpenPageResult<()> {
+        self.page.set_user_agent(user_agent, platform)
+    }
+
+    pub fn session_storage(&self, item: &str, value: Option<&str>) -> OpenPageResult<()> {
+        self.page.set_session_storage(item, value)
+    }
+
+    pub fn local_storage(&self, item: &str, value: Option<&str>) -> OpenPageResult<()> {
+        self.page.set_local_storage(item, value)
+    }
+
+    pub fn auto_handle_alert(
+        &self,
+        accept: Option<bool>,
+        prompt_text: Option<&str>,
+    ) -> OpenPageResult<()> {
+        self.page.set_auto_alert_action(accept, prompt_text)
+    }
+
+    pub fn cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()>
+    where
+        C: Into<CookieInput<'a>>,
+    {
+        self.page.set_cookies(cookies)
+    }
+
+    pub fn clear_cookies(&self) -> OpenPageResult<()> {
+        self.page.clear_cookies()
+    }
+
+    pub fn remove_cookie(
+        &self,
+        name: &str,
+        url: Option<&str>,
+        domain: Option<&str>,
+        path: Option<&str>,
+    ) -> OpenPageResult<()> {
+        self.page.remove_cookie(name, url, domain, path)
+    }
+
+    pub fn download_path(&self, path: &str) -> OpenPageResult<()> {
+        self.page.set_current_tab_download_path(path)
+    }
+
+    pub fn download_file_exists(&self, mode: DownloadFileExistsMode) -> OpenPageResult<()> {
+        self.page.set_current_tab_download_file_exists_mode(mode)
+    }
+
+    pub fn when_download_file_exists(&self, mode: &str) -> OpenPageResult<()> {
+        self.page.when_current_tab_download_file_exists(mode)
+    }
+
+    pub fn download_file_name(
+        &self,
+        rename: Option<&str>,
+        suffix: Option<&str>,
+    ) -> OpenPageResult<()> {
+        self.page
+            .set_current_tab_download_file_name(rename, suffix, suffix.is_some())
+    }
+
+    pub fn upload_files(&self, files: &[String]) -> OpenPageResult<()> {
+        self.page.set_upload_files(files)
+    }
+
+    pub fn upload_paths(&self, files: &[String]) -> OpenPageResult<()> {
+        self.page.set_upload_paths(files)
+    }
+
+    pub fn activate(&self) -> OpenPageResult<()> {
+        self.page.activate()
+    }
+
+    pub fn retry_times(&self, times: usize) -> OpenPageResult<()> {
+        self.page.set_retry(Some(times), None)
+    }
+
+    pub fn retry_interval(&self, interval_secs: f64) -> OpenPageResult<()> {
+        self.page.set_retry(None, Some(interval_secs))
+    }
+
+    pub fn timeouts(
+        &self,
+        base_secs: Option<f64>,
+        page_load_secs: Option<f64>,
+        script_secs: Option<f64>,
+    ) -> OpenPageResult<()> {
+        self.page
+            .set_timeouts(base_secs, page_load_secs, script_secs)
+    }
+}
+
+impl WebPageWindowSetter<'_> {
+    pub fn max(&self) -> OpenPageResult<()> {
+        self.page.window_max()
+    }
+
+    pub fn mini(&self) -> OpenPageResult<()> {
+        self.page.window_min()
+    }
+
+    pub fn full(&self) -> OpenPageResult<()> {
+        self.page.window_full()
+    }
+
+    pub fn normal(&self) -> OpenPageResult<()> {
+        self.page.window_normal()
+    }
+
+    pub fn size(&self, width: Option<i64>, height: Option<i64>) -> OpenPageResult<()> {
+        self.page.window_size_set(width, height)
+    }
+
+    pub fn location(&self, x: Option<i64>, y: Option<i64>) -> OpenPageResult<()> {
+        self.page.window_location_set(x, y)
+    }
+
+    pub fn hide(&self) -> OpenPageResult<()> {
+        self.page.window_hide()
+    }
+
+    pub fn show(&self) -> OpenPageResult<()> {
+        self.page.window_show()
+    }
+}
+
+impl WebPageLoadModeSetter<'_> {
+    pub fn normal(&self) -> OpenPageResult<()> {
+        self.page.set_load_mode(crate::browser::LoadMode::Normal)
+    }
+
+    pub fn eager(&self) -> OpenPageResult<()> {
+        self.page.set_load_mode(crate::browser::LoadMode::Eager)
+    }
+
+    pub fn none(&self) -> OpenPageResult<()> {
+        self.page.set_load_mode(crate::browser::LoadMode::None)
+    }
+}
+
+fn webpage_timeout_seconds_to_millis(seconds: f64) -> OpenPageResult<u64> {
+    if !seconds.is_finite() || seconds.is_sign_negative() {
+        return Err(OpenPageError::UnsupportedOperation(
+            timeout_must_be_non_negative_message(seconds),
+        ));
+    }
+    Ok((seconds * 1000.0).round() as u64)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{WebElement, WebFrame, WebPage};
+    use chromiumoxide::cdp::browser_protocol::emulation::SetDeviceMetricsOverrideParams;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use serde_json::{Value, json};
+
+    use super::{WebElement, WebFrame, WebMode, WebPage, webpage_timeout_seconds_to_millis};
+    use crate::browser::{BrowserTabReference, LaunchOptions};
     use crate::element_list::ElementsListExt;
-    use crate::{By, Element, Frame, LocatorInput, Page, ShadowRoot};
+    use crate::settings::scoped_test_settings;
+    use crate::{
+        By, DownloadFileExistsMode, Element, Frame, LocatorInput, OpenPageError, OpenPageResult,
+        Page, SessionCookieParam, SessionElement, SessionOptions, SessionPage, Settings,
+        ShadowRoot,
+    };
+
+    fn runtime_test_temp_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "openpage-webpage-{name}-{}-{nanos}",
+            std::process::id()
+        ))
+    }
+
+    fn launch_headless_test_webpage(
+        name: &str,
+        mode: WebMode,
+    ) -> crate::OpenPageResult<(WebPage, PathBuf)> {
+        let temp_dir = runtime_test_temp_dir(name);
+        fs::create_dir_all(&temp_dir).expect("create runtime test temp dir");
+
+        let mut options = LaunchOptions::default();
+        options.headless(true);
+        options.auto_port(true);
+        options.new_env(true);
+        options.set_tmp_path(&temp_dir);
+        options.set_timeouts(Some(1.0), Some(5.0), Some(1.0));
+
+        WebPage::new(mode, options, SessionOptions::default()).map(|page| (page, temp_dir))
+    }
+
+    fn write_test_html(path: &Path, html: &str) -> crate::OpenPageResult<()> {
+        fs::write(path, html).map_err(|err| {
+            crate::OpenPageError::PageOperation(format!(
+                "write runtime session test html {}: {err}",
+                path.display()
+            ))
+        })
+    }
+
+    #[test]
+    fn webpage_timeout_validation_follows_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english = webpage_timeout_seconds_to_millis(f64::NAN)
+            .expect_err("english timeout validation should fail");
+        assert!(matches!(
+            english,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("timeout must be a finite non-negative number")
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese = webpage_timeout_seconds_to_millis(f64::NAN)
+            .expect_err("chinese timeout validation should fail");
+        assert!(matches!(
+            chinese,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("timeout 必须是有限且非负的数字")
+        ));
+    }
+
+    #[test]
+    fn webpage_browser_info_wrapper_signatures_accept_calls() {
+        fn assert_calls(page: &WebPage) {
+            let _ = page.browser_pid();
+            let _ = page.process_id();
+            let _ = page.browser_version();
+            let _ = page.address();
+            let _ = page.reconnect(0);
+            let _ = page.close(false, false);
+            let _ = page.close(true, true);
+        }
+
+        let _ = assert_calls as fn(&WebPage);
+    }
+
+    #[test]
+    fn webpage_close_driver_and_close_session_signatures_accept_roundtrip_types() {
+        let _ = WebPage::close_driver as fn(WebPage) -> OpenPageResult<SessionPage>;
+        let _ = WebPage::close_session as fn(WebPage) -> OpenPageResult<Page>;
+    }
+
+    #[test]
+    fn webpage_exposes_browser_info_wrappers_at_runtime() {
+        let (page, temp_dir) =
+            launch_headless_test_webpage("browser-info-wrappers", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert_eq!(page.process_id(), page.browser_pid());
+            assert_eq!(page.process_id(), page.browser.process_id());
+            assert_eq!(page.address()?, page.browser.address());
+            assert_eq!(page.browser_version()?, page.browser.version()?);
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("webpage browser-info wrapper regression");
+    }
+
+    #[test]
+    fn webpage_reconnect_rebuilds_browser_connection() {
+        let (page, temp_dir) = launch_headless_test_webpage("webpage-reconnect", WebMode::Driver)
+            .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<WebPage> {
+            page.driver.run_js(
+                r#"(() => {
+                    document.body.innerHTML = '<div id="msg">webpage reconnect</div>';
+                    return true;
+                })()"#,
+            )?;
+
+            let reconnected = page.reconnect(0)?;
+            assert_eq!(reconnected.target_id(), page.target_id());
+            assert_eq!(reconnected.address()?, page.address()?);
+            assert_eq!(reconnected.process_id(), page.process_id());
+            assert_eq!(
+                reconnected
+                    .driver
+                    .run_js("document.querySelector('#msg').textContent")?,
+                Value::from("webpage reconnect")
+            );
+            Ok(reconnected)
+        })();
+
+        let reconnected = match result {
+            Ok(page) => page,
+            Err(err) => {
+                let _ = page.quit();
+                let _ = fs::remove_dir_all(&temp_dir);
+                panic!("webpage reconnect regression failed before cleanup: {err}");
+            }
+        };
+
+        let close_result = reconnected.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage after reconnect: {err}");
+        }
+    }
+
+    #[test]
+    fn webpage_close_driver_returns_session_page_with_synced_state() {
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-close-driver", WebMode::Driver)
+                .expect("launch headless webpage");
+        let html_path = temp_dir.join("close-driver.html");
+        let html_path_str = html_path.to_str().expect("html path str");
+
+        let result = (|| -> crate::OpenPageResult<SessionPage> {
+            write_test_html(
+                &html_path,
+                r#"
+                <html>
+                  <body>
+                    <div id="msg">driver close</div>
+                  </body>
+                </html>
+                "#,
+            )?;
+            assert!(page.get(html_path_str)?);
+
+            let session_page = page.close_driver()?;
+            let url = session_page.url()?.ok_or_else(|| {
+                OpenPageError::PageOperation("session url missing after close_driver".to_string())
+            })?;
+            assert!(
+                url.starts_with("file://") || url == html_path_str,
+                "unexpected session url after close_driver: {url}"
+            );
+            assert!(
+                session_page.html()?.contains("driver close"),
+                "session html should keep driver page content"
+            );
+            Ok(session_page)
+        })();
+
+        let session_page = match result {
+            Ok(page) => page,
+            Err(err) => {
+                let _ = fs::remove_dir_all(&temp_dir);
+                panic!("webpage close_driver regression failed before cleanup: {err}");
+            }
+        };
+
+        let close_result = session_page.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close session page after close_driver: {err}");
+        }
+    }
+
+    #[test]
+    fn webpage_close_session_returns_driver_page_with_synced_state() {
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-close-session", WebMode::Session)
+                .expect("launch headless webpage");
+        let html_path = temp_dir.join("close-session.html");
+        let html_path_str = html_path.to_str().expect("html path str");
+
+        let result = (|| -> crate::OpenPageResult<Page> {
+            write_test_html(
+                &html_path,
+                r#"
+                <html>
+                  <body>
+                    <div id="msg">session close</div>
+                  </body>
+                </html>
+                "#,
+            )?;
+            assert!(page.get(html_path_str)?);
+
+            let driver_page = page.close_session()?;
+            assert!(driver_page.wait_for_doc_loaded(5_000)?);
+            assert_eq!(
+                driver_page.run_js("document.querySelector('#msg').textContent")?,
+                Value::from("session close")
+            );
+            Ok(driver_page)
+        })();
+
+        let driver_page = match result {
+            Ok(page) => page,
+            Err(err) => {
+                let _ = fs::remove_dir_all(&temp_dir);
+                panic!("webpage close_session regression failed before cleanup: {err}");
+            }
+        };
+
+        let close_result = driver_page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close driver page after close_session: {err}");
+        }
+    }
+
+    #[test]
+    fn webpage_close_can_close_other_tabs_without_closing_self() {
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-close-others", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let baseline_tabs = page.tabs_count()?;
+            assert!(baseline_tabs >= 1);
+            let extra = page.new_tab(None, false, false, false)?;
+            assert_eq!(page.tabs_count()?, baseline_tabs + 1);
+
+            page.close(true, true)?;
+            assert_eq!(page.tabs_count()?, 1);
+
+            let current = page
+                .get_tab(Some(&page), None, None, None::<&str>, false)?
+                .expect("current tab should still exist");
+            match current {
+                BrowserTabReference::WebPage(current_page) => {
+                    assert_eq!(current_page.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(current_page) => {
+                    panic!(
+                        "webpage.get_tab() should return webpage, got page {}",
+                        current_page.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("current tab should stay as webpage, got id {id}");
+                }
+            }
+
+            assert!(
+                page.tab_ids()?
+                    .into_iter()
+                    .all(|target_id| target_id != extra.target_id()),
+                "other tabs should be closed"
+            );
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("webpage close others regression");
+    }
+
+    #[test]
+    fn webpage_tab_wrappers_return_webpage_objects_when_requested() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(true);
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-tab-wrappers", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let current = page
+                .get_tab(Some(&page), None, None, None::<&str>, false)?
+                .expect("current tab should resolve");
+            match current {
+                BrowserTabReference::WebPage(current_page) => {
+                    assert_eq!(current_page.target_id(), page.target_id());
+                    assert_eq!(current_page.mode()?, page.mode()?);
+                }
+                BrowserTabReference::Page(current_page) => {
+                    panic!(
+                        "webpage.get_tab() should return webpage, got page {}",
+                        current_page.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("webpage.get_tab() should return webpage, got id {id}");
+                }
+            }
+
+            let latest = page.latest_tab()?.expect("latest tab should exist");
+            match latest {
+                BrowserTabReference::WebPage(latest_page) => {
+                    assert_eq!(latest_page.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(latest_page) => {
+                    panic!(
+                        "webpage.latest_tab() should return webpage, got page {}",
+                        latest_page.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("webpage.latest_tab() should return webpage, got id {id}");
+                }
+            }
+
+            let tab_types = ["page", "tab"];
+            let tabs = page.get_tabs(None, None, Some(&tab_types[..]), false)?;
+            assert!(
+                tabs.into_iter()
+                    .all(|reference| matches!(reference, BrowserTabReference::WebPage(_))),
+                "webpage.get_tabs() should return webpage objects when as_id=false"
+            );
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("webpage tab wrapper regression");
+    }
 
     #[test]
     fn page_and_frame_find_signatures_accept_by_tuples() {
@@ -4934,24 +6256,361 @@ mod tests {
             web_element: &WebElement,
         ) {
             let _ = page.get_frame((By::ID, "theFrame"));
+            let _ = page.get_frame_ele((By::ID, "theFrame"));
+            let _ = page.get_frame(1usize);
+            let _ = page.get_frame_ele(1usize);
+            let _ = page.get_frame(-1isize);
+            let _ = page.get_frame_ele(-1isize);
             let _ = page.get_frame(element);
+            let _ = page.get_frame_ele(element);
             let _ = page.get_frame(frame);
+            let _ = page.get_frame_ele(frame);
             let _ = page.get_frames(Some((By::TAG_NAME, "iframe")));
+            let _ = page.get_frame_eles(Some((By::TAG_NAME, "iframe")));
             let _ = page.get_frame_context((By::ID, "theFrame"));
+            let _ = page.get_frame_context(1usize);
+            let _ = page.get_frame_context(-1isize);
             let _ = page.get_frame_context(element);
             let _ = page.get_frame_context(frame);
             let _ = page.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
+            let _ = element.get_frame((By::ID, "theFrame"));
+            let _ = element.get_frame(1usize);
+            let _ = element.get_frame(frame);
             let _ = web_page.get_frame((By::ID, "theFrame"));
+            let _ = web_page.get_frame_ele((By::ID, "theFrame"));
+            let _ = web_page.get_frame(1usize);
+            let _ = web_page.get_frame_ele(1usize);
+            let _ = web_page.get_frame(-1isize);
+            let _ = web_page.get_frame_ele(-1isize);
             let _ = web_page.get_frame(web_element);
+            let _ = web_page.get_frame_ele(web_element);
             let _ = web_page.get_frame(web_frame);
+            let _ = web_page.get_frame_ele(web_frame);
             let _ = web_page.get_frames(Some((By::TAG_NAME, "iframe")));
+            let _ = web_page.get_frame_eles(Some((By::TAG_NAME, "iframe")));
             let _ = web_page.get_frame_context((By::ID, "theFrame"));
+            let _ = web_page.get_frame_context(1usize);
+            let _ = web_page.get_frame_context(-1isize);
             let _ = web_page.get_frame_context(web_element);
             let _ = web_page.get_frame_context(web_frame);
             let _ = web_page.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
+            let _ = web_element.get_frame((By::ID, "theFrame"));
+            let _ = web_element.get_frame(1usize);
+            let _ = web_element.get_frame(web_frame);
         }
 
         let _ = assert_calls as fn(&Page, &Frame, &Element, &WebPage, &WebFrame, &WebElement);
+    }
+
+    #[test]
+    fn webpage_get_frame_returns_webframe_objects_at_runtime() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-get-frame-objects", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="demo-frame" name="demo-frame"
+                            srcdoc="<html><body><button id='inside'>inside</button></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let frame = page.get_frame("css:#demo-frame")?;
+            let frame_by_index = page.get_frame(1usize)?;
+            let frame_ele = page.get_frame_ele("css:#demo-frame")?;
+            let frames = page.get_frames(Some((By::TAG_NAME, "iframe")))?;
+            let frame_context = page.get_frame_context("css:#demo-frame")?;
+
+            assert_eq!(frame.attr("id")?, Some("demo-frame".to_string()));
+            assert_eq!(frame_by_index.attr("name")?, Some("demo-frame".to_string()));
+            assert_eq!(frame_ele.attr("id")?, Some("demo-frame".to_string()));
+            assert_eq!(frames.len(), 1);
+            assert_eq!(frames[0].attr("id")?, Some("demo-frame".to_string()));
+            assert_eq!(frame_context.attr("id")?, Some("demo-frame".to_string()));
+            frame.set_none_element_value(Some("missing"), true)?;
+            assert_eq!(
+                frame_context.ele(".does-not-exist")?.text()?,
+                Some("missing".to_string())
+            );
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("webpage get_frame runtime regression");
+    }
+
+    #[test]
+    fn page_frame_webpage_and_webframe_js_helper_signatures_accept_common_inputs() {
+        fn assert_calls(page: &Page, frame: &Frame, web_page: &WebPage, web_frame: &WebFrame) {
+            let args = [Value::from(1), Value::from(2)];
+
+            let _ = page.run_js_loaded("1 + 2");
+            let _ =
+                page.run_js_loaded_with_args("return arguments[0] + arguments[1];", &args, false);
+            let _ = page.run_js_loaded_with_options(
+                "arguments[0] + arguments[1]",
+                &args,
+                true,
+                Some(500),
+            );
+            let _ = page.run_js_with_args("return arguments[0] + arguments[1];", &args, false);
+            let _ = page.run_js_with_options("arguments[0] + arguments[1]", &args, true, Some(500));
+            let _ = page.run_async_js("window.__pageAsync = true;");
+            let _ =
+                page.run_async_js_with_args("window.__pageArg = arguments[0];", &args[..1], false);
+            let _ = page.run_async_js_with_options(
+                "arguments[0] + arguments[1]",
+                &args,
+                true,
+                Some(500),
+            );
+
+            let _ = frame.run_js_loaded("1 + 2");
+            let _ =
+                frame.run_js_loaded_with_args("return arguments[0] + arguments[1];", &args, false);
+            let _ = frame.run_js_loaded_with_options(
+                "arguments[0] + arguments[1]",
+                &args,
+                true,
+                Some(500),
+            );
+            let _ = frame.run_js_with_args("return arguments[0] + arguments[1];", &args, false);
+            let _ =
+                frame.run_js_with_options("arguments[0] + arguments[1]", &args, true, Some(500));
+            let _ = frame.run_async_js("window.__frameAsync = true;");
+            let _ = frame.run_async_js_with_args(
+                "window.__frameArg = arguments[0];",
+                &args[..1],
+                false,
+            );
+            let _ = frame.run_async_js_with_options(
+                "arguments[0] + arguments[1]",
+                &args,
+                true,
+                Some(500),
+            );
+            let _ = frame.add_init_js("window.__frameInit = true;");
+            let _ = frame.remove_init_js(None);
+
+            let _ = web_page.run_js_loaded("1 + 2");
+            let _ = web_page.run_js_loaded_with_args(
+                "return arguments[0] + arguments[1];",
+                &args,
+                false,
+            );
+            let _ = web_page.run_js_loaded_with_options(
+                "arguments[0] + arguments[1]",
+                &args,
+                true,
+                Some(500),
+            );
+            let _ = web_page.run_js_with_args("return arguments[0] + arguments[1];", &args, false);
+            let _ =
+                web_page.run_js_with_options("arguments[0] + arguments[1]", &args, true, Some(500));
+            let _ = web_page.run_async_js("window.__webPageAsync = true;");
+            let _ = web_page.run_async_js_with_args(
+                "window.__webPageArg = arguments[0];",
+                &args[..1],
+                false,
+            );
+            let _ = web_page.run_async_js_with_options(
+                "arguments[0] + arguments[1]",
+                &args,
+                true,
+                Some(500),
+            );
+
+            let _ = web_frame.run_js_loaded("1 + 2");
+            let _ = web_frame.run_js_loaded_with_args(
+                "return arguments[0] + arguments[1];",
+                &args,
+                false,
+            );
+            let _ = web_frame.run_js_loaded_with_options(
+                "arguments[0] + arguments[1]",
+                &args,
+                true,
+                Some(500),
+            );
+            let _ = web_frame.run_js_with_args("return arguments[0] + arguments[1];", &args, false);
+            let _ = web_frame.run_js_with_options(
+                "arguments[0] + arguments[1]",
+                &args,
+                true,
+                Some(500),
+            );
+            let _ = web_frame.run_async_js("window.__webFrameAsync = true;");
+            let _ = web_frame.run_async_js_with_args(
+                "window.__webFrameArg = arguments[0];",
+                &args[..1],
+                false,
+            );
+            let _ = web_frame.run_async_js_with_options(
+                "arguments[0] + arguments[1]",
+                &args,
+                true,
+                Some(500),
+            );
+            let _ = web_frame.add_init_js("window.__webFrameInit = true;");
+            let _ = web_frame.remove_init_js(None);
+        }
+
+        let _ = assert_calls as fn(&Page, &Frame, &WebPage, &WebFrame);
+    }
+
+    #[test]
+    fn page_and_webpage_run_cdp_alias_signatures_accept_command_types() {
+        fn assert_calls(page: &Page, web_page: &WebPage) {
+            let _ = page.run_cdp(SetDeviceMetricsOverrideParams::new(1280, 720, 1.0, false));
+            let _ = page.run_cdp_loaded(SetDeviceMetricsOverrideParams::new(1280, 720, 1.0, false));
+            let _ = web_page.run_cdp(SetDeviceMetricsOverrideParams::new(1280, 720, 1.0, false));
+            let _ =
+                web_page.run_cdp_loaded(SetDeviceMetricsOverrideParams::new(1280, 720, 1.0, false));
+        }
+
+        let _ = assert_calls as fn(&Page, &WebPage);
+    }
+
+    #[test]
+    fn page_and_webpage_runtime_setting_signatures_accept_common_inputs() {
+        fn assert_calls(page: &Page, web_page: &WebPage) {
+            let _ = page.retry_times();
+            let _ = page.retry_interval();
+            let _ = page.timeouts();
+            let _ = page.set_retry(Some(5), Some(0.25));
+            let _ = page.set_timeouts(Some(1.5), Some(6.0), Some(0.75));
+
+            let _ = web_page.retry_times();
+            let _ = web_page.retry_interval();
+            let _ = web_page.timeouts();
+            let _ = web_page.set_retry(Some(5), Some(0.25));
+            let _ = web_page.set_timeouts(Some(1.5), Some(6.0), Some(0.75));
+        }
+
+        let _ = assert_calls as fn(&Page, &WebPage);
+    }
+
+    #[test]
+    fn page_and_webpage_set_wrapper_signatures_accept_common_inputs() {
+        fn assert_calls(page: &Page, web_page: &WebPage) {
+            let headers = [("Accept".to_string(), "text/html".to_string())];
+            let urls = vec!["*.css*".to_string()];
+            let files = vec!["/tmp/demo.txt".to_string()];
+            let cookies = json!({"sid": "abc", "domain": ".example.test", "path": "/"});
+
+            let _ = page.set().window().max();
+            let _ = page.set().window().mini();
+            let _ = page.set().window().full();
+            let _ = page.set().window().normal();
+            let _ = page.set().window().size(Some(800), Some(600));
+            let _ = page.set().window().location(Some(10), Some(20));
+            let _ = page.set().window().hide();
+            let _ = page.set().window().show();
+            let _ = page.set().load_mode().normal();
+            let _ = page.set().load_mode().eager();
+            let _ = page.set().load_mode().none();
+            let _ = page.set().blocked_urls(&urls);
+            let _ = page.set().headers(&headers);
+            let _ = page.set().user_agent("demo-agent", Some("linux"));
+            let _ = page.set().session_storage("foo", Some("bar"));
+            let _ = page.set().local_storage("foo", Some("bar"));
+            let _ = page.set().auto_handle_alert(Some(true), Some("ok"));
+            let _ = page.set().cookies(&cookies);
+            let _ = page.set().clear_cookies();
+            let _ = page.set().remove_cookie("sid", None, None, None);
+            let _ = page.set().download_path("/tmp");
+            let _ = page
+                .set()
+                .download_file_exists(DownloadFileExistsMode::Rename);
+            let _ = page.set().when_download_file_exists("rename");
+            let _ = page.set().download_file_name(Some("file"), Some(".txt"));
+            let _ = page.set().upload_files(&files);
+            let _ = page.set().upload_paths(&files);
+            let _ = page.set().activate();
+            let _ = page.set().retry_times(5);
+            let _ = page.set().retry_interval(0.25);
+            let _ = page.set().timeouts(Some(1.0), Some(2.0), Some(3.0));
+
+            let _ = web_page.set().window().max();
+            let _ = web_page.set().window().mini();
+            let _ = web_page.set().window().full();
+            let _ = web_page.set().window().normal();
+            let _ = web_page.set().window().size(Some(800), Some(600));
+            let _ = web_page.set().window().location(Some(10), Some(20));
+            let _ = web_page.set().window().hide();
+            let _ = web_page.set().window().show();
+            let _ = web_page.set().load_mode().normal();
+            let _ = web_page.set().load_mode().eager();
+            let _ = web_page.set().load_mode().none();
+            let _ = web_page.set().blocked_urls(&urls);
+            let _ = web_page.set().headers(&headers);
+            let _ = web_page.set().user_agent("demo-agent", Some("linux"));
+            let _ = web_page.set().session_storage("foo", Some("bar"));
+            let _ = web_page.set().local_storage("foo", Some("bar"));
+            let _ = web_page.set().auto_handle_alert(Some(true), Some("ok"));
+            let _ = web_page.set().cookies(&cookies);
+            let _ = web_page.set().clear_cookies();
+            let _ = web_page.set().remove_cookie("sid", None, None, None);
+            let _ = web_page.set().download_path("/tmp");
+            let _ = web_page
+                .set()
+                .download_file_exists(DownloadFileExistsMode::Rename);
+            let _ = web_page.set().when_download_file_exists("rename");
+            let _ = web_page
+                .set()
+                .download_file_name(Some("file"), Some(".txt"));
+            let _ = web_page.set().upload_files(&files);
+            let _ = web_page.set().upload_paths(&files);
+            let _ = web_page.set().activate();
+            let _ = web_page.set().retry_times(5);
+            let _ = web_page.set().retry_interval(0.25);
+            let _ = web_page.set().timeouts(Some(1.0), Some(2.0), Some(3.0));
+        }
+
+        let _ = assert_calls as fn(&Page, &WebPage);
+    }
+
+    #[test]
+    fn page_and_webpage_scroll_wrapper_signatures_accept_common_inputs() {
+        fn assert_calls(page: &Page, web_page: &WebPage) {
+            let _ = page.scroll().to_top();
+            let _ = page.scroll().to_bottom();
+            let _ = page.scroll().to_half();
+            let _ = page.scroll().to_rightmost();
+            let _ = page.scroll().to_leftmost();
+            let _ = page.scroll().to_location(10.0, 20.0);
+            let _ = page.scroll().up(10.0);
+            let _ = page.scroll().down(10.0);
+            let _ = page.scroll().left(10.0);
+            let _ = page.scroll().right(10.0);
+
+            let _ = web_page.scroll().to_top();
+            let _ = web_page.scroll().to_bottom();
+            let _ = web_page.scroll().to_half();
+            let _ = web_page.scroll().to_rightmost();
+            let _ = web_page.scroll().to_leftmost();
+            let _ = web_page.scroll().to_location(10.0, 20.0);
+            let _ = web_page.scroll().up(10.0);
+            let _ = web_page.scroll().down(10.0);
+            let _ = web_page.scroll().left(10.0);
+            let _ = web_page.scroll().right(10.0);
+        }
+
+        let _ = assert_calls as fn(&Page, &WebPage);
     }
 
     #[test]
@@ -5280,7 +6939,12 @@ mod tests {
         fn assert_calls(element: &Element, web_element: &WebElement) {
             let files = vec!["./fixtures/demo.txt".to_string()];
 
+            let _ = element.click_with_options(None, Some(1_000), true);
+            let _ = element.click_left_with_options(Some(false), Some(1_000), false);
             let _ = element.clicker().left();
+            let _ = element
+                .clicker()
+                .left_with_options(Some(true), Some(1_000), false);
             let _ = element.clicker().right();
             let _ = element.clicker().middle(true);
             let _ = element.clicker().multi(2);
@@ -5292,7 +6956,12 @@ mod tests {
                     .to_download(None, None, None, false, Some(1_000), false, false);
             let _ = element.clicker().for_new_tab(Some(1_000), false);
 
+            let _ = web_element.click_with_options(None, Some(1_000), true);
+            let _ = web_element.click_left_with_options(Some(false), Some(1_000), false);
             let _ = web_element.clicker().left();
+            let _ = web_element
+                .clicker()
+                .left_with_options(Some(true), Some(1_000), false);
             let _ = web_element.clicker().right();
             let _ = web_element.clicker().middle(true);
             let _ = web_element.clicker().multi(2);
@@ -6042,6 +7711,7 @@ mod tests {
             web_page: &WebPage,
             element: &Element,
             web_element: &WebElement,
+            session_element: &SessionElement,
         ) {
             let locators = vec!["#root".to_string(), ".item".to_string()];
             let tuple_locators = [(By::ID, "root"), (By::CLASS_NAME, "item")];
@@ -6049,6 +7719,7 @@ mod tests {
                 LocatorInput::from("#root"),
                 LocatorInput::from((By::CLASS_NAME, "item")),
             ];
+            let session_web_element = WebElement::Session(session_element.clone());
 
             let _ = page.wait_for((By::ID, "root"), 1_000);
             let _ = page.wait_for_elements_loaded((By::ID, "root"), false, 1_000);
@@ -6065,6 +7736,16 @@ mod tests {
             let _ = page.wait_for_ele_enabled(element, 1_000);
             let _ = page.wait_for_ele_deleted(element, 1_000);
             let _ = page.wait_for_ele_clickable(element, 1_000);
+            let _ = page.wait_for_ele_displayed(session_element, 1_000);
+            let _ = page.wait_for_ele_hidden(session_element, 1_000);
+            let _ = page.wait_for_ele_enabled(session_element, 1_000);
+            let _ = page.wait_for_ele_deleted(session_element, 1_000);
+            let _ = page.wait_for_ele_clickable(session_element, 1_000);
+            let _ = page.wait_for_ele_displayed(&session_web_element, 1_000);
+            let _ = page.wait_for_ele_hidden(&session_web_element, 1_000);
+            let _ = page.wait_for_ele_enabled(&session_web_element, 1_000);
+            let _ = page.wait_for_ele_deleted(&session_web_element, 1_000);
+            let _ = page.wait_for_ele_clickable(&session_web_element, 1_000);
             let _ = web_page.wait_for_elements_loaded((By::ID, "root"), false, 1_000);
             let _ = web_page.wait_for_elements_loaded(&locators, false, 1_000);
             let _ = web_page.wait_for_elements_loaded(&tuple_locators, false, 1_000);
@@ -6079,9 +7760,123 @@ mod tests {
             let _ = web_page.wait_for_ele_enabled(web_element, 1_000);
             let _ = web_page.wait_for_ele_deleted(web_element, 1_000);
             let _ = web_page.wait_for_ele_clickable(web_element, 1_000);
+            let _ = web_page.wait_for_ele_displayed(session_element, 1_000);
+            let _ = web_page.wait_for_ele_hidden(session_element, 1_000);
+            let _ = web_page.wait_for_ele_enabled(session_element, 1_000);
+            let _ = web_page.wait_for_ele_deleted(session_element, 1_000);
+            let _ = web_page.wait_for_ele_clickable(session_element, 1_000);
+            let _ = web_page.wait_for_ele_displayed(&session_web_element, 1_000);
+            let _ = web_page.wait_for_ele_hidden(&session_web_element, 1_000);
+            let _ = web_page.wait_for_ele_enabled(&session_web_element, 1_000);
+            let _ = web_page.wait_for_ele_deleted(&session_web_element, 1_000);
+            let _ = web_page.wait_for_ele_clickable(&session_web_element, 1_000);
         }
 
-        let _ = assert_calls as fn(&Page, &WebPage, &Element, &WebElement);
+        let _ = assert_calls as fn(&Page, &WebPage, &Element, &WebElement, &SessionElement);
+    }
+
+    #[test]
+    fn page_webpage_and_session_page_set_cookies_accept_supported_inputs() {
+        fn assert_calls(page: &Page, web_page: &WebPage, session_page: &SessionPage) {
+            let cookie = SessionCookieParam {
+                name: "sid".to_string(),
+                value: "abc".to_string(),
+                url: Some("https://example.test/".to_string()),
+                domain: None,
+                path: Some("/".to_string()),
+                secure: true,
+                http_only: true,
+                same_site: Some("Lax".to_string()),
+            };
+            let cookies = vec![cookie.clone()];
+            let cookie_json = json!({
+                "token": "xyz",
+                "domain": ".example.test",
+                "path": "/",
+                "secure": true,
+                "httpOnly": true,
+                "sameSite": "Strict"
+            });
+
+            let _ = page.set_cookies("sid=abc; domain=.example.test; path=/");
+            let _ = page.set_cookies(&cookie);
+            let _ = page.set_cookies(&cookies);
+            let _ = page.set_cookies(&cookie_json);
+
+            let _ = web_page.set_cookies("sid=abc; domain=.example.test; path=/");
+            let _ = web_page.set_cookies(&cookie);
+            let _ = web_page.set_cookies(&cookies);
+            let _ = web_page.set_cookies(&cookie_json);
+
+            let _ = session_page.set_cookies("sid=abc; domain=.example.test; path=/");
+            let _ = session_page.set_cookies(&cookie);
+            let _ = session_page.set_cookies(&cookies);
+            let _ = session_page.set_cookies(&cookie_json);
+        }
+
+        let _ = assert_calls as fn(&Page, &WebPage, &SessionPage);
+    }
+
+    #[test]
+    fn webpage_session_wait_for_ele_methods_accept_session_element_targets_at_runtime() {
+        let (page, temp_dir) =
+            launch_headless_test_webpage("session-wait-ele-targets", WebMode::Session)
+                .expect("launch headless webpage");
+        let html_path = temp_dir.join("session-wait.html");
+        let html_path_str = html_path.to_str().expect("html path str");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            write_test_html(
+                &html_path,
+                r#"
+                <html>
+                  <body>
+                    <button id="ready">Ready</button>
+                    <button id="delete-me">Delete me</button>
+                  </body>
+                </html>
+                "#,
+            )?;
+            assert!(page.get(html_path_str)?);
+
+            let ready = page.snapshot_find("#ready")?;
+            let ready_web = page.find("#ready")?;
+            let delete_me = page.snapshot_find("#delete-me")?;
+            let delete_me_web = page.find("#delete-me")?;
+
+            assert!(page.wait_for_ele_displayed(&ready, 1_000)?);
+            assert!(page.wait_for_ele_enabled(&ready, 1_000)?);
+            assert!(page.wait_for_ele_clickable(&ready, 1_000)?);
+            assert!(page.wait_for_ele_displayed(&ready_web, 1_000)?);
+            assert!(page.wait_for_ele_enabled(&ready_web, 1_000)?);
+            assert!(page.wait_for_ele_clickable(&ready_web, 1_000)?);
+
+            write_test_html(
+                &html_path,
+                r#"
+                <html>
+                  <body>
+                    <button id="ready">Ready</button>
+                  </body>
+                </html>
+                "#,
+            )?;
+            assert!(page.get(html_path_str)?);
+
+            assert!(page.wait_for_ele_hidden(&delete_me, 1_000)?);
+            assert!(page.wait_for_ele_deleted(&delete_me, 1_000)?);
+            assert!(page.wait_for_ele_hidden(&delete_me_web, 1_000)?);
+            assert!(page.wait_for_ele_deleted(&delete_me_web, 1_000)?);
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("session element target wait regression");
     }
 
     #[test]

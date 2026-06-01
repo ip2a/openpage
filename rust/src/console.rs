@@ -15,6 +15,12 @@ use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
 
 use crate::error::{OpenPageError, OpenPageResult};
+use crate::page::execute_page_command_blocking;
+use crate::settings::{
+    component_not_active_start_message, component_not_running_message,
+    component_not_running_with_error_message, component_state_lock_poisoned_message,
+    component_stopped_while_waiting_message,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConsoleMessage {
@@ -99,9 +105,11 @@ impl Console {
 
     pub fn start(&self) -> OpenPageResult<()> {
         let should_enable = {
-            let mut state = self.shared.state.lock().map_err(|_| {
-                OpenPageError::BrowserOperation("console state lock poisoned".to_string())
-            })?;
+            let mut state = self
+                .shared
+                .state
+                .lock()
+                .map_err(|_| console_state_lock_poisoned_error())?;
             state.queue.clear();
             state.last_error = None;
             if state.task.is_none() {
@@ -113,12 +121,12 @@ impl Console {
         };
 
         if should_enable {
-            if let Err(err) = self.runtime.block_on(async {
-                self.page
-                    .execute(RuntimeEnableParams::default())
-                    .await
-                    .map_err(|err| OpenPageError::PageOperation(err.to_string()))
-            }) {
+            if let Err(err) = execute_page_command_blocking(
+                self.runtime.as_ref(),
+                &self.page,
+                RuntimeEnableParams::default(),
+                "Console::start()",
+            ) {
                 if let Ok(mut state) = self.shared.state.lock() {
                     state.listening = false;
                     state.last_error = Some(err.to_string());
@@ -127,9 +135,11 @@ impl Console {
                 return Err(err);
             }
 
-            let mut state = self.shared.state.lock().map_err(|_| {
-                OpenPageError::BrowserOperation("console state lock poisoned".to_string())
-            })?;
+            let mut state = self
+                .shared
+                .state
+                .lock()
+                .map_err(|_| console_state_lock_poisoned_error())?;
             state.enabled = true;
             state.last_error = None;
             self.shared.condvar.notify_all();
@@ -139,9 +149,11 @@ impl Console {
     }
 
     pub fn stop(&self) -> OpenPageResult<()> {
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("console state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| console_state_lock_poisoned_error())?;
         state.listening = false;
         state.last_error = None;
         self.shared.condvar.notify_all();
@@ -149,26 +161,28 @@ impl Console {
     }
 
     pub fn clear(&self) -> OpenPageResult<()> {
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("console state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| console_state_lock_poisoned_error())?;
         state.queue.clear();
         self.shared.condvar.notify_all();
         Ok(())
     }
 
     pub fn wait(&self, timeout_ms: Option<u64>) -> OpenPageResult<Option<ConsoleMessage>> {
-        let state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("console state lock poisoned".to_string())
-        })?;
+        let state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| console_state_lock_poisoned_error())?;
 
         if state.task.is_none() {
             return Err(console_not_running_error(&state));
         }
         if !state.listening {
-            return Err(OpenPageError::BrowserOperation(
-                "console is not active; call start() first".to_string(),
-            ));
+            return Err(console_not_active_error());
         }
         drop(state);
 
@@ -176,9 +190,11 @@ impl Console {
     }
 
     pub fn messages(&self) -> OpenPageResult<Vec<ConsoleMessage>> {
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("console state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| console_state_lock_poisoned_error())?;
         Ok(drain_console_messages(&mut state.queue))
     }
 
@@ -195,7 +211,7 @@ impl Console {
             .state
             .lock()
             .map(|state| state.listening)
-            .map_err(|_| OpenPageError::BrowserOperation("console state lock poisoned".to_string()))
+            .map_err(|_| console_state_lock_poisoned_error())
     }
 }
 
@@ -237,7 +253,7 @@ fn push_console_message(
     let mut state = shared
         .state
         .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("console state lock poisoned".to_string()))?;
+        .map_err(|_| console_state_lock_poisoned_error())?;
     if state.listening {
         state.queue.push_back(message);
         shared.condvar.notify_all();
@@ -253,7 +269,7 @@ fn wait_for_console_message(
     let mut state = shared
         .state
         .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("console state lock poisoned".to_string()))?;
+        .map_err(|_| console_state_lock_poisoned_error())?;
 
     loop {
         if let Some(message) = state.queue.pop_front() {
@@ -264,16 +280,15 @@ fn wait_for_console_message(
             return Err(console_not_running_error(&state));
         }
         if !state.listening {
-            return Err(OpenPageError::BrowserOperation(
-                "console stopped while waiting".to_string(),
-            ));
+            return Err(console_stopped_while_waiting_error());
         }
 
         match deadline {
             None => {
-                state = shared.condvar.wait(state).map_err(|_| {
-                    OpenPageError::BrowserOperation("console state lock poisoned".to_string())
-                })?;
+                state = shared
+                    .condvar
+                    .wait(state)
+                    .map_err(|_| console_state_lock_poisoned_error())?;
             }
             Some(deadline) => {
                 let now = Instant::now();
@@ -281,9 +296,10 @@ fn wait_for_console_message(
                     return Ok(None);
                 }
                 let wait_for = deadline.saturating_duration_since(now);
-                let result = shared.condvar.wait_timeout(state, wait_for).map_err(|_| {
-                    OpenPageError::BrowserOperation("console state lock poisoned".to_string())
-                })?;
+                let result = shared
+                    .condvar
+                    .wait_timeout(state, wait_for)
+                    .map_err(|_| console_state_lock_poisoned_error())?;
                 state = result.0;
                 if result.1.timed_out() {
                     return Ok(state.queue.pop_front());
@@ -353,19 +369,18 @@ fn console_message_from_entry(entry: &LogEntry) -> ConsoleMessage {
 }
 
 fn console_not_running_error(state: &ConsoleState) -> OpenPageError {
-    OpenPageError::BrowserOperation(
-        state
-            .last_error
-            .clone()
-            .unwrap_or_else(|| "console is not running".to_string()),
-    )
+    OpenPageError::BrowserOperation(if let Some(error) = &state.last_error {
+        component_not_running_with_error_message("console", "控制台", error)
+    } else {
+        component_not_running_message("console", "控制台")
+    })
 }
 
 fn set_console_stopped(shared: &Arc<ConsoleShared>, error: Option<String>) -> OpenPageResult<()> {
     let mut state = shared
         .state
         .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("console state lock poisoned".to_string()))?;
+        .map_err(|_| console_state_lock_poisoned_error())?;
     state.listening = false;
     state.task = None;
     state.last_error = error;
@@ -393,6 +408,21 @@ fn remote_object_text(value: &RemoteObject) -> String {
     value.r#type.as_ref().to_string()
 }
 
+fn console_state_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "console state",
+        "控制台状态",
+    ))
+}
+
+fn console_not_active_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_not_active_start_message("console", "控制台"))
+}
+
+fn console_stopped_while_waiting_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_stopped_while_waiting_message("console", "控制台"))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -406,9 +436,11 @@ mod tests {
     use serde_json::json;
     use tokio::runtime::Runtime;
 
+    use crate::settings::{Settings, scoped_test_settings};
+
     use super::{
-        ConsoleMessage, ConsoleShared, console_message_from_entry, drain_console_messages,
-        push_console_message, wait_for_console_message,
+        ConsoleMessage, ConsoleShared, console_message_from_entry, console_not_running_error,
+        drain_console_messages, push_console_message, wait_for_console_message,
     };
 
     fn sample_message(text: &str) -> ConsoleMessage {
@@ -512,5 +544,50 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn console_runtime_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let runtime = Runtime::new().unwrap();
+        let shared = Arc::new(ConsoleShared::new());
+        {
+            let mut state = shared.state.lock().unwrap();
+            state.task = Some(runtime.spawn(async {}));
+            state.listening = false;
+            state.last_error = Some("boom".to_string());
+        }
+
+        let english_wait = wait_for_console_message(&shared, Some(10))
+            .expect_err("console wait should fail when listener is stopped")
+            .to_string();
+        assert!(english_wait.contains("console stopped while waiting"));
+
+        let english_not_running = {
+            let mut state = shared.state.lock().unwrap();
+            state.task = None;
+            console_not_running_error(&state).to_string()
+        };
+        assert!(english_not_running.contains("console is not running: boom"));
+
+        {
+            let mut state = shared.state.lock().unwrap();
+            state.task = Some(runtime.spawn(async {}));
+        }
+
+        Settings::set_language("cn");
+
+        let chinese_wait = wait_for_console_message(&shared, Some(10))
+            .expect_err("console wait should fail in Chinese when listener is stopped")
+            .to_string();
+        assert!(chinese_wait.contains("等待期间控制台已停止"));
+
+        let chinese_not_running = {
+            let state = shared.state.lock().unwrap();
+            console_not_running_error(&state).to_string()
+        };
+        assert!(chinese_not_running.contains("控制台未运行: boom"));
     }
 }

@@ -13,6 +13,11 @@ use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
 
 use crate::error::{OpenPageError, OpenPageResult};
+use crate::page::{execute_page_command_async, execute_page_command_blocking};
+use crate::settings::{
+    component_not_running_message, component_state_lock_poisoned_message,
+    file_chooser_backend_node_missing_message, upload_requires_at_least_one_file_message,
+};
 
 #[derive(Debug, Default)]
 struct UploadState {
@@ -81,10 +86,13 @@ impl UploadTracker {
 
                 let result = async {
                     apply_upload_files(&task_page, event, files).await?;
-                    task_page
-                        .execute(SetInterceptFileChooserDialogParams::new(false))
-                        .await
-                        .map_err(|err| err.to_string())?;
+                    execute_page_command_async(
+                        &task_page,
+                        SetInterceptFileChooserDialogParams::new(false),
+                        "UploadTracker::new()",
+                    )
+                    .await
+                    .map_err(|err| err.to_string())?;
                     Ok::<(), String>(())
                 }
                 .await;
@@ -101,21 +109,16 @@ impl UploadTracker {
     }
 
     pub fn set_files(&self, files: &[String]) -> OpenPageResult<()> {
-        let normalized = normalize_file_paths(files)?;
-        if normalized.is_empty() {
-            return Err(OpenPageError::PageOperation(
-                "upload_files() requires at least one file".to_string(),
-            ));
-        }
+        let normalized = prepare_upload_file_paths(files)?;
 
         {
-            let mut state = self.shared.state.lock().map_err(|_| {
-                OpenPageError::BrowserOperation("upload state lock poisoned".to_string())
-            })?;
+            let mut state = self
+                .shared
+                .state
+                .lock()
+                .map_err(|_| upload_state_lock_poisoned_error())?;
             if state.task.is_none() {
-                return Err(OpenPageError::PageOperation(
-                    "upload tracker is not running".to_string(),
-                ));
+                return Err(upload_tracker_not_running_error());
             }
             state.next_request_id = state.next_request_id.saturating_add(1).max(1);
             state.pending_files = Some(normalized);
@@ -124,19 +127,21 @@ impl UploadTracker {
             self.shared.condvar.notify_all();
         }
 
-        let page = self.page.clone();
-        self.runtime.block_on(async {
-            page.execute(SetInterceptFileChooserDialogParams::new(true))
-                .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
-            Ok(())
-        })
+        execute_page_command_blocking(
+            self.runtime.as_ref(),
+            &self.page,
+            SetInterceptFileChooserDialogParams::new(true),
+            "UploadTracker::set_files()",
+        )?;
+        Ok(())
     }
 
     pub fn wait_until_inputted(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        let state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("upload state lock poisoned".to_string())
-        })?;
+        let state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| upload_state_lock_poisoned_error())?;
 
         let target_request_id = match state.active_request_id {
             Some(request_id) => request_id,
@@ -159,9 +164,7 @@ impl UploadTracker {
                     && state.completed_request_id < target_request_id
                     && state.last_error.is_none()
             })
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("upload state lock poisoned".to_string())
-            })?;
+            .map_err(|_| upload_state_lock_poisoned_error())?;
 
         if let Some(error) = &state.last_error {
             return Err(OpenPageError::PageOperation(error.clone()));
@@ -177,7 +180,7 @@ async fn apply_upload_files(
     files: Vec<String>,
 ) -> Result<(), String> {
     let Some(backend_node_id) = event.backend_node_id else {
-        return Err("file chooser did not expose a backend node id".to_string());
+        return Err(file_chooser_backend_node_missing_message());
     };
 
     let selected_files = match event.mode {
@@ -190,7 +193,9 @@ async fn apply_upload_files(
         .backend_node_id(backend_node_id)
         .build()
         .map_err(|err| err.to_string())?;
-    page.execute(params).await.map_err(|err| err.to_string())?;
+    execute_page_command_async(page, params, "apply_upload_files()")
+        .await
+        .map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -207,6 +212,30 @@ fn normalize_file_paths(files: &[String]) -> OpenPageResult<Vec<String>> {
             Ok(absolute.to_string_lossy().into_owned())
         })
         .collect()
+}
+
+fn prepare_upload_file_paths(files: &[String]) -> OpenPageResult<Vec<String>> {
+    let normalized = normalize_file_paths(files)?;
+    if normalized.is_empty() {
+        return Err(OpenPageError::PageOperation(
+            upload_requires_at_least_one_file_message(),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn upload_state_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "upload state",
+        "上传状态",
+    ))
+}
+
+fn upload_tracker_not_running_error() -> OpenPageError {
+    OpenPageError::PageOperation(component_not_running_message(
+        "upload tracker",
+        "上传跟踪器",
+    ))
 }
 
 fn set_last_error(shared: &Arc<UploadShared>, error: String) {
@@ -228,5 +257,30 @@ fn finish_request(shared: &Arc<UploadShared>, request_id: u64, error: Option<Str
         state.completed_request_id = state.completed_request_id.max(request_id);
         state.last_error = error;
         shared.condvar.notify_all();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::settings::{Settings, scoped_test_settings};
+
+    use super::prepare_upload_file_paths;
+
+    #[test]
+    fn upload_validation_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english = prepare_upload_file_paths(&[])
+            .expect_err("empty upload list should fail")
+            .to_string();
+        assert!(english.contains("upload_files() requires at least one file"));
+
+        Settings::set_language("cn");
+
+        let chinese = prepare_upload_file_paths(&[])
+            .expect_err("empty upload list should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains("upload_files() 至少需要一个文件"));
     }
 }

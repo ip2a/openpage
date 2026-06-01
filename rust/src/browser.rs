@@ -1,23 +1,29 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chromiumoxide::Command;
 use chromiumoxide::browser::{Browser as OxBrowser, BrowserConfig};
 use chromiumoxide::cdp::browser_protocol::browser::{
-    CancelDownloadParams, SetDownloadBehaviorBehavior, SetDownloadBehaviorParams,
+    CancelDownloadParams, PermissionDescriptor, PermissionSetting, ResetPermissionsParams,
+    SetDownloadBehaviorBehavior, SetDownloadBehaviorParams, SetPermissionParams,
 };
 use chromiumoxide::cdp::browser_protocol::network::{
     ClearBrowserCookiesParams, CookieParam, DeleteCookiesParams, SetCookiesParams,
 };
 use chromiumoxide::cdp::browser_protocol::target::{
-    ActivateTargetParams, CloseTargetParams, CreateTargetParams, GetTargetsParams, TargetId,
+    ActivateTargetParams, CloseTargetParams, CreateBrowserContextParams, CreateTargetParams,
+    EventTargetCreated, EventTargetDestroyed, GetTargetsParams, TargetId,
 };
 use futures::StreamExt;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
+use tokio::time::timeout as tokio_timeout;
 use url::Url;
 
 use crate::download::{
@@ -25,6 +31,14 @@ use crate::download::{
 };
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::Page;
+use crate::settings::{
+    browser_connect_timeout_duration, cdp_timeout_duration,
+    component_state_lock_poisoned_message, invalid_auto_port_scope_message,
+    invalid_tab_index_message, no_free_port_in_auto_port_scope_message,
+    singleton_tab_obj_enabled, target_tab_not_found_message, timeout_duration_millis,
+    timeout_error, wait_failed_should_raise,
+};
+use crate::webpage::WebPage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DownloadFileExistsMode {
@@ -159,6 +173,10 @@ pub struct LaunchOptions {
 }
 
 impl LaunchOptions {
+    pub fn new(read_file: bool, ini_path: Option<&Path>) -> OpenPageResult<Self> {
+        Self::from_ini_options(read_file, ini_path)
+    }
+
     pub fn from_ini_options(read_file: bool, ini_path: Option<&Path>) -> OpenPageResult<Self> {
         if read_file {
             Self::from_ini(ini_path)
@@ -251,13 +269,18 @@ impl LaunchOptions {
         self.load_mode.as_str()
     }
 
-    pub fn set_retry(&mut self, retry_times: Option<usize>, retry_interval_millis: Option<u64>) {
+    pub fn set_retry(
+        &mut self,
+        retry_times: Option<usize>,
+        retry_interval_millis: Option<u64>,
+    ) -> &mut Self {
         if let Some(retry_times) = retry_times {
             self.retry_times = retry_times;
         }
         if let Some(retry_interval_millis) = retry_interval_millis {
             self.retry_interval_millis = retry_interval_millis;
         }
+        self
     }
 
     pub fn set_timeouts(
@@ -265,7 +288,7 @@ impl LaunchOptions {
         base_secs: Option<f64>,
         page_load_secs: Option<f64>,
         script_secs: Option<f64>,
-    ) {
+    ) -> &mut Self {
         if let Some(base_secs) = base_secs {
             self.timeouts.implicit_wait = seconds_to_millis(base_secs);
         }
@@ -275,66 +298,80 @@ impl LaunchOptions {
         if let Some(script_secs) = script_secs {
             self.timeouts.script = seconds_to_millis(script_secs);
         }
+        self
     }
 
-    pub fn set_load_mode(&mut self, value: &str) -> OpenPageResult<()> {
+    pub fn set_load_mode(&mut self, value: &str) -> OpenPageResult<&mut Self> {
         self.load_mode = LoadMode::parse(value)?;
-        Ok(())
+        Ok(self)
     }
 
-    pub fn set_browser_path(&mut self, path: impl AsRef<Path>) {
+    pub fn set_browser_path(&mut self, path: impl AsRef<Path>) -> &mut Self {
         self.browser_path = Some(path.as_ref().to_path_buf());
+        self
     }
 
-    pub fn set_download_path(&mut self, path: impl AsRef<Path>) {
+    pub fn set_download_path(&mut self, path: impl AsRef<Path>) -> &mut Self {
         self.download_path = Some(path.as_ref().to_path_buf());
+        self
     }
 
-    pub fn set_tmp_path(&mut self, path: impl AsRef<Path>) {
+    pub fn set_tmp_path(&mut self, path: impl AsRef<Path>) -> &mut Self {
         self.tmp_path = Some(path.as_ref().to_path_buf());
+        self
     }
 
-    pub fn set_cache_path(&mut self, path: impl AsRef<Path>) {
+    pub fn set_cache_path(&mut self, path: impl AsRef<Path>) -> &mut Self {
         self.cache_path = Some(path.as_ref().to_path_buf());
+        self
     }
 
-    pub fn set_proxy(&mut self, proxy: impl Into<String>) {
+    pub fn set_proxy(&mut self, proxy: impl Into<String>) -> &mut Self {
         self.proxy = Some(proxy.into());
+        self
     }
 
-    pub fn set_user_agent(&mut self, user_agent: impl Into<String>) {
+    pub fn set_user_agent(&mut self, user_agent: impl Into<String>) -> &mut Self {
         self.user_agent = Some(user_agent.into());
+        self
     }
 
-    pub fn ignore_certificate_errors(&mut self, on_off: bool) {
+    pub fn ignore_certificate_errors(&mut self, on_off: bool) -> &mut Self {
         self.ignore_https_errors = on_off;
+        self
     }
 
-    pub fn incognito(&mut self, on_off: bool) {
+    pub fn incognito(&mut self, on_off: bool) -> &mut Self {
         self.incognito = on_off;
+        self
     }
 
-    pub fn headless(&mut self, on_off: bool) {
+    pub fn headless(&mut self, on_off: bool) -> &mut Self {
         self.headless = on_off;
+        self
     }
 
-    pub fn no_imgs(&mut self, on_off: bool) {
+    pub fn no_imgs(&mut self, on_off: bool) -> &mut Self {
         self.no_imgs = on_off;
+        self
     }
 
-    pub fn no_js(&mut self, on_off: bool) {
+    pub fn no_js(&mut self, on_off: bool) -> &mut Self {
         self.no_js = on_off;
+        self
     }
 
-    pub fn mute(&mut self, on_off: bool) {
+    pub fn mute(&mut self, on_off: bool) -> &mut Self {
         self.mute = on_off;
+        self
     }
 
-    pub fn existing_only(&mut self, on_off: bool) {
+    pub fn existing_only(&mut self, on_off: bool) -> &mut Self {
         self.existing_only = on_off;
+        self
     }
 
-    pub fn auto_port(&mut self, on_off: bool) {
+    pub fn auto_port(&mut self, on_off: bool) -> &mut Self {
         self.auto_port = on_off;
         if on_off {
             self.auto_port_scope = Some(DEFAULT_AUTO_PORT_SCOPE);
@@ -346,13 +383,14 @@ impl LaunchOptions {
         } else {
             self.auto_port_scope = None;
         }
+        self
     }
 
     pub fn auto_port_with_scope(
         &mut self,
         on_off: bool,
         scope: Option<(u16, u16)>,
-    ) -> OpenPageResult<()> {
+    ) -> OpenPageResult<&mut Self> {
         if on_off {
             let scope = scope.unwrap_or(DEFAULT_AUTO_PORT_SCOPE);
             validate_auto_port_scope(scope)?;
@@ -366,38 +404,42 @@ impl LaunchOptions {
         } else {
             self.auto_port(false);
         }
-        Ok(())
+        Ok(self)
     }
 
-    pub fn set_user_data_path(&mut self, path: impl AsRef<Path>) {
+    pub fn set_user_data_path(&mut self, path: impl AsRef<Path>) -> &mut Self {
         self.user_data_dir = Some(path.as_ref().to_path_buf());
         self.system_user_path = false;
         self.auto_port = false;
         self.auto_port_scope = None;
+        self
     }
 
-    pub fn set_local_port(&mut self, port: u16) {
+    pub fn set_local_port(&mut self, port: u16) -> &mut Self {
         self.remote_debugging_port = Some(port);
         self.address = Some(format!("127.0.0.1:{port}"));
         self.ws_address = None;
         self.auto_port = false;
         self.auto_port_scope = None;
+        self
     }
 
-    pub fn set_address(&mut self, address: &str) {
+    pub fn set_address(&mut self, address: &str) -> &mut Self {
         let (address, ws_address, local_port) = normalize_debugger_address(address);
         self.address = Some(address);
         self.ws_address = ws_address;
         self.remote_debugging_port = local_port;
         self.auto_port = false;
         self.auto_port_scope = None;
+        self
     }
 
-    pub fn new_env(&mut self, on_off: bool) {
+    pub fn new_env(&mut self, on_off: bool) -> &mut Self {
         self.new_env = on_off;
+        self
     }
 
-    pub fn use_system_user_path(&mut self, on_off: bool) {
+    pub fn use_system_user_path(&mut self, on_off: bool) -> &mut Self {
         let system_path = system_user_data_dir();
         self.system_user_path = on_off;
         if on_off {
@@ -409,6 +451,7 @@ impl LaunchOptions {
                 self.user_data_dir = None;
             }
         }
+        self
     }
 
     pub fn save(&self, path: Option<&Path>) -> OpenPageResult<PathBuf> {
@@ -440,64 +483,77 @@ impl LaunchOptions {
         Ok(options)
     }
 
-    pub fn set_argument(&mut self, arg: impl Into<String>) {
+    pub fn set_argument(&mut self, arg: impl Into<String>) -> &mut Self {
         let arg = arg.into();
         if !self.args.contains(&arg) {
             self.args.push(arg);
         }
+        self
     }
 
-    pub fn set_user(&mut self, user: &str) {
+    pub fn set_user(&mut self, user: &str) -> &mut Self {
         self.remove_argument("--profile-directory");
         self.set_argument(format!("--profile-directory={user}"));
+        self
     }
 
-    pub fn remove_argument(&mut self, arg: &str) {
+    pub fn remove_argument(&mut self, arg: &str) -> &mut Self {
         self.args
             .retain(|a| a != arg && !a.starts_with(&format!("{arg}=")));
+        self
     }
 
-    pub fn clear_arguments(&mut self) {
+    pub fn clear_arguments(&mut self) -> &mut Self {
         self.args.clear();
+        self
     }
 
-    pub fn add_extension(&mut self, path: impl AsRef<Path>) {
+    pub fn add_extension(&mut self, path: impl AsRef<Path>) -> &mut Self {
         self.extensions.push(path.as_ref().to_path_buf());
+        self
     }
 
-    pub fn remove_extensions(&mut self) {
+    pub fn remove_extensions(&mut self) -> &mut Self {
         self.extensions.clear();
+        self
     }
 
-    pub fn set_pref(&mut self, key: impl Into<String>, value: serde_json::Value) {
+    pub fn set_pref(&mut self, key: impl Into<String>, value: serde_json::Value) -> &mut Self {
         self.prefs.insert(key.into(), value);
+        self
     }
 
-    pub fn remove_pref(&mut self, key: &str) {
+    pub fn remove_pref(&mut self, key: &str) -> &mut Self {
         self.prefs.remove(key);
+        self
     }
 
-    pub fn remove_pref_from_file(&mut self, key: impl Into<String>) {
+    pub fn remove_pref_from_file(&mut self, key: impl Into<String>) -> &mut Self {
         self.prefs_to_remove.push(key.into());
+        self
     }
 
-    pub fn clear_prefs(&mut self) {
+    pub fn clear_prefs(&mut self) -> &mut Self {
         self.prefs.clear();
+        self
     }
 
-    pub fn set_flag(&mut self, flag: impl Into<String>) {
+    pub fn set_flag(&mut self, flag: impl Into<String>) -> &mut Self {
         let flag = flag.into();
         if !self.flags.contains(&flag) {
             self.flags.push(flag);
         }
+        self
     }
 
-    pub fn clear_flags(&mut self) {
+    pub fn clear_flags(&mut self) -> &mut Self {
         self.flags.clear();
+        self
     }
 
-    pub fn clear_flags_in_file(&mut self) {
+    pub fn clear_flags_in_file(&mut self) -> &mut Self {
         self.clear_file_flags = true;
+        self
     }
 }
 
@@ -549,12 +605,16 @@ impl Default for LaunchOptions {
 struct BrowserState {
     runtime: Arc<Runtime>,
     browser: Mutex<OxBrowser>,
+    debugger_address: String,
     browser_pid: Option<u32>,
     downloads: DownloadStore,
+    newest_tab_id: Arc<StdMutex<Option<String>>>,
     download_path: StdMutex<Option<PathBuf>>,
     download_file_exists: StdMutex<DownloadFileExistsMode>,
     browser_download_naming: StdMutex<BrowserDownloadNaming>,
     load_mode: StdMutex<LoadMode>,
+    page_cache: StdMutex<HashMap<String, Page>>,
+    isolated_contexts: StdMutex<HashMap<String, String>>,
     page_download_settings: StdMutex<HashMap<String, PageDownloadSettings>>,
     mission_download_settings: StdMutex<HashMap<String, ResolvedDownloadSettings>>,
     download_spool_dir: PathBuf,
@@ -566,6 +626,17 @@ struct BrowserState {
     retry_interval_millis: StdMutex<u64>,
     _download_task: tokio::task::JoinHandle<()>,
     _handler_task: tokio::task::JoinHandle<()>,
+    _target_created_task: tokio::task::JoinHandle<()>,
+    _target_destroyed_task: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for BrowserState {
+    fn drop(&mut self) {
+        self._download_task.abort();
+        self._handler_task.abort();
+        self._target_created_task.abort();
+        self._target_destroyed_task.abort();
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -610,6 +681,309 @@ pub struct TabInfo {
     pub title: String,
     pub url: String,
     pub attached: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BrowserTabSelector<'a> {
+    Id(Cow<'a, str>),
+    Index(isize),
+}
+
+impl<'a> From<&'a str> for BrowserTabSelector<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::Id(Cow::Borrowed(value))
+    }
+}
+
+impl<'a> From<&'a String> for BrowserTabSelector<'a> {
+    fn from(value: &'a String) -> Self {
+        Self::Id(Cow::Borrowed(value.as_str()))
+    }
+}
+
+impl From<isize> for BrowserTabSelector<'_> {
+    fn from(value: isize) -> Self {
+        Self::Index(value)
+    }
+}
+
+impl From<i32> for BrowserTabSelector<'_> {
+    fn from(value: i32) -> Self {
+        Self::Index(value as isize)
+    }
+}
+
+impl From<i64> for BrowserTabSelector<'_> {
+    fn from(value: i64) -> Self {
+        Self::Index(value as isize)
+    }
+}
+
+impl From<usize> for BrowserTabSelector<'_> {
+    fn from(value: usize) -> Self {
+        Self::Index(value as isize)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BrowserTabTypeInput<'a> {
+    Single(Cow<'a, str>),
+    Many(Vec<Cow<'a, str>>),
+}
+
+impl<'a> From<&'a str> for BrowserTabTypeInput<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::Single(Cow::Borrowed(value))
+    }
+}
+
+impl<'a> From<&'a String> for BrowserTabTypeInput<'a> {
+    fn from(value: &'a String) -> Self {
+        Self::Single(Cow::Borrowed(value.as_str()))
+    }
+}
+
+impl<'a> From<&'a [&'a str]> for BrowserTabTypeInput<'a> {
+    fn from(value: &'a [&'a str]) -> Self {
+        Self::Many(
+            value
+                .iter()
+                .map(|item| Cow::Borrowed(*item))
+                .collect::<Vec<_>>(),
+        )
+    }
+}
+
+impl<'a> From<&'a Vec<&'a str>> for BrowserTabTypeInput<'a> {
+    fn from(value: &'a Vec<&'a str>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl<'a> From<&'a [String]> for BrowserTabTypeInput<'a> {
+    fn from(value: &'a [String]) -> Self {
+        Self::Many(
+            value
+                .iter()
+                .map(|item| Cow::Borrowed(item.as_str()))
+                .collect::<Vec<_>>(),
+        )
+    }
+}
+
+impl<'a> From<&'a Vec<String>> for BrowserTabTypeInput<'a> {
+    fn from(value: &'a Vec<String>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum BrowserTabReference {
+    Page(Page),
+    WebPage(WebPage),
+    Id(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BrowserTabTargetsInput<'a> {
+    Single(BrowserTabSelector<'a>),
+    Many(Vec<BrowserTabSelector<'a>>),
+}
+
+impl<'a> From<BrowserTabSelector<'a>> for BrowserTabTargetsInput<'a> {
+    fn from(value: BrowserTabSelector<'a>) -> Self {
+        Self::Single(value)
+    }
+}
+
+impl<'a> From<&'a str> for BrowserTabTargetsInput<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::Single(BrowserTabSelector::from(value))
+    }
+}
+
+impl<'a> From<&'a String> for BrowserTabTargetsInput<'a> {
+    fn from(value: &'a String) -> Self {
+        Self::Single(BrowserTabSelector::from(value))
+    }
+}
+
+impl From<usize> for BrowserTabTargetsInput<'_> {
+    fn from(value: usize) -> Self {
+        Self::Single(BrowserTabSelector::from(value))
+    }
+}
+
+impl From<isize> for BrowserTabTargetsInput<'_> {
+    fn from(value: isize) -> Self {
+        Self::Single(BrowserTabSelector::from(value))
+    }
+}
+
+impl From<i32> for BrowserTabTargetsInput<'_> {
+    fn from(value: i32) -> Self {
+        Self::Single(BrowserTabSelector::from(value))
+    }
+}
+
+impl From<i64> for BrowserTabTargetsInput<'_> {
+    fn from(value: i64) -> Self {
+        Self::Single(BrowserTabSelector::from(value))
+    }
+}
+
+impl<'a> From<&'a [BrowserTabSelector<'a>]> for BrowserTabTargetsInput<'a> {
+    fn from(value: &'a [BrowserTabSelector<'a>]) -> Self {
+        Self::Many(value.to_vec())
+    }
+}
+
+impl<'a> From<&'a Vec<BrowserTabSelector<'a>>> for BrowserTabTargetsInput<'a> {
+    fn from(value: &'a Vec<BrowserTabSelector<'a>>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl<'a> From<&'a [&'a str]> for BrowserTabTargetsInput<'a> {
+    fn from(value: &'a [&'a str]) -> Self {
+        Self::Many(
+            value
+                .iter()
+                .map(|item| BrowserTabSelector::from(*item))
+                .collect(),
+        )
+    }
+}
+
+impl<'a> From<&'a Vec<&'a str>> for BrowserTabTargetsInput<'a> {
+    fn from(value: &'a Vec<&'a str>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl<'a> From<&'a [String]> for BrowserTabTargetsInput<'a> {
+    fn from(value: &'a [String]) -> Self {
+        Self::Many(value.iter().map(BrowserTabSelector::from).collect())
+    }
+}
+
+impl<'a> From<&'a Vec<String>> for BrowserTabTargetsInput<'a> {
+    fn from(value: &'a Vec<String>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl From<&[usize]> for BrowserTabTargetsInput<'_> {
+    fn from(value: &[usize]) -> Self {
+        Self::Many(
+            value
+                .iter()
+                .copied()
+                .map(BrowserTabSelector::from)
+                .collect(),
+        )
+    }
+}
+
+impl From<&Vec<usize>> for BrowserTabTargetsInput<'_> {
+    fn from(value: &Vec<usize>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl From<&[isize]> for BrowserTabTargetsInput<'_> {
+    fn from(value: &[isize]) -> Self {
+        Self::Many(
+            value
+                .iter()
+                .copied()
+                .map(BrowserTabSelector::from)
+                .collect(),
+        )
+    }
+}
+
+impl From<&Vec<isize>> for BrowserTabTargetsInput<'_> {
+    fn from(value: &Vec<isize>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+fn attach_newest_tab_tracker(
+    runtime: &Arc<Runtime>,
+    browser: &OxBrowser,
+    newest_tab_id: Arc<StdMutex<Option<String>>>,
+) -> OpenPageResult<(tokio::task::JoinHandle<()>, tokio::task::JoinHandle<()>)> {
+    let (mut created_events, mut destroyed_events) = runtime.block_on(async {
+        let created_events = browser
+            .event_listener::<EventTargetCreated>()
+            .await
+            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        let destroyed_events = browser
+            .event_listener::<EventTargetDestroyed>()
+            .await
+            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        Ok::<_, OpenPageError>((created_events, destroyed_events))
+    })?;
+
+    let created_newest_tab_id = Arc::clone(&newest_tab_id);
+    let target_created_task = runtime.spawn(async move {
+        while let Some(event) = created_events.next().await {
+            let target_info = &event.target_info;
+            if is_tab_like_type(&target_info.r#type) && !target_info.url.starts_with("devtools://")
+            {
+                if let Ok(mut newest_tab_id) = created_newest_tab_id.lock() {
+                    *newest_tab_id = Some(target_info.target_id.as_ref().to_string());
+                }
+            }
+        }
+    });
+
+    let target_destroyed_task = runtime.spawn(async move {
+        while let Some(event) = destroyed_events.next().await {
+            if let Ok(mut tracked_newest) = newest_tab_id.lock()
+                && tracked_newest.as_deref() == Some(event.target_id.as_ref())
+            {
+                *tracked_newest = None;
+            }
+        }
+    });
+
+    Ok((target_created_task, target_destroyed_task))
+}
+
+fn resolve_newest_tab_id(
+    current_ids: &[String],
+    tracked_newest_tab_id: Option<String>,
+) -> Option<String> {
+    if let Some(tracked_newest_tab_id) = tracked_newest_tab_id
+        && current_ids
+            .iter()
+            .any(|target_id| target_id == &tracked_newest_tab_id)
+    {
+        return Some(tracked_newest_tab_id);
+    }
+
+    current_ids.first().cloned()
+}
+
+fn move_newest_tab_info_to_front(infos: &mut Vec<TabInfo>, tracked_newest_tab_id: Option<String>) {
+    let current_ids = infos
+        .iter()
+        .map(|info| info.target_id.clone())
+        .collect::<Vec<_>>();
+    let Some(newest_tab_id) = resolve_newest_tab_id(&current_ids, tracked_newest_tab_id) else {
+        return;
+    };
+
+    if let Some(index) = infos
+        .iter()
+        .position(|info| info.target_id == newest_tab_id)
+        && index > 0
+    {
+        let newest = infos.remove(index);
+        infos.insert(0, newest);
+    }
 }
 
 impl Browser {
@@ -671,8 +1045,14 @@ impl Browser {
         }
         let config = build_browser_config(&options, resolved_user_data_dir.as_deref())?;
         let configured_download_path = options.download_path.clone();
+        let debugger_address = options.address();
+        let connect_timeout = browser_connect_timeout_duration();
+        let connect_timeout_ms = timeout_duration_millis(connect_timeout);
         let (mut browser, mut handler) = runtime
-            .block_on(async move { OxBrowser::launch(config).await })
+            .block_on(
+                async move { tokio_timeout(connect_timeout, OxBrowser::launch(config)).await },
+            )
+            .map_err(|_| timeout_error("Browser::launch()", connect_timeout_ms))?
             .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?;
 
         let handler_task = runtime.spawn(async move {
@@ -682,6 +1062,9 @@ impl Browser {
                 }
             }
         });
+        let newest_tab_id = Arc::new(StdMutex::new(None));
+        let (target_created_task, target_destroyed_task) =
+            attach_newest_tab_tracker(&runtime, &browser, Arc::clone(&newest_tab_id))?;
         let (downloads, download_task) = attach_download_store(Arc::clone(&runtime), &browser)?;
         configure_download_behavior(&runtime, &browser, &download_spool_dir)?;
         let launched_browser_pid = browser_pid(&mut browser);
@@ -690,12 +1073,16 @@ impl Browser {
             inner: Arc::new(BrowserState {
                 runtime,
                 browser: Mutex::new(browser),
+                debugger_address,
                 browser_pid: launched_browser_pid,
                 downloads,
+                newest_tab_id,
                 download_path: StdMutex::new(configured_download_path.clone()),
                 download_file_exists: StdMutex::new(options.download_file_exists),
                 browser_download_naming: StdMutex::new(BrowserDownloadNaming::default()),
                 load_mode: StdMutex::new(options.load_mode),
+                page_cache: StdMutex::new(HashMap::new()),
+                isolated_contexts: StdMutex::new(HashMap::new()),
                 page_download_settings: StdMutex::new(HashMap::new()),
                 mission_download_settings: StdMutex::new(HashMap::new()),
                 download_spool_dir: download_spool_dir.clone(),
@@ -711,8 +1098,11 @@ impl Browser {
                 retry_interval_millis: StdMutex::new(options.retry_interval_millis),
                 _download_task: download_task,
                 _handler_task: handler_task,
+                _target_created_task: target_created_task,
+                _target_destroyed_task: target_destroyed_task,
             }),
         };
+        browser.seed_newest_tab_id_from_tab_infos()?;
 
         if let Some(path) = configured_download_path {
             browser.set_download_path(path)?;
@@ -726,8 +1116,12 @@ impl Browser {
             Arc::new(Runtime::new().map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?);
         let download_spool_dir = make_temp_download_dir(None)?;
         let url = debugger_url.to_string();
+        let debugger_address = normalize_debugger_address(debugger_url).0;
+        let connect_timeout = browser_connect_timeout_duration();
+        let connect_timeout_ms = timeout_duration_millis(connect_timeout);
         let (mut browser, mut handler) = runtime
-            .block_on(async move { OxBrowser::connect(url).await })
+            .block_on(async move { tokio_timeout(connect_timeout, OxBrowser::connect(url)).await })
+            .map_err(|_| timeout_error("Browser::connect()", connect_timeout_ms))?
             .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?;
 
         let handler_task = runtime.spawn(async move {
@@ -737,6 +1131,9 @@ impl Browser {
                 }
             }
         });
+        let newest_tab_id = Arc::new(StdMutex::new(None));
+        let (target_created_task, target_destroyed_task) =
+            attach_newest_tab_tracker(&runtime, &browser, Arc::clone(&newest_tab_id))?;
 
         runtime.block_on(async {
             browser
@@ -748,16 +1145,20 @@ impl Browser {
         let (downloads, download_task) = attach_download_store(Arc::clone(&runtime), &browser)?;
         configure_download_behavior(&runtime, &browser, &download_spool_dir)?;
 
-        Ok(Self {
+        let browser = Self {
             inner: Arc::new(BrowserState {
                 runtime,
                 browser: Mutex::new(browser),
+                debugger_address,
                 browser_pid: None,
                 downloads,
+                newest_tab_id,
                 download_path: StdMutex::new(None),
                 download_file_exists: StdMutex::new(DownloadFileExistsMode::Rename),
                 browser_download_naming: StdMutex::new(BrowserDownloadNaming::default()),
                 load_mode: StdMutex::new(LoadMode::Normal),
+                page_cache: StdMutex::new(HashMap::new()),
+                isolated_contexts: StdMutex::new(HashMap::new()),
                 page_download_settings: StdMutex::new(HashMap::new()),
                 mission_download_settings: StdMutex::new(HashMap::new()),
                 download_spool_dir: download_spool_dir.clone(),
@@ -769,25 +1170,60 @@ impl Browser {
                 retry_interval_millis: StdMutex::new(2_000),
                 _download_task: download_task,
                 _handler_task: handler_task,
+                _target_created_task: target_created_task,
+                _target_destroyed_task: target_destroyed_task,
             }),
-        })
+        };
+        browser.seed_newest_tab_id_from_tab_infos()?;
+
+        Ok(browser)
+    }
+
+    fn tracked_newest_tab_id(&self) -> OpenPageResult<Option<String>> {
+        self.inner
+            .newest_tab_id
+            .lock()
+            .map(|target_id| target_id.clone())
+            .map_err(|_| {
+                OpenPageError::BrowserOperation("browser newest tab lock poisoned".to_string())
+            })
+    }
+
+    fn set_tracked_newest_tab_id(&self, target_id: Option<String>) -> OpenPageResult<()> {
+        *self.inner.newest_tab_id.lock().map_err(|_| {
+            OpenPageError::BrowserOperation("browser newest tab lock poisoned".to_string())
+        })? = target_id;
+        Ok(())
+    }
+
+    fn seed_newest_tab_id_from_tab_infos(&self) -> OpenPageResult<()> {
+        let target_id = self
+            .tab_infos()?
+            .into_iter()
+            .next()
+            .map(|info| info.target_id);
+        self.set_tracked_newest_tab_id(target_id)
+    }
+
+    pub(crate) fn newest_tab_id(&self) -> OpenPageResult<Option<String>> {
+        let current_ids = self.tab_ids()?;
+        Ok(resolve_newest_tab_id(
+            &current_ids,
+            self.tracked_newest_tab_id()?,
+        ))
     }
 
     pub fn new_page(&self, url: Option<&str>) -> OpenPageResult<Page> {
         let target_url = url.unwrap_or("about:blank").to_string();
-        let runtime = Arc::clone(&self.inner.runtime);
         let load_mode = self.load_mode_value()?;
         let page = self.inner.runtime.block_on(async {
             let browser = self.inner.browser.lock().await;
-            browser
-                .new_page(target_url)
+            run_browser_future_with_cdp_timeout(browser.new_page(target_url), "Browser::new_page()")
                 .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))
         })?;
-
-        Ok(Page::new_with_load_mode(runtime, page, load_mode)
-            .with_browser(self.clone())
-            .with_browser_pid(self.inner.browser_pid))
+        let page = self.realize_page(page, load_mode)?;
+        self.set_tracked_newest_tab_id(Some(page.target_id()))?;
+        Ok(page)
     }
 
     pub fn new_tab(
@@ -795,154 +1231,421 @@ impl Browser {
         url: Option<&str>,
         new_window: bool,
         background: bool,
+        new_context: bool,
     ) -> OpenPageResult<Page> {
-        let params = CreateTargetParams::builder()
-            .url(url.unwrap_or("about:blank"))
-            .new_window(new_window)
-            .background(background)
-            .build()
-            .map_err(OpenPageError::BrowserOperation)?;
-        let runtime = Arc::clone(&self.inner.runtime);
-        let load_mode = self.load_mode_value()?;
-        let page = self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
-            browser
-                .new_page(params)
+        let isolated_context_id = if new_context {
+            Some(self.inner.runtime.block_on(async {
+                let browser = self.inner.browser.lock().await;
+                run_browser_future_with_cdp_timeout(
+                    browser.create_browser_context(CreateBrowserContextParams::default()),
+                    "Browser::new_tab().create_browser_context()",
+                )
                 .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))
-        })?;
-        Ok(Page::new_with_load_mode(runtime, page, load_mode)
-            .with_browser(self.clone())
-            .with_browser_pid(self.inner.browser_pid))
+                .map(|id| id.as_ref().to_string())
+            })?)
+        } else {
+            None
+        };
+
+        let effective_new_window = new_window || new_context;
+        let mut params = CreateTargetParams::builder()
+            .url(url.unwrap_or("about:blank"))
+            .new_window(effective_new_window)
+            .background(background);
+        if let Some(browser_context_id) = isolated_context_id.as_deref() {
+            params = params.browser_context_id(browser_context_id.to_string());
+        }
+        let params = params.build().map_err(OpenPageError::BrowserOperation)?;
+        let load_mode = self.load_mode_value()?;
+        let page = match self.inner.runtime.block_on(async {
+            let browser = self.inner.browser.lock().await;
+            run_browser_future_with_cdp_timeout(
+                browser.new_page(params),
+                "Browser::new_tab().new_page()",
+            )
+            .await
+        }) {
+            Ok(page) => page,
+            Err(err) => {
+                if let Some(browser_context_id) = isolated_context_id.as_deref() {
+                    let _ = self.dispose_browser_context(browser_context_id);
+                }
+                return Err(err);
+            }
+        };
+        let target_id = page.target_id().as_ref().to_string();
+        let page = match self.realize_page(page, load_mode) {
+            Ok(page) => page,
+            Err(err) => {
+                if let Some(browser_context_id) = isolated_context_id.as_deref() {
+                    let _ = self.dispose_browser_context(browser_context_id);
+                }
+                return Err(err);
+            }
+        };
+        if let Some(browser_context_id) = isolated_context_id.as_deref() {
+            if let Err(err) = self.record_isolated_context(&target_id, browser_context_id) {
+                let _ = self.dispose_browser_context(browser_context_id);
+                let _ = self.remove_cached_page(&target_id);
+                return Err(err);
+            }
+        }
+        self.set_tracked_newest_tab_id(Some(target_id))?;
+        Ok(page)
     }
 
     pub fn pages(&self) -> OpenPageResult<Vec<Page>> {
-        let runtime = Arc::clone(&self.inner.runtime);
+        let load_mode = self.load_mode_value()?;
         let pages = self.inner.runtime.block_on(async {
             let browser = self.inner.browser.lock().await;
-            browser
-                .pages()
-                .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))
+            run_browser_future_with_cdp_timeout(browser.pages(), "Browser::pages()").await
         })?;
-
-        Ok(pages
+        let target_ids = pages
+            .iter()
+            .map(|page| page.target_id().as_ref().to_string())
+            .collect::<Vec<_>>();
+        self.prune_cached_pages(&target_ids)?;
+        pages
             .into_iter()
-            .map(|page| {
-                Page::new(Arc::clone(&runtime), page)
-                    .with_browser(self.clone())
-                    .with_browser_pid(self.inner.browser_pid)
-            })
-            .collect())
+            .map(|page| self.realize_page(page, load_mode))
+            .collect()
     }
 
     pub fn get_page(&self, target_id: &str) -> OpenPageResult<Page> {
-        let runtime = Arc::clone(&self.inner.runtime);
         let load_mode = self.load_mode_value()?;
         let page = self.inner.runtime.block_on(async {
             let browser = self.inner.browser.lock().await;
-            browser
-                .get_page(TargetId::new(target_id))
-                .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))
-        })?;
-        Ok(Page::new_with_load_mode(runtime, page, load_mode)
+            run_browser_future_with_cdp_timeout(
+                browser.get_page(TargetId::new(target_id)),
+                "Browser::get_page()",
+            )
+            .await
+        });
+        match page {
+            Ok(page) => self.realize_page(page, load_mode),
+            Err(err) => {
+                let _ = self.remove_cached_page(target_id);
+                Err(err)
+            }
+        }
+    }
+
+    pub(crate) fn wait_for_page(&self, target_id: &str, timeout_ms: u64) -> OpenPageResult<Page> {
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        loop {
+            match self.get_page(target_id) {
+                Ok(page) => return Ok(page),
+                Err(OpenPageError::BrowserOperation(message))
+                    if message == "Requested value not found." && Instant::now() < deadline => {}
+                Err(err) => return Err(err),
+            }
+            if Instant::now() >= deadline {
+                break;
+            }
+            sleep(Duration::from_millis(50));
+        }
+        self.get_page(target_id)
+    }
+
+    fn realize_page(
+        &self,
+        page: chromiumoxide::page::Page,
+        load_mode: LoadMode,
+    ) -> OpenPageResult<Page> {
+        let runtime = Arc::clone(&self.inner.runtime);
+        let target_id = page.target_id().as_ref().to_string();
+        if !singleton_tab_obj_enabled() {
+            return Ok(Page::new_with_load_mode(runtime, page, load_mode)
+                .with_browser(self.clone())
+                .with_browser_pid(self.inner.browser_pid));
+        }
+
+        let mut cache =
+            self.inner.page_cache.lock().map_err(|_| {
+                OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                    "page cache",
+                    "页面缓存",
+                ))
+            })?;
+        if let Some(base_page) = cache.get(&target_id) {
+            base_page.set_runtime_load_mode(load_mode)?;
+            return Ok(base_page
+                .clone()
+                .with_browser(self.clone())
+                .with_browser_pid(self.inner.browser_pid));
+        }
+
+        let base_page = Page::new_with_load_mode(runtime, page, load_mode)
+            .with_browser_pid(self.inner.browser_pid);
+        let page = base_page
+            .clone()
             .with_browser(self.clone())
-            .with_browser_pid(self.inner.browser_pid))
+            .with_browser_pid(self.inner.browser_pid);
+        cache.insert(target_id, base_page);
+        Ok(page)
     }
 
-    pub fn tabs_count(&self) -> OpenPageResult<usize> {
-        Ok(self.pages()?.len())
+    fn prune_cached_pages(&self, target_ids: &[String]) -> OpenPageResult<()> {
+        if !singleton_tab_obj_enabled() {
+            return Ok(());
+        }
+        let current = target_ids.iter().cloned().collect::<HashSet<_>>();
+        self.inner
+            .page_cache
+            .lock()
+            .map(|mut cache| cache.retain(|target_id, _| current.contains(target_id)))
+            .map_err(|_| {
+                OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                    "page cache",
+                    "页面缓存",
+                ))
+            })
     }
 
-    pub fn tab_ids(&self) -> OpenPageResult<Vec<String>> {
-        Ok(self
-            .pages()?
-            .into_iter()
-            .map(|page| page.target_id())
-            .collect())
+    pub(crate) fn remove_cached_page(&self, target_id: &str) -> OpenPageResult<()> {
+        self.inner
+            .page_cache
+            .lock()
+            .map(|mut cache| {
+                cache.remove(target_id);
+            })
+            .map_err(|_| {
+                OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                    "page cache",
+                    "页面缓存",
+                ))
+            })
     }
 
-    pub fn tab_infos(&self) -> OpenPageResult<Vec<TabInfo>> {
+    fn record_isolated_context(
+        &self,
+        target_id: &str,
+        browser_context_id: &str,
+    ) -> OpenPageResult<()> {
+        self.inner
+            .isolated_contexts
+            .lock()
+            .map(|mut contexts| {
+                contexts.insert(target_id.to_string(), browser_context_id.to_string());
+            })
+            .map_err(|_| {
+                OpenPageError::BrowserOperation("isolated context lock poisoned".to_string())
+            })
+    }
+
+    fn isolated_context_id(&self, target_id: &str) -> OpenPageResult<Option<String>> {
+        self.inner
+            .isolated_contexts
+            .lock()
+            .map(|contexts| contexts.get(target_id).cloned())
+            .map_err(|_| {
+                OpenPageError::BrowserOperation("isolated context lock poisoned".to_string())
+            })
+    }
+
+    pub(crate) fn browser_context_id(&self, target_id: &str) -> OpenPageResult<Option<String>> {
+        self.isolated_context_id(target_id)
+    }
+
+    fn clear_isolated_context(&self, target_id: &str) {
+        if let Ok(mut contexts) = self.inner.isolated_contexts.lock() {
+            contexts.remove(target_id);
+        }
+    }
+
+    fn dispose_browser_context(&self, browser_context_id: &str) -> OpenPageResult<()> {
+        let browser_context_id = browser_context_id.to_string();
         self.inner.runtime.block_on(async {
             let browser = self.inner.browser.lock().await;
-            let targets = browser
-                .execute(GetTargetsParams::default())
-                .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
-            Ok(targets
-                .result
-                .target_infos
-                .into_iter()
-                .filter(|target| is_tab_like_type(&target.r#type))
-                .map(|target| TabInfo {
-                    target_id: target.target_id.as_ref().to_string(),
-                    tab_type: target.r#type,
-                    title: target.title,
-                    url: target.url,
-                    attached: target.attached,
-                })
-                .collect())
-        })
-    }
-
-    pub fn latest_tab(&self) -> OpenPageResult<Option<Page>> {
-        let Some(target_id) = self.tab_infos()?.last().map(|info| info.target_id.clone()) else {
-            return Ok(None);
-        };
-        self.get_page(&target_id).map(Some)
-    }
-
-    pub fn activate_tab(&self, target_id: &str) -> OpenPageResult<()> {
-        let params = ActivateTargetParams::new(TargetId::new(target_id));
-        self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
-            browser
-                .execute(params)
-                .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+            run_browser_future_with_cdp_timeout(
+                browser.dispose_browser_context(browser_context_id),
+                "Browser::dispose_browser_context()",
+            )
+            .await?;
             Ok(())
         })
     }
 
-    pub fn close_tabs(&self, target_ids: &[String], others: bool) -> OpenPageResult<usize> {
+    pub(crate) fn close_target(&self, target_id: &str) -> OpenPageResult<()> {
+        if let Some(browser_context_id) = self.isolated_context_id(target_id)? {
+            self.dispose_browser_context(&browser_context_id)?;
+            self.clear_isolated_context(target_id);
+        } else {
+            execute_browser_command_blocking(
+                self.inner.runtime.as_ref(),
+                &self.inner.browser,
+                CloseTargetParams::new(TargetId::new(target_id)),
+                "Browser::close_target()",
+            )?;
+        }
+        let _ = self.remove_cached_page(target_id);
+        Ok(())
+    }
+
+    pub fn get_tab<'a, I, T>(
+        &self,
+        id_or_num: Option<I>,
+        title: Option<&str>,
+        url: Option<&str>,
+        tab_type: Option<T>,
+        as_id: bool,
+    ) -> OpenPageResult<Option<BrowserTabReference>>
+    where
+        I: Into<BrowserTabSelector<'a>>,
+        T: Into<BrowserTabTypeInput<'a>>,
+    {
+        let infos = self.tab_infos()?;
+        if let Some(id_or_num) = id_or_num {
+            let selected = select_browser_tab_info_by_selector(&infos, id_or_num.into())?;
+            return selected
+                .map(|info| self.browser_tab_reference(info.target_id.clone(), as_id))
+                .transpose();
+        }
+
+        let tab_types = tab_type
+            .map(|value| normalize_browser_tab_types(value.into()))
+            .unwrap_or_else(|| vec!["page".to_string()]);
+        let selected = infos
+            .iter()
+            .find(|info| browser_tab_info_matches(info, title, url, &tab_types));
+        selected
+            .map(|info| self.browser_tab_reference(info.target_id.clone(), as_id))
+            .transpose()
+    }
+
+    pub fn get_tabs<'a, T>(
+        &self,
+        title: Option<&str>,
+        url: Option<&str>,
+        tab_type: Option<T>,
+        as_id: bool,
+    ) -> OpenPageResult<Vec<BrowserTabReference>>
+    where
+        T: Into<BrowserTabTypeInput<'a>>,
+    {
+        let tab_types = tab_type
+            .map(|value| normalize_browser_tab_types(value.into()))
+            .unwrap_or_else(|| vec!["page".to_string()]);
+        self.tab_infos()?
+            .into_iter()
+            .filter(|info| browser_tab_info_matches(info, title, url, &tab_types))
+            .map(|info| self.browser_tab_reference(info.target_id, as_id))
+            .collect()
+    }
+
+    pub fn tabs_count(&self) -> OpenPageResult<usize> {
+        Ok(self.tab_infos()?.len())
+    }
+
+    pub fn tab_ids(&self) -> OpenPageResult<Vec<String>> {
+        Ok(self
+            .tab_infos()?
+            .into_iter()
+            .map(|info| info.target_id)
+            .collect())
+    }
+
+    pub fn tab_infos(&self) -> OpenPageResult<Vec<TabInfo>> {
+        let mut infos = execute_browser_command_blocking(
+            self.inner.runtime.as_ref(),
+            &self.inner.browser,
+            GetTargetsParams::default(),
+            "Browser::tab_infos()",
+        )?
+        .target_infos
+        .into_iter()
+        .filter(|target| is_tab_like_type(&target.r#type) && !target.url.starts_with("devtools://"))
+        .map(|target| TabInfo {
+            target_id: target.target_id.as_ref().to_string(),
+            tab_type: target.r#type,
+            title: target.title,
+            url: target.url,
+            attached: target.attached,
+        })
+        .collect::<Vec<_>>();
+        move_newest_tab_info_to_front(&mut infos, self.tracked_newest_tab_id()?);
+        Ok(infos)
+    }
+
+    pub fn latest_tab(&self) -> OpenPageResult<Option<BrowserTabReference>> {
+        let Some(target_id) = self.newest_tab_id()? else {
+            return Ok(None);
+        };
+        self.browser_tab_reference(target_id, !singleton_tab_obj_enabled())
+            .map(Some)
+    }
+
+    pub fn activate_tab<'a, T>(&self, target: T) -> OpenPageResult<()>
+    where
+        T: Into<BrowserTabSelector<'a>>,
+    {
+        let target_id = resolve_browser_tab_target_id(&self.tab_infos()?, target.into())?;
+        let params = ActivateTargetParams::new(TargetId::new(target_id));
+        execute_browser_command_blocking(
+            self.inner.runtime.as_ref(),
+            &self.inner.browser,
+            params,
+            "Browser::activate_tab()",
+        )?;
+        Ok(())
+    }
+
+    pub fn close_tabs<'a, T>(&self, targets: T, others: bool) -> OpenPageResult<usize>
+    where
+        T: Into<BrowserTabTargetsInput<'a>>,
+    {
+        let target_ids = resolve_browser_tab_target_ids(&self.tab_infos()?, targets.into())?;
         let closing_ids = if others {
-            let keep = target_ids
-                .iter()
-                .cloned()
-                .collect::<std::collections::HashSet<_>>();
+            let keep = target_ids.iter().cloned().collect::<HashSet<_>>();
             self.tab_infos()?
                 .into_iter()
                 .map(|info| info.target_id)
                 .filter(|target_id| !keep.contains(target_id))
                 .collect::<Vec<_>>()
         } else {
-            target_ids.to_vec()
+            target_ids
         };
         if closing_ids.is_empty() {
             return Ok(0);
         }
-        self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
-            for target_id in &closing_ids {
-                browser
-                    .execute(CloseTargetParams::new(TargetId::new(target_id)))
-                    .await
-                    .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        for target_id in &closing_ids {
+            self.close_target(target_id)?;
+        }
+        Ok(closing_ids.len())
+    }
+
+    fn browser_tab_reference(
+        &self,
+        target_id: String,
+        as_id: bool,
+    ) -> OpenPageResult<BrowserTabReference> {
+        if as_id {
+            Ok(BrowserTabReference::Id(target_id))
+        } else {
+            if let Some(page) = self
+                .pages()?
+                .into_iter()
+                .find(|page| page.target_id() == target_id)
+            {
+                Ok(BrowserTabReference::Page(page))
+            } else {
+                self.get_page(&target_id).map(BrowserTabReference::Page)
             }
-            Ok::<usize, OpenPageError>(closing_ids.len())
-        })
+        }
     }
 
     pub fn version(&self) -> OpenPageResult<String> {
         self.inner.runtime.block_on(async {
             let browser = self.inner.browser.lock().await;
-            let version = browser
-                .version()
-                .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+            let version =
+                run_browser_future_with_cdp_timeout(browser.version(), "Browser::version()")
+                    .await?;
             Ok(version.product)
         })
+    }
+
+    pub fn address(&self) -> String {
+        self.inner.debugger_address.clone()
     }
 
     pub fn set_cookie(
@@ -954,14 +1657,13 @@ impl Browser {
         path: Option<&str>,
     ) -> OpenPageResult<()> {
         let cookie = browser_cookie_param(name, value, url, domain, path);
-        self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
-            browser
-                .execute(SetCookiesParams::new(vec![cookie]))
-                .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
-            Ok(())
-        })
+        execute_browser_command_blocking(
+            self.inner.runtime.as_ref(),
+            &self.inner.browser,
+            SetCookiesParams::new(vec![cookie]),
+            "Browser::set_cookie()",
+        )?;
+        Ok(())
     }
 
     pub fn set_cookie_header(&self, url: &str, cookie_header: &str) -> OpenPageResult<()> {
@@ -972,14 +1674,13 @@ impl Browser {
             return Ok(());
         }
 
-        self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
-            browser
-                .execute(SetCookiesParams::new(cookies))
-                .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
-            Ok(())
-        })
+        execute_browser_command_blocking(
+            self.inner.runtime.as_ref(),
+            &self.inner.browser,
+            SetCookiesParams::new(cookies),
+            "Browser::set_cookie_header()",
+        )?;
+        Ok(())
     }
 
     pub fn remove_cookie(
@@ -990,25 +1691,68 @@ impl Browser {
         path: Option<&str>,
     ) -> OpenPageResult<()> {
         let params = browser_delete_cookie_params(name, url, domain, path);
-        self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
-            browser
-                .execute(params)
-                .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
-            Ok(())
-        })
+        execute_browser_command_blocking(
+            self.inner.runtime.as_ref(),
+            &self.inner.browser,
+            params,
+            "Browser::remove_cookie()",
+        )?;
+        Ok(())
     }
 
     pub fn clear_cookies(&self) -> OpenPageResult<()> {
-        self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
-            browser
-                .execute(ClearBrowserCookiesParams::default())
-                .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
-            Ok(())
-        })
+        execute_browser_command_blocking(
+            self.inner.runtime.as_ref(),
+            &self.inner.browser,
+            ClearBrowserCookiesParams::default(),
+            "Browser::clear_cookies()",
+        )?;
+        Ok(())
+    }
+
+    pub fn set_permission(
+        &self,
+        permission: PermissionDescriptor,
+        setting: PermissionSetting,
+        origin: Option<&str>,
+        embedded_origin: Option<&str>,
+        browser_context_id: Option<&str>,
+    ) -> OpenPageResult<()> {
+        let mut params = SetPermissionParams::builder()
+            .permission(permission)
+            .setting(setting);
+        if let Some(origin) = origin {
+            params = params.origin(origin.to_string());
+        }
+        if let Some(embedded_origin) = embedded_origin {
+            params = params.embedded_origin(embedded_origin.to_string());
+        }
+        if let Some(browser_context_id) = browser_context_id {
+            params = params.browser_context_id(browser_context_id.to_string());
+        }
+        let params = params.build().map_err(OpenPageError::BrowserOperation)?;
+        execute_browser_command_blocking(
+            self.inner.runtime.as_ref(),
+            &self.inner.browser,
+            params,
+            "Browser::set_permission()",
+        )?;
+        Ok(())
+    }
+
+    pub fn reset_permissions(&self, browser_context_id: Option<&str>) -> OpenPageResult<()> {
+        let mut params = ResetPermissionsParams::builder();
+        if let Some(browser_context_id) = browser_context_id {
+            params = params.browser_context_id(browser_context_id.to_string());
+        }
+        let params = params.build();
+        execute_browser_command_blocking(
+            self.inner.runtime.as_ref(),
+            &self.inner.browser,
+            params,
+            "Browser::reset_permissions()",
+        )?;
+        Ok(())
     }
 
     pub fn is_alive(&self) -> OpenPageResult<bool> {
@@ -1032,6 +1776,10 @@ impl Browser {
 
     pub fn browser_pid(&self) -> Option<u32> {
         self.inner.browser_pid
+    }
+
+    pub fn process_id(&self) -> Option<u32> {
+        self.browser_pid()
     }
 
     pub fn timeouts(&self) -> OpenPageResult<TimeoutConfig> {
@@ -1087,24 +1835,46 @@ impl Browser {
 
     pub fn wait_for_new_tab(
         &self,
-        _current_tab_id: Option<&str>,
+        current_tab_id: Option<&str>,
         timeout_ms: u64,
     ) -> OpenPageResult<Option<String>> {
         let baseline = self.tab_ids()?;
+        let tracked_baseline = self.tracked_newest_tab_id()?;
+        let baseline_marker = current_tab_id
+            .map(str::trim)
+            .filter(|target_id| !target_id.is_empty())
+            .map(str::to_string)
+            .or_else(|| resolve_newest_tab_id(&baseline, tracked_baseline.clone()));
+        let baseline_newest = resolve_newest_tab_id(&baseline, tracked_baseline);
+        if let Some(new_id) = find_new_tab_id(
+            &baseline,
+            &baseline,
+            baseline_marker.as_deref(),
+            baseline_newest.as_deref(),
+        ) {
+            return Ok(Some(new_id));
+        }
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         loop {
             let current = self.tab_ids()?;
-            if let Some(new_id) = current
-                .iter()
-                .find(|id| !baseline.iter().any(|seen| seen == *id))
-            {
-                return Ok(Some(new_id.clone()));
+            let current_newest = resolve_newest_tab_id(&current, self.tracked_newest_tab_id()?);
+            if let Some(new_id) = find_new_tab_id(
+                &baseline,
+                &current,
+                baseline_marker.as_deref(),
+                current_newest.as_deref(),
+            ) {
+                return Ok(Some(new_id));
             }
             if Instant::now() >= deadline {
-                return Ok(None);
+                break;
             }
             sleep(Duration::from_millis(50));
         }
+        if wait_failed_should_raise() {
+            return Err(timeout_error("Browser::wait_for_new_tab()", timeout_ms));
+        }
+        Ok(None)
     }
 
     pub fn download_path(&self) -> OpenPageResult<Option<String>> {
@@ -1386,6 +2156,10 @@ impl Browser {
             .map(|guid| DownloadMission::new(self.clone(), guid)))
     }
 
+    pub fn clear_finished_downloads(&self) -> OpenPageResult<usize> {
+        self.inner.downloads.clear_finished()
+    }
+
     pub fn wait_for_download(
         &self,
         filename: Option<&str>,
@@ -1522,26 +2296,90 @@ impl Browser {
 
     pub fn cancel_download(&self, guid: &str) -> OpenPageResult<()> {
         let guid = guid.to_string();
-        self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
-            browser
-                .execute(CancelDownloadParams::new(guid))
-                .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
-            Ok(())
-        })
+        execute_browser_command_blocking(
+            self.inner.runtime.as_ref(),
+            &self.inner.browser,
+            CancelDownloadParams::new(guid),
+            "Browser::cancel_download()",
+        )?;
+        Ok(())
+    }
+
+    pub fn reconnect(&self) -> OpenPageResult<Self> {
+        let mut browser = Browser::connect(&format!("http://{}", self.address()))?;
+        browser.set_timeouts(self.timeouts()?)?;
+        browser.set_retry(
+            Some(self.retry_times()?),
+            Some(self.retry_interval_millis()?),
+        )?;
+        browser.set_load_mode(self.load_mode_value()?)?;
+        browser.apply_browser_download_settings(&self.snapshot_browser_download_settings()?)?;
+
+        let page_download_settings = self
+            .inner
+            .page_download_settings
+            .lock()
+            .map(|settings| settings.clone())
+            .map_err(|_| {
+                OpenPageError::BrowserOperation(
+                    "browser page download settings lock poisoned".to_string(),
+                )
+            })?;
+        let mission_download_settings = self
+            .inner
+            .mission_download_settings
+            .lock()
+            .map(|settings| settings.clone())
+            .map_err(|_| {
+                OpenPageError::BrowserOperation(
+                    "browser mission download settings lock poisoned".to_string(),
+                )
+            })?;
+        let isolated_contexts = self
+            .inner
+            .isolated_contexts
+            .lock()
+            .map(|contexts| contexts.clone())
+            .map_err(|_| {
+                OpenPageError::BrowserOperation("isolated context lock poisoned".to_string())
+            })?;
+
+        if let Some(state) = Arc::get_mut(&mut browser.inner) {
+            state.browser_pid = self.inner.browser_pid;
+            state.headless = self.inner.headless;
+            state.temp_user_data_dir = self.inner.temp_user_data_dir.clone();
+            state.temp_download_dir = self.inner.temp_download_dir.clone();
+            *state.page_download_settings.get_mut().map_err(|_| {
+                OpenPageError::BrowserOperation(
+                    "browser page download settings lock poisoned".to_string(),
+                )
+            })? = page_download_settings;
+            *state.mission_download_settings.get_mut().map_err(|_| {
+                OpenPageError::BrowserOperation(
+                    "browser mission download settings lock poisoned".to_string(),
+                )
+            })? = mission_download_settings;
+            *state.isolated_contexts.get_mut().map_err(|_| {
+                OpenPageError::BrowserOperation("isolated context lock poisoned".to_string())
+            })? = isolated_contexts;
+        }
+
+        Ok(browser)
     }
 
     pub fn close(&self) -> OpenPageResult<()> {
         self.inner.runtime.block_on(async {
             let mut browser = self.inner.browser.lock().await;
-            browser
-                .close()
-                .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+            run_browser_future_with_cdp_timeout(browser.close(), "Browser::close()").await?;
             let _ = browser.wait().await;
             Ok::<(), OpenPageError>(())
         })?;
+        if let Ok(mut cache) = self.inner.page_cache.lock() {
+            cache.clear();
+        }
+        if let Ok(mut contexts) = self.inner.isolated_contexts.lock() {
+            contexts.clear();
+        }
         if let Some(path) = &self.inner.temp_user_data_dir {
             let _ = std::fs::remove_dir_all(path);
         }
@@ -1843,9 +2681,9 @@ fn build_browser_config(
 fn validate_auto_port_scope(scope: (u16, u16)) -> OpenPageResult<()> {
     let (start, end) = scope;
     if start == 0 || start >= end {
-        return Err(OpenPageError::BrowserOperation(format!(
-            "auto_port scope must satisfy 0 < start < end, got ({start}, {end})"
-        )));
+        return Err(OpenPageError::BrowserOperation(
+            invalid_auto_port_scope_message(start, end),
+        ));
     }
     Ok(())
 }
@@ -1862,10 +2700,9 @@ fn find_free_port(scope: Option<(u16, u16)>) -> OpenPageResult<u16> {
         }
     }
 
-    Err(OpenPageError::BrowserLaunch(format!(
-        "failed to find free port in auto_port scope [{}, {})",
-        scope.0, scope.1
-    )))
+    Err(OpenPageError::BrowserLaunch(
+        no_free_port_in_auto_port_scope_message(scope.0, scope.1),
+    ))
 }
 
 fn default_launch_options_ini_path() -> PathBuf {
@@ -2329,7 +3166,8 @@ fn apply_loaded_auto_port_value(options: &mut LaunchOptions, value: &str) -> Ope
         }
         _ => {
             let scope = parse_ini_u16_tuple(value)?;
-            options.auto_port_with_scope(true, Some(scope))
+            options.auto_port_with_scope(true, Some(scope))?;
+            Ok(())
         }
     }
 }
@@ -2905,12 +3743,58 @@ fn configure_download_behavior(
             .events_enabled(true)
             .build()
             .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
-        browser
-            .execute(params)
-            .await
-            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        execute_browser_handle_command_async(
+            browser,
+            params,
+            "Browser::configure_download_behavior()",
+        )
+        .await?;
         Ok::<(), OpenPageError>(())
     })
+}
+
+async fn execute_browser_handle_command_async<T>(
+    browser: &OxBrowser,
+    command: T,
+    operation: &str,
+) -> OpenPageResult<T::Response>
+where
+    T: Command,
+{
+    run_browser_future_with_cdp_timeout(browser.execute(command), operation)
+        .await
+        .map(|response| response.result)
+}
+
+fn execute_browser_command_blocking<T>(
+    runtime: &Runtime,
+    browser: &Mutex<OxBrowser>,
+    command: T,
+    operation: &str,
+) -> OpenPageResult<T::Response>
+where
+    T: Command,
+{
+    runtime.block_on(async {
+        let browser = browser.lock().await;
+        execute_browser_handle_command_async(&browser, command, operation).await
+    })
+}
+
+async fn run_browser_future_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))
 }
 
 fn download_source_path(info: &DownloadInfo, download_dir: &Path) -> OpenPageResult<PathBuf> {
@@ -3030,6 +3914,110 @@ fn is_tab_like_type(target_type: &str) -> bool {
     matches!(target_type, "page" | "tab")
 }
 
+fn normalize_browser_tab_types(input: BrowserTabTypeInput<'_>) -> Vec<String> {
+    match input {
+        BrowserTabTypeInput::Single(value) => vec![value.trim().to_ascii_lowercase()],
+        BrowserTabTypeInput::Many(values) => values
+            .into_iter()
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect(),
+    }
+}
+
+fn browser_tab_info_matches(
+    info: &TabInfo,
+    title: Option<&str>,
+    url: Option<&str>,
+    tab_types: &[String],
+) -> bool {
+    if !tab_types.is_empty() && !tab_types.iter().any(|kind| kind == &info.tab_type) {
+        return false;
+    }
+    if let Some(title) = title.filter(|title| !title.is_empty())
+        && !info.title.contains(title)
+    {
+        return false;
+    }
+    if let Some(url) = url.filter(|url| !url.is_empty())
+        && !info.url.contains(url)
+    {
+        return false;
+    }
+    true
+}
+
+fn select_browser_tab_info_by_selector<'a>(
+    infos: &'a [TabInfo],
+    selector: BrowserTabSelector<'_>,
+) -> OpenPageResult<Option<&'a TabInfo>> {
+    match selector {
+        BrowserTabSelector::Id(target_id) => {
+            Ok(infos.iter().find(|info| info.target_id == target_id))
+        }
+        BrowserTabSelector::Index(index) => {
+            if index == 0 {
+                return Err(OpenPageError::BrowserOperation(invalid_tab_index_message()));
+            }
+            let resolved_index = if index > 0 {
+                (index as usize).checked_sub(1)
+            } else {
+                infos.len().checked_sub(index.unsigned_abs())
+            };
+            Ok(resolved_index.and_then(|resolved_index| infos.get(resolved_index)))
+        }
+    }
+}
+
+fn resolve_browser_tab_target_id(
+    infos: &[TabInfo],
+    selector: BrowserTabSelector<'_>,
+) -> OpenPageResult<String> {
+    select_browser_tab_info_by_selector(infos, selector)?
+        .map(|info| info.target_id.clone())
+        .ok_or_else(|| OpenPageError::BrowserOperation(target_tab_not_found_message()))
+}
+
+fn find_new_tab_id(
+    baseline_ids: &[String],
+    current_ids: &[String],
+    baseline_marker: Option<&str>,
+    current_newest: Option<&str>,
+) -> Option<String> {
+    if let (Some(baseline_marker), Some(current_newest)) = (baseline_marker, current_newest)
+        && current_ids
+            .iter()
+            .any(|target_id| target_id == current_newest)
+        && current_newest != baseline_marker
+    {
+        return Some(current_newest.to_string());
+    }
+
+    current_ids
+        .iter()
+        .find(|target_id| !baseline_ids.iter().any(|seen| seen == *target_id))
+        .cloned()
+}
+
+fn resolve_browser_tab_target_ids(
+    infos: &[TabInfo],
+    input: BrowserTabTargetsInput<'_>,
+) -> OpenPageResult<Vec<String>> {
+    let selectors = match input {
+        BrowserTabTargetsInput::Single(selector) => vec![selector],
+        BrowserTabTargetsInput::Many(selectors) => selectors,
+    };
+    let mut target_ids = Vec::with_capacity(selectors.len());
+    let mut seen = HashSet::new();
+    for selector in selectors {
+        let target_id = resolve_browser_tab_target_id(infos, selector)?;
+        if seen.insert(target_id.clone()) {
+            target_ids.push(target_id);
+        }
+    }
+    Ok(target_ids)
+}
+
 fn browser_cookie_header_to_params(url: &Url, cookie_header: &str) -> Vec<CookieParam> {
     cookie_header
         .split(';')
@@ -3121,23 +4109,27 @@ fn unique_download_path(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::env;
     use std::fs;
     use std::path::PathBuf;
     use std::sync::{LazyLock, Mutex};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use url::Url;
 
     use super::{
-        DEFAULT_AUTO_PORT_SCOPE, DownloadFileExistsMode, LaunchOptions, LoadMode,
-        browser_cookie_header_to_params, browser_cookie_param, browser_delete_cookie_params,
-        default_launch_options_ini_path, finalize_download_path, find_free_port, is_tab_like_type,
-        reset_browser_user_data_dir, resolve_launch_options_ini_path, resolve_launch_user_data_dir,
-        resolved_download_name, system_user_data_dir, unique_download_path,
+        BrowserTabSelector, BrowserTabTargetsInput, BrowserTabTypeInput, DEFAULT_AUTO_PORT_SCOPE,
+        DownloadFileExistsMode, LaunchOptions, LoadMode, TabInfo, browser_cookie_header_to_params,
+        browser_cookie_param, browser_delete_cookie_params, browser_tab_info_matches,
+        default_launch_options_ini_path, finalize_download_path, find_free_port, find_new_tab_id,
+        is_tab_like_type, normalize_browser_tab_types, reset_browser_user_data_dir,
+        resolve_browser_tab_target_id, resolve_browser_tab_target_ids,
+        resolve_launch_options_ini_path, resolve_launch_user_data_dir, resolved_download_name,
+        select_browser_tab_info_by_selector, system_user_data_dir, unique_download_path,
         validate_auto_port_scope, write_chrome_flags, write_chrome_prefs,
     };
-    use crate::download::DownloadState;
+    use crate::settings::scoped_test_settings;
+    use crate::{Page, Settings, WebPage, download::DownloadState};
 
     static CURRENT_DIR_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -3149,6 +4141,40 @@ mod tests {
         let dir = env::temp_dir().join(format!("openpage-{name}-{suffix}"));
         fs::create_dir_all(&dir).expect("create temp dir");
         dir
+    }
+
+    fn launch_headless_test_browser(
+        name: &str,
+    ) -> crate::OpenPageResult<(super::Browser, PathBuf)> {
+        let temp_dir = make_temp_dir(name);
+
+        let mut options = LaunchOptions::default();
+        options.headless(true);
+        options.auto_port(true);
+        options.new_env(true);
+        options.set_tmp_path(&temp_dir);
+        options.set_timeouts(Some(1.0), Some(5.0), Some(1.0));
+
+        super::Browser::launch(options).map(|browser| (browser, temp_dir))
+    }
+
+    fn browser_context_ids(browser: &super::Browser) -> crate::OpenPageResult<Vec<String>> {
+        browser.inner.runtime.block_on(async {
+            let browser_handle = browser.inner.browser.lock().await;
+            super::execute_browser_handle_command_async(
+                &browser_handle,
+                chromiumoxide::cdp::browser_protocol::target::GetBrowserContextsParams::default(),
+                "browser_context_ids()",
+            )
+            .await
+            .map(|response| {
+                response
+                    .browser_context_ids
+                    .into_iter()
+                    .map(|context_id| context_id.as_ref().to_string())
+                    .collect()
+            })
+        })
     }
 
     struct RestoreFileGuard {
@@ -3290,6 +4316,379 @@ mod tests {
         assert!(is_tab_like_type("page"));
         assert!(is_tab_like_type("tab"));
         assert!(!is_tab_like_type("service_worker"));
+    }
+
+    #[test]
+    fn browser_tab_selector_resolves_ids_and_signed_indices() {
+        let infos = vec![
+            TabInfo {
+                target_id: "tab-1".to_string(),
+                tab_type: "page".to_string(),
+                title: "One".to_string(),
+                url: "https://one.test".to_string(),
+                attached: true,
+            },
+            TabInfo {
+                target_id: "tab-2".to_string(),
+                tab_type: "tab".to_string(),
+                title: "Two".to_string(),
+                url: "https://two.test".to_string(),
+                attached: true,
+            },
+            TabInfo {
+                target_id: "tab-3".to_string(),
+                tab_type: "page".to_string(),
+                title: "Three".to_string(),
+                url: "https://three.test".to_string(),
+                attached: false,
+            },
+        ];
+
+        assert_eq!(
+            select_browser_tab_info_by_selector(&infos, BrowserTabSelector::from("tab-2"))
+                .expect("select by id")
+                .map(|info| info.target_id.as_str()),
+            Some("tab-2")
+        );
+        assert_eq!(
+            select_browser_tab_info_by_selector(&infos, BrowserTabSelector::from(1usize))
+                .expect("select first")
+                .map(|info| info.target_id.as_str()),
+            Some("tab-1")
+        );
+        assert_eq!(
+            select_browser_tab_info_by_selector(&infos, BrowserTabSelector::from(-1isize))
+                .expect("select last")
+                .map(|info| info.target_id.as_str()),
+            Some("tab-3")
+        );
+        assert!(
+            select_browser_tab_info_by_selector(&infos, BrowserTabSelector::from(0isize))
+                .expect_err("zero index should fail")
+                .to_string()
+                .contains("tab index")
+        );
+        assert_eq!(
+            select_browser_tab_info_by_selector(&infos, BrowserTabSelector::from(9usize))
+                .expect("out of range index should return none")
+                .map(|info| info.target_id.as_str()),
+            None
+        );
+    }
+
+    #[test]
+    fn browser_tab_type_input_and_filters_follow_reference_matching_rules() {
+        let info = TabInfo {
+            target_id: "tab-1".to_string(),
+            tab_type: "page".to_string(),
+            title: "OpenPage Docs".to_string(),
+            url: "https://example.test/docs/openpage".to_string(),
+            attached: true,
+        };
+        let tab_types =
+            normalize_browser_tab_types(BrowserTabTypeInput::from(&["page", "tab"][..]));
+        assert_eq!(tab_types, vec!["page".to_string(), "tab".to_string()]);
+        assert!(browser_tab_info_matches(
+            &info,
+            Some("Docs"),
+            Some("/docs/"),
+            &tab_types,
+        ));
+        assert!(!browser_tab_info_matches(
+            &info,
+            Some("Missing"),
+            Some("/docs/"),
+            &tab_types,
+        ));
+        assert!(!browser_tab_info_matches(
+            &info,
+            Some("Docs"),
+            Some("/admin/"),
+            &tab_types,
+        ));
+        assert!(!browser_tab_info_matches(
+            &info,
+            None,
+            None,
+            &["iframe".to_string()],
+        ));
+    }
+
+    #[test]
+    fn browser_tab_target_resolution_supports_single_and_many_inputs() {
+        let infos = vec![
+            TabInfo {
+                target_id: "tab-1".to_string(),
+                tab_type: "page".to_string(),
+                title: "One".to_string(),
+                url: "https://one.test".to_string(),
+                attached: true,
+            },
+            TabInfo {
+                target_id: "tab-2".to_string(),
+                tab_type: "page".to_string(),
+                title: "Two".to_string(),
+                url: "https://two.test".to_string(),
+                attached: true,
+            },
+            TabInfo {
+                target_id: "tab-3".to_string(),
+                tab_type: "tab".to_string(),
+                title: "Three".to_string(),
+                url: "https://three.test".to_string(),
+                attached: false,
+            },
+        ];
+
+        assert_eq!(
+            resolve_browser_tab_target_id(&infos, BrowserTabSelector::from("tab-2"))
+                .expect("resolve by id"),
+            "tab-2".to_string()
+        );
+        assert_eq!(
+            resolve_browser_tab_target_id(&infos, BrowserTabSelector::from(-1isize))
+                .expect("resolve by negative index"),
+            "tab-3".to_string()
+        );
+
+        let selectors = [
+            BrowserTabSelector::from("tab-1"),
+            BrowserTabSelector::from(2usize),
+            BrowserTabSelector::from("tab-1"),
+        ];
+        assert_eq!(
+            resolve_browser_tab_target_ids(&infos, BrowserTabTargetsInput::from(&selectors[..]))
+                .expect("resolve many"),
+            vec!["tab-1".to_string(), "tab-2".to_string()]
+        );
+        assert!(
+            resolve_browser_tab_target_ids(&infos, BrowserTabTargetsInput::from(9usize))
+                .expect_err("missing target should fail")
+                .to_string()
+                .contains("target tab not found")
+        );
+    }
+
+    #[test]
+    fn find_new_tab_id_detects_latest_tab_change_for_explicit_curr_tab() {
+        let baseline = vec!["tab-1".to_string(), "tab-0".to_string()];
+        let current = vec![
+            "tab-2".to_string(),
+            "tab-1".to_string(),
+            "tab-0".to_string(),
+        ];
+
+        assert_eq!(
+            find_new_tab_id(&baseline, &current, Some("tab-1"), Some("tab-2")),
+            Some("tab-2".to_string())
+        );
+        assert_eq!(
+            find_new_tab_id(&baseline, &baseline, Some("tab-1"), Some("tab-1")),
+            None
+        );
+        assert_eq!(
+            find_new_tab_id(&baseline, &current, Some("tab-1"), None),
+            Some("tab-2".to_string())
+        );
+    }
+
+    #[test]
+    fn browser_and_webpage_tab_query_signatures_accept_common_inputs() {
+        fn assert_calls(browser: &super::Browser, page: &Page, webpage: &WebPage) {
+            let tab_types = vec!["page".to_string(), "tab".to_string()];
+            let target_ids = vec!["tab-1".to_string(), "tab-2".to_string()];
+            let indices = vec![1usize, 2usize];
+            let pages = vec![page];
+            let web_pages = vec![webpage];
+            let selectors = [
+                BrowserTabSelector::from("tab-1"),
+                BrowserTabSelector::from(1usize),
+            ];
+            let _ = browser.process_id();
+            let _ = browser.get_tab(Some("target-id"), None, None, None::<&str>, false);
+            let _ = browser.get_tab(Some(1usize), Some("Docs"), None, Some("page"), true);
+            let _ = browser.get_tab(
+                Some(-1isize),
+                None,
+                Some("example"),
+                Some(&tab_types),
+                false,
+            );
+            let _ = browser.reconnect();
+            let _ = browser.new_tab(None, false, false, false);
+            let _ = browser.new_tab(None, false, false, true);
+            let _ = browser.get_tabs(None, None, Some("page"), false);
+            let _ = browser.get_tabs(Some("Docs"), Some("example"), Some(&tab_types), true);
+            let _ = browser.activate_tab("tab-1");
+            let _ = browser.activate_tab(1usize);
+            let _ = browser.activate_tab(page);
+            let _ = browser.activate_tab(webpage);
+            let _ = browser.close_tabs("tab-1", false);
+            let _ = browser.close_tabs(1usize, false);
+            let _ = browser.close_tabs(page, false);
+            let _ = browser.close_tabs(webpage, true);
+            let _ = browser.close_tabs(&target_ids, false);
+            let _ = browser.close_tabs(&indices, false);
+            let _ = browser.close_tabs(&pages, false);
+            let _ = browser.close_tabs(&web_pages, true);
+            let _ = browser.close_tabs(&selectors[..], false);
+
+            let _ = webpage.get_tab(Some("target-id"), None, None, None::<&str>, false);
+            let _ = webpage.get_tab(Some(1usize), Some("Docs"), None, Some("page"), true);
+            let _ = webpage.get_tab(
+                Some(-1isize),
+                None,
+                Some("example"),
+                Some(&tab_types),
+                false,
+            );
+            let _ = webpage.new_tab(None, false, false, false);
+            let _ = webpage.new_tab(None, false, false, true);
+            let _ = webpage.get_tabs(None, None, Some("page"), false);
+            let _ = webpage.get_tabs(Some("Docs"), Some("example"), Some(&tab_types), true);
+            let _ = webpage.activate_tab("tab-1");
+            let _ = webpage.activate_tab(1usize);
+            let _ = webpage.activate_tab(page);
+            let _ = webpage.activate_tab(webpage);
+            let _ = webpage.close_tabs("tab-1", false);
+            let _ = webpage.close_tabs(1usize, false);
+            let _ = webpage.close_tabs(page, false);
+            let _ = webpage.close_tabs(webpage, true);
+            let _ = webpage.close_tabs(&target_ids, false);
+            let _ = webpage.close_tabs(&indices, false);
+            let _ = webpage.close_tabs(&pages, false);
+            let _ = webpage.close_tabs(&web_pages, true);
+            let _ = webpage.close_tabs(&selectors[..], false);
+        }
+
+        let _ = assert_calls as fn(&super::Browser, &Page, &WebPage);
+    }
+
+    #[test]
+    fn browser_new_tab_with_new_context_creates_and_disposes_browser_context() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (browser, temp_dir) = launch_headless_test_browser("browser-new-tab-new-context")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let baseline_contexts = browser_context_ids(&browser)?;
+            let baseline_context_set = baseline_contexts.iter().cloned().collect::<HashSet<_>>();
+
+            let tab = browser.new_tab(Some("about:blank"), false, false, true)?;
+            assert!(tab.wait_for_doc_loaded(5_000)?);
+
+            let target_id = tab.target_id();
+            let context_id = browser
+                .isolated_context_id(&target_id)?
+                .expect("new_context tab should record isolated context");
+
+            let created_contexts = browser_context_ids(&browser)?;
+            let created_context_set = created_contexts.iter().cloned().collect::<HashSet<_>>();
+            assert_eq!(
+                created_context_set.len(),
+                baseline_context_set.len() + 1,
+                "new_context tab should add exactly one browser context"
+            );
+            assert!(
+                created_context_set.contains(&context_id),
+                "recorded isolated context should exist in browser context list"
+            );
+
+            assert_eq!(browser.close_tabs(target_id.as_str(), false)?, 1);
+            crate::wait_until(Duration::from_secs(5), || {
+                let current_contexts = browser_context_ids(&browser).ok()?;
+                let current_context_set = current_contexts.into_iter().collect::<HashSet<_>>();
+                if current_context_set == baseline_context_set {
+                    Some(())
+                } else {
+                    None
+                }
+            })?;
+            assert!(
+                browser.isolated_context_id(&target_id)?.is_none(),
+                "closing isolated tab should clear cached context mapping"
+            );
+
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("new_context browser tab lifecycle regression");
+    }
+
+    #[test]
+    fn browser_wait_for_new_tab_recognizes_existing_latest_tab_from_explicit_curr_tab() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (browser, temp_dir) = launch_headless_test_browser("browser-wait-new-tab-curr-tab")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+
+            let current_tab_id = page.target_id();
+            let new_tab =
+                browser.new_tab(Some("about:blank#wait-existing"), false, false, false)?;
+            assert!(new_tab.wait_for_doc_loaded(5_000)?);
+
+            let waited = browser
+                .wait_for_new_tab(Some(&current_tab_id), 100)?
+                .expect("wait_for_new_tab should return latest tab immediately");
+            assert_eq!(waited, new_tab.target_id());
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("browser explicit curr_tab wait regression");
+    }
+
+    #[test]
+    fn browser_wait_for_new_tab_raises_timeout_when_wait_failed_setting_enabled() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_raise_when_wait_failed(true);
+        Settings::set_language("cn");
+
+        let (browser, temp_dir) = launch_headless_test_browser("browser-wait-new-tab-timeout")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+
+            let error = browser
+                .wait_for_new_tab(Some(&page.target_id()), 50)
+                .expect_err("wait_for_new_tab should raise timeout");
+            assert!(
+                matches!(error, crate::OpenPageError::Timeout(ref message)
+                    if message.contains("Browser::wait_for_new_tab()")
+                        && message.contains("等待超时")),
+                "unexpected wait_for_new_tab error: {error}"
+            );
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("browser wait_for_new_tab global wait-failed regression");
     }
 
     #[test]
@@ -3916,6 +5315,87 @@ mod tests {
     }
 
     #[test]
+    fn launch_options_new_matches_from_ini_options_semantics() {
+        let dir = make_temp_dir("launch-options-new-wrapper");
+        let config_path = dir.join("wrapped.ini");
+        let mut options = LaunchOptions::default();
+        options
+            .headless(true)
+            .set_user_agent("OpenPage/NewWrapper")
+            .save(Some(config_path.as_path()))
+            .expect("write wrapped ini");
+
+        let loaded = LaunchOptions::new(true, Some(config_path.as_path()))
+            .expect("load launch options via new()");
+        let defaults =
+            LaunchOptions::new(false, Some(config_path.as_path())).expect("default launch options");
+
+        assert!(loaded.is_headless());
+        assert_eq!(loaded.user_agent.as_deref(), Some("OpenPage/NewWrapper"));
+        assert!(!defaults.is_headless());
+        assert!(defaults.user_agent.is_none());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn launch_options_mutator_methods_support_chaining() {
+        let mut options = LaunchOptions::default();
+        options
+            .headless(true)
+            .no_imgs(true)
+            .mute(true)
+            .incognito(true)
+            .existing_only(true)
+            .set_browser_path("/tmp/browser")
+            .set_download_path("/tmp/downloads")
+            .set_tmp_path("/tmp/tmpdir")
+            .set_cache_path("/tmp/cache")
+            .set_proxy("http://127.0.0.1:7890")
+            .set_user_agent("OpenPage/Chain")
+            .set_user_data_path("/tmp/user-data")
+            .set_local_port(9555)
+            .new_env(true)
+            .use_system_user_path(false)
+            .set_argument("--start-maximized")
+            .set_pref("profile.demo", json!(1))
+            .set_flag("demo-flag")
+            .clear_flags_in_file();
+        options
+            .set_retry(Some(5), Some(250))
+            .set_timeouts(Some(1.5), Some(12.0), Some(0.25));
+        options
+            .set_load_mode("eager")
+            .expect("set load mode")
+            .auto_port_with_scope(true, Some((9700, 9800)))
+            .expect("set auto port scope");
+
+        assert!(options.is_headless());
+        assert!(options.no_imgs);
+        assert!(options.mute);
+        assert!(options.incognito);
+        assert!(options.is_existing_only());
+        assert_eq!(options.browser_path(), "/tmp/browser");
+        assert_eq!(options.download_path(), "/tmp/downloads");
+        assert_eq!(options.tmp_path(), "/tmp/tmpdir");
+        assert_eq!(options.proxy(), Some("http://127.0.0.1:7890"));
+        assert_eq!(options.user_agent.as_deref(), Some("OpenPage/Chain"));
+        assert_eq!(options.retry_times(), 5);
+        assert_eq!(options.retry_interval(), 0.25);
+        assert_eq!(options.load_mode(), "eager");
+        assert_eq!(options.auto_port_scope(), Some((9700, 9800)));
+        assert!(
+            options
+                .arguments()
+                .iter()
+                .any(|arg| arg == "--start-maximized")
+        );
+        assert_eq!(options.preferences().get("profile.demo"), Some(&json!(1)));
+        assert!(options.flags.iter().any(|flag| flag == "demo-flag"));
+        assert!(options.clear_file_flags);
+    }
+
+    #[test]
     fn launch_options_from_ini_options_true_none_reads_default_ini() {
         let options = LaunchOptions::from_ini_options(true, None).expect("load default ini");
 
@@ -4107,6 +5587,25 @@ mod tests {
         assert!(validate_auto_port_scope((9601, 9601)).is_err());
         assert!(validate_auto_port_scope((9602, 9601)).is_err());
         assert!(validate_auto_port_scope((9600, 9601)).is_ok());
+    }
+
+    #[test]
+    fn auto_port_scope_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english = validate_auto_port_scope((0, 9601))
+            .expect_err("english auto_port scope validation should fail")
+            .to_string();
+        assert!(english.contains("auto_port scope must satisfy 0 < start < end"));
+
+        Settings::set_language("cn");
+
+        let chinese = validate_auto_port_scope((0, 9601))
+            .expect_err("chinese auto_port scope validation should fail")
+            .to_string();
+        assert!(chinese.contains("auto_port 范围必须满足 0 < start < end"));
+        assert!(chinese.contains("浏览器操作失败"));
     }
 
     #[test]

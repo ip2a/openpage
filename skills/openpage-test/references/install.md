@@ -29,7 +29,7 @@ cargo run --manifest-path rust/Cargo.toml --bin openpage -- --help
 Interpretation:
 
 - `doctor --quick` is the cheap config/environment gate.
-- `doctor --quick --fix` is the deterministic cleanup path for legacy session JSON residue from the removed one-shot CLI path.
+- `doctor --quick --fix` is the deterministic cleanup path for legacy session JSON residue, incompatible daemon sessions, and incomplete unready daemon sessions.
 - `OPENPAGE_BROWSER_PATH=/absolute/path/to/browser` is the process-local override when this machine cannot resolve the configured `browser_path` name on PATH.
 - full `doctor` adds a live headless browser launch smoke.
 - if full `doctor` fails with a configured `browser_path` not found, fix that before blaming the CLI transport path.

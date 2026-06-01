@@ -1,24 +1,39 @@
 use clap::Parser;
+use serde::{Deserialize, Serialize};
+use std::fs;
 use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
 use crate::cli::args::{
-    AlertCommand, AttrArgs, BatchArgs, BrowserCommand, BrowserStartArgs, Cli, ClickAtArgs,
-    ClickForNewTabArgs, ClickToDownloadArgs, ClickToUploadArgs, Command, CookiesCommand,
-    DownloadArgs, DragArgs, DragInArgs, DragToArgs, DragToPointArgs, ElementArgs, FillArgs,
-    FindInPageArgs, FrameCommand, GotoArgs, HistoryCommand, InterceptCommand, JsArgs, KeyArgs,
-    PageTextArgs, PdfArgs, PressArgs, ScreenshotArgs, ScrollArgs, ScrollIntoViewArgs, SelectArgs,
-    SelectRangeArgs, SelectTextArgs, SessionArgs, ShortcutArgs, StorageCommand, StorageScope,
-    TabCommand, TypeWithIntervalArgs, UploadArgs, WaitArgs, WaitElementArgs, WaitForFunctionArgs,
-    WaitForTextArgs, WaitForTitleArgs, WaitForUrlArgs, WaitTimeoutArgs, WindowCommand,
-    WindowMoveArgs,
+    AlertCommand, AttrArgs, BatchArgs, BrowserCommand, BrowserLogsArgs, BrowserStartArgs,
+    BrowserStopArgs,
+    ClearCacheArgs, Cli, ClickAtArgs, ClickForNewTabArgs, ClickToDownloadArgs,
+    ClickToUploadArgs, ClipboardCommand, Command, CookiesCommand, DownloadArgs,
+    DownloadsCancelArgs, DownloadsCommand, DownloadsModeArgs, DownloadsOpenArgs,
+    DownloadsPathArgs, DragArgs, DragInArgs, DragToArgs, DragToPointArgs, ElementArgs, FillArgs,
+    FindInPageArgs, FrameCommand, ElementScrollArgs, GotoArgs, HistoryCommand, HoverAtArgs,
+    InterceptCommand, JsArgs, KeyArgs, OpenLinkArgs, PageTextArgs, PdfArgs, PermissionSetArgs,
+    PermissionsCommand, PressArgs, ReloadArgs, SaveArgs, ScreenshotArgs,
+    ScreenshotElementArgs, ScrollArgs, ScrollIntoViewArgs, SelectArgs, SelectRangeArgs,
+    SelectTextArgs, SessionArgs, ShortcutArgs, StorageCommand, StorageScope, TabCommand,
+    TabDuplicateArgs, TabReopenArgs, TypeWithIntervalArgs, UploadArgs, WaitArgs, WaitElementArgs,
+    WaitForDownloadArgs, WaitForFunctionArgs, WaitForTextArgs, WaitForTitleArgs,
+    WaitForUrlArgs, WaitTimeoutArgs, WindowCloseArgs, WindowCommand, WindowMoveArgs,
+    WindowSwitchArgs, ZoomCommand, ZoomSetArgs, ZoomStepArgs,
 };
 use crate::cli::connection::{
-    cleanup_sidecars, daemon_inventory, daemon_ready as tcp_daemon_ready, daemon_status, read_port,
-    send_request,
+    daemon_dir, daemon_inventory, daemon_inventory_payload_json,
+    daemon_ready as tcp_daemon_ready, daemon_status_payload_for_session, read_port, send_request,
+    send_request_existing, shutdown_daemon,
 };
-use crate::cli::protocol::{Request, Response, format_output_json, simple_error, simple_ok};
+#[cfg(test)]
+use crate::cli::connection::{daemon_inventory_summary_json, incomplete_daemon_reasons};
+use crate::cli::protocol::{Request, Response, print_output_json, simple_ok};
 use crate::error::{OpenPageError, OpenPageResult};
 
 pub fn run(command: Command) -> OpenPageResult<i32> {
@@ -41,9 +56,15 @@ fn run_single(command: Command) -> OpenPageResult<()> {
         Command::StopLoading(args) => run_stop_loading(args),
         Command::Url(args) => run_url(args),
         Command::Title(args) => run_title(args),
+        Command::UserAgent(args) => run_user_agent(args),
+        Command::StatusCode(args) => run_status_code(args),
+        Command::ReadyState(args) => run_ready_state(args),
+        Command::IsLoading(args) => run_is_loading(args),
+        Command::IsHeadless(args) => run_is_headless(args),
         Command::Html(args) => run_html(args),
         Command::Snapshot(args) => run_snapshot(args),
         Command::Screenshot(args) => run_screenshot(args),
+        Command::ScreenshotElement(args) => run_screenshot_element(args),
         Command::Click(args) => run_click(args),
         Command::Fill(args) => run_fill(args),
         Command::Focus(args) => run_focus(args),
@@ -62,6 +83,7 @@ fn run_single(command: Command) -> OpenPageResult<()> {
         Command::Copy(args) => run_shortcut_action(args, "c", "copied"),
         Command::Cut(args) => run_shortcut_action(args, "x", "cut"),
         Command::Paste(args) => run_shortcut_action(args, "v", "pasted"),
+        Command::Clipboard(command) => run_clipboard(command),
         Command::Undo(args) => run_shortcut_action(args, "z", "undone"),
         Command::Redo(args) => run_shortcut_action(args, "y", "redone"),
         Command::Input(args) => run_input(args),
@@ -72,19 +94,38 @@ fn run_single(command: Command) -> OpenPageResult<()> {
         Command::DragToPoint(args) => run_drag_to_point(args),
         Command::DragIn(args) => run_drag_in(args),
         Command::Text(args) => run_text(args),
+        Command::Value(args) => run_value(args),
+        Command::RawText(args) => run_raw_text(args),
+        Command::Link(args) => run_link(args),
+        Command::OpenLink(args) => run_open_link(args),
+        Command::ChildCount(args) => run_child_count(args),
+        Command::CssPath(args) => run_css_path(args),
+        Command::Xpath(args) => run_xpath(args),
         Command::SelectedText(args) => run_selected_text(args),
         Command::Attr(args) => run_attr(args),
         Command::Wait(args) => run_wait(args),
         Command::Intercept(command) => run_intercept(command),
         Command::Js(args) => run_js(args),
         Command::Download(args) => run_download(args),
+        Command::Downloads(command) => run_downloads(command),
+        Command::Zoom(command) => run_zoom(command),
         Command::Window(command) => run_window(command),
         Command::Alert(command) => run_alert(command),
         Command::Scroll(args) => run_scroll(args),
+        Command::ScrollPosition(args) => run_scroll_position(args),
+        Command::ScrollElement(args) => run_scroll_element(args),
+        Command::ScrollElementPosition(args) => run_scroll_element_position(args),
         Command::ScrollIntoView(args) => run_scroll_into_view(args),
         Command::Hover(args) => run_hover(args),
+        Command::HoverAt(args) => run_hover_at(args),
         Command::Press(args) => run_press(args),
         Command::Select(args) => run_select(args),
+        Command::OptionTexts(args) => run_option_texts(args),
+        Command::SelectedOption(args) => run_selected_option(args),
+        Command::SelectedOptions(args) => run_selected_options(args),
+        Command::SelectAllOptions(args) => run_select_all_options(args),
+        Command::ClearSelectedOptions(args) => run_clear_selected_options(args),
+        Command::InvertSelectedOptions(args) => run_invert_selected_options(args),
         Command::SelectText(args) => run_select_text(args),
         Command::SelectRange(args) => run_select_range(args),
         Command::Upload(args) => run_upload(args),
@@ -100,6 +141,7 @@ fn run_single(command: Command) -> OpenPageResult<()> {
         Command::IsWholeInViewport(args) => run_is_whole_in_viewport(args),
         Command::IsCovered(args) => run_is_covered(args),
         Command::IsClickable(args) => run_is_clickable(args),
+        Command::HasRect(args) => run_has_rect(args),
         Command::Find(args) => run_find(args),
         Command::FindInPage(args) => run_find_in_page(args),
         Command::FindAll(args) => run_find_all(args),
@@ -110,6 +152,10 @@ fn run_single(command: Command) -> OpenPageResult<()> {
         Command::WaitDisabled(args) => run_wait_disabled(args),
         Command::WaitDeleted(args) => run_wait_deleted(args),
         Command::WaitClickable(args) => run_wait_clickable(args),
+        Command::WaitHasRect(args) => run_wait_has_rect(args),
+        Command::WaitCovered(args) => run_wait_covered(args),
+        Command::WaitNotCovered(args) => run_wait_not_covered(args),
+        Command::WaitStopMoving(args) => run_wait_stop_moving(args),
         Command::ActiveElement(args) => run_active_element(args),
         Command::WaitForNewTab(args) => run_wait_for_new_tab(args),
         Command::WaitForDownloadBegin(args) => run_wait_for_download_begin(args),
@@ -120,9 +166,12 @@ fn run_single(command: Command) -> OpenPageResult<()> {
         Command::WaitForTitle(args) => run_wait_for_title(args),
         Command::WaitForFunction(args) => run_wait_for_function(args),
         Command::WaitForText(args) => run_wait_for_text(args),
+        Command::Save(args) => run_save(args),
         Command::Pdf(args) => run_pdf(args),
         Command::History(command) => run_history(command),
         Command::Storage(command) => run_storage(command),
+        Command::Permissions(command) => run_permissions(command),
+        Command::ClearCache(args) => run_clear_cache(args),
         Command::Cookies(command) => run_cookies(command),
         Command::Tab(command) => run_tab(command),
         Command::Frame(command) => run_frame(command),
@@ -148,26 +197,155 @@ fn run_scroll(args: ScrollArgs) -> OpenPageResult<()> {
     ))
 }
 
+fn run_scroll_position(args: SessionArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "webpage.scroll_position",
+        Value::Null,
+    )?))
+}
+
+fn run_scroll_element(args: ElementScrollArgs) -> OpenPageResult<()> {
+    let _ = rpc_webpage(
+        &args.session,
+        "element.scroll",
+        json!({
+            "locator": args.locator,
+            "direction": args.direction.clone(),
+            "pixels": args.pixels,
+            "x": args.x,
+            "y": args.y,
+        }),
+    )?;
+    print_json(simple_ok(json!({
+        "scrolled": true,
+        "direction": args.direction,
+    })))
+}
+
+fn run_scroll_element_position(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.scroll_position",
+        json!({"locator": args.locator}),
+    )?))
+}
+
 fn run_browser(command: BrowserCommand) -> OpenPageResult<()> {
     match command {
         BrowserCommand::Start(args) => start_browser(args),
         BrowserCommand::Stop(args) => stop_browser(args, false),
+        BrowserCommand::Activate(args) => {
+            let _ = rpc_webpage(&args.session, "webpage.activate", Value::Null)?;
+            print_json(simple_ok(json!({"activated": true})))
+        }
+        BrowserCommand::IsIncognito(args) => {
+            let is_incognito = rpc_webpage(&args.session, "webpage.is_incognito", Value::Null)?
+                .get("is_incognito")
+                .cloned();
+            print_json(simple_ok(json!({"is_incognito": is_incognito})))
+        }
+        BrowserCommand::Logs(args) => run_browser_logs(args),
         BrowserCommand::List => {
             let inventory = daemon_inventory()?;
-            print_json(simple_ok(json!({
-                "sessions": inventory.sessions,
-                "incomplete": inventory.incomplete,
-                "cleaned": inventory.cleaned,
-            })))
+            print_json(simple_ok(browser_inventory_payload(&inventory)))
         }
         BrowserCommand::Status(args) => {
-            let status = daemon_status(&args.session)?;
-            print_json(simple_ok(json!(status)))
+            let status = daemon_status_payload_for_session(&args.session)?;
+            print_json(simple_ok(status))
         }
     }
 }
 
+fn browser_stop_all_sessions(inventory: &crate::cli::connection::DaemonInventory) -> Vec<String> {
+    let mut sessions = std::collections::BTreeSet::new();
+    for session in &inventory.sessions {
+        sessions.insert(session.session.clone());
+    }
+    for session in &inventory.incomplete {
+        if session.alive {
+            sessions.insert(session.session.clone());
+        }
+    }
+    sessions.into_iter().collect()
+}
+
+#[cfg(test)]
+fn browser_inventory_summary(
+    inventory: &crate::cli::connection::DaemonInventory,
+) -> serde_json::Value {
+    daemon_inventory_summary_json(inventory)
+}
+
+fn browser_inventory_payload(
+    inventory: &crate::cli::connection::DaemonInventory,
+) -> serde_json::Value {
+    daemon_inventory_payload_json(inventory)
+}
+
+#[cfg(test)]
+fn incomplete_session_reasons(
+    incomplete: &crate::cli::connection::IncompleteDaemonSession,
+) -> Vec<&'static str> {
+    incomplete_daemon_reasons(incomplete)
+}
+
+fn run_browser_logs(args: BrowserLogsArgs) -> OpenPageResult<()> {
+    let status = daemon_status_payload_for_session(&args.session)?;
+    let path = PathBuf::from(
+        status
+            .get("log_path")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    );
+    let exists = path.exists();
+    let content = if exists {
+        Some(read_browser_log(&path, args.tail)?)
+    } else {
+        None
+    };
+    print_json(simple_ok(browser_logs_payload(
+        status, exists, args.tail, content,
+    )))
+}
+
+fn read_browser_log(path: &Path, tail: Option<usize>) -> OpenPageResult<String> {
+    let content = fs::read_to_string(path)?;
+    Ok(match tail {
+        Some(limit) => tail_log_lines(&content, limit),
+        None => content,
+    })
+}
+
+fn browser_logs_payload(
+    mut status: Value,
+    exists: bool,
+    tail: Option<usize>,
+    content: Option<String>,
+) -> Value {
+    let path = status
+        .get("log_path")
+        .cloned()
+        .unwrap_or_else(|| Value::String(String::new()));
+    status["path"] = path;
+    status["exists"] = Value::Bool(exists);
+    status["tail"] = json!(tail);
+    status["content"] = json!(content);
+    status
+}
+
+fn tail_log_lines(content: &str, limit: usize) -> String {
+    if limit == 0 {
+        return String::new();
+    }
+
+    let lines: Vec<&str> = content.lines().collect();
+    let start = lines.len().saturating_sub(limit);
+    lines[start..].join("\n")
+}
+
 fn run_goto(args: GotoArgs) -> OpenPageResult<()> {
+    ensure_webpage_session(&args.session)?;
     let _ = rpc_webpage(
         &args.session,
         "webpage.get",
@@ -226,16 +404,21 @@ fn run_forward(args: SessionArgs) -> OpenPageResult<()> {
     ))
 }
 
-fn run_reload(args: SessionArgs) -> OpenPageResult<()> {
+fn run_reload(args: ReloadArgs) -> OpenPageResult<()> {
     let _ = rpc_webpage(
         &args.session,
         "webpage.reload",
-        json!({"timeout_ms": 10_000}),
+        json!({
+            "timeout_ms": 10_000,
+            "ignore_cache": args.ignore_cache,
+        }),
     )?;
     let url = rpc_webpage(&args.session, "webpage.url", Value::Null)?;
-    print_json(simple_ok(
-        json!({"reloaded": true, "url": url.get("url").cloned()}),
-    ))
+    print_json(simple_ok(json!({
+        "reloaded": true,
+        "ignore_cache": args.ignore_cache,
+        "url": url.get("url").cloned()
+    })))
 }
 
 fn run_stop_loading(args: SessionArgs) -> OpenPageResult<()> {
@@ -255,6 +438,46 @@ fn run_title(args: SessionArgs) -> OpenPageResult<()> {
     print_json(simple_ok(rpc_webpage(
         &args.session,
         "webpage.title",
+        Value::Null,
+    )?))
+}
+
+fn run_user_agent(args: SessionArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "webpage.user_agent",
+        Value::Null,
+    )?))
+}
+
+fn run_status_code(args: SessionArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "webpage.status_code",
+        Value::Null,
+    )?))
+}
+
+fn run_ready_state(args: SessionArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "webpage.ready_state",
+        Value::Null,
+    )?))
+}
+
+fn run_is_loading(args: SessionArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "webpage.is_loading",
+        Value::Null,
+    )?))
+}
+
+fn run_is_headless(args: SessionArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "webpage.is_headless",
         Value::Null,
     )?))
 }
@@ -282,6 +505,18 @@ fn run_screenshot(args: ScreenshotArgs) -> OpenPageResult<()> {
         json!({
             "path": args.output,
             "full_page": args.full_page,
+        }),
+    )?;
+    print_json(simple_ok(json!({"saved": true, "output": args.output})))
+}
+
+fn run_screenshot_element(args: ScreenshotElementArgs) -> OpenPageResult<()> {
+    let _ = rpc_webpage(
+        &args.session,
+        "element.screenshot",
+        json!({
+            "locator": args.locator,
+            "path": args.output,
         }),
     )?;
     print_json(simple_ok(json!({"saved": true, "output": args.output})))
@@ -440,6 +675,21 @@ fn run_shortcut_action(args: SessionArgs, key: &str, result_key: &str) -> OpenPa
     print_json(simple_ok(json!({result_key: true, "key": key})))
 }
 
+fn run_clipboard(command: ClipboardCommand) -> OpenPageResult<()> {
+    match command {
+        ClipboardCommand::Read(args) => print_json(simple_ok(rpc_webpage(
+            &args.session,
+            "clipboard.read",
+            Value::Null,
+        )?)),
+        ClipboardCommand::Write(args) => print_json(simple_ok(rpc_webpage(
+            &args.session,
+            "clipboard.write",
+            json!({"text": args.text}),
+        )?)),
+    }
+}
+
 fn run_input(args: PageTextArgs) -> OpenPageResult<()> {
     let _ = rpc_webpage(
         &args.session,
@@ -554,6 +804,76 @@ fn run_text(args: ElementArgs) -> OpenPageResult<()> {
     )?))
 }
 
+fn run_value(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.value",
+        json!({"locator": args.locator}),
+    )?))
+}
+
+fn run_raw_text(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.raw_text",
+        json!({"locator": args.locator}),
+    )?))
+}
+
+fn run_link(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.link",
+        json!({"locator": args.locator}),
+    )?))
+}
+
+fn run_open_link(args: OpenLinkArgs) -> OpenPageResult<()> {
+    let link = rpc_webpage(
+        &args.session,
+        "element.link",
+        json!({"locator": args.locator}),
+    )?
+    .get("link")
+    .and_then(Value::as_str)
+    .filter(|value| !value.is_empty())
+    .ok_or_else(|| OpenPageError::ElementNotFound("element link is unavailable".to_string()))?
+    .to_string();
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "tab.new",
+        json!({
+            "url": link,
+            "window": args.window,
+            "background": args.background,
+        }),
+    )?))
+}
+
+fn run_child_count(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.child_count",
+        json!({"locator": args.locator}),
+    )?))
+}
+
+fn run_css_path(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.css_path",
+        json!({"locator": args.locator}),
+    )?))
+}
+
+fn run_xpath(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.xpath",
+        json!({"locator": args.locator}),
+    )?))
+}
+
 fn run_attr(args: AttrArgs) -> OpenPageResult<()> {
     print_json(simple_ok(rpc_webpage(
         &args.session,
@@ -634,8 +954,312 @@ fn run_download(args: DownloadArgs) -> OpenPageResult<()> {
     print_json(simple_ok(json!({"downloaded": true, "path": path})))
 }
 
+fn run_downloads(command: DownloadsCommand) -> OpenPageResult<()> {
+    match command {
+        DownloadsCommand::List(args) => print_json(simple_ok(rpc_webpage(
+            &args.session,
+            "webpage.download_missions",
+            Value::Null,
+        )?)),
+        DownloadsCommand::Last(args) => print_json(simple_ok(rpc_webpage(
+            &args.session,
+            "webpage.last_download",
+            Value::Null,
+        )?)),
+        DownloadsCommand::Clear(args) => run_downloads_clear(args),
+        DownloadsCommand::Cancel(args) => run_downloads_cancel(args),
+        DownloadsCommand::Open(args) => run_downloads_open(args),
+        DownloadsCommand::Reveal(args) => run_downloads_reveal(args),
+        DownloadsCommand::Path(args) => run_downloads_path(args),
+        DownloadsCommand::SetPath(args) => run_downloads_set_path(args),
+        DownloadsCommand::Mode(args) => run_downloads_mode(args),
+        DownloadsCommand::SetMode(args) => run_downloads_set_mode(args),
+        DownloadsCommand::Wait(args) => run_downloads_wait(args),
+    }
+}
+
+fn run_downloads_clear(args: SessionArgs) -> OpenPageResult<()> {
+    let removed = rpc_webpage(
+        &args.session,
+        "webpage.clear_finished_downloads",
+        Value::Null,
+    )?
+    .get("removed")
+    .cloned();
+    print_json(simple_ok(json!({"cleared": true, "removed": removed})))
+}
+
+fn run_downloads_cancel(args: DownloadsCancelArgs) -> OpenPageResult<()> {
+    let _ = rpc_webpage(
+        &args.session,
+        "webpage.cancel_download",
+        json!({"guid": args.guid}),
+    )?;
+    print_json(simple_ok(json!({"cancelled": true, "guid": args.guid})))
+}
+
+fn run_downloads_open(args: DownloadsOpenArgs) -> OpenPageResult<()> {
+    let mission = resolve_download_mission(&args.session, args.guid.as_deref())?;
+    let path = download_final_path(&mission)?;
+    open_path_with_system(Path::new(&path))?;
+    print_json(simple_ok(json!({
+        "opened": true,
+        "guid": mission.get("guid").and_then(Value::as_str),
+        "path": path,
+    })))
+}
+
+fn run_downloads_reveal(args: DownloadsOpenArgs) -> OpenPageResult<()> {
+    let mission = resolve_download_mission(&args.session, args.guid.as_deref())?;
+    let path = download_final_path(&mission)?;
+    reveal_path_with_system(Path::new(&path))?;
+    print_json(simple_ok(json!({
+        "revealed": true,
+        "guid": mission.get("guid").and_then(Value::as_str),
+        "path": path,
+    })))
+}
+
+fn run_downloads_path(args: SessionArgs) -> OpenPageResult<()> {
+    let path = rpc_webpage(
+        &args.session,
+        "webpage.current_tab_download_path",
+        Value::Null,
+    )?
+    .get("download_path")
+    .cloned();
+    print_json(simple_ok(json!({"download_path": path})))
+}
+
+fn run_downloads_set_path(args: DownloadsPathArgs) -> OpenPageResult<()> {
+    let _ = rpc_webpage(
+        &args.session,
+        "set.current_tab_download_path",
+        json!({"path": args.path}),
+    )?;
+    print_json(simple_ok(json!({"set": true, "download_path": args.path})))
+}
+
+fn run_downloads_mode(args: SessionArgs) -> OpenPageResult<()> {
+    let mode = rpc_webpage(
+        &args.session,
+        "webpage.download_file_exists_mode",
+        Value::Null,
+    )?
+    .get("mode")
+    .cloned();
+    print_json(simple_ok(json!({"mode": mode})))
+}
+
+fn run_downloads_set_mode(args: DownloadsModeArgs) -> OpenPageResult<()> {
+    let _ = rpc_webpage(
+        &args.session,
+        "set.current_tab_download_file_exists_mode",
+        json!({"mode": args.mode}),
+    )?;
+    print_json(simple_ok(json!({"set": true, "mode": args.mode})))
+}
+
+fn run_downloads_wait(args: WaitForDownloadArgs) -> OpenPageResult<()> {
+    let baseline = rpc_webpage(&args.session, "webpage.download_missions", Value::Null)?
+        .get("missions")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let baseline_guids = baseline
+        .iter()
+        .filter_map(|mission| mission.get("guid").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+
+    let deadline = Instant::now() + Duration::from_millis(args.timeout);
+    let path = loop {
+        let missions = rpc_webpage(&args.session, "webpage.download_missions", Value::Null)?
+            .get("missions")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if let Some(path) = find_download_path(&missions, args.filename.as_deref(), &baseline_guids)
+        {
+            break path;
+        }
+        if Instant::now() >= deadline {
+            return Err(OpenPageError::Timeout(match &args.filename {
+                Some(filename) => format!(
+                    "downloads wait timed out after {}ms: filename={filename}",
+                    args.timeout
+                ),
+                None => format!("downloads wait timed out after {}ms", args.timeout),
+            }));
+        }
+        sleep(Duration::from_millis(200));
+    };
+    print_json(simple_ok(json!({
+        "waited": true,
+        "filename": args.filename,
+        "path": path,
+    })))
+}
+
+fn find_download_path(
+    missions: &[Value],
+    filename: Option<&str>,
+    baseline_guids: &[String],
+) -> Option<Value> {
+    missions.iter().find_map(|mission| {
+        let guid = mission.get("guid").and_then(Value::as_str)?;
+        let state = mission.get("state").and_then(Value::as_str)?;
+        let final_path = mission.get("final_path")?.clone();
+        let final_path_str = final_path.as_str()?;
+        if final_path_str.is_empty() || state != "done" {
+            return None;
+        }
+        if let Some(filename) = filename {
+            let suggested = mission.get("suggested_filename").and_then(Value::as_str)?;
+            if suggested == filename {
+                return Some(final_path);
+            }
+            return None;
+        }
+        if baseline_guids.iter().any(|item| item == guid) {
+            return None;
+        }
+        Some(final_path)
+    })
+}
+
+fn resolve_download_mission(session: &str, guid: Option<&str>) -> OpenPageResult<Value> {
+    if let Some(guid) = guid {
+        let missions = rpc_webpage(session, "webpage.download_missions", Value::Null)?
+            .get("missions")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        return missions
+            .into_iter()
+            .find(|mission| mission.get("guid").and_then(Value::as_str) == Some(guid))
+            .ok_or_else(|| OpenPageError::ElementNotFound(format!("download not found: {guid}")));
+    }
+    rpc_webpage(session, "webpage.last_download", Value::Null)?
+        .get("mission")
+        .cloned()
+        .filter(|mission| !mission.is_null())
+        .ok_or_else(|| OpenPageError::ElementNotFound("no tracked download found".to_string()))
+}
+
+fn download_final_path(mission: &Value) -> OpenPageResult<String> {
+    let guid = mission.get("guid").and_then(Value::as_str).unwrap_or_default();
+    let path = mission
+        .get("final_path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+        .ok_or_else(|| {
+            OpenPageError::BrowserOperation(format!(
+                "download has no finalized file path yet: {guid}"
+            ))
+        })?;
+    Ok(path.to_string())
+}
+
+fn open_path_with_system(path: &Path) -> OpenPageResult<()> {
+    if !path.exists() {
+        return Err(OpenPageError::Io(format!(
+            "download path does not exist: {}",
+            path.display()
+        )));
+    }
+    #[cfg(target_os = "macos")]
+    let command = {
+        let mut command = ProcessCommand::new("open");
+        command.arg(path);
+        command
+    };
+    #[cfg(target_os = "linux")]
+    let command = {
+        let mut command = ProcessCommand::new("xdg-open");
+        command.arg(path);
+        command
+    };
+    #[cfg(target_os = "windows")]
+    let command = {
+        let mut command = ProcessCommand::new("cmd");
+        command.arg("/C").arg("start").arg("").arg(path);
+        command
+    };
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        let _ = path;
+        return Err(OpenPageError::UnsupportedOperation(
+            "downloads open is unsupported on this platform".to_string(),
+        ));
+    }
+    run_gui_command(command, "open download")
+}
+
+fn reveal_path_with_system(path: &Path) -> OpenPageResult<()> {
+    if !path.exists() {
+        return Err(OpenPageError::Io(format!(
+            "download path does not exist: {}",
+            path.display()
+        )));
+    }
+    #[cfg(target_os = "macos")]
+    let command = {
+        let mut command = ProcessCommand::new("open");
+        command.arg("-R").arg(path);
+        command
+    };
+    #[cfg(target_os = "linux")]
+    let command = {
+        let parent = path.parent().ok_or_else(|| {
+            OpenPageError::Io(format!("download path has no parent directory: {}", path.display()))
+        })?;
+        let mut command = ProcessCommand::new("xdg-open");
+        command.arg(parent);
+        command
+    };
+    #[cfg(target_os = "windows")]
+    let command = {
+        let mut command = ProcessCommand::new("explorer");
+        command.arg(format!("/select,{}", path.display()));
+        command
+    };
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        let _ = path;
+        return Err(OpenPageError::UnsupportedOperation(
+            "downloads reveal is unsupported on this platform".to_string(),
+        ));
+    }
+    run_gui_command(command, "reveal download")
+}
+
+fn run_gui_command(mut command: ProcessCommand, action: &str) -> OpenPageResult<()> {
+    let output = command.output()?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detail = if !stderr.is_empty() {
+        stderr
+    } else if !stdout.is_empty() {
+        stdout
+    } else {
+        format!("{action} exited with status {}", output.status)
+    };
+    Err(OpenPageError::BrowserOperation(detail))
+}
+
 fn run_window(command: WindowCommand) -> OpenPageResult<()> {
     match command {
+        WindowCommand::List(args) => print_json(simple_ok(rpc_webpage(
+            &args.session,
+            "window.list",
+            Value::Null,
+        )?)),
+        WindowCommand::Switch(args) => run_window_switch(args),
+        WindowCommand::Close(args) => run_window_close(args),
         WindowCommand::State(args) => print_json(simple_ok(rpc_webpage(
             &args.session,
             "window.state",
@@ -682,6 +1306,77 @@ fn run_window(command: WindowCommand) -> OpenPageResult<()> {
         }
         WindowCommand::Move(args) => run_window_move(args),
     }
+}
+
+fn run_window_switch(args: WindowSwitchArgs) -> OpenPageResult<()> {
+    let target_id = window_target_id_from_selector(&args.session, &args.target)?;
+    let result = rpc_webpage(
+        &args.session,
+        "window.switch",
+        json!({"target_id": target_id}),
+    )?;
+    print_json(simple_ok(result))
+}
+
+fn run_window_close(args: WindowCloseArgs) -> OpenPageResult<()> {
+    let target_id = match (args.target.as_deref(), args.index) {
+        (Some(target), _) => Some(window_target_id_from_selector(&args.session, target)?),
+        (None, Some(index)) => Some(window_target_id_from_selector(
+            &args.session,
+            &index.to_string(),
+        )?),
+        (None, None) => None,
+    };
+    let result = rpc_webpage(
+        &args.session,
+        "window.close",
+        json!({"target_id": target_id}),
+    )?;
+    print_json(simple_ok(result))
+}
+
+fn run_zoom(command: ZoomCommand) -> OpenPageResult<()> {
+    match command {
+        ZoomCommand::Get(args) => print_json(simple_ok(rpc_webpage(
+            &args.session,
+            "zoom.get",
+            Value::Null,
+        )?)),
+        ZoomCommand::In(args) => run_zoom_step(args, 1.0),
+        ZoomCommand::Out(args) => run_zoom_step(args, -1.0),
+        ZoomCommand::Set(args) => run_zoom_set(args),
+        ZoomCommand::Reset(args) => {
+            let result = rpc_webpage(&args.session, "zoom.reset", Value::Null)?;
+            print_json(simple_ok(result))
+        }
+    }
+}
+
+fn run_zoom_set(args: ZoomSetArgs) -> OpenPageResult<()> {
+    let result = rpc_webpage(&args.session, "zoom.set", json!({"factor": args.factor}))?;
+    print_json(simple_ok(result))
+}
+
+fn run_zoom_step(args: ZoomStepArgs, direction: f64) -> OpenPageResult<()> {
+    if !(args.step.is_finite() && args.step > 0.0) {
+        return Err(OpenPageError::UnsupportedOperation(
+            "zoom step must be a positive finite number".to_string(),
+        ));
+    }
+    let current = rpc_webpage(&args.session, "zoom.get", Value::Null)?
+        .get("factor")
+        .and_then(Value::as_f64)
+        .ok_or_else(|| {
+            OpenPageError::BrowserOperation("zoom.get returned no numeric factor".to_string())
+        })?;
+    let factor = current + direction * args.step;
+    if !(factor.is_finite() && factor > 0.0) {
+        return Err(OpenPageError::UnsupportedOperation(format!(
+            "zoom factor must stay positive, got {factor}"
+        )));
+    }
+    let result = rpc_webpage(&args.session, "zoom.set", json!({"factor": factor}))?;
+    print_json(simple_ok(result))
 }
 
 fn run_window_move(args: WindowMoveArgs) -> OpenPageResult<()> {
@@ -754,6 +1449,8 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
             "width": args.width,
             "height": args.height,
             "no_sandbox": args.no_sandbox,
+            "incognito": args.incognito,
+            "mute": args.mute,
         }),
     )?;
 
@@ -779,6 +1476,8 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
             "target": create.get("target").cloned(),
             "port": port,
             "headless": headless,
+            "incognito": args.incognito,
+            "mute": args.mute,
             "url": args.url,
         })))
     } else {
@@ -787,27 +1486,72 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
             "already_running": true,
             "target": create.get("target").cloned(),
             "port": port,
+            "incognito": args.incognito,
+            "mute": args.mute,
             "url": args.url,
         })))
     }
 }
 
-fn stop_browser(args: SessionArgs, quiet: bool) -> OpenPageResult<()> {
-    if tcp_daemon_ready(&args.session) {
+fn stop_browser_session(session: &str, quiet: bool) -> OpenPageResult<()> {
+    if tcp_daemon_ready(session) {
         let _ = rpc_request(
-            &args.session,
-            Some(args.session.clone()),
+            session,
+            Some(session.to_string()),
             "webpage.quit",
             Value::Null,
         );
-        let _ = rpc_request(&args.session, None, "daemon.shutdown", Value::Null);
     }
-    let _ = cleanup_sidecars(&args.session);
+    let shutdown = shutdown_daemon(session)?;
+    let _ = write_recently_closed_tabs(session, &[]);
     if quiet {
         Ok(())
     } else {
-        print_json(simple_ok(json!({"stopped": true, "session": args.session})))
+        print_json(simple_ok(json!({
+            "stopped": true,
+            "session": session,
+            "had_daemon": shutdown.had_daemon,
+            "forced": shutdown.forced,
+        })))
     }
+}
+
+fn stop_all_browsers(quiet: bool) -> OpenPageResult<()> {
+    let inventory = daemon_inventory()?;
+    let sessions = browser_stop_all_sessions(&inventory);
+    let mut stopped = Vec::new();
+    let mut failed = Vec::new();
+
+    for session in sessions {
+        match stop_browser_session(&session, true) {
+            Ok(()) => stopped.push(session),
+            Err(err) => failed.push(json!({
+                "session": session,
+                "kind": crate::cli::protocol::openpage_error_kind(&err),
+                "message": err.to_string(),
+            })),
+        }
+    }
+
+    if quiet {
+        Ok(())
+    } else {
+        print_json(simple_ok(json!({
+            "stopped": stopped.len(),
+            "sessions": stopped,
+            "failed": failed,
+            "all_stopped": failed.is_empty(),
+        })))
+    }
+}
+
+fn stop_browser(args: BrowserStopArgs, quiet: bool) -> OpenPageResult<()> {
+    if args.all {
+        return stop_all_browsers(quiet);
+    }
+
+    let session = args.session.unwrap_or_else(|| "default".to_string());
+    stop_browser_session(&session, quiet)
 }
 
 fn run_batch(args: BatchArgs) -> OpenPageResult<i32> {
@@ -912,7 +1656,25 @@ fn rpc_request(
     response_result(response)
 }
 
-fn rpc_webpage(session: &str, op: &str, params: Value) -> OpenPageResult<Value> {
+fn rpc_request_existing(
+    daemon_session: &str,
+    target: Option<String>,
+    op: &str,
+    params: Value,
+) -> OpenPageResult<Value> {
+    let response = send_request_existing(
+        daemon_session,
+        &Request {
+            id: Some(json!("cli")),
+            op: op.to_string(),
+            target,
+            params,
+        },
+    )?;
+    response_result(response)
+}
+
+fn ensure_webpage_session(session: &str) -> OpenPageResult<()> {
     let _ = rpc_request(
         session,
         Some(session.to_string()),
@@ -922,7 +1684,11 @@ fn rpc_webpage(session: &str, op: &str, params: Value) -> OpenPageResult<Value> 
             "headless": true,
         }),
     )?;
-    rpc_request(session, Some(session.to_string()), op, params)
+    Ok(())
+}
+
+fn rpc_webpage(session: &str, op: &str, params: Value) -> OpenPageResult<Value> {
+    rpc_request_existing(session, Some(session.to_string()), op, params)
 }
 
 fn tab_target_id_from_index(session: &str, index: usize) -> OpenPageResult<String> {
@@ -940,23 +1706,199 @@ fn tab_target_id_from_index(session: &str, index: usize) -> OpenPageResult<Strin
         .ok_or_else(|| OpenPageError::ElementNotFound(format!("tab index out of range: {index}")))
 }
 
+fn tab_list(session: &str) -> OpenPageResult<Vec<Value>> {
+    let response = rpc_webpage(session, "tab.list", Value::Null)?;
+    response
+        .get("tabs")
+        .and_then(Value::as_array)
+        .cloned()
+        .ok_or_else(|| {
+            OpenPageError::BrowserOperation("tab.list returned no tabs array".to_string())
+        })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct RecentlyClosedTab {
+    url: String,
+    title: String,
+}
+
+fn recently_closed_tabs_path(session: &str) -> OpenPageResult<PathBuf> {
+    Ok(daemon_dir()?.join(format!("{session}.recent-tabs.json")))
+}
+
+fn read_recently_closed_tabs(session: &str) -> OpenPageResult<Vec<RecentlyClosedTab>> {
+    let path = recently_closed_tabs_path(session)?;
+    match fs::read(&path) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map_err(|err| OpenPageError::Serialization(err.to_string())),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(err) => Err(OpenPageError::Io(err.to_string())),
+    }
+}
+
+fn write_recently_closed_tabs(session: &str, tabs: &[RecentlyClosedTab]) -> OpenPageResult<()> {
+    let path = recently_closed_tabs_path(session)?;
+    if tabs.is_empty() {
+        match fs::remove_file(&path) {
+            Ok(()) => return Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(err) => return Err(OpenPageError::Io(err.to_string())),
+        }
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let bytes = serde_json::to_vec_pretty(tabs)
+        .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
+fn record_recently_closed_tabs(session: &str, tabs: &[Value]) -> OpenPageResult<()> {
+    let mut stack = read_recently_closed_tabs(session)?;
+    for tab in tabs {
+        let Some(url) = tab.get("url").and_then(Value::as_str) else {
+            continue;
+        };
+        if url.is_empty() {
+            continue;
+        }
+        stack.push(RecentlyClosedTab {
+            url: url.to_string(),
+            title: tab
+                .get("title")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        });
+    }
+    if stack.len() > 50 {
+        let drop_count = stack.len() - 50;
+        stack.drain(0..drop_count);
+    }
+    write_recently_closed_tabs(session, &stack)
+}
+
+fn tabs_selected_for_close(
+    session: &str,
+    args: &crate::cli::args::TabCloseArgs,
+) -> OpenPageResult<Vec<Value>> {
+    let tabs = tab_list(session)?;
+    if args.others {
+        return Ok(tabs
+            .into_iter()
+            .filter(|tab| !tab.get("active").and_then(Value::as_bool).unwrap_or(false))
+            .collect());
+    }
+    if let Some(target_id) = args.target.as_deref() {
+        return Ok(tabs
+            .into_iter()
+            .filter(|tab| {
+                tab.get("target_id")
+                    .and_then(Value::as_str)
+                    .map(|value| value == target_id)
+                    .unwrap_or(false)
+            })
+            .collect());
+    }
+    if let Some(index) = args.index {
+        return tabs
+            .into_iter()
+            .find(|tab| {
+                tab.get("index")
+                    .and_then(Value::as_u64)
+                    .map(|value| value == index as u64)
+                    .unwrap_or(false)
+            })
+            .map(|tab| vec![tab])
+            .ok_or_else(|| {
+                OpenPageError::ElementNotFound(format!("tab index out of range: {index}"))
+            });
+    }
+    tabs.into_iter()
+        .find(|tab| tab.get("active").and_then(Value::as_bool) == Some(true))
+        .map(|tab| vec![tab])
+        .ok_or_else(|| OpenPageError::ElementNotFound("no active tab found".to_string()))
+}
+
+fn tab_value_for_duplicate(
+    session: &str,
+    target: Option<&str>,
+    index: Option<usize>,
+) -> OpenPageResult<Value> {
+    let tabs = tab_list(session)?;
+    if let Some(target) = target {
+        return tabs
+            .into_iter()
+            .find(|tab| {
+                tab.get("target_id")
+                    .and_then(Value::as_str)
+                    .map(|value| value == target)
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| OpenPageError::ElementNotFound(format!("tab not found: {target}")));
+    }
+    if let Some(index) = index {
+        return tabs.get(index.saturating_sub(1)).cloned().ok_or_else(|| {
+            OpenPageError::ElementNotFound(format!("tab index out of range: {index}"))
+        });
+    }
+    tabs.into_iter()
+        .find(|tab| tab.get("active").and_then(Value::as_bool) == Some(true))
+        .ok_or_else(|| OpenPageError::ElementNotFound("no active tab found".to_string()))
+}
+
+fn window_target_id_from_selector(session: &str, selector: &str) -> OpenPageResult<String> {
+    let response = rpc_webpage(session, "window.list", Value::Null)?;
+    let windows = response
+        .get("windows")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            OpenPageError::BrowserOperation("window.list returned no windows array".to_string())
+        })?;
+    if let Ok(index) = selector.parse::<usize>() {
+        return windows
+            .get(index.saturating_sub(1))
+            .and_then(|window| window.get("target_id"))
+            .and_then(Value::as_str)
+            .map(ToString::to_string)
+            .ok_or_else(|| {
+                OpenPageError::ElementNotFound(format!("window index out of range: {index}"))
+            });
+    }
+    windows
+        .iter()
+        .find(|window| {
+            window
+                .get("window_id")
+                .and_then(Value::as_i64)
+                .map(|value| value.to_string() == selector)
+                .unwrap_or(false)
+        })
+        .and_then(|window| window.get("target_id"))
+        .and_then(Value::as_str)
+        .map(ToString::to_string)
+        .ok_or_else(|| OpenPageError::ElementNotFound(format!("window not found: {selector}")))
+}
+
 fn response_result(response: Response) -> OpenPageResult<Value> {
     if response.ok {
         Ok(response.result.unwrap_or(Value::Null))
     } else {
-        let message = response
+        let error = response
             .error
-            .map(|error| format!("{}: {}", error.kind, error.message))
-            .unwrap_or_else(|| "daemon request failed".to_string());
-        Err(OpenPageError::BrowserOperation(message))
+            .ok_or_else(|| OpenPageError::BrowserOperation("daemon request failed".to_string()))?;
+        Err(crate::cli::protocol::openpage_error_from_structured(
+            &error.kind,
+            error.message,
+            error.fix.as_deref(),
+        ))
     }
 }
 
 fn print_json(value: Value) -> OpenPageResult<()> {
-    println!(
-        "{}",
-        format_output_json(&value).map_err(|err| OpenPageError::Serialization(err.to_string()))?
-    );
+    print_output_json(&value);
     Ok(())
 }
 
@@ -977,6 +1919,18 @@ fn run_hover(args: ElementArgs) -> OpenPageResult<()> {
     )?))
 }
 
+fn run_hover_at(args: HoverAtArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.hover_at",
+        json!({
+            "locator": args.locator,
+            "x": args.x,
+            "y": args.y,
+        }),
+    )?))
+}
+
 fn run_press(args: PressArgs) -> OpenPageResult<()> {
     let _ = rpc_webpage(
         &args.session,
@@ -987,20 +1941,83 @@ fn run_press(args: PressArgs) -> OpenPageResult<()> {
 }
 
 fn run_select(args: SelectArgs) -> OpenPageResult<()> {
+    let text = match args.text.as_slice() {
+        [] => Value::Null,
+        [value] => Value::String(value.clone()),
+        _ => json!(args.text),
+    };
+    let value = match args.value.as_slice() {
+        [] => Value::Null,
+        [value] => Value::String(value.clone()),
+        _ => json!(args.value),
+    };
+    let index = match args.index.as_slice() {
+        [] => Value::Null,
+        [value] => json!(value),
+        _ => json!(args.index),
+    };
     let selected = rpc_webpage(
         &args.session,
         "element.select",
         json!({
             "locator": args.locator,
-            "text": args.text,
-            "value": args.value,
-            "index": args.index,
+            "text": text,
+            "value": value,
+            "index": index,
         }),
     )?
     .get("selected")
     .and_then(Value::as_bool)
     .unwrap_or(false);
     print_json(simple_ok(json!({"selected": selected})))
+}
+
+fn run_option_texts(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.option_texts",
+        json!({"locator": args.locator}),
+    )?))
+}
+
+fn run_selected_option(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.selected_option",
+        json!({"locator": args.locator}),
+    )?))
+}
+
+fn run_selected_options(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.selected_options",
+        json!({"locator": args.locator}),
+    )?))
+}
+
+fn run_select_all_options(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.select_all_options",
+        json!({"locator": args.locator}),
+    )?))
+}
+
+fn run_clear_selected_options(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.clear_selected_options",
+        json!({"locator": args.locator}),
+    )?))
+}
+
+fn run_invert_selected_options(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.invert_selected_options",
+        json!({"locator": args.locator}),
+    )?))
 }
 
 fn run_selected_text(args: SessionArgs) -> OpenPageResult<()> {
@@ -1161,6 +2178,14 @@ fn run_is_clickable(args: ElementArgs) -> OpenPageResult<()> {
     )?))
 }
 
+fn run_has_rect(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.has_rect",
+        json!({"locator": args.locator}),
+    )?))
+}
+
 fn run_find(args: ElementArgs) -> OpenPageResult<()> {
     print_json(simple_ok(rpc_webpage(
         &args.session,
@@ -1267,6 +2292,54 @@ fn run_wait_clickable(args: WaitElementArgs) -> OpenPageResult<()> {
     .and_then(Value::as_bool)
     .unwrap_or(false);
     print_json(simple_ok(json!({"clickable": ready, "waited": ready})))
+}
+
+fn run_wait_has_rect(args: WaitElementArgs) -> OpenPageResult<()> {
+    let ready = rpc_webpage(
+        &args.session,
+        "wait.ele_has_rect",
+        json!({"locator": args.locator, "timeout_ms": args.timeout}),
+    )?
+    .get("ready")
+    .and_then(Value::as_bool)
+    .unwrap_or(false);
+    print_json(simple_ok(json!({"has_rect": ready, "waited": ready})))
+}
+
+fn run_wait_covered(args: WaitElementArgs) -> OpenPageResult<()> {
+    let ready = rpc_webpage(
+        &args.session,
+        "wait.ele_covered",
+        json!({"locator": args.locator, "timeout_ms": args.timeout}),
+    )?
+    .get("ready")
+    .and_then(Value::as_bool)
+    .unwrap_or(false);
+    print_json(simple_ok(json!({"covered": ready, "waited": ready})))
+}
+
+fn run_wait_not_covered(args: WaitElementArgs) -> OpenPageResult<()> {
+    let ready = rpc_webpage(
+        &args.session,
+        "wait.ele_not_covered",
+        json!({"locator": args.locator, "timeout_ms": args.timeout}),
+    )?
+    .get("ready")
+    .and_then(Value::as_bool)
+    .unwrap_or(false);
+    print_json(simple_ok(json!({"not_covered": ready, "waited": ready})))
+}
+
+fn run_wait_stop_moving(args: WaitElementArgs) -> OpenPageResult<()> {
+    let ready = rpc_webpage(
+        &args.session,
+        "wait.ele_stop_moving",
+        json!({"locator": args.locator, "timeout_ms": args.timeout}),
+    )?
+    .get("ready")
+    .and_then(Value::as_bool)
+    .unwrap_or(false);
+    print_json(simple_ok(json!({"stopped": ready, "waited": ready})))
 }
 
 fn run_active_element(args: SessionArgs) -> OpenPageResult<()> {
@@ -1392,6 +2465,14 @@ fn run_wait_for_text(args: WaitForTextArgs) -> OpenPageResult<()> {
     print_json(simple_ok(json!({"waited": true, "text": args.text})))
 }
 
+fn run_save(args: SaveArgs) -> OpenPageResult<()> {
+    let saved = rpc_webpage(&args.session, "page.save", json!({"path": args.output}))?;
+    print_json(simple_ok(json!({
+        "saved": true,
+        "output": saved.get("path").cloned().unwrap_or(Value::Null),
+    })))
+}
+
 fn run_pdf(args: PdfArgs) -> OpenPageResult<()> {
     let _ = rpc_webpage(&args.session, "page.pdf", json!({"path": args.output}))?;
     print_json(simple_ok(json!({"saved": true, "output": args.output})))
@@ -1401,6 +2482,7 @@ fn run_history(command: HistoryCommand) -> OpenPageResult<()> {
     let session = match &command {
         HistoryCommand::List(args) => args.session.clone(),
         HistoryCommand::Go(args) => args.session.clone(),
+        HistoryCommand::Clear(args) => args.session.clone(),
     };
     match command {
         HistoryCommand::List(_) => print_json(simple_ok(rpc_webpage(
@@ -1412,6 +2494,11 @@ fn run_history(command: HistoryCommand) -> OpenPageResult<()> {
             &session,
             "history.go",
             json!({"index": args.index}),
+        )?)),
+        HistoryCommand::Clear(_) => print_json(simple_ok(rpc_webpage(
+            &session,
+            "history.clear",
+            Value::Null,
         )?)),
     }
 }
@@ -1469,6 +2556,55 @@ fn storage_scope_name(scope: &StorageScope) -> &'static str {
     }
 }
 
+fn run_permissions(command: PermissionsCommand) -> OpenPageResult<()> {
+    match command {
+        PermissionsCommand::Set(args) => run_permissions_set(args),
+        PermissionsCommand::Reset(args) => print_json(simple_ok(rpc_webpage(
+            &args.session,
+            "permissions.reset",
+            Value::Null,
+        )?)),
+    }
+}
+
+fn run_permissions_set(args: PermissionSetArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "permissions.set",
+        json!({
+            "name": args.name.as_descriptor_name(),
+            "setting": args.setting.as_cdp_value(),
+            "origin": args.origin,
+            "embedded_origin": args.embedded_origin,
+        }),
+    )?))
+}
+
+fn run_clear_cache(args: ClearCacheArgs) -> OpenPageResult<()> {
+    let any_selected = args.session_storage || args.local_storage || args.cache || args.cookies;
+    let session_storage = args.session_storage || !any_selected;
+    let local_storage = args.local_storage || !any_selected;
+    let cache = args.cache || !any_selected;
+    let cookies = args.cookies || !any_selected;
+    let _ = rpc_webpage(
+        &args.session,
+        "webpage.clear_cache",
+        json!({
+            "session_storage": session_storage,
+            "local_storage": local_storage,
+            "cache": cache,
+            "cookies": cookies,
+        }),
+    )?;
+    print_json(simple_ok(json!({
+        "cleared": true,
+        "session_storage": session_storage,
+        "local_storage": local_storage,
+        "cache": cache,
+        "cookies": cookies,
+    })))
+}
+
 fn run_cookies(command: CookiesCommand) -> OpenPageResult<()> {
     let session = match &command {
         CookiesCommand::Get(args) | CookiesCommand::Clear(args) => args.session.clone(),
@@ -1522,6 +2658,8 @@ fn run_cookies(command: CookiesCommand) -> OpenPageResult<()> {
 fn run_tab(command: TabCommand) -> OpenPageResult<()> {
     let session = match &command {
         TabCommand::New(args) => args.session.clone(),
+        TabCommand::Duplicate(args) => args.session.clone(),
+        TabCommand::Reopen(args) => args.session.clone(),
         TabCommand::Close(args) => args.session.clone(),
         TabCommand::List(args) => args.session.clone(),
         TabCommand::Switch(args) => args.session.clone(),
@@ -1536,30 +2674,50 @@ fn run_tab(command: TabCommand) -> OpenPageResult<()> {
                 "background": args.background,
             }),
         )?)),
+        TabCommand::Duplicate(args) => run_tab_duplicate(args),
+        TabCommand::Reopen(args) => run_tab_reopen(args),
         TabCommand::Close(args) => {
+            let tabs_to_record = tabs_selected_for_close(&session, &args)?;
             if args.others {
-                print_json(simple_ok(rpc_webpage(
+                let response = rpc_webpage(&session, "tab.close", json!({"others": true}))?;
+                let closed = response.get("closed").and_then(Value::as_u64).unwrap_or(0) as usize;
+                record_recently_closed_tabs(
                     &session,
-                    "tab.close",
-                    json!({"others": true}),
-                )?))
+                    &tabs_to_record[..closed.min(tabs_to_record.len())],
+                )?;
+                print_json(simple_ok(response))
             } else if let Some(target_id) = args.target {
-                print_json(simple_ok(rpc_webpage(
+                let response = rpc_webpage(&session, "tab.close", json!({"targets": [target_id]}))?;
+                let closed = response.get("closed").and_then(Value::as_u64).unwrap_or(0) as usize;
+                record_recently_closed_tabs(
                     &session,
-                    "tab.close",
-                    json!({"targets": [target_id]}),
-                )?))
+                    &tabs_to_record[..closed.min(tabs_to_record.len())],
+                )?;
+                print_json(simple_ok(response))
             } else if let Some(index) = args.index {
                 let target_id = tab_target_id_from_index(&session, index)?;
-                print_json(simple_ok(rpc_webpage(
+                let response = rpc_webpage(&session, "tab.close", json!({"targets": [target_id]}))?;
+                let closed = response.get("closed").and_then(Value::as_u64).unwrap_or(0) as usize;
+                record_recently_closed_tabs(
                     &session,
-                    "tab.close",
-                    json!({"targets": [target_id]}),
-                )?))
+                    &tabs_to_record[..closed.min(tabs_to_record.len())],
+                )?;
+                print_json(simple_ok(response))
             } else {
-                Err(OpenPageError::UnsupportedOperation(
-                    "tab close requires --target, --index, or --others".to_string(),
-                ))
+                let target_id = tabs_to_record
+                    .first()
+                    .and_then(|tab| tab.get("target_id"))
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        OpenPageError::ElementNotFound("no active tab found".to_string())
+                    })?;
+                let response = rpc_webpage(&session, "tab.close", json!({"targets": [target_id]}))?;
+                let closed = response.get("closed").and_then(Value::as_u64).unwrap_or(0) as usize;
+                record_recently_closed_tabs(
+                    &session,
+                    &tabs_to_record[..closed.min(tabs_to_record.len())],
+                )?;
+                print_json(simple_ok(response))
             }
         }
         TabCommand::List(_) => {
@@ -1578,6 +2736,56 @@ fn run_tab(command: TabCommand) -> OpenPageResult<()> {
             )?))
         }
     }
+}
+
+fn run_tab_duplicate(args: TabDuplicateArgs) -> OpenPageResult<()> {
+    let tab = tab_value_for_duplicate(&args.session, args.target.as_deref(), args.index)?;
+    let url = tab
+        .get("url")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            OpenPageError::BrowserOperation(
+                "selected tab did not expose a duplicate url".to_string(),
+            )
+        })?;
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "tab.new",
+        json!({
+            "url": url,
+            "window": args.window,
+            "background": args.background,
+        }),
+    )?))
+}
+
+fn run_tab_reopen(args: TabReopenArgs) -> OpenPageResult<()> {
+    let mut stack = read_recently_closed_tabs(&args.session)?;
+    let tab = stack.last().cloned().ok_or_else(|| {
+        OpenPageError::UnsupportedOperation(
+            "no recently closed tab recorded for this session".to_string(),
+        )
+    })?;
+    let response = rpc_webpage(
+        &args.session,
+        "tab.new",
+        json!({
+            "url": tab.url,
+            "window": args.window,
+            "background": args.background,
+        }),
+    )?;
+    stack.pop();
+    write_recently_closed_tabs(&args.session, &stack)?;
+    print_json(simple_ok(json!({
+        "reopened": true,
+        "url": response.get("url").cloned().unwrap_or_else(|| json!(tab.url)),
+        "recorded_title": tab.title,
+        "target_id": response.get("target_id").cloned(),
+        "window": args.window,
+        "background": args.background,
+    })))
 }
 
 fn run_frame(command: FrameCommand) -> OpenPageResult<()> {
@@ -1599,9 +2807,57 @@ fn run_frame(command: FrameCommand) -> OpenPageResult<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::{
+        RecentlyClosedTab, read_recently_closed_tabs, recently_closed_tabs_path,
+        record_recently_closed_tabs, tail_log_lines, write_recently_closed_tabs,
+    };
     use clap::Parser;
+    use serde_json::{Value, json};
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-    use crate::cli::args::Cli;
+    use crate::cli::args::{BrowserCommand, Cli, Command};
+    use crate::cli::connection::{daemon_dir, pid_path, port_path, version_path};
+    use crate::error::OpenPageError;
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &PathBuf) -> Self {
+            let previous = std::env::var_os(key);
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => unsafe {
+                    std::env::set_var(self.key, value);
+                },
+                None => unsafe {
+                    std::env::remove_var(self.key);
+                },
+            }
+        }
+    }
+
+    fn unique_openpage_home(label: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "openpage-oneshot-test-{label}-{}-{unique}",
+            std::process::id()
+        ))
+    }
 
     #[test]
     fn parses_browser_start() {
@@ -1618,6 +2874,300 @@ mod tests {
             cli.command,
             crate::cli::args::Command::Browser { .. }
         ));
+    }
+
+    #[test]
+    fn parses_browser_activate() {
+        Cli::try_parse_from(["openpage", "browser", "activate", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_browser_logs_tail() {
+        let cli = Cli::try_parse_from([
+            "openpage",
+            "browser",
+            "logs",
+            "--session",
+            "agent",
+            "--tail",
+            "25",
+        ])
+        .unwrap();
+
+        match cli.command {
+            Command::Browser(BrowserCommand::Logs(args)) => {
+                assert_eq!(args.session, "agent");
+                assert_eq!(args.tail, Some(25));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_browser_stop_all() {
+        let cli = Cli::try_parse_from(["openpage", "browser", "stop", "--all"]).unwrap();
+
+        match cli.command {
+            Command::Browser(BrowserCommand::Stop(args)) => {
+                assert!(args.all);
+                assert_eq!(args.session, None);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn browser_stop_all_sessions_deduplicates_and_keeps_alive_incomplete_sessions() {
+        let inventory = crate::cli::connection::DaemonInventory {
+            sessions: vec![crate::cli::connection::DaemonSessionInfo {
+                session: "alpha".to_string(),
+                port: Some(1111),
+                pid: Some(2222),
+                version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                alive: true,
+                ready: true,
+                log_path: "/tmp/alpha.log".to_string(),
+            }],
+            incomplete: vec![
+                crate::cli::connection::IncompleteDaemonSession {
+                    session: "beta".to_string(),
+                    pid_present: true,
+                    port_present: true,
+                    version_present: false,
+                    pid_valid: true,
+                    port_valid: true,
+                    alive: true,
+                    ready: false,
+                    log_path: "/tmp/beta.log".to_string(),
+                },
+                crate::cli::connection::IncompleteDaemonSession {
+                    session: "alpha".to_string(),
+                    pid_present: true,
+                    port_present: true,
+                    version_present: false,
+                    pid_valid: true,
+                    port_valid: true,
+                    alive: true,
+                    ready: false,
+                    log_path: "/tmp/alpha.log".to_string(),
+                },
+                crate::cli::connection::IncompleteDaemonSession {
+                    session: "gamma".to_string(),
+                    pid_present: true,
+                    port_present: true,
+                    version_present: false,
+                    pid_valid: true,
+                    port_valid: true,
+                    alive: false,
+                    ready: false,
+                    log_path: "/tmp/gamma.log".to_string(),
+                },
+            ],
+            cleaned: Vec::new(),
+        };
+
+        assert_eq!(
+            super::browser_stop_all_sessions(&inventory),
+            vec!["alpha".to_string(), "beta".to_string()]
+        );
+    }
+
+    #[test]
+    fn browser_inventory_summary_counts_all_categories() {
+        let inventory = crate::cli::connection::DaemonInventory {
+            sessions: vec![crate::cli::connection::DaemonSessionInfo {
+                session: "alpha".to_string(),
+                port: Some(1111),
+                pid: Some(2222),
+                version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                alive: true,
+                ready: true,
+                log_path: "/tmp/alpha.log".to_string(),
+            }],
+            incomplete: vec![crate::cli::connection::IncompleteDaemonSession {
+                session: "beta".to_string(),
+                pid_present: true,
+                port_present: true,
+                version_present: false,
+                pid_valid: true,
+                port_valid: true,
+                alive: true,
+                ready: false,
+                log_path: "/tmp/beta.log".to_string(),
+            }],
+            cleaned: vec![crate::cli::connection::CleanedDaemonSession {
+                session: "gamma".to_string(),
+                reason: "missing version".to_string(),
+            }],
+        };
+
+        let summary = super::browser_inventory_summary(&inventory);
+        assert_eq!(summary["healthy"], 1);
+        assert_eq!(summary["incompatible"], 0);
+        assert_eq!(summary["incomplete"], 1);
+        assert_eq!(summary["cleaned"], 1);
+        assert_eq!(summary["total"], 3);
+    }
+
+    #[test]
+    fn browser_inventory_payload_includes_state_and_reasons() {
+        let inventory = crate::cli::connection::DaemonInventory {
+            sessions: vec![crate::cli::connection::DaemonSessionInfo {
+                session: "alpha".to_string(),
+                port: Some(1111),
+                pid: Some(2222),
+                version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                alive: true,
+                ready: true,
+                log_path: "/tmp/alpha.log".to_string(),
+            }],
+            incomplete: vec![crate::cli::connection::IncompleteDaemonSession {
+                session: "beta".to_string(),
+                pid_present: true,
+                port_present: true,
+                version_present: false,
+                pid_valid: true,
+                port_valid: true,
+                alive: true,
+                ready: false,
+                log_path: "/tmp/beta.log".to_string(),
+            }],
+            cleaned: vec![crate::cli::connection::CleanedDaemonSession {
+                session: "gamma".to_string(),
+                reason: "missing version".to_string(),
+            }],
+        };
+
+        let payload = super::browser_inventory_payload(&inventory);
+        assert_eq!(payload["sessions"][0]["state"], "healthy");
+        assert_eq!(payload["sessions"][0]["version_matches_current_cli"], true);
+        assert!(payload["sessions"][0].get("fix").is_none());
+        assert_eq!(payload["incomplete"][0]["state"], "incomplete");
+        assert_eq!(
+            payload["incomplete"][0]["reasons"],
+            json!(["missing_version", "daemon_not_ready"])
+        );
+        assert_eq!(payload["incomplete"][0]["log_path"], "/tmp/beta.log");
+        assert!(payload["incomplete"][0]["fix"]
+            .as_str()
+            .expect("incomplete fix should be present")
+            .contains("doctor --quick --fix"));
+        assert_eq!(payload["cleaned"][0]["state"], "cleaned");
+    }
+
+    #[test]
+    fn incomplete_session_reasons_report_missing_version_and_not_ready() {
+        let incomplete = crate::cli::connection::IncompleteDaemonSession {
+            session: "beta".to_string(),
+            pid_present: true,
+            port_present: true,
+            version_present: false,
+            pid_valid: true,
+            port_valid: true,
+            alive: true,
+            ready: false,
+            log_path: "/tmp/beta.log".to_string(),
+        };
+
+        assert_eq!(
+            super::incomplete_session_reasons(&incomplete),
+            vec!["missing_version", "daemon_not_ready"]
+        );
+    }
+
+    #[test]
+    fn download_final_path_requires_non_empty_path() {
+        let path =
+            super::download_final_path(&json!({"guid": "done", "final_path": "/tmp/file.txt"}))
+                .expect("path should resolve");
+        assert_eq!(path, "/tmp/file.txt");
+
+        let error = super::download_final_path(&json!({"guid": "pending", "final_path": ""}))
+            .expect_err("empty final_path should fail");
+        assert!(error
+            .to_string()
+            .contains("download has no finalized file path yet"));
+    }
+
+    #[test]
+    fn browser_logs_payload_preserves_state_and_reasons() {
+        let payload = super::browser_logs_payload(
+            json!({
+                "session": "beta",
+                "alive": true,
+                "ready": false,
+                "pid": 123,
+                "port": 456,
+                "version": "0.1.0",
+                "log_path": "/tmp/beta.log",
+                "state": "incomplete",
+                "reasons": ["missing_version", "daemon_not_ready"],
+                "fix": "Run `openpage doctor --quick --fix` ...",
+            }),
+            true,
+            Some(20),
+            Some("tail".to_string()),
+        );
+
+        assert_eq!(payload["state"], "incomplete");
+        assert_eq!(
+            payload["reasons"],
+            json!(["missing_version", "daemon_not_ready"])
+        );
+        assert!(payload["fix"]
+            .as_str()
+            .expect("fix should be preserved")
+            .contains("doctor --quick --fix"));
+        assert_eq!(payload["path"], "/tmp/beta.log");
+        assert_eq!(payload["exists"], true);
+        assert_eq!(payload["tail"], 20);
+        assert_eq!(payload["content"], "tail");
+    }
+
+    #[test]
+    fn browser_logs_payload_preserves_incompatible_state_and_reasons() {
+        let payload = super::browser_logs_payload(
+            json!({
+                "session": "beta",
+                "alive": true,
+                "ready": true,
+                "pid": 123,
+                "port": 456,
+                "version": "0.0.1",
+                "version_matches_current_cli": false,
+                "log_path": "/tmp/beta.log",
+                "state": "incompatible",
+                "reasons": ["version_mismatch"],
+                "fix": "Run `openpage browser stop --session beta` ...",
+            }),
+            true,
+            Some(5),
+            Some("tail".to_string()),
+        );
+
+        assert_eq!(payload["state"], "incompatible");
+        assert_eq!(payload["version_matches_current_cli"], false);
+        assert_eq!(payload["reasons"], json!(["version_mismatch"]));
+        assert!(payload["fix"]
+            .as_str()
+            .expect("fix should be preserved")
+            .contains("browser stop --session beta"));
+        assert_eq!(payload["path"], "/tmp/beta.log");
+        assert_eq!(payload["exists"], true);
+        assert_eq!(payload["tail"], 5);
+        assert_eq!(payload["content"], "tail");
+    }
+
+    #[test]
+    fn browser_log_tail_keeps_last_lines() {
+        assert_eq!(tail_log_lines("alpha\nbeta\ngamma\n", 2), "beta\ngamma");
+        assert_eq!(tail_log_lines("alpha\nbeta\ngamma", 1), "gamma");
+    }
+
+    #[test]
+    fn browser_log_tail_handles_zero_and_large_limits() {
+        assert_eq!(tail_log_lines("alpha\nbeta", 0), "");
+        assert_eq!(tail_log_lines("alpha\nbeta", 5), "alpha\nbeta");
     }
 
     #[test]
@@ -1638,6 +3188,44 @@ mod tests {
     }
 
     #[test]
+    fn parses_user_agent() {
+        Cli::try_parse_from(["openpage", "user-agent", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_status_code() {
+        Cli::try_parse_from(["openpage", "status-code", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_ready_state() {
+        Cli::try_parse_from(["openpage", "ready-state", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_is_loading() {
+        Cli::try_parse_from(["openpage", "is-loading", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_is_headless() {
+        Cli::try_parse_from(["openpage", "is-headless", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_screenshot_element() {
+        Cli::try_parse_from([
+            "openpage",
+            "screenshot-element",
+            "#hero",
+            "hero.png",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
     fn parses_click_with_ref() {
         Cli::try_parse_from(["openpage", "click", "@e5", "--session", "agent"]).unwrap();
     }
@@ -1650,6 +3238,49 @@ mod tests {
     #[test]
     fn parses_focus() {
         Cli::try_parse_from(["openpage", "focus", "#kw", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_value() {
+        Cli::try_parse_from(["openpage", "value", "#kw", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_raw_text() {
+        Cli::try_parse_from(["openpage", "raw-text", "#kw", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_link() {
+        Cli::try_parse_from(["openpage", "link", "#kw", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_open_link() {
+        Cli::try_parse_from([
+            "openpage",
+            "open-link",
+            "#go",
+            "--background",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_child_count() {
+        Cli::try_parse_from(["openpage", "child-count", "#root", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_css_path() {
+        Cli::try_parse_from(["openpage", "css-path", "#root", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_xpath() {
+        Cli::try_parse_from(["openpage", "xpath", "#root", "--session", "agent"]).unwrap();
     }
 
     #[test]
@@ -1671,6 +3302,54 @@ mod tests {
             "right",
             "--count",
             "2",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_hover_at() {
+        Cli::try_parse_from([
+            "openpage",
+            "hover-at",
+            "#kw",
+            "--x",
+            "24",
+            "--y",
+            "12",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_scroll_position() {
+        Cli::try_parse_from(["openpage", "scroll-position", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_scroll_element() {
+        Cli::try_parse_from([
+            "openpage",
+            "scroll-element",
+            "#pane",
+            "down",
+            "--pixels",
+            "180",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_scroll_element_position() {
+        Cli::try_parse_from([
+            "openpage",
+            "scroll-element-position",
+            "#pane",
             "--session",
             "agent",
         ])
@@ -1707,6 +3386,20 @@ mod tests {
             "abc",
             "--scope",
             "session",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_permissions_set() {
+        Cli::try_parse_from([
+            "openpage",
+            "permissions",
+            "set",
+            "clipboard-read",
+            "granted",
             "--session",
             "agent",
         ])
@@ -1788,6 +3481,19 @@ mod tests {
     }
 
     #[test]
+    fn parses_clipboard_write() {
+        Cli::try_parse_from([
+            "openpage",
+            "clipboard",
+            "write",
+            "hello",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
     fn parses_select_all() {
         Cli::try_parse_from(["openpage", "select-all", "--session", "agent"]).unwrap();
     }
@@ -1866,6 +3572,12 @@ mod tests {
     }
 
     #[test]
+    fn parses_reload_ignore_cache() {
+        Cli::try_parse_from(["openpage", "reload", "--ignore-cache", "--session", "agent"])
+            .unwrap();
+    }
+
+    #[test]
     fn parses_select_range() {
         Cli::try_parse_from([
             "openpage",
@@ -1901,6 +3613,11 @@ mod tests {
     }
 
     #[test]
+    fn parses_has_rect() {
+        Cli::try_parse_from(["openpage", "has-rect", "#kw", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
     fn parses_count() {
         Cli::try_parse_from(["openpage", "count", ".item", "--session", "agent"]).unwrap();
     }
@@ -1910,6 +3627,62 @@ mod tests {
         Cli::try_parse_from([
             "openpage",
             "wait-clickable",
+            "#go",
+            "--timeout",
+            "5000",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_wait_has_rect() {
+        Cli::try_parse_from([
+            "openpage",
+            "wait-has-rect",
+            "#go",
+            "--timeout",
+            "5000",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_wait_covered() {
+        Cli::try_parse_from([
+            "openpage",
+            "wait-covered",
+            "#go",
+            "--timeout",
+            "5000",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_wait_not_covered() {
+        Cli::try_parse_from([
+            "openpage",
+            "wait-not-covered",
+            "#go",
+            "--timeout",
+            "5000",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_wait_stop_moving() {
+        Cli::try_parse_from([
+            "openpage",
+            "wait-stop-moving",
             "#go",
             "--timeout",
             "5000",
@@ -2042,6 +3815,11 @@ mod tests {
     }
 
     #[test]
+    fn parses_save() {
+        Cli::try_parse_from(["openpage", "save", "page.mhtml", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
     fn parses_window_move() {
         Cli::try_parse_from([
             "openpage",
@@ -2056,8 +3834,61 @@ mod tests {
     }
 
     #[test]
+    fn parses_window_list() {
+        Cli::try_parse_from(["openpage", "window", "list", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_window_switch() {
+        Cli::try_parse_from(["openpage", "window", "switch", "2", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_window_close() {
+        Cli::try_parse_from([
+            "openpage",
+            "window",
+            "close",
+            "--index",
+            "2",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
     fn parses_window_state() {
         Cli::try_parse_from(["openpage", "window", "state", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_zoom_set() {
+        Cli::try_parse_from(["openpage", "zoom", "set", "1.25", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_zoom_in() {
+        Cli::try_parse_from([
+            "openpage",
+            "zoom",
+            "in",
+            "--step",
+            "0.2",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_zoom_out() {
+        Cli::try_parse_from(["openpage", "zoom", "out", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_zoom_reset() {
+        Cli::try_parse_from(["openpage", "zoom", "reset", "--session", "agent"]).unwrap();
     }
 
     #[test]
@@ -2076,6 +3907,67 @@ mod tests {
     }
 
     #[test]
+    fn parses_tab_duplicate() {
+        Cli::try_parse_from([
+            "openpage",
+            "tab",
+            "duplicate",
+            "--index",
+            "2",
+            "--background",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_tab_reopen() {
+        Cli::try_parse_from([
+            "openpage",
+            "tab",
+            "reopen",
+            "--background",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_tab_close_current() {
+        Cli::try_parse_from(["openpage", "tab", "close", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn recently_closed_tabs_round_trip() {
+        let home = unique_openpage_home("recent-tabs");
+        let _guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+
+        record_recently_closed_tabs(
+            "agent",
+            &[json!({"url": "https://example.com/", "title": "Example"})],
+        )
+        .expect("record recent tab");
+        let tabs = read_recently_closed_tabs("agent").expect("read recent tabs");
+        assert_eq!(
+            tabs,
+            vec![RecentlyClosedTab {
+                url: "https://example.com/".to_string(),
+                title: "Example".to_string(),
+            }]
+        );
+
+        write_recently_closed_tabs("agent", &[]).expect("clear recent tabs");
+        assert!(
+            !recently_closed_tabs_path("agent")
+                .expect("recent tabs path")
+                .exists(),
+            "clearing recent tabs should remove the sidecar file"
+        );
+    }
+
+    #[test]
     fn parses_history_list() {
         Cli::try_parse_from(["openpage", "history", "list", "--session", "agent"]).unwrap();
     }
@@ -2083,6 +3975,209 @@ mod tests {
     #[test]
     fn parses_history_go() {
         Cli::try_parse_from(["openpage", "history", "go", "2", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_history_clear() {
+        Cli::try_parse_from(["openpage", "history", "clear", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_downloads_list() {
+        Cli::try_parse_from(["openpage", "downloads", "list", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_downloads_last() {
+        Cli::try_parse_from(["openpage", "downloads", "last", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_downloads_clear() {
+        Cli::try_parse_from(["openpage", "downloads", "clear", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_downloads_cancel() {
+        Cli::try_parse_from([
+            "openpage",
+            "downloads",
+            "cancel",
+            "guid-1",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_downloads_wait() {
+        Cli::try_parse_from([
+            "openpage",
+            "downloads",
+            "wait",
+            "hello.txt",
+            "--timeout",
+            "5000",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn finds_download_path_by_filename() {
+        let missions = vec![json!({
+            "guid": "g1",
+            "suggested_filename": "hello.txt",
+            "state": "done",
+            "final_path": "/tmp/hello.txt",
+        })];
+        assert_eq!(
+            super::find_download_path(&missions, Some("hello.txt"), &[]),
+            Some(Value::from("/tmp/hello.txt"))
+        );
+    }
+
+    #[test]
+    fn finds_download_path_for_new_completed_mission() {
+        let missions = vec![
+            json!({
+                "guid": "old",
+                "suggested_filename": "old.txt",
+                "state": "done",
+                "final_path": "/tmp/old.txt",
+            }),
+            json!({
+                "guid": "new",
+                "suggested_filename": "new.txt",
+                "state": "done",
+                "final_path": "/tmp/new.txt",
+            }),
+        ];
+        assert_eq!(
+            super::find_download_path(&missions, None, &[String::from("old")]),
+            Some(Value::from("/tmp/new.txt"))
+        );
+    }
+
+    #[test]
+    fn response_result_preserves_daemon_error_kind() {
+        let error = super::response_result(super::Response::error(
+            None,
+            "element_not_found",
+            "missing #submit",
+        ))
+        .expect_err("daemon error should not look successful");
+
+        match error {
+            OpenPageError::ElementNotFound(message) => {
+                assert_eq!(message, "missing #submit");
+            }
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn response_result_falls_back_for_unknown_daemon_error_kind() {
+        let error =
+            super::response_result(super::Response::error(None, "daemon_state", "not ready"))
+                .expect_err("daemon error should not look successful");
+
+        match error {
+            OpenPageError::BrowserOperation(message) => {
+                assert_eq!(message, "daemon_state: not ready");
+            }
+            other => panic!("unexpected error variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn response_result_preserves_structured_fix_without_double_prefix() {
+        let detail = "session `inactive-review` is not active. Start it with `openpage browser start --session inactive-review` before retrying.";
+        let response = crate::cli::protocol::response_openpage_error(
+            None,
+            &OpenPageError::BrowserOperation(detail.to_string()),
+        );
+
+        let error =
+            super::response_result(response).expect_err("daemon error should not look successful");
+        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        let message = payload["error"]["message"]
+            .as_str()
+            .expect("message should be a string");
+
+        assert_eq!(payload["error"]["kind"], "browser_operation");
+        assert_eq!(payload["error"]["session"], "inactive-review");
+        assert_eq!(
+            payload["error"]["fix"],
+            "Start it with `openpage browser start --session inactive-review` before retrying."
+        );
+        assert!(
+            message.contains("browser operation failed: session `inactive-review` is not active.")
+        );
+        assert!(
+            !message.contains("browser operation failed: browser operation failed"),
+            "daemon error should not be double-prefixed: {message}"
+        );
+        assert_eq!(payload["error"]["state"], "inactive");
+        assert!(payload["error"].get("reasons").is_none());
+    }
+
+    #[test]
+    fn response_result_reconstructed_error_keeps_state_and_reasons_for_incompatible_session() {
+        let detail = "session `mismatch-review` is backed by daemon version 0.0.1 but the current CLI expects 0.1.0. Run `openpage browser stop --session mismatch-review` and then restart that session with the current CLI so its daemon sidecars are recreated with version 0.1.0. Or run `openpage doctor --quick --fix` if you want the CLI to stop the stale daemon for you.";
+        let response = crate::cli::protocol::response_openpage_error(
+            None,
+            &OpenPageError::BrowserOperation(detail.to_string()),
+        );
+
+        let error =
+            super::response_result(response).expect_err("daemon error should not look successful");
+        let payload = crate::cli::protocol::simple_openpage_error(&error);
+
+        assert_eq!(payload["error"]["kind"], "browser_operation");
+        assert_eq!(payload["error"]["session"], "mismatch-review");
+        assert_eq!(payload["error"]["state"], "incompatible");
+        assert_eq!(payload["error"]["reasons"], json!(["version_mismatch"]));
+        assert!(payload["error"]["fix"]
+            .as_str()
+            .expect("fix should be present")
+            .contains("browser stop --session mismatch-review"));
+    }
+
+    #[test]
+    fn rpc_webpage_rejects_inactive_session_without_creating_sidecars() {
+        let home = unique_openpage_home("inactive-session");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        let daemon = daemon_dir().expect("daemon dir path");
+        assert!(!daemon.exists(), "test should start without daemon dir");
+
+        let error = super::rpc_webpage("inactive-review", "webpage.title", Value::Null)
+            .expect_err("inactive session should fail instead of starting a fresh daemon/browser");
+
+        match error {
+            OpenPageError::BrowserOperation(message) => {
+                assert!(message.contains("is not active"));
+                assert!(message.contains("browser start --session inactive-review"));
+            }
+            other => panic!("expected BrowserOperation, got {other:?}"),
+        }
+
+        assert!(
+            !port_path("inactive-review").expect("port path").exists(),
+            "inactive read command should not create port sidecar"
+        );
+        assert!(
+            !pid_path("inactive-review").expect("pid path").exists(),
+            "inactive read command should not create pid sidecar"
+        );
+        assert!(
+            !version_path("inactive-review")
+                .expect("version path")
+                .exists(),
+            "inactive read command should not create version sidecar"
+        );
     }
 
     #[test]

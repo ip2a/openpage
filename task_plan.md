@@ -49,8 +49,8 @@
 - **batch 批处理已完成第一版接入**：OpenPage 现在支持 `batch` 子命令，按顺序执行多条 CLI 指令；支持参数模式、stdin JSON 模式和 `--bail`，且不引入任何竞品 CDP / element / action 内核。
 - **doctor 最小版已接入**：OpenPage 现在支持 `doctor` / `doctor --quick`，会用只读方式检查环境、daemon sidecars 和浏览器启动；浏览器 launch smoke 复用的是你自己的 `LaunchOptions` / `Browser::launch`。
 - **daemon inventory 已真正接上 doctor**：`rust/src/cli/connection.rs` 里的 `daemon_inventory()` 现在不再是半成品；`rust/src/cli/doctor.rs` 已消费它，并区分 healthy session、incomplete sidecars、cleaned stale sidecars。
-- **本机现状已重新核实**：本机 `~/.openpage/daemon` 的 healthy session 数量是运行时态；2026-05-30 较早一次 `browser list` 实测为 4 个 healthy session（`cli-more-states-2`、`cli-state-queries`、`human-flow`、`smoke-history2`）；当前唯一明确失败点仍是 `rust/configs.ini` 配置的 `browser_path=chrome` 在本机不可解析。
-- **doctor 的本机修复提示已补强**：当 `browser_path=chrome` 这类别名在 PATH 中找不到时，`doctor` 现在会额外探测本机常见浏览器落点；当前机器会明确提示 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 可直接写回 `rust/configs.ini`。
+- **本机现状已重新核实**：本机 `~/.openpage/daemon` 的 healthy session 数量是运行时态；2026-05-30 当前这轮最新复核里 `browser list` 返回 8 个 healthy sessions、0 incomplete、0 cleaned。当前唯一明确失败点仍是 `browser.executable`，而在这份 dirty worktree 里失败对象是 `rust/configs.ini` 配置的 `browser_path=/tmp/dp-browser`。
+- **doctor 的本机修复提示已补强**：当当前配置里的 browser executable 在 PATH 或绝对路径上不可解析时，`doctor` 现在会额外探测本机常见浏览器落点；当前机器会明确提示 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 可直接作为 `OPENPAGE_BROWSER_PATH` override 或写回配置。
 - **inventory 行为已通过合成 sidecar 验证**：用临时 `OPENPAGE_HOME` 成功验证了两类行为：
   - dead + invalid sidecars 会被 `doctor --quick` 标记为 `daemon.cleaned.*`
   - alive + missing version sidecar 会被 `doctor --quick` 标记为 `daemon.incomplete.*`
@@ -103,9 +103,10 @@
   - `page screenshot`
 - **活跃文档也已明确“这些旧入口是有意拒绝”的当前真相**：`README.md` 与 `skills/openpage-test/references/cli-smoke.md` 现在都写明旧 `page *` 和 `serve --stdio` 不是遗漏，而是被明确移除并由测试守住的废弃面。
 - **顶层 JSON error 外壳已继续收紧**：当前 `protocol.rs` 已新增稳定 `openpage_error_kind(...)` 映射，以及 `simple_openpage_error(...)` / `response_openpage_error(...)` helper；CLI 顶层、batch 错误输出与 raw TCP daemon runtime error 现在都不再笼统返回 `openpage`，而是给出稳定 `error.kind`，例如 `unsupported_operation`、`browser_operation`、`timeout`、`io`、`serialization`。
+- **顶层 parse/input 拒绝也已开始走统一 JSON 外壳**：当前 `rust/src/cli/mod.rs` 不再把 clap parse 失败直接裸打印成人类文本；除了 help/version 仍保持 clap text 之外，像 `page url`、`--set-browser-path` 这类被拒绝的旧/无效入口现在都会返回 `{"ok":false,"error":{"kind":"invalid_input",...}}`。
 - **本轮还顺手修掉了一个当前工作树的最小 compile blocker**：`rust/src/webpage.rs` 里 session timeout wrapper 与当前 `SessionPage` 真接口存在命名漂移；已做最小对齐（`timeout_secs` / `set_timeout` 与 `HashMap` import），目的是恢复验证链路，不是改产品语义。
 - **`doctor --quick --fix` 已落地并在本机执行过**：当前 `doctor` 新增了一个只做外壳层清理的修复入口，会删除 `OPENPAGE_HOME/sessions/*.json` 这类已经不再驱动活跃 TCP CLI 路径的 legacy session JSON 文件；本机 `/Users/yuuu/.openpage/sessions` 里的 4 个旧 JSON 已被清掉。
-- **本机当前剩余问题已进一步收口**：2026-05-30 最新复核里，`browser list` 现在返回 6 个 healthy sessions、0 incomplete、0 cleaned；`doctor --quick` 已不再有 `env.legacy_sessions` warning，唯一 fail 只剩 `browser.executable`，即 `rust/configs.ini` 里的 `browser_path=chrome` 在本机 PATH 上不可解析，而 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 是可用候选。
+- **本机当前剩余问题已进一步收口**：2026-05-30 最新复核里，`browser list` 现在返回 6 个 healthy sessions、0 incomplete、0 cleaned；`doctor --quick` 已不再有 `env.legacy_sessions` warning，唯一 fail 只剩 `browser.executable`，即 `rust/configs.ini` 里的 `browser_path=/tmp/dp-browser` 在本机不可解析，而 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 是可用候选。
 - **本机 browser_path 问题已有不污染仓库默认值的外壳层解法**：当前 `Browser::launch` 与 `doctor` 都已开始识别 `OPENPAGE_BROWSER_PATH`。在本机上设置 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 后：
   - `doctor --quick` 转为全 pass
   - full `doctor` 转为全 pass，并成功完成 live headless launch smoke
@@ -115,7 +116,7 @@
 - **运行时 browser create 现在也开始和 `doctor` 用同一条 launch-config 链**：`rust/src/cli/serve.rs` 里的 `webpage.create` 不再从裸 `LaunchOptions::default()` 起步，而是改成 `LaunchOptions::from_ini(None)` 起步，再用 daemon 请求参数覆盖。这样 raw TCP daemon、named-session CLI 和 `doctor` 对 browser_path/config 的理解开始一致。
 - **这条 runtime/doctor 对齐已经在本机被正反两面验证过**：
   - 带 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 时，`browser start --headless https://example.com -> title -> browser stop` 通过
-  - 不带 `OPENPAGE_BROWSER_PATH` 时，同一条 `browser start` 会像 `doctor` 一样因为 `browser_path=chrome` 在本机不可解析而失败
+  - 不带 `OPENPAGE_BROWSER_PATH` 时，同一条 `browser start` 会像 `doctor` 一样因为当前配置里的 `/tmp/dp-browser` 在本机不可解析而失败
 - **2026-05-30 本机 truth 又刷新了一次**：当前工作树里的 `rust/configs.ini` 已不是此前的 `browser_path=chrome`，而是本地脏改后的 `browser_path=/tmp/dp-browser`；因此今天重新实测时：
   - `browser list` 返回 6 个 healthy sessions、0 incomplete、0 cleaned
   - `doctor --quick` 的唯一 fail 仍是 `browser.executable`，但失败对象已经变成 `/tmp/dp-browser`
@@ -133,6 +134,45 @@
   - `cargo check --manifest-path rust/Cargo.toml` 通过
   - 带 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 的 `browser start --session retry-shell-check --headless https://example.com -> title -> browser stop` 通过
 - **活跃 smoke 文档不再写死 daemon session 数量**：`skills/openpage-test/references/cli-smoke.md` 现在不再把某个 healthy session 数字写成固定事实，而是明确说明 exact count 是 runtime-local，会随 named-session smoke daemon 的创建和遗留而漂移。
+- **`browser stop` 的 daemon 生命周期也已收口**：当前 `rust/src/cli/oneshot.rs` 不再只是“发一个 `daemon.shutdown` 然后盲删 sidecars”；它现在会走 `connection.rs::shutdown_daemon(...)`：
+  - ready daemon 先尝试优雅 shutdown
+  - 然后轮询确认 daemon 已退出
+  - 如果 daemon 仍活着，则回退到 forced stale kill
+  - 最终再清 sidecars
+- **这轮 stop-lifecycle 收口已经补了直接证据**：
+  - 新增 `connection.rs` 定向单测 1 个，验证 dead/stale sidecars 会被 `shutdown_daemon(...)` 清掉
+  - `cargo test --manifest-path rust/Cargo.toml cli::connection::tests:: -- --nocapture` 通过
+  - `cargo check --manifest-path rust/Cargo.toml` 通过
+  - 带 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 的顺序 smoke：
+    - `browser start --session stop-shell-check --headless https://example.com`
+    - `browser stop --session stop-shell-check`
+    - `browser list`
+    - 结果里已不再包含 `stop-shell-check`
+  - `browser stop` 当前 JSON 结果也会额外返回：
+    - `had_daemon`
+    - `forced`
+- **竞品借鉴文档已补到“本地落位”粒度**：根目录 `竞品文档-考虑借鉴的部分v1.md` 现已额外写清：
+  - 2026-05-30 当前本地真实情况
+  - 哪些残留项只是 archived/compat，不应误判成协议分叉
+  - 竞品外壳层代码分别该落到 OpenPage 哪个本地文件
+  - 哪些本地文件该承担什么职责、哪些边界不要越界
+- **2026-05-30 最新本机复核已再次落证据**：当前工作树和本机运行态重新确认：
+  - `browser list` 返回 8 个 healthy sessions、0 incomplete、0 cleaned
+  - 8 个 healthy sessions 分别是 `cli-more-states-2`、`cli-state-queries`、`definitely-missing`、`human-flow`、`human-gap-check`、`smoke-history2`、`smoke-shot`、`smoke_eval_5554`
+  - `definitely-missing` 名字虽然可疑，但当前运行时证据显示它 `alive=true`、`ready=true`，不能按名字误删
+  - `doctor --quick` 当前唯一 fail 仍是 `browser.executable`，失败对象是 `rust/configs.ini` 里的 `/tmp/dp-browser`
+  - 带 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 时，`doctor --quick` 转为全 pass
+  - 编译后的 `openpage --help` 已直接写明 active CLI protocol 是 TCP-backed daemon only；`openpage serve --help` 已直接写明 removed `serve --stdio` 继续 rejected
+  - 活跃面 grep 现在仍只在 reject tests、活跃文档里的“removed on purpose”说明、以及 archived/跟踪材料里命中旧 `serve --stdio` / `page *` / one-shot attach 表述
+  - 顺序 `browser start -> title -> browser stop` 的 `latest-local-audit` smoke 通过，且 stop 后 `browser list` 不再包含该 session
+- **`dp` compat surface 的“只作兼容、不作协议”已经从口头结论变成活跃护栏**：
+  - `rust/src/cli/args.rs::CompatCli` help 已显式写明 compat only
+  - `README.md` 与 `skills/openpage-test/references/cli-smoke.md` 已同步这个约束
+  - `cargo test --manifest-path rust/Cargo.toml dp_compat_help_marks_surface_as_compat_only -- --nocapture` 已通过
+- **`openpage` 活跃入口已经不再偷偷接住 compat flags**：
+  - `rust/src/cli/mod.rs::should_use_dp_compat_mode(...)` 现在只会在 `dp` binary 下触发 compat 模式
+  - `cargo test --manifest-path rust/Cargo.toml detects_dp_compat_mode_only_for_dp_binary -- --nocapture` 已通过
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- --set-browser-path /tmp/chrome` 现在会直接报 `unexpected argument`，不会再伪装成第二条 active CLI surface
 
 ## Errors Encountered
 - 当前工作树已存在大量未提交变更，因此迁移时必须逐文件审计，避免覆盖已有工作。
@@ -141,7 +181,7 @@
 - `click-for-new-tab` smoke 第一轮失败并非协议问题，而是测试脚本仍停留在新 tab 上就去点旧页的上传控件；调整为先 `tab switch` 回原页后，后续 `click-to-upload` / `click-to-download` / `drag-in` 全部验证通过。
 - 本轮 `cargo check` 首次被 `rust/src/page.rs` 中一个现有工作树编译错误挡住：`CaptureSnapshot` 返回值从借用结果中 move 出 `String`。已做最小修复为 `.clone()`，恢复可验证状态。
 - `batch` 接入为了避免“每条子命令报错后再多打一层总错误 JSON”，把 `rust/src/cli/oneshot.rs` 的返回语义调整为显式 exit code；这是外层 CLI 行为调整，不涉及浏览器/元素/CDP 内核。
-- 当前本机 `doctor` 实测表明：`OPENPAGE_HOME=/Users/yuuu/.openpage`，现存多个活跃 daemon session；当前加载到的配置里 `browser_path=chrome`，但本机并不能解析这个可执行文件，因此 `doctor --quick` 已经会直接失败，full `doctor` 也会跳过 live launch 并给出显式修复提示。
+- 当前本机 `doctor` 实测表明：`OPENPAGE_HOME=/Users/yuuu/.openpage`，现存多个活跃 daemon session；当前加载到的配置里 `browser_path=/tmp/dp-browser`，但本机并不能解析这个可执行文件，因此 `doctor --quick` 已经会直接失败，full `doctor` 也会跳过 live launch 并给出显式修复提示。
 - 一次补充的“live incomplete sidecar”脚本验证命令因为 `cargo run` 并发编译锁导致后台 `serve` 尚未写 sidecar 时就触发了 `doctor`；该次输出已判定为脚本竞态，不作为结论证据。
 - repo-local smoke scripts 原先还残留旧命令语法：
   - `page get`
@@ -158,14 +198,723 @@
 - 当前历史文档仍然保留大量旧事实正文，这是有意保留的回溯材料；本轮只做了显式降级标注，没有重写全文。
 - 给 `doctor.rs` 新增清理测试时，第一次把 `remove_legacy_session_files()` 直接写成了裸调用；由于测试在子模块里，需要改成 `super::remove_legacy_session_files()`，修正后定向单测通过。
 - 给 `browser.rs` 新增 env override 测试时，第一次把常量写成了未导入名字；已改成 `super::OPENPAGE_BROWSER_PATH_ENV`，定向单测随后通过。
-- `serve.rs` 这轮为了让 runtime 和 `doctor` 对齐，改成了从 ini 配置起步；因此在本机不带 `OPENPAGE_BROWSER_PATH` 时，`browser start` 现在会和 `doctor` 一样受 `browser_path=chrome` 影响，这不是回归，而是刻意去掉两套不一致的 browser-path 真相。
+- `serve.rs` 这轮为了让 runtime 和 `doctor` 对齐，改成了从 ini 配置起步；因此在本机不带 `OPENPAGE_BROWSER_PATH` 时，`browser start` 现在会和 `doctor` 一样受当前配置里的 `/tmp/dp-browser` 影响，这不是回归，而是刻意去掉两套不一致的 browser-path 真相。
 - 2026-05-30 这轮重新取证时又发现一个“旧结论过期”问题：当前工作树里的 `rust/configs.ini` 已被本地脏改成 `browser_path=/tmp/dp-browser`，所以先前跟踪文件里写死的 `browser_path=chrome` 已不再代表今天这台机器的真实失败对象；本轮已改为把新 truth 追加记录，而不是继续复用旧说法。
 - 一次并发 smoke 把 `title --session session-config-env` 和 `browser stop --session session-config-env` 同时跑了，导致 `title` 命中了 `unknown target`；后续顺序重跑 `browser start -> title -> browser stop` 已拿到有效通过证据。
 - 本轮验证链路又被当前工作树里的其它 compile blockers 挡了一次：
   - `rust/src/settings.rs` 这个未跟踪新文件里有一个 `FnMut` 捕获值 move 和一个测试导入问题
   - `rust/src/page.rs` 测试里有两个 `matches!` 模式借用问题
   - 这三处都只做了最小修复，用来恢复 `cargo check` / 定向 `cargo test` 证据链，不属于本轮外壳层设计变更本身
-- `browser stop --session <name>` 不会自动把对应 daemon session 从 `browser list` 里移除；它会停浏览器，但 daemon 自身可能继续存活。因此 exact healthy session count 不是稳定仓库事实，也不适合作为活跃 smoke 文档里的固定数字。
+- 2026-05-30 这轮再次取证时，当前工作树里的 `rust/src/browser.rs` 也暂时挡住了验证链路：
+  - `tab_infos()` 里的 `Ok(...)` 泛型返回值无法推断
+  - `wait_for_new_tab()` 里把 `Option<String>` 和新的 `explicit_current_tab: bool` 签名混用，导致编译失败
+  - 已只做最小修复以恢复 `cargo check` 和本地协议面取证，不借此改动任何 CLI/daemon 协议边界
+- healthy session count 不是稳定仓库事实，也不适合作为活跃 smoke 文档里的固定数字；以每次顺序执行后的 `browser list` 实测输出为准，不要把某一次运行态数量写死成仓库真相。
+- 上一条旧结论在本轮已被更强证据推翻：顺序 `browser start -> browser stop -> browser list` smoke 现在已经确认，当前 `browser stop` 收口后，刚停掉的 `stop-shell-check` session 不会继续留在活跃 `browser list` 里。此前的“session 数量漂移”问题主要来自并发取证与历史遗留 daemon，不再是当前 stop 生命周期本身的直接证据。
 
 ## Status
-**Currently in Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但这不代表可以停手。当前还在继续收两类尾巴：一类是把会误导后续会话的旧协议残留继续删到只剩归档材料，另一类是继续把竞品里真正有用的非-CDP 外壳设计往 `connection.rs` / `doctor.rs` / `protocol.rs` / 文档层收。2026-05-30 这轮最新核验里：`connection.rs` 新增的 request-retry 定向单测 2 个已通过；`cargo check` 继续通过；带 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 的 `browser start -> title -> browser stop` 链路继续通过；`cli-smoke.md` 已从“写死某个 session 数量与旧 browser_path 事实”改成当前机器 truth + runtime-local 说明。也就是说，当前 outer shell 不只保住了唯一 TCP daemon 路径，还进一步收紧了 transient request recovery 行为，而没有重新引入旧 one-shot / CDP / 元素交互分叉。下一步继续沿活跃 docs/help 面误导项、更多 machine-friendly 外壳细节，以及 path-focused git 提交做收敛。
+**Currently between Phase 6 and Phase 7** - 唯一 TCP daemon 路径仍然保持稳定，但当前重点已经转到“继续补外壳层借鉴 + 持续把最新本机 truth 写回文档”。2026-05-31 这轮最新本机复核再次确认：`browser list` 当前返回 18 个 healthy sessions、0 incomplete、0 cleaned；默认 `doctor --quick` 的 summary 是 `pass=22 / warn=0 / fail=1 / info=1 / total=24`，唯一 fail 仍是 `browser.executable=/tmp/dp-browser`；带 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 时 `doctor --quick` 转为 `pass=23 / warn=0 / fail=0 / info=1 / total=24`；编译后的 `openpage --help` 与 `openpage serve --help` 继续直接把 TCP-only / removed `serve --stdio` 真相写进活跃 help 文本，而 `dp` 继续被钉死为 compat-only helper。本轮没有继续动 `rust/src/cli/oneshot.rs`，因为本地仍有活跃 `git add -p rust/src/cli/oneshot.rs` 交互进程；因此这轮先把最新本机 truth 与竞品借鉴边界同步回文档，避免干扰用户当前的 staging。下一步继续沿 README / skill docs / 竞品底稿收敛最新本机 truth，并在 staging 风险解除后优先挑这种只动 `connection.rs` / `doctor.rs` / `oneshot.rs` 的外壳点小步接入。
+
+## 2026-05-30 增量进展：active-session 外壳边界同步
+
+- 已把最新落地的 session 边界同步到活跃 help / README / skill docs：
+
+## 2026-05-31 文档同步：竞品借鉴清单刷新
+
+- 已把 `竞品文档-考虑借鉴的部分v1.md` 补成可直接复用的借鉴底稿。
+- 这次只补文档，不改实现层代码。
+- 文档里现在多了一张前置速查表，明确了：
+  - 哪些竞品文件适合直接按骨架 copy 后微调
+  - 哪些只适合借思路
+  - 哪些明确禁止碰
+- 这能降低后续继续借竞品时“抄过界”的风险，尤其是避免误抄 `cli/src/native/*`。
+
+## 2026-05-31 增量进展：AI-first snapshot 外壳增强
+
+- 这轮继续只借竞品的 agent-facing snapshot contract，不借它的 native snapshot / CDP / element 内核。
+- 已在 `rust/src/cli/serve.rs` 落地两个 outer-shell 方向的增强：
+  - `snapshot` 现在会补充 `label` / `checked` / `selected` / `disabled` 这类 agent 友好的状态元数据
+  - 每次新 `snapshot` 开始前会先清掉现有 DOM 上残留的 `data-op-ref`，再重新分配新 ref 集，降低动态页面上的 stale ref 误点风险
+- 这轮仍然不改：
+  - `rust/src/browser.rs`
+  - `rust/src/page.rs`
+  - `rust/src/element.rs`
+  - `rust/src/webpage.rs`
+- 也就是说，这一步仍然是 shell / contract 层增强，不是浏览器或 CDP 内核替换。
+
+## 2026-05-31 增量进展：version-mismatch daemon 护栏收紧
+
+- 这轮继续只动 `rust/src/cli/connection.rs` 这一层，不碰浏览器/CDP/定位/交互内核。
+- 新护栏解决的是一个更核心的协议稳定性问题：
+  - 之前 follow-up `--session` 命令只检查 daemon 是否 `ready`
+  - 没有检查该 daemon 的 `.version` 是否和当前 CLI 匹配
+  - 这会让旧版本 live daemon 混进当前 TCP 协议面
+- 现在已经改成：
+  - `ensure_existing_daemon()` 对 version mismatch 直接 fail-fast
+  - `browser status` / `browser list` / `browser logs` / `doctor inventory` 现在会显式暴露：
+    - `state="incompatible"`
+    - `reasons=["version_mismatch"]`
+    - `version_matches_current_cli=false`
+- 这一步的意义很直接：
+  - 唯一 TCP daemon 协议不只是“入口唯一”
+  - 还变成“follow-up 命令不会继续和旧版本 daemon 混跑”
+
+## 2026-05-31 增量进展：`doctor --quick --fix` 也纳入 incompatible daemon 清理
+
+- 这轮继续只动 `doctor.rs` / `connection.rs` 外壳层。
+- 当前已经把上一轮的 version-mismatch fail-fast 补成统一修复闭环：
+  - `doctor --quick` 能报告 `state="incompatible"`
+  - follow-up `--session` 命令会拒绝旧版本 daemon
+  - `doctor --quick --fix` 现在也会 stop incompatible live daemon session
+- 这意味着“唯一 TCP 协议”现在不只是拒绝旧入口、拒绝旧 daemon，还具备统一 cleanup path。
+
+## 2026-05-31 增量进展：active docs 与 `browser logs` incompatible 护栏同步
+
+- 这轮是小步收口：
+  - `skills/openpage-test/SKILL.md`
+  - `skills/openpage-test/references/install.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+  现在都已经把 `doctor --quick --fix` 的适用范围更新到：
+  - legacy session JSON residue
+  - incompatible daemon sessions
+  - incomplete unready daemon sessions
+- 同时补了 `rust/src/cli/oneshot.rs` 的测试护栏，确认 `browser logs` 在 incompatible session 上也会保留：
+  - `state="incompatible"`
+  - `reasons=["version_mismatch"]`
+  - `version_matches_current_cli=false`
+
+## 2026-05-31 增量进展：session-level `fix` guidance 真相源开始收口
+
+- 这轮继续只动 `connection.rs` / `doctor.rs` / `oneshot.rs` 这一层。
+- 当前新增的是一个更像竞品 outer-shell 的诊断增强：
+  - 不再只给 `state` / `reasons`
+  - 而是开始把 session-level `fix` guidance 下沉到 connection/control-plane 真相源
+- 现在以下几处会开始共享同一套 session 修复建议：
+  - `browser status`
+  - `browser logs`
+  - `browser list`
+  - `doctor` 的 session 相关 check
+- 这意味着后续 agent 不必再自己根据 `state` / `reasons` 反推“下一步该 stop、restart 还是 start”。
+  - `browser start` 和 `goto` 是仅存的 bootstrap 入口
+  - `title` / `snapshot` / `click` / `js` / `screenshot` 这类 follow-up 命令现在要求 session 已经 active
+  - inactive session 会 fail fast，而不是静默拉起新 daemon/browser
+- 已把这条外壳借鉴写回 `竞品文档-考虑借鉴的部分v1.md`，并明确落点：
+  - `rust/src/cli/oneshot.rs`
+  - `rust/src/cli/connection.rs`
+- 待本轮验证补齐后，再继续看是否还有别的命令入口会意外绕回 auto-start 路径
+
+## 2026-05-30 增量进展：compile gate 恢复 + 本机实情同步
+
+- 为了继续做本地协议面核实，先做了 `rust/src/browser.rs` 的最小编译修复：
+  - `tab_infos()` 的返回值显式标注为 `OpenPageError`
+  - `wait_for_new_tab()` 按当前 `find_new_tab_id(..., explicit_current_tab: bool)` 签名收口
+- 修复后重新跑通的本地核实命令：
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- --help`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --help`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rpc_webpage_rejects_inactive_session_without_creating_sidecars -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml dp_compat_help_marks_surface_as_compat_only -- --nocapture`
+- 这轮更强的新证据：
+  - 当前 healthy session 数量已从之前记录的 7 个变成 8 个，新增可见 healthy session 是 `human-gap-check`
+  - `doctor --quick` 默认仍只 fail 在 `/tmp/dp-browser`
+  - override 到 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 后，`doctor --quick` 转为全 pass
+  - 当前工作树的活跃 help、单测、runtime inventory 和 reject surface 仍然共同指向唯一 TCP daemon 真相
+
+## 2026-05-31 增量进展：本地真相复核 + shell-only 最小接入确认
+
+- 先重新核实了当前工作树，而不是沿用上轮 handoff 里的 compile blocker 结论：
+  - `cargo check --manifest-path rust/Cargo.toml` 已通过
+  - 说明之前提到的 `rust/src/cli/oneshot.rs` 对 `Command::Clipboard` / `Command::Permissions` 非穷尽匹配问题，当前工作树里已经被修掉
+- 继续验证唯一 TCP 协议护栏：
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rpc_webpage_rejects_inactive_session_without_creating_sidecars -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml dp_compat_help_marks_surface_as_compat_only -- --nocapture`
+  - 三个都通过
+- 对“最小接入但不借竞品 native 内核”这件事，本轮确认 clipboard / permissions 已经是一个现成样板：
+  - `rust/src/cli/args.rs` 已公开 `Clipboard` / `Permissions` 子命令
+  - `rust/src/cli/oneshot.rs` 已只通过 `rpc_webpage(...)` 走 daemon：`clipboard.read/write`、`permissions.set/reset`
+  - `rust/src/cli/serve.rs` 已只在 daemon dispatch 层调用 `page.clipboard_*` / `page.set_permission` / `page.reset_permissions`
+  - `rust/src/webpage.rs` 已有 driver-mode wrapper
+  - `rust/src/page.rs` 已有内部实现与 clipboard runtime regression test
+  - 这正符合“只借外壳层，不借 `agent-browser/cli/src/native/*`”的边界
+- 2026-05-31 本机运行态重新取证：
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+    - 当前返回 **15 个 healthy sessions、0 incomplete、0 cleaned**
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - 当前唯一 fail 仍是 `browser.executable`
+    - 失败对象仍是 `rust/configs.ini` 里的 `/tmp/dp-browser`
+  - `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+    - 转为 **0 fail**
+  - `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start https://example.com --session latest-local-audit-20260531 --headless`
+    - 后续 `title --session latest-local-audit-20260531` 返回 `Example Domain`
+    - `browser stop --session latest-local-audit-20260531` 成功，随后 `browser list` 已确认这个临时 session 不再残留
+- 活跃面 grep 继续成立：
+  - `serve --stdio`、旧 `page *`、`open_page()`、`load_session()`、`save_session()` 当前只剩：
+    - reject tests / help / README 里的明确 rejected 说明
+    - archived 历史文档里的旧事实
+    - Rust 库内部仍然存在但不等于 CLI 分叉的 `Browser::connect()`
+  - 没有重新回流到活跃 CLI 执行路径
+
+## 2026-05-31 增量进展：browser logs 外壳接入 + 文档 truth 刷新
+
+- 新确认并验证了一个继续可借的非-CDP 外壳点：
+  - `rust/src/cli/args.rs` 新增 `browser logs`
+  - `rust/src/cli/oneshot.rs` 新增 `run_browser_logs(...)`
+  - 只复用现有 `daemon_status().log_path` 和 sidecar truth，不接触浏览器/CDP/locator/interaction 内核
+- 已重新通过的定向验证：
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo test --manifest-path rust/Cargo.toml parses_browser_logs_tail -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_log_tail_keeps_last_lines -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_log_tail_handles_zero_and_large_limits -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rpc_webpage_rejects_inactive_session_without_creating_sidecars -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml dp_compat_help_marks_surface_as_compat_only -- --nocapture`
+- 2026-05-31 本机运行态新证据：
+  - `rust/target/debug/openpage browser list`
+    - 当前返回 **17 个 healthy sessions、0 incomplete、0 cleaned**
+  - `rust/target/debug/openpage doctor --quick`
+    - summary 为 `pass=21 / warn=0 / fail=1 / info=1 / total=23`
+    - `fail_ids=["browser.executable"]`
+    - `fixable_ids=["browser.executable","browser.launch"]`
+  - `rust/target/debug/openpage browser logs --session human-flow --tail 20`
+    - 返回 `exists=false`、`content=null`
+    - 说明该 session 当前没有可读的持久化 stderr log
+  - `rust/target/debug/openpage browser logs --session clipboard-probe-20260531 --tail 20`
+    - 返回 `exists=true`
+    - 已读到 tailed stderr：`WebSocket protocol error: Connection reset without closing handshake`
+- 这条能力的意义：
+  - 很符合 `agent-browser` 可借的 outer-shell 方向
+  - 能补强 daemon/doctor 之后的现场排障路径
+  - 仍然不需要引入竞品 `native/*`
+
+## 2026-05-31 增量进展：当前工作树 compile gate 再确认 + tracking files 对齐
+
+- 先重新以当前工作树为准复核，而不是沿用上一轮记忆：
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml rpc_webpage_rejects_inactive_session_without_creating_sidecars -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml dp_compat_help_marks_surface_as_compat_only -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml parses_browser_logs_tail -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_log_tail_keeps_last_lines -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_log_tail_handles_zero_and_large_limits -- --nocapture`
+  - `rust/target/debug/openpage browser list`
+  - `rust/target/debug/openpage doctor --quick`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' rust/target/debug/openpage doctor --quick`
+  - `rust/target/debug/openpage browser logs --session human-flow --tail 20`
+  - `rust/target/debug/openpage browser logs --session clipboard-probe-20260531 --tail 20`
+  - `rust/target/debug/openpage --help`
+  - `rust/target/debug/openpage serve --help`
+- 这轮还需要记住一个“不是协议变更”的本地事实：
+  - 当前 dirty worktree 里 `rust/src/element.rs` 为了恢复编译，`Frame::new(...)` 现在显式传入了 `Arc::clone(self.none_element_runtime_config_handle())`
+  - 这是现有 `Frame::new` 签名对齐所需的最小 compile-recovery 修复，不是新的协议设计，也不是借竞品 `native/*`
+- 2026-05-31 这轮复核拿到的当前真相：
+  - `browser list` 仍返回 **17 个 healthy sessions、0 incomplete、0 cleaned**
+  - plain `doctor --quick` 仍是 `pass=21 / warn=0 / fail=1 / info=1 / total=23`
+  - 其唯一 fail 仍是 `browser.executable=/tmp/dp-browser`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'` 下，`doctor --quick` 当前变为 `pass=22 / warn=0 / fail=0 / info=1 / total=23`
+  - `browser logs --session human-flow --tail 20` 仍返回 `exists=false` / `content=null`
+  - `browser logs --session clipboard-probe-20260531 --tail 20` 仍返回 `exists=true`，且 tailed content 里能看到 `Connection reset without closing handshake`
+  - 编译后的 `openpage --help` 与 `openpage serve --help` 仍把 TCP-only / removed `serve --stdio` 写成活跃 help 护栏
+- 这一轮文档同步的结论不变：
+  - 继续借 `connection.rs` / `doctor.rs` / `protocol.rs` / agent docs 这种 outer-shell 设计
+  - 不借 `agent-browser-main/cli/src/native/*`
+  - 当前更需要的是继续把最新本机 truth 写回文档，而不是重做浏览器/CDP/元素交互内核
+
+## 2026-05-31 增量进展：`doctor --quick --fix` 外壳层借鉴完成验证
+
+- 这轮不再只凭代码阅读判断 `doctor --fix` 是否站得住，而是把当前实现重新跑成了完整证据链：
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo test --manifest-path rust/Cargo.toml apply_fixes_reports_stale_daemon_sidecar_cleanup -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml apply_fixes_stops_incomplete_unready_daemon_session -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- --help`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --help`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- page url`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --stdio`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor`
+  - synthetic smoke under `OPENPAGE_HOME=/tmp/openpage-doctor-fix-*` with:
+    - one legacy session JSON file
+    - one stale dead daemon sidecar set
+    - one incomplete unready daemon session backed by `/bin/sleep 30`
+    - followed by `openpage doctor --quick --fix`
+- 这轮拿到的新事实：
+  - `openpage page url` 当前直接返回统一 JSON 壳里的 `error.kind="invalid_input"`
+  - `openpage serve --stdio` 当前也直接返回统一 JSON 壳里的 `error.kind="invalid_input"`
+  - 当前本机运行态仍是 **17 个 healthy sessions、0 incomplete、0 cleaned**
+  - plain `doctor --quick` 仍是 `pass=21 / warn=0 / fail=1 / info=1 / total=23`，唯一 fail 仍然是 `browser.executable=/tmp/dp-browser`
+  - override `doctor --quick` 当前为 **0 fail**
+  - override full `doctor` 当前也为 **23/23 pass**，说明 launch smoke 和 browser-path 对齐这条链是闭合的
+  - synthetic `doctor --quick --fix` 当前实测会：
+    - 删除 legacy session JSON
+    - 报告 stale dead daemon sidecars cleanup
+    - 停掉 incomplete unready daemon session
+    - 修复后临时 `OPENPAGE_HOME` 目录下不再残留 sidecar 文件
+    - 被标记为 incomplete 的那个 `sleep` 子进程在修复后已不再存活
+- 这一轮最重要的判断：
+  - `doctor --quick --fix` 已经成为一个**被验证过的外壳层借鉴样板**
+  - 它借的是竞品 `connection.rs` / `doctor/*` 的控制流和状态治理思路
+  - 它没有引入任何竞品 `native/*`、CDP、locator 或 interaction 内核
+
+## 2026-05-31 增量进展：`browser stop --all` 外壳层借鉴接入并验证
+
+- 这轮继续沿“只借 shell/control-plane，不借 native 内核”的边界前进，新增的是竞品 `close --all` 对应的 OpenPage 版：
+  - `rust/src/cli/args.rs`：`browser stop` 现在支持 `--all`
+  - `rust/src/cli/oneshot.rs`：新增 stop-all session 聚合与逐 session shutdown 控制流
+  - `README.md` / `skills/openpage-test/references/session-management.md`：同步写入新的 shell-level cleanup 用法
+- 这轮验证链路：
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo build --manifest-path rust/Cargo.toml --bin openpage`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser stop --help`
+  - `cargo test --manifest-path rust/Cargo.toml parses_browser_stop_all -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_stop_all_sessions_deduplicates_and_keeps_alive_incomplete_sessions -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml parses_batch_with_commands -- --nocapture`
+  - synthetic smoke under `OPENPAGE_HOME=/tmp/openpage-stop-all-*`:
+    - 起两个原始 `openpage serve --session alpha/beta --port 0`
+    - `browser list`
+    - `browser stop --all`
+    - 再次 `browser list`
+    - 检查两个 daemon pid 是否已退出
+  - 回归单 session stop：
+    - synthetic `OPENPAGE_HOME=/tmp/openpage-stop-one-*`
+    - `serve --session review --port 0`
+    - `browser stop --session review`
+    - 再次 `browser list`
+- 这轮拿到的新事实：
+  - `openpage browser stop --help` 现在已明确出现 `--all`
+  - synthetic stop-all smoke 当前返回：
+    - `{"stopped":2,"sessions":["alpha","beta"],"all_stopped":true,"failed":[]}`
+  - stop-all 后，同一个临时 `OPENPAGE_HOME` 下的 `browser list` 已为空
+  - 两个 raw daemon pid 在 stop-all 后都已不再存活
+  - 单 session `browser stop --session review` 回归仍然通过，且返回 `had_daemon=true`、`forced=false`
+- 这轮最重要的判断：
+  - `browser stop --all` 是另一个已经被实证过的 outer-shell borrow point
+  - 它复用的是现有 daemon inventory / shutdown 真相源
+  - 它没有引入任何竞品 browser/CDP/locator/interaction 内核
+
+## 2026-05-31 增量进展：`browser list` machine-friendly summary 接入并验证
+
+- 这轮继续保持只动外壳层，给 `browser list` 增加了更适合 agent/script 直接消费的摘要：
+  - `rust/src/cli/oneshot.rs`：`browser list` 现在额外返回 `summary { healthy, incomplete, cleaned, total }`
+  - `README.md` / `skills/openpage-test/references/session-management.md` / `skills/openpage-test/references/cli-smoke.md`：同步写入新输出形态
+- 这轮验证链路：
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo test --manifest-path rust/Cargo.toml browser_inventory_summary_counts_all_categories -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - synthetic smoke under `OPENPAGE_HOME=/tmp/openpage-list-summary-*`:
+    - `openpage serve --session summary-check --port 0`
+    - `openpage browser list`
+- 这轮拿到的新事实：
+  - 当前机器上的 `browser list` 现在返回：
+    - `summary.healthy=17`
+    - `summary.incomplete=0`
+    - `summary.cleaned=0`
+    - `summary.total=17`
+  - synthetic 单 session smoke 下，`browser list` 返回：
+    - `summary.healthy=1`
+    - `summary.incomplete=0`
+    - `summary.cleaned=0`
+    - `summary.total=1`
+- 这轮最重要的判断：
+  - 这是一条纯 machine-friendly 的外壳层增强
+  - 它进一步强化了“先调研清楚本地当前真相，再让 agent/脚本消费”的目标
+
+## 2026-05-31 增量进展：`browser status` state/reasons 接入并验证
+
+- 这轮继续补 shell-level 状态可观测性，没有触碰任何浏览器/CDP/元素内核：
+  - `rust/src/cli/oneshot.rs`：`browser status` 现在额外返回 `state`
+  - 当 `state="incomplete"` 时，还会额外返回：
+    - `incomplete`
+    - `reasons`
+- 这轮验证链路：
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo test --manifest-path rust/Cargo.toml incomplete_session_reasons_report_missing_version_and_not_ready -- --nocapture`
+  - `cargo build --manifest-path rust/Cargo.toml --bin openpage`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser status --help`
+  - synthetic smoke under `OPENPAGE_HOME=/tmp/openpage-status-shapes-*`:
+    - `serve --session healthy --port 0`
+    - one live incomplete session using `/bin/sleep 30` + `.pid/.port` but no `.version`
+    - `browser status --session healthy`
+    - `browser status --session incomplete`
+    - `browser status --session missing`
+- 这轮拿到的新事实：
+  - healthy session 当前返回 `state="healthy"`
+  - incomplete session 当前返回：
+    - `state="incomplete"`
+    - `reasons=["missing_version","daemon_not_ready"]`
+  - missing session 当前返回 `state="inactive"`
+- 这轮最重要的判断：
+  - 这也是纯 outer-shell / machine-friendly 增强
+  - 它进一步帮助 agent 和脚本区分“healthy / incomplete / inactive”三种本地 session 真相
+
+## 2026-05-31 增量进展：`browser list` 条目级 state/reasons 接入并验证
+
+- 这轮继续保持只动 shell/output 层，不碰任何浏览器/CDP/locator/interaction 内核：
+  - `rust/src/cli/oneshot.rs`：`browser list` 现在不只返回 `summary`
+  - `sessions[]` 条目会显式带 `state="healthy"`
+  - `incomplete[]` 条目会显式带 `state="incomplete"` 和稳定 `reasons[]`
+  - `cleaned[]` 条目会显式带 `state="cleaned"`
+  - 顺手修掉了当前工作树里一个 shell-layer compile blocker：`DownloadsCommand::Open/Reveal` 现在在 `run_downloads(...)` 中有最小实现，不再因为非穷尽匹配卡住后续协议验证
+- 这轮验证链路：
+  - `cargo test --manifest-path rust/Cargo.toml browser_inventory_ -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml incomplete_session_reasons_ -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --stdio`
+- 这轮拿到的新事实：
+  - 当前机器上的 `browser list` healthy entries 现在都带 `state="healthy"`
+  - 当前机器仍是 `healthy=17 / incomplete=0 / cleaned=0 / total=17`
+  - `openpage_help_marks_tcp_daemon_as_only_active_protocol` 再次通过
+  - `page url` 和 `serve --stdio` 当前都继续返回统一 JSON 壳里的 `error.kind="invalid_input"`
+- 这轮最重要的判断：
+  - 这是对 daemon inventory 输出形态的继续结构化，不是新协议
+  - 它继续服务于“先把本地真相暴露清楚，再让 agent/script 消费”
+
+## 2026-05-31 增量进展：`browser logs` state/reasons 对齐接入并验证
+
+- 这轮继续保持只动 shell/control-plane 层：
+  - `rust/src/cli/oneshot.rs`：`browser logs` 现在不再只返回 log path / tail / content
+  - 它会复用 `browser_status_payload(...)`，因此和 `browser status` 对齐同一份 `state`
+  - 如果 session 是 incomplete，`browser logs` 也会继续带 `reasons[]`
+- 这轮验证链路：
+  - `cargo test --manifest-path rust/Cargo.toml browser_logs_payload_preserves_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_log_tail_keeps_last_lines -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_log_tail_handles_zero_and_large_limits -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser logs --session human-flow --tail 5`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- page url`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --stdio`
+- 这轮拿到的新事实：
+  - `browser logs --session human-flow --tail 5` 当前返回：
+    - `state="healthy"`
+    - `exists=false`
+    - `content=null`
+    - `path=/Users/yuuu/.openpage/daemon/human-flow.log`
+  - 说明当前 `human-flow` session 是 healthy，但还没有 persisted stderr log 文件
+  - TCP-only help 护栏和两个 removed surface runtime reject 继续成立
+- 这轮最重要的判断：
+  - 这继续沿着竞品的诊断/日志外壳借鉴推进
+  - 但只复用了现有 daemon lifecycle 真相，没有引入任何浏览器/CDP/定位/交互内核
+
+## 2026-05-31 增量进展：`doctor --quick` 直接暴露 inventory 真相并验证
+
+- 这轮继续保持只动 shell/control-plane 层：
+  - `rust/src/cli/doctor.rs` 现在不再只返回 `summary / checks / fixed`
+  - 它会直接把当前 daemon runtime truth 作为 `inventory` 一并返回
+  - `inventory` 的形态继续和现有 `browser list` 收口：
+    - `summary { healthy, incomplete, cleaned, total }`
+    - `sessions[]` with `state="healthy"`
+    - `incomplete[]` with `state="incomplete"` + `reasons[]`
+    - `cleaned[]` with `state="cleaned"`
+- 这轮验证链路：
+  - `cargo test --manifest-path rust/Cargo.toml doctor_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml summarize_counts_info_fixable_and_total -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- page url`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --stdio`
+- 这轮拿到的新事实：
+  - 当前 `doctor --quick` 现在直接返回 `inventory`
+  - 在当前机器上它报告：
+    - `inventory.summary.healthy=17`
+    - `inventory.summary.incomplete=0`
+    - `inventory.summary.cleaned=0`
+    - `inventory.summary.total=17`
+  - 同一次 `doctor --quick` 里，唯一 fail 仍然只是 `browser.executable=/tmp/dp-browser`
+  - removed surfaces runtime reject 和 TCP-only help 护栏继续成立
+- 这轮最重要的判断：
+  - 这一步把“调研本地当前真相”的入口进一步收口到 `doctor`
+  - 但复用的仍然只是 sidecar / inventory / status 真相，不是浏览器/CDP/定位/交互内核
+
+## 2026-05-31 增量进展：共享 incomplete-session `reasons[]` taxonomy 收口并验证
+
+- 这轮继续保持只动 shell/control-plane 层：
+  - `rust/src/cli/connection.rs` 现在开始承载共享的 incomplete-session `reasons[]` 真相
+  - `browser list/status/logs` 和 `doctor` 不再各自维护一份同名但独立的 reason 计算逻辑
+  - 共享 helper 还同时承载了 inventory `summary` / payload 的统一 JSON shaping
+- 这轮验证链路：
+  - `cargo test --manifest-path rust/Cargo.toml incomplete_daemon_reasons_report_missing_version_and_not_ready -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_inventory_payload_json_includes_states_and_summary -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml doctor_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `rust/target/debug/openpage browser list`
+  - `rust/target/debug/openpage doctor --quick`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- page url`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --stdio`
+- 这轮拿到的新事实：
+  - 共享 reason helper 已经在 `connection.rs` 单测通过
+  - `browser list` 与 `doctor --quick` 当前都继续报告同一份 runtime summary：
+    - `healthy=17`
+    - `incomplete=0`
+    - `cleaned=0`
+    - `total=17`
+  - `doctor --quick` 当前唯一 fail 仍是 `browser.executable`
+  - removed surfaces runtime reject 和 TCP-only help 护栏继续成立
+- 这轮最重要的判断：
+  - 这是纯外壳层“真相源收口”，可以减少后续会话把 reason taxonomy 写漂
+  - 仍然完全没有触碰浏览器/CDP/元素交互真相源
+
+## 2026-05-31 增量进展：`browser logs.content` 接入统一 boundary / truncate 输出并验证
+
+- 这轮继续保持只动 `protocol/output` 外壳层：
+  - `rust/src/cli/protocol.rs` 的统一输出过滤现在不只覆盖 `html / text / value`
+  - `browser logs` 的 `result.content` 现在也会走同一条 boundary / truncate 链
+  - 这让 agent 在消费 daemon log 文本时，也能用同一套 trust-boundary 心智
+- 这轮验证链路：
+  - `cargo test --manifest-path rust/Cargo.toml format_output_json_wraps_content_field_with_boundaries -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml format_output_json_truncates_content_field -- --nocapture`
+  - `OPENPAGE_CONTENT_BOUNDARIES=1 OPENPAGE_MAX_OUTPUT_CHARS=40 cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser logs --session clipboard-probe-20260531 --tail 20`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --stdio`
+- 这轮拿到的新事实：
+  - 两个 `protocol.rs` 新单测都通过
+  - 真实 CLI 验证里，`browser logs` 的 `content` 现在已经被包成：
+    - `_boundary.keys=["content"]`
+    - wrapped marker `OPENPAGE_PAGE_CONTENT ... key=content`
+    - 截断提示 `showing 40 of 92 chars`
+  - removed `page url` / `serve --stdio` runtime reject 与 TCP-only help 护栏继续成立
+- 这轮最重要的判断：
+  - 这是纯 agent-facing output borrow point
+  - 它只动输出壳，不动浏览器/CDP/定位/交互真相源
+
+## 2026-05-31 增量进展：竞品借鉴文档改写为 copy-ready 版本
+
+- 这轮没有改代码，只更新后续可执行的竞品借鉴文档。
+- 根目录 `竞品文档-考虑借鉴的部分v1.md` 已重写成更适合后续直接参考的版本，重点补强了：
+  - 借鉴边界表
+  - P0/P1/P3 优先级表
+  - 竞品文件 → OpenPage 落点映射表
+  - `可直接 copy` / `只借思路` / `明确不要借` 三层分类
+  - TCP-only 前提下 copy 时必须删改的点
+- 这轮最重要的判断：
+  - `agent-browser` 对 OpenPage 的核心价值，仍然是 outer shell / control-plane / agent docs
+  - 后续如果真要抄，优先顺序仍然应是 `connection.rs` → `doctor/*` → `output.rs` → top-level error shell → skill docs
+  - `cli/src/native/*` 继续保持禁区
+- 这轮验证：
+  - 已重新核对竞品关键文件函数清单：`connection.rs`、`doctor/mod.rs`、`doctor/launch.rs`、`output.rs`、`main.rs`、`commands.rs`
+  - 已重新核对 OpenPage 当前对应落点：`rust/src/cli/connection.rs`、`doctor.rs`、`protocol.rs`、`serve.rs`、`oneshot.rs`
+- 当前阶段判断不变：
+  - Phase 6 仍在进行中，但这份文档已经足够作为后续借鉴时的准入检查单。
+
+## 2026-05-31 增量进展：direct/daemon 控制面错误开始暴露 machine-readable `error.fix`
+
+- 这轮继续只动 shell/protocol 层，不碰浏览器/CDP/定位/交互内核。
+- `rust/src/cli/protocol.rs` 现在做了两件事：
+  - direct CLI 错误在已知控制面恢复路径下会额外暴露 `error.fix`
+  - daemon `Response::error` 现在会带 raw detail + optional `fix`，避免本地 CLI 再包装时出现 message 双重前缀漂移
+- `rust/src/cli/oneshot.rs::response_result(...)` 现在会保留 structured `fix`，而不是把它丢掉。
+- 活跃文档已同步：
+  - `README.md`
+  - `skills/openpage-test/references/session-management.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- 这轮最重要的判断：
+  - 这是非常典型的 outer-shell borrow point：稳定错误壳 + 下一步指引 + agent/script 更少解析自由文本
+  - 它继续强化唯一 TCP daemon 协议的可消费性，但没有把任何竞品 browser/CDP/runtime 内核带进来
+- 这轮验证：
+  - 定向测试通过：
+    - `cargo test --manifest-path rust/Cargo.toml structured_fix -- --nocapture`
+    - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+    - `cargo test --manifest-path rust/Cargo.toml rpc_webpage_rejects_inactive_session_without_creating_sidecars -- --nocapture`
+    - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime 复核通过：
+    - `openpage title --session missing` 现在返回 top-level `error.fix`
+    - synthetic mismatch smoke 中，version-mismatch follow-up 命令现在也返回完整 `error.fix`
+    - `openpage serve --stdio` 和 `openpage page url` 继续保持 `invalid_input` rejected
+
+## 2026-05-31 增量进展：top-level error shell 省略空 `error.fix`
+
+- 这轮继续只动 shell/protocol 层一致性，不碰浏览器/CDP/定位/交互内核。
+- 当前确认到的一个小缺口是：
+  - direct CLI 错误已经开始支持 `error.fix`
+  - 但在没有恢复建议时，top-level `simple_error(...)` 还会发 `fix: null`
+  - 这和 daemon `ResponseError` 的 `skip_serializing_if = Option::is_none` 不一致
+- 本轮已把这个缺口收掉：
+  - `rust/src/cli/protocol.rs::simple_error_with_fix(...)` 现在会在 `fix` 缺失时直接省略字段
+- 这轮最重要的判断：
+  - 这是一条小但正确的 outer-shell 收口
+  - 目标是让 direct CLI error 和 daemon error 的 JSON shape 更一致，避免脚本/agent 还要单独处理 `null`
+- 这轮验证：
+  - `cargo test --manifest-path rust/Cargo.toml simple_error_omits_fix_when_absent -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml structured_fix -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime 复核：
+    - `openpage title --session missing` 继续带完整 `error.fix`
+    - `openpage serve --stdio` 继续 rejected，且不再带 `fix: null`
+    - `openpage page url` 继续 rejected，且不再带 `fix: null`
+
+## 2026-05-31 增量进展：top-level direct error 开始暴露 `error.state` / `error.reasons`
+
+- 这轮继续只动 shell/protocol 层，不碰浏览器/CDP/定位/交互内核。
+- 当前确认到的高价值缺口是：
+  - `browser status` / `browser logs` / `browser list` / `doctor.inventory` 已经有 machine-readable `state/reasons`
+  - 但 direct follow-up command failure 之前只有 `error.kind/message/fix`
+- 本轮已把这个缺口补上：
+  - 对已知 session/control-plane 失败，top-level JSON error 现在开始暴露：
+    - `error.state`
+    - `error.reasons`（适用时）
+  - raw daemon `ResponseError` 也同步支持同样字段
+- 当前覆盖到的已知 session-control failures：
+  - inactive session → `state="inactive"`
+  - version mismatch → `state="incompatible"`, `reasons=["version_mismatch"]`
+  - daemon not ready → `state="incomplete"`, `reasons=["daemon_not_ready"]`
+- 这轮最重要的判断：
+  - 这是把 shared control-plane truth 从 read-only 状态面进一步扩到 direct failure 面
+  - 对 agent/script 的价值比继续堆 message 文本更高
+- 这轮验证：
+  - `cargo test --manifest-path rust/Cargo.toml 'state_and_reasons' -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml structured_fix -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime 复核：
+    - `openpage title --session missing` 现在返回 `error.state="inactive"`
+    - synthetic mismatch smoke 里 `title --session mismatch-state-smoke` 现在返回：
+      - `error.state="incompatible"`
+      - `error.reasons=["version_mismatch"]`
+      - 完整 `error.fix`
+    - `openpage serve --stdio` 继续 rejected，仍只有 `invalid_input`，不会误带 session-state 字段
+
+## 2026-05-31 增量进展：`doctor.checks[]` 的 daemon 项开始暴露 `state/reasons`
+
+- 这轮继续只动 shell/control-plane 层，不碰浏览器/CDP/定位/交互内核。
+- 当前确认到的差异是：
+  - `doctor.inventory` 已经有 machine-readable `state/reasons`
+  - 但 `doctor.checks[]` 里的 daemon 相关项之前主要还靠 `message` 文本
+- 本轮已把这个缺口补上：
+  - `rust/src/cli/doctor.rs::Check` 现在支持可选 `state` / `reasons`
+  - 只对 daemon 相关 checks 生效：
+    - `daemon.session.*`
+    - `daemon.incomplete.*`
+    - `daemon.cleaned.*`
+- 当前覆盖到的 daemon check 语义：
+  - healthy session → `state="healthy"`
+  - incompatible session → `state="incompatible"`, `reasons=["version_mismatch"]`
+  - incomplete session → `state="incomplete"`, `reasons` 复用 `incomplete_daemon_reasons(...)`
+  - cleaned sidecars → `state="cleaned"`
+- 这轮最重要的判断：
+  - 这一步把 shared control-plane truth 又向 doctor 的 check-oriented 视图收口了一层
+  - 这样 scripts/agents 不需要一边解析 doctor message，一边再去 inventory/status 找状态真相
+- 这轮验证：
+  - `cargo test --manifest-path rust/Cargo.toml daemon_checks_include_machine_readable_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml check_serializes_state_and_reasons_when_present -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml doctor_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime 复核：
+    - synthetic mismatch session 下 `openpage doctor --quick` 现在会在 `checks[]` 里直接返回：
+      - `state="incompatible"`
+      - `reasons=["version_mismatch"]`
+      - 完整 `fix`
+
+## 2026-05-31 增量进展：`error.session` 与 `doctor.checks[].session` 已开始 machine-readable 化
+
+- 这轮继续只动 shell/control-plane 层，不碰浏览器/CDP/定位/交互内核。
+- 当前确认到的高价值缺口是：
+  - direct error 虽然已有 `state/reasons/fix`，但 session 名称仍然常常只在 `message` 里
+  - `doctor.checks[]` 的 daemon 项虽然已有 `state/reasons`，但 session 名称仍然常常只在 `id` 里
+- 本轮已把这个缺口补上：
+  - top-level known session-control error 现在开始暴露 `error.session`
+  - `doctor.checks[]` 的 daemon 项现在开始暴露 `session`
+- 当前覆盖范围：
+  - direct error：仅 known session-control failures
+  - doctor checks：仅 `daemon.session.*` / `daemon.incomplete.*` / `daemon.cleaned.*`
+- 这轮最重要的判断：
+  - 这是 shared control-plane truth 的又一层收口
+  - 现在 session 名称不必再从 `message` 或 `daemon.session.<name>` 手工切出来
+- 这轮验证：
+  - 定向测试通过：
+    - `simple_openpage_error_exposes_structured_fix_for_session_guidance`
+    - `simple_openpage_error_exposes_state_and_reasons_for_version_mismatch`
+    - `response_openpage_error_uses_raw_detail_and_structured_fix`
+    - `response_result_preserves_structured_fix_without_double_prefix`
+    - `response_result_reconstructed_error_keeps_state_and_reasons_for_incompatible_session`
+    - `check_serializes_state_and_reasons_when_present`
+    - `daemon_checks_include_machine_readable_state_and_reasons`
+    - `openpage_help_marks_tcp_daemon_as_only_active_protocol`
+    - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime 复核：
+    - `openpage title --session missing` 现在返回 `error.session="missing"`
+    - synthetic mismatch doctor smoke 现在在 `daemon.session.*` check 上直接返回 `session="session-field-smoke"`
+- 附加记录：
+  - 本轮一度误用了 `cargo test ... 'session' ...` 这种过宽过滤器，命中了多处仓库内既有 session 测试噪音；这些失败不是本轮变更引入的协议/外壳层回归，后续继续坚持 exact test names 即可。
+
+## 2026-05-31 增量进展：`doctor.inventory` 在无 daemon 目录时也保持稳定对象 shape
+
+- 这轮继续只动 shell/control-plane 层，不碰浏览器/CDP/定位/交互内核。
+- 当前确认到的缺口是：
+  - `browser list` 一直会返回稳定的 inventory 对象
+  - 但 `doctor --quick` 在没有 daemon 目录时此前会返回 `inventory: null`
+- 本轮已把这个缺口收掉：
+  - `rust/src/cli/doctor.rs::daemon_checks(...)` 在 no-daemon-dir 场景下现在返回 `DaemonInventory::default()`
+  - 因此 `doctor --quick` 的 `result.inventory` 现在会稳定保留对象形态和零值 summary
+- 这轮最重要的判断：
+  - 这是典型的 machine-friendly shape 收口
+  - 可以减少 agent/script 对 `null` 分支的额外处理
+- 这轮验证：
+  - `cargo test --manifest-path rust/Cargo.toml daemon_checks_return_empty_inventory_when_daemon_dir_is_missing -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_checks_include_machine_readable_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml openpage_help_marks_tcp_daemon_as_only_active_protocol -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime 复核：
+    - `OPENPAGE_HOME=/tmp/openpage-doctor-empty-shape openpage doctor --quick` 现在返回：
+      - `inventory.summary.total=0`
+      - `sessions=[]`
+      - `incomplete=[]`
+      - `cleaned=[]`
+      - 不再是 `inventory: null`
+
+## 2026-05-31 增量进展：重写竞品借鉴文档，明确可 copy 的外壳层边界
+
+- 本轮目标不是继续改代码，而是把竞品分析文档收成一份后续可直接执行的借鉴清单。
+- 当前重新核实后的判断：
+  - `agent-browser` 最值得借的是 `connection`、`doctor`、`output`、top-level error shell、`skill-data/core` 文档组织。
+  - 明确不要借 `cli/src/native/*`、`chat.rs`、`packages/dashboard/*`。
+- 额外核实到一个方法论事实：
+  - 本地 `.codegraph/codegraph.db` 只覆盖当前 OpenPage 的部分文件，不覆盖参考项目本身。
+  - 且当前 codegraph 对部分 OpenPage 文件存在索引滞后迹象，因此这轮竞品结论以真实源码文件为准，codegraph 只作为当前仓库落点辅助。
+- 产物：
+  - 根目录 `竞品文档-考虑借鉴的部分v1.md` 已重写，补齐：
+    - 借鉴边界表
+    - 直接可 copy 候选表
+    - 竞品文件 → OpenPage 文件映射表
+    - copy 顺序与硬约束
+- 这轮没有引入任何运行时代码变更，只更新文档与跟踪文件。
+
+## 2026-06-01 增量进展：收尾 `doctor.rs` 的 browser-path 机器可读字段
+
+- 这轮继续只动 shell/control-plane 层，不碰浏览器/CDP/定位/交互内核。
+- 当前收掉的是上一轮被中断的半成品 patch：
+  - `rust/src/cli/doctor.rs` 的 `Check` 已补完 `browser_path / resolved_path / suggested_path` 字段初始化
+  - browser 相关 checks 现在可以稳定序列化这些字段，而不会让当前源码树卡在 compile error
+- 当前已接入的 browser-path 字段语义：
+  - `browser.config` / `browser.executable` → `browser_path`
+  - `browser.executable` → `resolved_path`（当配置的可执行路径成功解析时）
+  - `browser.executable` / `browser.executable.hint` → `suggested_path`（当 doctor 为缺失别名例如 `chrome` 找到本机可用候选时）
+- 这轮最重要的判断：
+  - 这是对竞品 `doctor` 外壳层的继续借鉴，但仍然没有引入任何浏览器 runtime / CDP / locator / interaction 内核
+  - 机器和 agent 现在不必只靠 message 文本去反解“当前配置的 browser_path 是什么”以及“doctor 建议改成哪条本机绝对路径”
+- 这轮验证：
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - `OPENPAGE_BROWSER_PATH='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick`
+  - 临时 project-local `dp_configs.ini`：
+    - `[chromium_options]`
+    - `browser_path = chrome`
+    - 然后执行 `/Volumes/data0/data4work/2026_5/openpage/rust/target/debug/openpage doctor --quick`
+- 运行态证据：
+  - 默认 dirty worktree 下：
+    - `browser.config.browser_path="/tmp/dp-browser"`
+    - `browser.executable.browser_path="/tmp/dp-browser"`
+  - 带 `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome` 时：
+    - `browser.executable.resolved_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`
+  - 临时 `browser_path=chrome` 场景下：
+    - `browser.executable.suggested_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`
+    - `browser.executable.hint.suggested_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`
+- git-safety 约束仍然成立：
+  - `git add -p rust/src/cli/oneshot.rs` 仍活跃
+  - 本轮仍未触碰 `rust/src/cli/oneshot.rs`

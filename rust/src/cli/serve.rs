@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::io::{BufRead, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::rc::Rc;
@@ -9,7 +9,7 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 
 use chromiumoxide::cdp::browser_protocol::page::{
-    GetNavigationHistoryParams, NavigateToHistoryEntryParams,
+    GetNavigationHistoryParams, NavigateToHistoryEntryParams, ResetNavigationHistoryParams,
 };
 use serde_json::{Map, Value, json};
 
@@ -62,10 +62,11 @@ fn run_tcp(port: u16, session: &str) -> OpenPageResult<()> {
 
 fn handle_client(stream: &mut TcpStream, runtime: Rc<RefCell<ServeRuntime>>) -> OpenPageResult<()> {
     let mut buf = String::new();
+    let mut reader = BufReader::new(stream);
 
     loop {
         buf.clear();
-        let n = std::io::BufReader::new(&*stream)
+        let n = reader
             .read_line(&mut buf)
             .map_err(|err| OpenPageError::Io(err.to_string()))?;
         if n == 0 {
@@ -87,10 +88,10 @@ fn handle_client(stream: &mut TcpStream, runtime: Rc<RefCell<ServeRuntime>>) -> 
             }
             Err(err) => Response::error(None, "invalid_json", err.to_string()),
         };
-        serde_json::to_writer(&mut *stream, &response)
+        serde_json::to_writer(reader.get_mut(), &response)
             .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
-        stream.write_all(b"\n")?;
-        stream.flush()?;
+        reader.get_mut().write_all(b"\n")?;
+        reader.get_mut().flush()?;
 
         if runtime.borrow().shutdown {
             break;
@@ -184,6 +185,145 @@ impl ServeWebPage {
             Some(frame) => frame.wait_for_doc_loaded(timeout_ms),
             None => self.page.wait_for_doc_loaded(timeout_ms),
         }
+    }
+}
+
+struct ServeWindowInfo {
+    window_id: i64,
+    state: String,
+    left: i64,
+    top: i64,
+    width: i64,
+    height: i64,
+    active: bool,
+    target_id: String,
+    tabs: Vec<Value>,
+}
+
+fn collect_window_infos(
+    page: &WebPage,
+    current_target: &str,
+) -> OpenPageResult<Vec<ServeWindowInfo>> {
+    let mut windows: Vec<ServeWindowInfo> = Vec::new();
+    let mut indices = HashMap::<i64, usize>::new();
+
+    for tab in page.tab_infos()? {
+        let tab_page = page.with_target(&tab.target_id)?;
+        let window_id = tab_page.window_id()?;
+        let active = tab.target_id == current_target;
+        let tab_json = json!({
+            "target_id": tab.target_id,
+            "url": tab.url,
+            "title": tab.title,
+            "type": tab.tab_type,
+            "attached": tab.attached,
+            "active": active,
+        });
+
+        if let Some(index) = indices.get(&window_id).copied() {
+            let entry = &mut windows[index];
+            entry.active |= active;
+            if active {
+                entry.target_id = tab_json
+                    .get("target_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+            }
+            entry.tabs.push(tab_json);
+            continue;
+        }
+
+        let (left, top) = tab_page.window_location()?;
+        let (width, height) = tab_page.window_size()?;
+        let state = tab_page.window_state()?;
+        let target_id = tab_json
+            .get("target_id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        indices.insert(window_id, windows.len());
+        windows.push(ServeWindowInfo {
+            window_id,
+            state,
+            left,
+            top,
+            width,
+            height,
+            active,
+            target_id,
+            tabs: vec![tab_json],
+        });
+    }
+
+    Ok(windows)
+}
+
+fn window_list_payload(page: &WebPage, current_target: &str) -> OpenPageResult<Value> {
+    let windows = collect_window_infos(page, current_target)?;
+    Ok(json!({
+        "windows": windows
+            .into_iter()
+            .enumerate()
+            .map(|(index, window)| {
+                let target_ids = window
+                    .tabs
+                    .iter()
+                    .filter_map(|tab| tab.get("target_id").and_then(Value::as_str))
+                    .collect::<Vec<_>>();
+                json!({
+                    "index": index + 1,
+                    "window_id": window.window_id,
+                    "target_id": window.target_id,
+                    "state": window.state,
+                    "left": window.left,
+                    "top": window.top,
+                    "width": window.width,
+                    "height": window.height,
+                    "active": window.active,
+                    "tab_count": target_ids.len(),
+                    "target_ids": target_ids,
+                    "tabs": window.tabs,
+                })
+            })
+            .collect::<Vec<_>>()
+    }))
+}
+
+fn resolve_window_info<'a>(
+    windows: &'a [ServeWindowInfo],
+    selector: Option<&str>,
+) -> OpenPageResult<&'a ServeWindowInfo> {
+    match selector {
+        Some(selector) => {
+            if let Ok(index) = selector.parse::<usize>() {
+                return windows.get(index.saturating_sub(1)).ok_or_else(|| {
+                    OpenPageError::ElementNotFound(format!("window index out of range: {index}"))
+                });
+            }
+            windows
+                .iter()
+                .find(|window| {
+                    window.window_id.to_string() == selector
+                        || window.target_id == selector
+                        || window.tabs.iter().any(|tab| {
+                            tab.get("target_id")
+                                .and_then(Value::as_str)
+                                .map(|target_id| target_id == selector)
+                                .unwrap_or(false)
+                        })
+                })
+                .ok_or_else(|| {
+                    OpenPageError::ElementNotFound(format!("window not found: {selector}"))
+                })
+        }
+        None => windows
+            .iter()
+            .find(|window| window.active)
+            .or_else(|| windows.first())
+            .ok_or_else(|| {
+                OpenPageError::ElementNotFound("no browser windows available".to_string())
+            }),
     }
 }
 
@@ -329,8 +469,34 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
                 "title": entry.title,
             }))
         }
+        "history.clear" => {
+            page.execute_cdp(ResetNavigationHistoryParams::default())?;
+            let history = page.execute_cdp(GetNavigationHistoryParams::default())?;
+            let current_index = history.current_index as usize;
+            let entries = history
+                .entries
+                .into_iter()
+                .enumerate()
+                .map(|(index, entry)| {
+                    json!({
+                        "index": index + 1,
+                        "current": index == current_index,
+                        "id": entry.id,
+                        "url": entry.url,
+                        "user_typed_url": entry.user_typed_url,
+                        "title": entry.title,
+                        "transition_type": entry.transition_type,
+                    })
+                })
+                .collect::<Vec<_>>();
+            Ok(json!({
+                "cleared": true,
+                "current_index": current_index + 1,
+                "entries": entries,
+            }))
+        }
         "webpage.reload" => {
-            page.refresh(false)?;
+            page.refresh(optional_bool(params, "ignore_cache").unwrap_or(false))?;
             state.wait_for_doc_loaded(optional_u64(params, "timeout_ms").unwrap_or(10_000))?;
             Ok(json!({"reloaded": true}))
         }
@@ -471,6 +637,26 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             page.set_session_storage(required_str(params, "item")?, optional_str(params, "value"))?;
             Ok(json!({"set": true}))
         }
+        "permissions.set" => {
+            let name = required_str(params, "name")?;
+            let setting = required_str(params, "setting")?;
+            let origin = page.set_permission(
+                name,
+                setting,
+                optional_str(params, "origin"),
+                optional_str(params, "embedded_origin"),
+            )?;
+            Ok(json!({
+                "set": true,
+                "name": name,
+                "setting": setting,
+                "origin": origin,
+            }))
+        }
+        "permissions.reset" => {
+            page.reset_permissions()?;
+            Ok(json!({"reset": true}))
+        }
         "webpage.activate" => {
             page.activate()?;
             Ok(json!({"activated": true}))
@@ -483,6 +669,49 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             page.cookies_to_browser()?;
             Ok(json!({"copied": true}))
         }
+        "window.list" => window_list_payload(page, &state.current_target_id()),
+        "window.switch" => {
+            let target_id = required_str(params, "target_id")?;
+            state.switch_target(target_id)?;
+            Ok(json!({"switched": true, "target_id": target_id}))
+        }
+        "window.close" => {
+            let windows = collect_window_infos(page, &state.current_target_id())?;
+            let selected =
+                resolve_window_info(windows.as_slice(), optional_str(params, "target_id"))?;
+            let targets = selected
+                .tabs
+                .iter()
+                .filter_map(|tab| tab.get("target_id").and_then(Value::as_str))
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+            let closed = page.close_tabs(&targets, false)?;
+            let current_target = state.current_target_id();
+            let remaining_tabs = page.tab_infos()?;
+            let next_target = if remaining_tabs
+                .iter()
+                .any(|tab| tab.target_id == current_target)
+            {
+                None
+            } else if let Some(next) = remaining_tabs.first() {
+                Some(next.target_id.clone())
+            } else {
+                Some(page.new_tab(None, false, false, false)?.target_id())
+            };
+
+            state.clear_frame();
+            if let Some(target_id) = next_target {
+                if target_id != current_target {
+                    state.switch_target(&target_id)?;
+                }
+            }
+
+            Ok(json!({
+                "closed": closed,
+                "window_id": selected.window_id,
+                "targets": targets,
+            }))
+        }
         "webpage.window_state" | "window.state" => Ok(json!({"state": page.window_state()?})),
         "webpage.window_size" | "window.size" => {
             let (width, height) = page.window_size()?;
@@ -491,6 +720,15 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         "webpage.window_location" | "window.location" => {
             let (left, top) = page.window_location()?;
             Ok(json!({"left": left, "top": top}))
+        }
+        "webpage.zoom_get" | "zoom.get" => Ok(json!({"factor": page.zoom_factor()?})),
+        "webpage.zoom_set" | "zoom.set" => {
+            page.set_zoom_factor(required_f64(params, "factor")?)?;
+            Ok(json!({"factor": page.zoom_factor()?}))
+        }
+        "webpage.zoom_reset" | "zoom.reset" => {
+            page.reset_zoom_factor()?;
+            Ok(json!({"factor": page.zoom_factor()?}))
         }
         "webpage.window_max" | "window.max" => {
             page.window_max()?;
@@ -527,6 +765,10 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             page.window_location_set(optional_i64(params, "left"), optional_i64(params, "top"))?;
             Ok(json!({"set": true}))
         }
+        "webpage.scroll_position" | "page.scroll_position" => {
+            let (x, y) = page.scroll_position()?;
+            Ok(json!({"x": x, "y": y}))
+        }
         "webpage.scroll" | "page.scroll" => {
             match required_str(params, "direction")? {
                 "down" => page.scroll_down(optional_f64(params, "pixels").unwrap_or(300.0))?,
@@ -555,6 +797,19 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             json!(state.run_js(required_str(params, "script")?)?),
             current_page_origin(state).as_deref(),
         )),
+        "clipboard.read" => Ok(payload_with_origin(
+            "text",
+            Value::String(page.clipboard_read_text()?),
+            current_page_origin(state).as_deref(),
+        )),
+        "clipboard.write" => {
+            page.clipboard_write_text(required_str(params, "text")?)?;
+            Ok(payload_with_origin(
+                "written",
+                Value::Bool(true),
+                current_page_origin(state).as_deref(),
+            ))
+        }
         "webpage.download_url" | "page.download_url" => {
             let path = if let Some(output) = optional_str(params, "path") {
                 page.download_to(required_str(params, "url")?, output)?
@@ -662,6 +917,14 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             page.save_pdf(required_str(params, "path")?)?;
             Ok(json!({"saved": true}))
         }
+        "webpage.save" | "page.save" => {
+            let mut path = std::path::PathBuf::from(required_str(params, "path")?);
+            if path.extension().is_none() {
+                path.set_extension("mhtml");
+            }
+            page.save(Some(path.as_path()), None, false)?;
+            Ok(json!({"saved": true, "path": path}))
+        }
         "webpage.screenshot" | "page.screenshot" => {
             page.save_screenshot(
                 required_str(params, "path")?,
@@ -693,10 +956,12 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         })),
         "tab.new" => {
             let background = optional_bool(params, "background").unwrap_or(false);
+            let new_context = optional_bool(params, "context").unwrap_or(false);
             let new_page = page.new_tab(
                 optional_str(params, "url"),
                 optional_bool(params, "window").unwrap_or(false),
                 background,
+                new_context,
             )?;
             let target_id = new_page.target_id();
             if !background {
@@ -708,6 +973,7 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
                 "url": new_page.url()?,
                 "window": optional_bool(params, "window").unwrap_or(false),
                 "background": background,
+                "context": new_context,
             }))
         }
         "tab.switch" => {
@@ -738,7 +1004,7 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             } else if let Some(next) = remaining_tabs.first() {
                 Some(next.target_id.clone())
             } else {
-                Some(page.new_tab(None, false, false)?.target_id())
+                Some(page.new_tab(None, false, false, false)?.target_id())
             };
 
             state.clear_frame();
@@ -827,6 +1093,9 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         "webpage.ele.is_clickable" | "element.is_clickable" => Ok(json!({
             "clickable": state.find(&required_locator_string(params)?)?.is_clickable()?
         })),
+        "webpage.ele.has_rect" | "element.has_rect" => Ok(json!({
+            "has_rect": state.find(&required_locator_string(params)?)?.has_rect()?
+        })),
         "webpage.ele.focus" | "element.focus" => {
             state.find(&required_locator_string(params)?)?.focus()?;
             Ok(json!({"focused": true}))
@@ -834,6 +1103,36 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         "webpage.ele.text" | "element.text" => Ok(payload_with_origin(
             "text",
             json!(state.find(&required_locator_string(params)?)?.text()?),
+            current_page_origin(state).as_deref(),
+        )),
+        "webpage.ele.value" | "element.value" => Ok(payload_with_origin(
+            "value",
+            json!(state.find(&required_locator_string(params)?)?.value()?),
+            current_page_origin(state).as_deref(),
+        )),
+        "webpage.ele.raw_text" | "element.raw_text" => Ok(payload_with_origin(
+            "raw_text",
+            json!(state.find(&required_locator_string(params)?)?.raw_text()?),
+            current_page_origin(state).as_deref(),
+        )),
+        "webpage.ele.link" | "element.link" => Ok(payload_with_origin(
+            "link",
+            json!(state.find(&required_locator_string(params)?)?.link()?),
+            current_page_origin(state).as_deref(),
+        )),
+        "webpage.ele.child_count" | "element.child_count" => Ok(payload_with_origin(
+            "child_count",
+            json!(state.find(&required_locator_string(params)?)?.child_count()?),
+            current_page_origin(state).as_deref(),
+        )),
+        "webpage.ele.css_path" | "element.css_path" => Ok(payload_with_origin(
+            "css_path",
+            json!(state.find(&required_locator_string(params)?)?.css_path()?),
+            current_page_origin(state).as_deref(),
+        )),
+        "webpage.ele.xpath" | "element.xpath" => Ok(payload_with_origin(
+            "xpath",
+            json!(state.find(&required_locator_string(params)?)?.xpath()?),
             current_page_origin(state).as_deref(),
         )),
         "webpage.ele.html" | "element.html" => Ok(payload_with_origin(
@@ -1104,6 +1403,13 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             state.find(&required_locator_string(params)?)?.hover()?;
             Ok(json!({"hovered": true}))
         }
+        "webpage.ele.hover_at" | "element.hover_at" => {
+            state.find(&required_locator_string(params)?)?.hover_with_offset(
+                optional_f64(params, "x"),
+                optional_f64(params, "y"),
+            )?;
+            Ok(json!({"hovered": true}))
+        }
         "webpage.ele.press_key" | "element.press_key" => {
             state
                 .find(&required_locator_string(params)?)?
@@ -1112,18 +1418,54 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         }
         "webpage.ele.select" | "element.select" => {
             let element = state.find(&required_locator_string(params)?)?;
-            let selected = if let Some(text) = optional_str(params, "text") {
-                element.select_by_text(text)?
-            } else if let Some(value) = optional_str(params, "value") {
-                element.select_by_value(value)?
-            } else if let Some(index) = optional_u64(params, "index") {
-                element.select_by_index(index as usize)?
+            let selected = if params.get("text").is_some() {
+                element.select_by_text(select_string_values(params, "text")?)?
+            } else if params.get("value").is_some() {
+                element.select_by_value(select_string_values(params, "value")?)?
+            } else if params.get("index").is_some() {
+                element.select_by_index(select_index_values(params, "index")?)?
             } else {
                 return Err(OpenPageError::BrowserOperation(
                     "select requires one of: text, value, index".to_string(),
                 ));
             };
             Ok(json!({"selected": selected}))
+        }
+        "webpage.ele.option_texts" | "element.option_texts" => {
+            let options = state
+                .find(&required_locator_string(params)?)?
+                .option_texts()?;
+            Ok(json!({"options": options}))
+        }
+        "webpage.ele.selected_option" | "element.selected_option" => {
+            let option = state
+                .find(&required_locator_string(params)?)?
+                .selected_option()?;
+            Ok(json!({"option": option}))
+        }
+        "webpage.ele.selected_options" | "element.selected_options" => {
+            let options = state
+                .find(&required_locator_string(params)?)?
+                .selected_options()?;
+            Ok(json!({"options": options}))
+        }
+        "webpage.ele.select_all_options" | "element.select_all_options" => {
+            state
+                .find(&required_locator_string(params)?)?
+                .select_all()?;
+            Ok(json!({"selected_all": true}))
+        }
+        "webpage.ele.clear_selected_options" | "element.clear_selected_options" => {
+            state
+                .find(&required_locator_string(params)?)?
+                .clear_selected()?;
+            Ok(json!({"cleared": true}))
+        }
+        "webpage.ele.invert_selected_options" | "element.invert_selected_options" => {
+            state
+                .find(&required_locator_string(params)?)?
+                .invert_selected()?;
+            Ok(json!({"inverted": true}))
         }
         "webpage.ele.upload" | "element.upload" => {
             let files = required_string_array(params, "files")?;
@@ -1192,6 +1534,41 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             }
             Ok(json!({"scrolled_into_view": true}))
         }
+        "webpage.ele.scroll_position" | "element.scroll_position" => {
+            let position = state
+                .find(&required_locator_string(params)?)?
+                .rect_scroll_position()?;
+            Ok(json!({
+                "x": position.map(|(x, _)| x),
+                "y": position.map(|(_, y)| y),
+            }))
+        }
+        "webpage.ele.scroll" | "element.scroll" => {
+            let element = state.find(&required_locator_string(params)?)?;
+            match required_str(params, "direction")? {
+                "down" => element.scroll_down(optional_f64(params, "pixels").unwrap_or(300.0))?,
+                "up" => element.scroll_up(optional_f64(params, "pixels").unwrap_or(300.0))?,
+                "left" => element.scroll_left(optional_f64(params, "pixels").unwrap_or(300.0))?,
+                "right" => {
+                    element.scroll_right(optional_f64(params, "pixels").unwrap_or(300.0))?
+                }
+                "top" => element.scroll_to_top()?,
+                "bottom" => element.scroll_to_bottom()?,
+                "half" => element.scroll_to_half()?,
+                "rightmost" => element.scroll_to_rightmost()?,
+                "leftmost" => element.scroll_to_leftmost()?,
+                "location" => element.scroll_to_location(
+                    optional_f64(params, "x").unwrap_or(0.0),
+                    optional_f64(params, "y").unwrap_or(0.0),
+                )?,
+                other => {
+                    return Err(OpenPageError::UnsupportedLocator(format!(
+                        "unknown element scroll direction: {other}"
+                    )));
+                }
+            }
+            Ok(json!({"scrolled": true}))
+        }
         "webpage.ele.drag" | "element.drag" => {
             state.find(&required_locator_string(params)?)?.drag(
                 optional_f64(params, "dx").unwrap_or(0.0),
@@ -1238,6 +1615,13 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         "webpage.last_download" => Ok(json!({
             "mission": page.last_download()?.map(mission_to_json).transpose()?
         })),
+        "webpage.clear_finished_downloads" | "downloads.clear" => Ok(json!({
+            "removed": page.clear_finished_downloads()?
+        })),
+        "webpage.cancel_download" => {
+            page.cancel_download(required_str(params, "guid")?)?;
+            Ok(json!({"cancelled": true}))
+        }
         "webpage.wait_for_new_tab" | "wait.new_tab" => Ok(json!({
             "target": page.wait_for_new_tab(
                 optional_str(params, "current_tab_id"),
@@ -1373,6 +1757,22 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             "ready": state.find(&required_locator_string(params)?)?
                 .wait_until_clickable(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
         })),
+        "wait.ele_has_rect" => Ok(json!({
+            "ready": state.find(&required_locator_string(params)?)?
+                .wait_until_has_rect(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
+        })),
+        "wait.ele_covered" => Ok(json!({
+            "ready": state.find(&required_locator_string(params)?)?
+                .wait_until_covered(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
+        })),
+        "wait.ele_not_covered" => Ok(json!({
+            "ready": state.find(&required_locator_string(params)?)?
+                .wait_until_not_covered(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
+        })),
+        "wait.ele_stop_moving" => Ok(json!({
+            "ready": state.find(&required_locator_string(params)?)?
+                .wait_until_stop_moving(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
+        })),
         "webpage.drag_in" | "page.drag_in" => {
             let target = state.find(&required_str(params, "target")?)?;
             let drag_data = if let Some(text) = optional_str(params, "text") {
@@ -1417,6 +1817,13 @@ fn required_str<'a>(params: &'a Value, key: &str) -> OpenPageResult<&'a str> {
         .get(key)
         .and_then(Value::as_str)
         .ok_or_else(|| OpenPageError::BrowserOperation(format!("missing string param: {key}")))
+}
+
+fn required_f64(params: &Value, key: &str) -> OpenPageResult<f64> {
+    params
+        .get(key)
+        .and_then(Value::as_f64)
+        .ok_or_else(|| OpenPageError::BrowserOperation(format!("missing number param: {key}")))
 }
 
 fn optional_str<'a>(params: &'a Value, key: &str) -> Option<&'a str> {
@@ -1486,25 +1893,49 @@ fn parse_plain_ref(input: &str) -> Option<&str> {
 fn agent_snapshot_script() -> &'static str {
     r#"
         (() => {
-            const interactive = ['a','button','input','textarea','select','option'];
+            const interactiveTags = new Set(['a', 'button', 'input', 'textarea', 'select', 'option', 'summary']);
+            const interactiveRoles = new Set(['button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'option', 'textbox', 'combobox']);
+            const cleanText = (value) => (value || '').replace(/\s+/g, ' ').trim();
+            const clipText = (value, limit = 80) => cleanText(value).slice(0, limit);
+            const labelText = (el) => {
+                if (!el.labels || el.labels.length === 0) return '';
+                return clipText(Array.from(el.labels)
+                    .map(label => label.innerText || label.textContent || '')
+                    .join(' '));
+            };
+            const isInteractive = (el) => {
+                const tag = el.tagName.toLowerCase();
+                if (interactiveTags.has(tag)) return true;
+                if (el.onclick || el.hasAttribute('onclick')) return true;
+                const role = cleanText(el.getAttribute('role')).toLowerCase();
+                return interactiveRoles.has(role);
+            };
+            Array.from(document.querySelectorAll('[data-op-ref]'))
+                .forEach(el => el.removeAttribute('data-op-ref'));
             const elements = Array.from(document.querySelectorAll('*'))
-                .filter(el => interactive.includes(el.tagName.toLowerCase())
-                    || el.onclick
-                    || el.getAttribute('role') === 'button');
+                .filter(isInteractive);
             const snapshot = [];
             elements.forEach((el, i) => {
                 const ref = 'e' + (i + 1);
                 el.setAttribute('data-op-ref', ref);
                 const attrs = {};
-                for (const attr of ['id','class','name','type','placeholder','href','value']) {
-                    if (el.hasAttribute(attr)) attrs[attr] = el.getAttribute(attr);
+                for (const attr of ['id', 'class', 'name', 'type', 'placeholder', 'href', 'role', 'aria-label', 'title', 'alt', 'value']) {
+                    if (!el.hasAttribute(attr)) continue;
+                    const value = cleanText(el.getAttribute(attr));
+                    if (value) attrs[attr] = value;
                 }
-                snapshot.push({
+                const entry = {
                     ref: ref,
                     tag: el.tagName.toLowerCase(),
-                    text: (el.innerText || '').trim().substring(0, 80),
-                    attrs: attrs
-                });
+                    text: clipText(el.innerText || el.textContent || ''),
+                    attrs: attrs,
+                };
+                const label = labelText(el);
+                if (label) entry.label = label;
+                if ('disabled' in el && el.disabled) entry.disabled = true;
+                if ('checked' in el && el.checked) entry.checked = true;
+                if ('selected' in el && el.selected) entry.selected = true;
+                snapshot.push(entry);
             });
             return snapshot;
         })()
@@ -1613,6 +2044,16 @@ fn format_snapshot_text(entries: &[Value], title: Option<&str>, origin: Option<&
         let tag = obj.get("tag").and_then(Value::as_str).unwrap_or("unknown");
         let text = obj.get("text").and_then(Value::as_str).unwrap_or("");
         let attrs = obj.get("attrs").and_then(Value::as_object);
+        let label = obj.get("label").and_then(Value::as_str).unwrap_or("");
+        let disabled = obj
+            .get("disabled")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let checked = obj.get("checked").and_then(Value::as_bool).unwrap_or(false);
+        let selected = obj
+            .get("selected")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
 
         let mut line = format!("@{ref_id} [{tag}]");
         if !text.is_empty() {
@@ -1621,13 +2062,23 @@ fn format_snapshot_text(entries: &[Value], title: Option<&str>, origin: Option<&
             line.push_str(&escape_snapshot_value(text));
             line.push('"');
         }
+        if !label.is_empty() {
+            line.push(' ');
+            line.push_str("label=\"");
+            line.push_str(&escape_snapshot_value(label));
+            line.push('"');
+        }
 
         if let Some(attrs) = attrs {
             for key in [
+                "type",
                 "placeholder",
                 "href",
+                "role",
+                "aria-label",
+                "alt",
+                "title",
                 "value",
-                "type",
                 "name",
                 "id",
                 "class",
@@ -1644,6 +2095,15 @@ fn format_snapshot_text(entries: &[Value], title: Option<&str>, origin: Option<&
                     line.push('"');
                 }
             }
+        }
+        if checked {
+            line.push_str(" checked");
+        }
+        if selected {
+            line.push_str(" selected");
+        }
+        if disabled {
+            line.push_str(" disabled");
         }
 
         lines.push(line);
@@ -1669,8 +2129,16 @@ fn snapshot_refs(entries: &[Value]) -> Map<String, Value> {
         if let Some(text) = obj.get("text").and_then(Value::as_str) {
             ref_obj.insert("text".to_string(), Value::String(text.to_string()));
         }
+        if let Some(label) = obj.get("label").and_then(Value::as_str) {
+            ref_obj.insert("label".to_string(), Value::String(label.to_string()));
+        }
         if let Some(attrs) = obj.get("attrs").and_then(Value::as_object) {
             ref_obj.insert("attrs".to_string(), Value::Object(attrs.clone()));
+        }
+        for key in ["disabled", "checked", "selected"] {
+            if let Some(value) = obj.get(key).and_then(Value::as_bool) {
+                ref_obj.insert(key.to_string(), Value::Bool(value));
+            }
         }
         refs.insert(ref_id.to_string(), Value::Object(ref_obj));
     }
@@ -1698,11 +2166,62 @@ fn required_string_array(params: &Value, key: &str) -> OpenPageResult<Vec<String
         .collect()
 }
 
+fn select_string_values(params: &Value, key: &str) -> OpenPageResult<Vec<String>> {
+    let value = params
+        .get(key)
+        .ok_or_else(|| OpenPageError::BrowserOperation(format!("missing param: {key}")))?;
+    if let Some(text) = value.as_str() {
+        return Ok(vec![text.to_string()]);
+    }
+    if let Some(values) = value.as_array() {
+        return values
+            .iter()
+            .map(|value| {
+                value.as_str().map(ToString::to_string).ok_or_else(|| {
+                    OpenPageError::BrowserOperation(format!(
+                        "array param must contain only strings: {key}"
+                    ))
+                })
+            })
+            .collect();
+    }
+    Err(OpenPageError::BrowserOperation(format!(
+        "{key} must be a string or string array"
+    )))
+}
+
+fn select_index_values(params: &Value, key: &str) -> OpenPageResult<Vec<usize>> {
+    let value = params
+        .get(key)
+        .ok_or_else(|| OpenPageError::BrowserOperation(format!("missing param: {key}")))?;
+    if let Some(index) = value.as_u64() {
+        return Ok(vec![index as usize]);
+    }
+    if let Some(values) = value.as_array() {
+        return values
+            .iter()
+            .map(|value| {
+                value.as_u64().map(|value| value as usize).ok_or_else(|| {
+                    OpenPageError::BrowserOperation(format!(
+                        "array param must contain only integers: {key}"
+                    ))
+                })
+            })
+            .collect();
+    }
+    Err(OpenPageError::BrowserOperation(format!(
+        "{key} must be an integer or integer array"
+    )))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+    use std::io::Read;
+    use std::net::{Shutdown, TcpListener, TcpStream};
     use std::path::PathBuf;
+    use std::thread;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -1718,7 +2237,16 @@ mod tests {
                 "ref": "e2",
                 "tag": "input",
                 "text": "",
-                "attrs": {"placeholder": "Email", "type": "text"}
+                "label": "Email",
+                "attrs": {"placeholder": "Email", "type": "text"},
+                "disabled": true
+            }),
+            json!({
+                "ref": "e3",
+                "tag": "input",
+                "text": "",
+                "attrs": {"type": "checkbox"},
+                "checked": true
             }),
         ];
 
@@ -1726,7 +2254,8 @@ mod tests {
         assert!(text.contains("Page: Example"));
         assert!(text.contains("URL: https://example.com"));
         assert!(text.contains("@e1 [button] \"Go\" id=\"go\""));
-        assert!(text.contains("@e2 [input] placeholder=\"Email\" type=\"text\""));
+        assert!(text.contains("@e2 [input] label=\"Email\" type=\"text\" placeholder=\"Email\" disabled"));
+        assert!(text.contains("@e3 [input] type=\"checkbox\" checked"));
     }
 
     #[test]
@@ -1735,13 +2264,17 @@ mod tests {
             "ref": "e3",
             "tag": "a",
             "text": "More",
-            "attrs": {"href": "https://example.com"}
+            "label": "Learn more",
+            "attrs": {"href": "https://example.com"},
+            "selected": true
         })];
 
         let refs = snapshot_refs(&entries);
         assert_eq!(refs["e3"]["tag"], "a");
         assert_eq!(refs["e3"]["text"], "More");
+        assert_eq!(refs["e3"]["label"], "Learn more");
         assert_eq!(refs["e3"]["attrs"]["href"], "https://example.com");
+        assert_eq!(refs["e3"]["selected"], true);
     }
 
     #[test]
@@ -1844,6 +2377,53 @@ mod tests {
         assert_eq!(options.user_agent.as_deref(), Some("OpenPage/Request"));
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn handle_client_keeps_follow_up_ndjson_lines_on_same_connection() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
+        let address = listener.local_addr().expect("listener addr");
+
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept client");
+            handle_client(&mut stream, Rc::new(RefCell::new(ServeRuntime::default())))
+                .expect("handle client");
+        });
+
+        let mut client = TcpStream::connect(address).expect("connect test client");
+        client
+            .write_all(
+                br#"{"id":"1","op":"webpage.url","target":"missing"}
+{"id":"2","op":"webpage.title","target":"missing"}
+"#,
+            )
+            .expect("write requests");
+        client
+            .shutdown(Shutdown::Write)
+            .expect("shutdown write half");
+
+        let mut raw = String::new();
+        client
+            .read_to_string(&mut raw)
+            .expect("read daemon responses");
+        server.join().expect("join server thread");
+
+        let lines = raw.lines().collect::<Vec<_>>();
+        assert_eq!(
+            lines.len(),
+            2,
+            "expected one response per NDJSON line: {raw}"
+        );
+
+        let first: Value = serde_json::from_str(lines[0]).expect("parse first response");
+        let second: Value = serde_json::from_str(lines[1]).expect("parse second response");
+
+        assert_eq!(first["id"], "1");
+        assert_eq!(second["id"], "2");
+        assert_eq!(first["ok"], false);
+        assert_eq!(second["ok"], false);
+        assert_eq!(first["error"]["kind"], "browser_operation");
+        assert_eq!(second["error"]["kind"], "browser_operation");
     }
 }
 
