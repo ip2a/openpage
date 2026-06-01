@@ -28,15 +28,7 @@ const SHUTDOWN_POLL_ATTEMPTS: u32 = 20;
 const SHUTDOWN_POLL_DELAY_MS: u64 = 100;
 
 pub(crate) fn openpage_home() -> OpenPageResult<PathBuf> {
-    if let Some(value) = std::env::var_os("OPENPAGE_HOME") {
-        return Ok(PathBuf::from(value));
-    }
-    if let Some(value) = std::env::var_os("HOME") {
-        return Ok(PathBuf::from(value).join(".openpage"));
-    }
-    Err(OpenPageError::Io(
-        "OPENPAGE_HOME or HOME must be set".to_string(),
-    ))
+    crate::config::openpage_home()
 }
 
 pub(crate) fn daemon_dir() -> OpenPageResult<PathBuf> {

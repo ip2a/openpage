@@ -3,7 +3,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::Path;
 use std::rc::Rc;
 use std::thread::sleep;
 use std::time::{Duration, Instant};
@@ -13,10 +12,11 @@ use chromiumoxide::cdp::browser_protocol::page::{
 };
 use serde_json::{Map, Value, json};
 
-use crate::browser::{DownloadFileExistsMode, LaunchOptions, LoadMode};
+use crate::browser::{DownloadFileExistsMode, LoadMode};
 use crate::cli::args::ServeArgs;
 use crate::cli::connection::write_tcp_sidecars;
 use crate::cli::protocol::{Request, Response};
+use crate::config::{RuntimeOverrides, load_resolved_config};
 use crate::download::DownloadMission;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::ActionsDragData;
@@ -380,21 +380,20 @@ impl ServeRuntime {
                 "existing": true
             }));
         }
-        let mut launch = LaunchOptions::from_ini(None)?;
-        launch.headless = optional_bool(params, "headless").unwrap_or(true);
-        if let Some(path) = optional_string(params, "browser_path") {
-            launch.browser_path = Some(path.into());
-        }
+        let resolved = load_resolved_config()?;
+        let mut launch = resolved.launch;
+        let overrides = RuntimeOverrides {
+            browser_path: optional_string(params, "browser_path").map(Into::into),
+            user_data_dir: optional_string(params, "user_data_dir").map(Into::into),
+            headless: optional_bool(params, "headless"),
+            width: optional_u64(params, "width").map(|value| value as u32),
+            height: optional_u64(params, "height").map(|value| value as u32),
+            no_sandbox: optional_bool(params, "no_sandbox"),
+        };
+        overrides.apply_to_launch(&mut launch);
+
         if let Some(path) = optional_string(params, "download_path") {
             launch.download_path = Some(path.into());
-        }
-        if let Some(path) = optional_string(params, "user_data_dir") {
-            launch.user_data_dir = Some(path.into());
-        }
-        launch.width = optional_u64(params, "width").unwrap_or(1280) as u32;
-        launch.height = optional_u64(params, "height").unwrap_or(900) as u32;
-        if let Some(no_sandbox) = optional_bool(params, "no_sandbox") {
-            launch.no_sandbox = no_sandbox;
         }
         if let Some(load_mode) = optional_str(params, "load_mode") {
             launch.load_mode = LoadMode::parse(load_mode)?;
@@ -403,7 +402,7 @@ impl ServeRuntime {
             launch.download_file_exists = DownloadFileExistsMode::parse(mode)?;
         }
 
-        let session = session_options_from_request(params, None)?;
+        let session = session_options_from_request(params, resolved.session)?;
 
         let page = WebPage::new(mode, launch, session)?;
         self.webpages
@@ -1842,11 +1841,7 @@ fn optional_u64(params: &Value, key: &str) -> Option<u64> {
     params.get(key).and_then(Value::as_u64)
 }
 
-fn session_options_from_request(
-    params: &Value,
-    ini_path: Option<&Path>,
-) -> OpenPageResult<SessionOptions> {
-    let mut session = SessionOptions::from_ini(ini_path)?;
+fn session_options_from_request(params: &Value, mut session: SessionOptions) -> OpenPageResult<SessionOptions> {
     if let Some(timeout_secs) = optional_u64(params, "timeout_secs") {
         session.set_timeout(timeout_secs);
     }
@@ -2327,21 +2322,16 @@ mod tests {
     }
 
     #[test]
-    fn session_options_from_request_uses_ini_defaults_when_params_omit_fields() {
-        let dir = make_temp_dir("session-ini-defaults");
-        let ini_path = dir.join("session.ini");
-        let mut expected = SessionOptions::default();
-        expected
+    fn session_options_from_request_uses_base_defaults_when_params_omit_fields() {
+        let mut base = SessionOptions::default();
+        base
             .set_timeout(21)
             .set_user_agent(Some("OpenPage/ServeIni".to_string()))
             .set_download_path("downloads")
             .set_retry(Some(4), Some(250));
-        expected
-            .save(Some(ini_path.as_path()))
-            .expect("write session options ini");
 
-        let options = session_options_from_request(&json!({}), Some(ini_path.as_path()))
-            .expect("load session options from ini");
+        let options = session_options_from_request(&json!({}), base)
+            .expect("load session options from base");
 
         assert_eq!(options.timeout_secs, 21);
         assert_eq!(options.user_agent.as_deref(), Some("OpenPage/ServeIni"));
@@ -2349,34 +2339,27 @@ mod tests {
         assert_eq!(options.retry_times, 4);
         assert_eq!(options.retry_interval_millis, 250);
 
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn session_options_from_request_overrides_explicit_params() {
-        let dir = make_temp_dir("session-request-overrides");
-        let ini_path = dir.join("session.ini");
-        let mut expected = SessionOptions::default();
-        expected
+        let mut base = SessionOptions::default();
+        base
             .set_timeout(21)
             .set_user_agent(Some("OpenPage/ServeIni".to_string()));
-        expected
-            .save(Some(ini_path.as_path()))
-            .expect("write session options ini");
 
         let options = session_options_from_request(
             &json!({
                 "timeout_secs": 5,
                 "user_agent": "OpenPage/Request"
             }),
-            Some(ini_path.as_path()),
+            base,
         )
         .expect("override session options from request");
 
         assert_eq!(options.timeout_secs, 5);
         assert_eq!(options.user_agent.as_deref(), Some("OpenPage/Request"));
 
-        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

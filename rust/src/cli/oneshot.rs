@@ -1436,7 +1436,13 @@ fn run_alert(command: AlertCommand) -> OpenPageResult<()> {
 }
 
 fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
-    let headless = args.headless && !args.head;
+    let headless = if args.head {
+        Some(false)
+    } else if args.headless {
+        Some(true)
+    } else {
+        None
+    };
     let create = rpc_request(
         &args.session,
         Some(args.session.clone()),
@@ -1486,6 +1492,7 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
             "already_running": true,
             "target": create.get("target").cloned(),
             "port": port,
+            "headless": headless,
             "incognito": args.incognito,
             "mute": args.mute,
             "url": args.url,

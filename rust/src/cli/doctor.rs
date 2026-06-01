@@ -5,14 +5,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::browser::{
-    Browser, LaunchOptions, OPENPAGE_BROWSER_PATH_ENV, browser_path_env_override,
-};
+use crate::browser::{Browser, OPENPAGE_BROWSER_PATH_ENV};
 use crate::cli::args::DoctorArgs;
 use crate::cli::connection::{
     daemon_dir, daemon_inventory, daemon_inventory_payload_json, daemon_session_fix,
     daemon_session_reasons, daemon_session_state, force_cleanup_daemon, incomplete_daemon_fix,
     incomplete_daemon_reasons, openpage_home,
+};
+use crate::config::{
+    ConfigValueSource, load_resolved_config, resolve_browser_executable_path,
 };
 use crate::cli::protocol::print_output_json;
 use crate::error::{OpenPageError, OpenPageResult};
@@ -574,81 +575,53 @@ fn daemon_checks(checks: &mut Vec<Check>) -> Option<crate::cli::connection::Daem
 
 fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
     let category = "Browser";
-    let browser_path_override = browser_path_env_override();
-    let options = match LaunchOptions::from_ini(None) {
-        Ok(mut options) => {
-            let configured_browser_path = options.browser_path();
-            if let Some(path) = browser_path_override.as_ref() {
-                options.set_browser_path(path);
-            }
-            let source = options
-                .source_ini_path
-                .as_ref()
-                .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "<unknown>".to_string());
-            let browser_path = options.browser_path();
-            let browser_path = if browser_path.is_empty() {
-                "<default>".to_string()
-            } else {
-                browser_path
-            };
-            let browser_path_display = match browser_path_override.as_ref() {
-                Some(path) => {
-                    let configured = if configured_browser_path.is_empty() {
-                        "<default>".to_string()
-                    } else {
-                        configured_browser_path
-                    };
-                    format!(
-                        "{} (overrides configured {} via {})",
-                        path.display(),
-                        configured,
-                        OPENPAGE_BROWSER_PATH_ENV
-                    )
-                }
-                None => browser_path.clone(),
-            };
-            checks.push(
-                Check::new(
-                    "browser.config",
-                    category,
-                    Status::Pass,
-                    format!(
-                        "Loaded launch options from {} (browser_path={}, headless={}, auto_port={})",
-                        source,
-                        browser_path_display,
-                        options.is_headless(),
-                        options.is_auto_port()
-                    ),
-                )
-                .with_browser_path(browser_path.clone()),
-            );
-            options
-        }
+    let resolved = match load_resolved_config() {
+        Ok(value) => value,
         Err(err) => {
             checks.push(
                 Check::new(
                     "browser.config",
                     category,
                     Status::Fail,
-                    format!("Could not load launch options: {err}"),
+                    format!("Could not load config.toml: {err}"),
                 )
                 .with_fix(
-                    "Check rust/configs.ini for invalid values or formatting. If needed, temporarily bypass it by passing explicit CLI flags such as --browser-path.",
+                    "Check OPENPAGE_CONFIG, ~/.openpage/config.toml, and ./.openpage/config.toml for invalid TOML formatting.",
                 ),
             );
             return;
         }
     };
-
-    let browser_path = {
-        let value = options.browser_path();
-        if value.is_empty() {
-            "<default>".to_string()
-        } else {
-            value
-        }
+    let options = resolved.launch;
+    let browser_path = options.browser_path();
+    let browser_path = if browser_path.is_empty() {
+        "<default>".to_string()
+    } else {
+        browser_path
     };
+    let source = match resolved.browser_path_source {
+        ConfigValueSource::BuiltInDefault => "default",
+        ConfigValueSource::UserConfig => "user config.toml",
+        ConfigValueSource::WorkspaceConfig => "workspace config.toml",
+        ConfigValueSource::Environment => OPENPAGE_BROWSER_PATH_ENV,
+    };
+    checks.push(
+        Check::new(
+            "browser.config",
+            category,
+            Status::Pass,
+            format!(
+                "Resolved browser config (source={source}, browser_path={}, headless={}, auto_port={}, user_config={}, workspace_config={})",
+                browser_path,
+                options.is_headless(),
+                options.is_auto_port(),
+                resolved.user_config_path.display(),
+                resolved.workspace_config_path.display(),
+            ),
+        )
+        .with_browser_path(browser_path.clone()),
+    );
+
     let browser_exec = resolve_browser_executable(&browser_path);
     let browser_hint = suggested_browser_executable(&browser_path);
     match &browser_exec {
@@ -700,7 +673,7 @@ fn browser_checks(checks: &mut Vec<Check>, quick: bool) {
                     category,
                     Status::Info,
                     format!(
-                        "Local browser candidate found at {}. Setting rust/configs.ini browser_path to this absolute path should work on this machine.",
+                        "Local browser candidate found at {}. Set browser.executable_path in config.toml to this absolute path.",
                         path.display()
                     ),
                 )
@@ -924,14 +897,14 @@ impl Drop for BrowserLaunchGuard {
 fn missing_browser_message(browser_path: &str, hint: Option<&Path>) -> String {
     match hint {
         Some(path) => format!(
-            "Configured browser executable `{}` was not found. Update rust/configs.ini browser_path to {}, set {}={} for this process, install the browser on PATH, or pass --browser-path explicitly.",
+            "Configured browser executable `{}` was not found. Set browser.executable_path in config.toml to {}, set {}={} for this process, install the browser on PATH, or pass --browser-path explicitly.",
             browser_path,
             path.display(),
             OPENPAGE_BROWSER_PATH_ENV,
             path.display()
         ),
         None => format!(
-            "Configured browser executable `{}` was not found. Update rust/configs.ini browser_path, set {}=<absolute-browser-path> for this process, install the browser on PATH, or pass --browser-path explicitly.",
+            "Configured browser executable `{}` was not found. Set browser.executable_path in config.toml, set {}=<absolute-browser-path> for this process, install the browser on PATH, or pass --browser-path explicitly.",
             browser_path, OPENPAGE_BROWSER_PATH_ENV
         ),
     }
@@ -940,7 +913,7 @@ fn missing_browser_message(browser_path: &str, hint: Option<&Path>) -> String {
 fn browser_executable_fix(browser_path: &str, hint: Option<&Path>) -> String {
     match hint {
         Some(path) => format!(
-            "Set rust/configs.ini browser_path to {} on this machine, set {}={} for a process-local override, or rerun the command with --browser-path {}. If you want to keep `{}` as a name, make sure it resolves on PATH.",
+            "Set browser.executable_path in config.toml to {} on this machine, set {}={} for a process-local override, or rerun the command with --browser-path {}. If you want to keep `{}` as a name, make sure it resolves on PATH.",
             path.display(),
             OPENPAGE_BROWSER_PATH_ENV,
             path.display(),
@@ -948,7 +921,7 @@ fn browser_executable_fix(browser_path: &str, hint: Option<&Path>) -> String {
             browser_path
         ),
         None => format!(
-            "Update rust/configs.ini browser_path to a real browser executable, set {}=<absolute-browser-path> for a process-local override, or rerun the command with --browser-path <absolute-browser-path>. If you want to keep `{}`, make sure it resolves on PATH.",
+            "Set browser.executable_path in config.toml to a real browser executable, set {}=<absolute-browser-path> for a process-local override, or rerun the command with --browser-path <absolute-browser-path>. If you want to keep `{}`, make sure it resolves on PATH.",
             OPENPAGE_BROWSER_PATH_ENV, browser_path
         ),
     }
@@ -991,6 +964,9 @@ fn resolve_browser_executable(browser_path: &str) -> BrowserExecutable {
 }
 
 fn suggested_browser_executable(browser_path: &str) -> Option<PathBuf> {
+    if browser_path.is_empty() || browser_path == "<default>" {
+        return resolve_browser_executable_path(None);
+    }
     suggested_browser_executable_from_known_paths(browser_path, common_browser_candidates())
 }
 
@@ -1018,29 +994,15 @@ fn suggested_browser_executable_from_known_paths(
 }
 
 fn common_browser_candidates() -> Vec<PathBuf> {
-    let mut candidates = Vec::new();
-
+    let mut candidates = crate::config::browser_exec_candidates();
     #[cfg(target_os = "macos")]
-    {
-        candidates.push(PathBuf::from(
-            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        ));
-        candidates.push(PathBuf::from(
-            "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
-        ));
-
-        if let Some(home) = std::env::var_os("HOME") {
-            let home = PathBuf::from(home);
-            candidates
-                .push(home.join("Applications/Google Chrome.app/Contents/MacOS/Google Chrome"));
-            candidates.push(
-                home.join(
-                    "Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
-                ),
-            );
-        }
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        candidates.push(home.join("Applications/Google Chrome.app/Contents/MacOS/Google Chrome"));
+        candidates.push(
+            home.join("Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary"),
+        );
     }
-
     candidates
 }
 
@@ -1166,7 +1128,7 @@ mod tests {
     fn browser_executable_fix_uses_hint_when_present() {
         let hint = PathBuf::from("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
         let fix = browser_executable_fix("chrome", Some(hint.as_path()));
-        assert!(fix.contains("rust/configs.ini"));
+        assert!(fix.contains("config.toml"));
         assert!(fix.contains("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"));
         assert!(fix.contains("--browser-path"));
         assert!(fix.contains("OPENPAGE_BROWSER_PATH"));

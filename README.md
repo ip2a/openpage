@@ -337,8 +337,11 @@ transport failures, the runtime now emits stable `error.kind` values such as:
 
 Runtime launch now uses the same launch-config chain as `doctor`:
 
-- base `LaunchOptions` come from `rust/configs.ini` or project-local `dp_configs.ini`
-- `OPENPAGE_BROWSER_PATH` can override the browser executable for the current process
+- base launch/session defaults come from a unified TOML chain:
+  - user config: `~/.openpage/config.toml` (or `OPENPAGE_HOME/config.toml`)
+  - workspace config: `./.openpage/config.toml`
+  - optional explicit config file via `OPENPAGE_CONFIG`
+- `OPENPAGE_BROWSER_PATH` can override browser executable for the current process
 - explicit CLI / daemon request parameters still win over config defaults
 - browser executable/config and optional live launch smoke
 - machine-readable summary counts plus actionable `warn_ids` / `fail_ids` / `info_ids` / `fixable_ids`

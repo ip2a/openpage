@@ -14,8 +14,9 @@ use std::path::{Path, PathBuf};
 
 use crate::cli::args::{Cli, Command, CompatCli};
 use crate::cli::protocol::{print_output_json, simple_ok};
+use crate::config::{ensure_workspace_config_file, load_resolved_config, update_user_browser_paths};
 use crate::error::{OpenPageError, OpenPageResult};
-use crate::{Browser, LaunchOptions, configs_to_here};
+use crate::{Browser, LaunchOptions};
 
 pub fn run() -> OpenPageResult<i32> {
     run_from_args(std::env::args_os())
@@ -119,7 +120,6 @@ fn run_dp_compat(cli: CompatCli) -> OpenPageResult<()> {
         let saved = update_dp_compat_launch_paths(
             cli.set_browser_path.as_deref(),
             cli.set_user_path.as_deref(),
-            None,
         )?;
         result.insert(
             "config".to_string(),
@@ -133,7 +133,7 @@ fn run_dp_compat(cli: CompatCli) -> OpenPageResult<()> {
     }
 
     if cli.configs_to_here {
-        let copied = configs_to_here(None)?;
+        let copied = ensure_workspace_config_file()?;
         result.insert(
             "configs_to_here".to_string(),
             json!({
@@ -145,7 +145,7 @@ fn run_dp_compat(cli: CompatCli) -> OpenPageResult<()> {
     if let Some(port) = cli.launch_browser {
         result.insert(
             "launch_browser".to_string(),
-            launch_dp_compat_browser(port, None)?,
+            launch_dp_compat_browser(port)?,
         );
     }
 
@@ -155,34 +155,22 @@ fn run_dp_compat(cli: CompatCli) -> OpenPageResult<()> {
 fn update_dp_compat_launch_paths(
     browser_path: Option<&Path>,
     user_data_path: Option<&Path>,
-    ini_path: Option<&Path>,
 ) -> OpenPageResult<PathBuf> {
-    let mut options = load_dp_compat_launch_options(None, ini_path)?;
-    if let Some(path) = browser_path {
-        options.set_browser_path(path);
-    }
-    if let Some(path) = user_data_path {
-        options.set_user_data_path(path);
-    }
-    options.save(ini_path)
+    update_user_browser_paths(browser_path, user_data_path)
 }
 
 fn load_dp_compat_launch_options(
     launch_browser_port: Option<u16>,
-    ini_path: Option<&Path>,
 ) -> OpenPageResult<LaunchOptions> {
-    let mut options = LaunchOptions::from_ini(ini_path)?;
+    let mut options = load_resolved_config()?.launch;
     if let Some(port) = launch_browser_port.filter(|port| *port > 0) {
         options.set_local_port(port);
     }
     Ok(options)
 }
 
-fn launch_dp_compat_browser(
-    launch_browser_port: u16,
-    ini_path: Option<&Path>,
-) -> OpenPageResult<serde_json::Value> {
-    let options = load_dp_compat_launch_options(Some(launch_browser_port), ini_path)?;
+fn launch_dp_compat_browser(launch_browser_port: u16) -> OpenPageResult<serde_json::Value> {
+    let options = load_dp_compat_launch_options(Some(launch_browser_port))?;
     let address = options.address();
     let browser = Browser::launch(options)?;
     let result = json!({
@@ -234,8 +222,37 @@ mod tests {
         CompatCli, clap_error_payload, dp_help_requested, load_dp_compat_launch_options,
         should_use_dp_compat_mode, update_dp_compat_launch_paths,
     };
-    use crate::LaunchOptions;
+    use crate::config::OPENPAGE_CONFIG_ENV;
     use crate::cli::args::Cli;
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(previous) = self.previous.as_ref() {
+                unsafe {
+                    std::env::set_var(self.key, previous);
+                }
+            } else {
+                unsafe {
+                    std::env::remove_var(self.key);
+                }
+            }
+        }
+    }
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         let suffix = SystemTime::now()
@@ -354,23 +371,23 @@ mod tests {
     #[test]
     fn dp_compat_path_update_persists_browser_and_user_data_paths() {
         let dir = temp_dir("compat-save");
-        let config_path = dir.join("dp.ini");
-        LaunchOptions::default()
-            .save(Some(config_path.as_path()))
-            .expect("seed config");
+        let config_path = dir.join("config.toml");
+        fs::write(&config_path, "[browser]\n").expect("seed config");
+        let _config_guard = EnvVarGuard::set(
+            OPENPAGE_CONFIG_ENV,
+            config_path.to_string_lossy().as_ref(),
+        );
 
         let saved = update_dp_compat_launch_paths(
             Some(Path::new("/tmp/compat-browser")),
             Some(Path::new("/tmp/compat-user")),
-            Some(config_path.as_path()),
         )
         .expect("update compat config");
 
-        let loaded =
-            LaunchOptions::from_ini(Some(config_path.as_path())).expect("reload compat config");
+        let loaded = fs::read_to_string(&config_path).expect("read config");
         assert_eq!(saved, config_path);
-        assert_eq!(loaded.browser_path(), "/tmp/compat-browser");
-        assert_eq!(loaded.user_data_path(), "/tmp/compat-user");
+        assert!(loaded.contains("executable_path = \"/tmp/compat-browser\""));
+        assert!(loaded.contains("user_data_dir = \"/tmp/compat-user\""));
 
         let _ = fs::remove_dir_all(dir);
     }
@@ -378,19 +395,21 @@ mod tests {
     #[test]
     fn dp_compat_launch_options_keep_configured_port_for_zero_and_override_nonzero() {
         let dir = temp_dir("compat-port");
-        let config_path = dir.join("dp.ini");
-        let mut options = LaunchOptions::default();
-        options.set_local_port(9555);
-        options
-            .save(Some(config_path.as_path()))
-            .expect("seed config");
+        let config_path = dir.join("config.toml");
+        fs::write(
+            &config_path,
+            "[browser]\nexecutable_path = \"/tmp/compat-browser\"\n",
+        )
+        .expect("seed config");
+        let _config_guard = EnvVarGuard::set(
+            OPENPAGE_CONFIG_ENV,
+            config_path.to_string_lossy().as_ref(),
+        );
 
-        let keep = load_dp_compat_launch_options(Some(0), Some(config_path.as_path()))
-            .expect("load config port");
-        let override_port = load_dp_compat_launch_options(Some(9333), Some(config_path.as_path()))
-            .expect("load override port");
+        let keep = load_dp_compat_launch_options(Some(0)).expect("load config port");
+        let override_port = load_dp_compat_launch_options(Some(9333)).expect("load override port");
 
-        assert_eq!(keep.address(), "127.0.0.1:9555");
+        assert_eq!(keep.remote_debugging_port, None);
         assert_eq!(override_port.address(), "127.0.0.1:9333");
         assert_eq!(override_port.remote_debugging_port, Some(9333));
 

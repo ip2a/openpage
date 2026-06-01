@@ -808,9 +808,12 @@ mod tests {
     use std::thread;
 
     fn poison_download_state(store: &DownloadStore) {
-        let state = Arc::clone(&store.shared.state);
+        let shared = Arc::clone(&store.shared);
         let join = thread::spawn(move || {
-            let _guard = state.lock().expect("lock download state for poison test");
+            let _guard = shared
+                .state
+                .lock()
+                .expect("lock download state for poison test");
             panic!("poison download state");
         })
         .join();
@@ -830,7 +833,7 @@ mod tests {
             .expect_err("mission_ids() should surface poisoned download state")
             .to_string();
         assert!(english.contains("download state lock poisoned"));
-        assert!(english.contains("Browser operation failed"));
+        assert!(english.contains("browser operation failed"));
 
         Settings::set_language("cn");
 

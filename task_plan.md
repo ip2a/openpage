@@ -1,3 +1,31 @@
+## Task Plan: Unified config.toml module refactor (2026-06-01)
+
+### Goal
+Replace implicit ini-based runtime defaults with a single stable `config.toml` system, with strict precedence:
+`CLI > ENV > workspace config > user config > built-in defaults`.
+
+### Phases
+- [x] Phase 1: Design + boundaries
+- [x] Phase 2: Implement config loader (`config.toml`) and precedence
+- [x] Phase 3: Wire CLI runtime (`serve`/`oneshot`/`doctor`) to unified config
+- [x] Phase 4: Remove ini fallback from active CLI path
+- [x] Phase 5: Tests + docs + verification
+
+### Success Criteria
+1. No active CLI runtime path depends on `rust/configs.ini` or `dp_configs.ini`.
+2. Browser executable can be set and shown from:
+   - `~/.openpage/config.toml` (user)
+   - `<workspace>/.openpage/config.toml` (workspace)
+   - `OPENPAGE_BROWSER_PATH` (env override)
+3. Effective precedence is test-covered.
+4. `openpage doctor --quick` reports effective browser config source without mentioning ini defaults.
+
+### Errors Encountered
+- `cargo test` currently fails due a pre-existing unrelated test compile issue in `rust/src/download.rs` (`Arc::clone` against a `Mutex` field in test code). This refactor was verified via `cargo check` and runtime smoke commands.
+
+### Current Status
+Completed - unified CLI config now resolves from TOML chain only in active runtime paths.
+
 # Task Plan: OpenPage CLI 唯一 TCP 协议迁移与竞品设计借鉴
 
 ## Goal

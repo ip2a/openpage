@@ -16,7 +16,7 @@ pub struct CompatCli {
     /// Set the configured browser user-data directory
     #[arg(short = 'u', long = "set-user-path")]
     pub set_user_path: Option<PathBuf>,
-    /// Copy the default configs.ini snapshot into the current directory
+    /// Ensure a workspace `.openpage/config.toml` exists in the current directory
     #[arg(short = 'c', long = "configs-to-here")]
     pub configs_to_here: bool,
     /// Launch or connect to a browser at the given local debugging port. Use 0 to keep the configured value.
@@ -349,10 +349,10 @@ pub struct BrowserStartArgs {
     pub head: bool,
     #[arg(long)]
     pub headless: bool,
-    #[arg(long, default_value_t = 1280)]
-    pub width: u32,
-    #[arg(long, default_value_t = 900)]
-    pub height: u32,
+    #[arg(long)]
+    pub width: Option<u32>,
+    #[arg(long)]
+    pub height: Option<u32>,
     #[arg(long)]
     pub no_sandbox: bool,
     #[arg(long)]

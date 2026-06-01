@@ -1,6 +1,7 @@
 pub mod alert;
 pub mod browser;
 pub mod cli;
+pub mod config;
 pub mod console;
 pub mod download;
 pub mod element;
@@ -29,6 +30,14 @@ pub use browser::{
     DownloadFileExistsMode, LaunchOptions, LoadMode, TabInfo,
 };
 pub use console::{Console, ConsoleMessage, ConsoleSteps};
+pub use config::{
+    ConfigValueSource, OPENPAGE_BROWSER_HEADLESS_ENV, OPENPAGE_BROWSER_HEIGHT_ENV,
+    OPENPAGE_BROWSER_NO_SANDBOX_ENV, OPENPAGE_BROWSER_USER_DATA_DIR_ENV,
+    OPENPAGE_BROWSER_WIDTH_ENV, OPENPAGE_CONFIG_ENV, OPENPAGE_SESSION_TIMEOUT_SECS_ENV,
+    OPENPAGE_SESSION_USER_AGENT_ENV, ResolvedConfig, RuntimeOverrides, browser_exec_candidates,
+    load_resolved_config, openpage_home, resolve_browser_executable_path, user_config_path,
+    workspace_config_path,
+};
 pub use download::{DownloadInfo, DownloadMission, DownloadState};
 pub use element::{
     Element, ElementClicker, ElementResource, ElementScroller, ElementSelector, ElementSetter,

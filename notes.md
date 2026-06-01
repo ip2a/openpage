@@ -1,3 +1,36 @@
+# Notes: Unified config.toml refactor (2026-06-01)
+
+## User requirements (this run)
+- Use exactly one stable config system: `config.toml`.
+- Do not keep ini fallback, including dp-style fallback.
+- Provide mature precedence: user-level, workspace-level, env-level, and CLI override.
+- Browser executable lookup should follow explicit path first, then cross-platform discovery.
+
+## Current facts from code
+- Active runtime still loads ini defaults in CLI path:
+  - `rust/src/cli/serve.rs`: `LaunchOptions::from_ini(None)`
+  - `rust/src/cli/serve.rs`: `SessionOptions::from_ini(None)`
+  - `rust/src/cli/doctor.rs`: `LaunchOptions::from_ini(None)`
+- ini resolution still points to:
+  - `rust/configs.ini`
+  - `./dp_configs.ini`
+
+## Design decisions (this run)
+- Add a dedicated `rust/src/config.rs`.
+- `config.toml` locations:
+  - user: `OPENPAGE_HOME/config.toml` (default `~/.openpage/config.toml`)
+  - workspace: `<cwd>/.openpage/config.toml`
+- Precedence:
+  - `CLI > ENV > workspace > user > built-in defaults`
+- Remove ini fallback from active CLI runtime paths; keep changes surgical to config-related files.
+
+## Verification notes
+- `cargo check` passes after refactor.
+- Full `cargo test` cannot currently run because of a pre-existing unrelated test compile error in `rust/src/download.rs` (`Arc::clone` on `Mutex` field in test-only code).
+- Runtime verification with `cargo run --bin openpage -- doctor --quick` confirms:
+  - browser config source now reports `default | user config.toml | workspace config.toml | OPENPAGE_BROWSER_PATH`
+  - no active doctor/runtime output references `rust/configs.ini` or `dp_configs.ini`
+
 # Notes: openpage build log
 
 ## Current repository facts
