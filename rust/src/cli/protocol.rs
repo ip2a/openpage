@@ -38,6 +38,10 @@ pub struct ResponseError {
     pub state: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasons: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retryable: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suggested_action: Option<String>,
 }
 
 impl Response {
@@ -60,7 +64,17 @@ impl Response {
         message: impl Into<String>,
         fix: Option<String>,
     ) -> Self {
-        Self::error_with_context(id, kind, message, fix, None::<String>, None::<String>, None)
+        Self::error_with_context(
+            id,
+            kind,
+            message,
+            fix,
+            None::<String>,
+            None::<String>,
+            None,
+            None,
+            None::<String>,
+        )
     }
 
     pub fn error_with_context(
@@ -71,6 +85,8 @@ impl Response {
         session: Option<String>,
         state: Option<String>,
         reasons: Option<Vec<String>>,
+        retryable: Option<bool>,
+        suggested_action: Option<String>,
     ) -> Self {
         Self {
             id,
@@ -83,6 +99,8 @@ impl Response {
                 session,
                 state,
                 reasons,
+                retryable,
+                suggested_action,
             }),
         }
     }
@@ -104,7 +122,16 @@ pub fn simple_error_with_fix(
     message: impl Into<String>,
     fix: Option<String>,
 ) -> Value {
-    simple_error_with_context(kind, message, fix, None::<String>, None::<String>, None)
+    simple_error_with_context(
+        kind,
+        message,
+        fix,
+        None::<String>,
+        None::<String>,
+        None,
+        None,
+        None::<String>,
+    )
 }
 
 pub fn simple_error_with_context(
@@ -114,6 +141,8 @@ pub fn simple_error_with_context(
     session: Option<String>,
     state: Option<String>,
     reasons: Option<Vec<String>>,
+    retryable: Option<bool>,
+    suggested_action: Option<String>,
 ) -> Value {
     let mut error = serde_json::Map::new();
     error.insert("kind".to_string(), Value::String(kind.into()));
@@ -130,6 +159,15 @@ pub fn simple_error_with_context(
     if let Some(reasons) = reasons.filter(|value| !value.is_empty()) {
         error.insert("reasons".to_string(), serde_json::json!(reasons));
     }
+    if let Some(retryable) = retryable {
+        error.insert("retryable".to_string(), Value::Bool(retryable));
+    }
+    if let Some(suggested_action) = suggested_action {
+        error.insert(
+            "suggested_action".to_string(),
+            Value::String(suggested_action),
+        );
+    }
 
     let mut payload = serde_json::Map::new();
     payload.insert("ok".to_string(), Value::Bool(false));
@@ -140,6 +178,11 @@ pub fn simple_error_with_context(
 pub fn openpage_error_kind(error: &OpenPageError) -> &'static str {
     match error {
         OpenPageError::BrowserLaunch(_) => "browser_launch",
+        OpenPageError::BrowserOperation(detail)
+            if detail.starts_with("daemon transient for session `") =>
+        {
+            "daemon_transient"
+        }
         OpenPageError::BrowserOperation(_) => "browser_operation",
         OpenPageError::PageOperation(_) => "page_operation",
         OpenPageError::ElementNotFound(_) => "element_not_found",
@@ -172,6 +215,8 @@ pub fn simple_openpage_error(error: &OpenPageError) -> Value {
                     .collect::<Vec<_>>(),
             )
         },
+        context.retryable,
+        context.suggested_action.map(ToString::to_string),
     )
 }
 
@@ -195,6 +240,8 @@ pub fn response_openpage_error(id: Option<Value>, error: &OpenPageError) -> Resp
                     .collect::<Vec<_>>(),
             )
         },
+        context.retryable,
+        context.suggested_action.map(ToString::to_string),
     )
 }
 
@@ -202,7 +249,7 @@ pub fn openpage_error_from_kind(kind: &str, message: impl Into<String>) -> OpenP
     let message = message.into();
     match kind {
         "browser_launch" => OpenPageError::BrowserLaunch(message),
-        "browser_operation" => OpenPageError::BrowserOperation(message),
+        "browser_operation" | "daemon_transient" => OpenPageError::BrowserOperation(message),
         "page_operation" => OpenPageError::PageOperation(message),
         "element_not_found" => OpenPageError::ElementNotFound(message),
         "unsupported_locator" => OpenPageError::UnsupportedLocator(message),
@@ -275,6 +322,8 @@ struct ErrorContext<'a> {
     session: Option<&'a str>,
     state: Option<&'static str>,
     reasons: Vec<&'static str>,
+    retryable: Option<bool>,
+    suggested_action: Option<&'static str>,
 }
 
 fn openpage_error_context(error: &OpenPageError) -> ErrorContext<'_> {
@@ -290,6 +339,15 @@ fn openpage_error_context(error: &OpenPageError) -> ErrorContext<'_> {
     };
 
     if !detail.starts_with("session `") {
+        if detail.starts_with("daemon transient for session `") {
+            context.session = detail
+                .strip_prefix("daemon transient for session `")
+                .and_then(|rest| rest.split_once('`').map(|(session, _)| session))
+                .filter(|value| !value.is_empty());
+            context.fix = Some("Retry the same command.");
+            context.retryable = Some(true);
+            context.suggested_action = Some("retry_same_command");
+        }
         return context;
     }
 
@@ -453,6 +511,14 @@ pub fn print_output_json(value: &Value) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn env_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock")
+    }
     use serde_json::json;
 
     #[test]
@@ -486,6 +552,7 @@ mod tests {
 
     #[test]
     fn format_output_json_includes_origin_in_boundary_metadata() {
+        let _guard = env_lock();
         unsafe {
             std::env::set_var("OPENPAGE_CONTENT_BOUNDARIES", "1");
         }
@@ -514,6 +581,7 @@ mod tests {
 
     #[test]
     fn format_output_json_omits_empty_origin_from_boundary_metadata() {
+        let _guard = env_lock();
         unsafe {
             std::env::set_var("OPENPAGE_CONTENT_BOUNDARIES", "1");
         }
@@ -539,6 +607,7 @@ mod tests {
 
     #[test]
     fn format_output_json_wraps_content_field_with_boundaries() {
+        let _guard = env_lock();
         unsafe {
             std::env::set_var("OPENPAGE_CONTENT_BOUNDARIES", "1");
         }
@@ -564,6 +633,7 @@ mod tests {
 
     #[test]
     fn format_output_json_truncates_content_field() {
+        let _guard = env_lock();
         unsafe {
             std::env::set_var("OPENPAGE_MAX_OUTPUT_CHARS", "5");
         }
@@ -677,6 +747,20 @@ mod tests {
     }
 
     #[test]
+    fn simple_openpage_error_exposes_retryable_daemon_transient_fields() {
+        let error = OpenPageError::BrowserOperation(
+            "daemon transient for session `review`: io error: connection reset by peer. Retry the same command.".to_string(),
+        );
+        let payload = simple_openpage_error(&error);
+
+        assert_eq!(payload["error"]["kind"], "daemon_transient");
+        assert_eq!(payload["error"]["session"], "review");
+        assert_eq!(payload["error"]["retryable"], true);
+        assert_eq!(payload["error"]["suggested_action"], "retry_same_command");
+        assert_eq!(payload["error"]["fix"], "Retry the same command.");
+    }
+
+    #[test]
     fn reconstructs_openpage_error_from_structured_kind() {
         let error = openpage_error_from_kind("element_not_found", "missing #submit");
         match error {
@@ -729,31 +813,39 @@ mod tests {
             Some("browser_operation")
         );
         assert_eq!(
-            response
-                .error
-                .as_ref()
-                .map(|error| error.message.as_str()),
+            response.error.as_ref().map(|error| error.message.as_str()),
             Some(
                 "session `review` is not active. Start it with `openpage browser start --session review` before retrying."
             )
         );
         assert_eq!(
-            response.error.as_ref().and_then(|error| error.fix.as_deref()),
+            response
+                .error
+                .as_ref()
+                .and_then(|error| error.fix.as_deref()),
             Some("Start it with `openpage browser start --session review` before retrying.")
         );
         assert_eq!(
-            response.error.as_ref().and_then(|error| error.session.as_deref()),
+            response
+                .error
+                .as_ref()
+                .and_then(|error| error.session.as_deref()),
             Some("review")
         );
         assert_eq!(
-            response.error.as_ref().and_then(|error| error.state.as_deref()),
+            response
+                .error
+                .as_ref()
+                .and_then(|error| error.state.as_deref()),
             Some("inactive")
         );
-        assert!(response
-            .error
-            .as_ref()
-            .and_then(|error| error.reasons.as_ref())
-            .is_none());
+        assert!(
+            response
+                .error
+                .as_ref()
+                .and_then(|error| error.reasons.as_ref())
+                .is_none()
+        );
     }
 
     #[test]
@@ -767,14 +859,17 @@ mod tests {
         assert_eq!(payload["error"]["session"], "review");
         assert_eq!(payload["error"]["state"], "incompatible");
         assert_eq!(payload["error"]["reasons"], json!(["version_mismatch"]));
-        assert!(payload["error"]["fix"]
-            .as_str()
-            .expect("fix should be present")
-            .contains("browser stop --session review"));
+        assert!(
+            payload["error"]["fix"]
+                .as_str()
+                .expect("fix should be present")
+                .contains("browser stop --session review")
+        );
     }
 
     #[test]
     fn serialize_output_json_matches_format_output_json_for_normal_payloads() {
+        let _guard = env_lock();
         let value = serde_json::json!({
             "ok": true,
             "result": {

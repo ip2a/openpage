@@ -16,11 +16,12 @@ use crate::browser::{DownloadFileExistsMode, LoadMode};
 use crate::cli::args::ServeArgs;
 use crate::cli::connection::write_tcp_sidecars;
 use crate::cli::protocol::{Request, Response};
-use crate::config::{RuntimeOverrides, load_resolved_config};
+use crate::config::{ConfigValueSource, RuntimeOverrides, load_resolved_config, openpage_home};
 use crate::download::DownloadMission;
 use crate::error::{OpenPageError, OpenPageResult};
-use crate::page::ActionsDragData;
+use crate::page::{ActionsDragData, PageNavigationSnapshot};
 use crate::session::SessionOptions;
+use crate::settings::wait_timeout_result;
 use crate::webpage::{WebElement, WebFrame, WebMode, WebPage};
 
 pub fn run(args: ServeArgs) -> OpenPageResult<()> {
@@ -110,6 +111,28 @@ struct ServeRuntime {
 struct ServeWebPage {
     page: WebPage,
     active_frame_target: Option<String>,
+    refs: RefCell<RefRegistry>,
+    navigation_baseline: Option<NavigationBaseline>,
+    navigation_tickets: HashMap<String, NavigationTicket>,
+    next_navigation_ticket_id: u64,
+}
+
+#[derive(Clone, Debug)]
+enum NavigationBaseline {
+    Page {
+        started_seq: u64,
+        url: Option<String>,
+    },
+    Frame {
+        url: Option<String>,
+    },
+}
+
+#[derive(Clone, Debug)]
+struct NavigationTicket {
+    baseline: NavigationBaseline,
+    target_id: String,
+    frame_target: Option<String>,
 }
 
 impl ServeWebPage {
@@ -117,12 +140,29 @@ impl ServeWebPage {
         Self {
             page,
             active_frame_target: None,
+            refs: RefCell::new(RefRegistry::default()),
+            navigation_baseline: None,
+            navigation_tickets: HashMap::new(),
+            next_navigation_ticket_id: 1,
         }
     }
 
     fn current_frame(&self) -> OpenPageResult<Option<WebFrame>> {
         match self.active_frame_target.as_deref() {
             Some(target) if !target.is_empty() => {
+                if let Some(frame_id) = target.strip_prefix("id:") {
+                    return self
+                        .page
+                        .get_frame_contexts(None::<&str>)?
+                        .into_iter()
+                        .find(|frame| frame.id() == frame_id)
+                        .map(Some)
+                        .ok_or_else(|| {
+                            OpenPageError::ElementNotFound(format!(
+                                "frame not found for id: {frame_id}"
+                            ))
+                        });
+                }
                 if let Ok(index) = target.parse::<usize>() {
                     self.page.get_frame_context_by_index(index).map(Some)
                 } else {
@@ -135,16 +175,21 @@ impl ServeWebPage {
 
     fn clear_frame(&mut self) {
         self.active_frame_target = None;
+        self.clear_navigation_baseline();
+        self.clear_navigation_tickets();
     }
 
     fn switch_frame(&mut self, target: Option<String>) {
         self.active_frame_target = target;
+        self.clear_navigation_baseline();
+        self.clear_navigation_tickets();
     }
 
     fn switch_target(&mut self, target_id: &str) -> OpenPageResult<()> {
         self.page.activate_tab(target_id)?;
         self.page = self.page.with_target(target_id)?;
         self.clear_frame();
+        self.refs.borrow_mut().clear();
         Ok(())
     }
 
@@ -153,6 +198,13 @@ impl ServeWebPage {
     }
 
     fn find(&self, locator: &str) -> OpenPageResult<WebElement> {
+        if let Some(ref_id) = parse_ref(locator) {
+            return self.find_ref(ref_id);
+        }
+        self.find_raw(locator)
+    }
+
+    fn find_raw(&self, locator: &str) -> OpenPageResult<WebElement> {
         match self.current_frame()? {
             Some(frame) => frame.find(locator),
             None => self.page.find(locator),
@@ -160,10 +212,211 @@ impl ServeWebPage {
     }
 
     fn find_all(&self, locator: &str) -> OpenPageResult<Vec<WebElement>> {
+        if let Some(ref_id) = parse_ref(locator) {
+            return Ok(vec![self.find_ref(ref_id)?]);
+        }
+        self.find_all_raw(locator)
+    }
+
+    fn find_all_raw(&self, locator: &str) -> OpenPageResult<Vec<WebElement>> {
         match self.current_frame()? {
             Some(frame) => frame.find_all(locator),
             None => self.page.find_all(locator),
         }
+    }
+
+    fn find_ref(&self, ref_id: &str) -> OpenPageResult<WebElement> {
+        let target = self.refs.borrow().get(ref_id).cloned().ok_or_else(|| {
+            OpenPageError::ElementNotFound(format!(
+                "unknown ref @{ref_id}; run `openpage snapshot` or `openpage find` to refresh refs"
+            ))
+        })?;
+        if target.target_id != self.current_target_id()
+            || target.frame_target != self.active_frame_target
+        {
+            return Err(OpenPageError::ElementNotFound(format!(
+                "ref @{ref_id} belongs to another page or frame; run `openpage snapshot` again"
+            )));
+        }
+        if let Some(element) = self.find_ref_by_locator_hints(&target) {
+            self.refresh_ref_target(ref_id, &element)?;
+            return Ok(element);
+        }
+        if let Some(element) = self.reresolve_ref_target(&target)? {
+            self.refresh_ref_target(ref_id, &element)?;
+            return Ok(element);
+        }
+        Err(OpenPageError::ElementNotFound(format!(
+            "ref @{ref_id} is stale and could not be re-resolved; run `openpage snapshot` again"
+        )))
+    }
+
+    fn register_element(&self, element: &WebElement) -> OpenPageResult<String> {
+        let css_path = element.css_path().ok().filter(|value| !value.is_empty());
+        let xpath = element.xpath().ok().filter(|value| !value.is_empty());
+        if css_path.is_none() && xpath.is_none() {
+            return Err(OpenPageError::ElementNotFound(
+                "element has no stable locator hints".to_string(),
+            ));
+        }
+        let tag = element.tag().ok();
+        let attrs = element.attrs().ok().map(compact_element_attrs);
+        let text = element
+            .text()
+            .ok()
+            .flatten()
+            .map(|value| clip_agent_text(&value, 120));
+        let role = tag
+            .as_deref()
+            .zip(attrs.as_ref())
+            .map(|(tag, attrs)| element_role(tag, attrs));
+        let name = attrs
+            .as_ref()
+            .and_then(|attrs| element_name(text.as_deref(), attrs));
+        Ok(self.refs.borrow_mut().register(RefTarget {
+            target_id: self.current_target_id(),
+            frame_target: self.active_frame_target.clone(),
+            css_path,
+            xpath,
+            role,
+            tag,
+            name,
+            text,
+        }))
+    }
+
+    fn find_ref_by_locator_hints(&self, target: &RefTarget) -> Option<WebElement> {
+        if let Some(css_path) = target.css_path.as_deref().filter(|value| !value.is_empty())
+            && let Ok(element) = self.find_raw(&format!("css:{css_path}"))
+        {
+            return Some(element);
+        }
+        if let Some(xpath) = target.xpath.as_deref().filter(|value| !value.is_empty())
+            && let Ok(element) = self.find_raw(&format!("xpath:{xpath}"))
+        {
+            return Some(element);
+        }
+        None
+    }
+
+    fn reresolve_ref_target(&self, target: &RefTarget) -> OpenPageResult<Option<WebElement>> {
+        let mut queries = Vec::new();
+        for value in [target.name.as_deref(), target.text.as_deref()] {
+            let Some(value) = value
+                .map(normalize_agent_text)
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            if !queries.contains(&value) {
+                queries.push(value);
+            }
+        }
+
+        for query in queries {
+            let locator = format!("text={query}");
+            let elements = match self.find_all_raw(&locator) {
+                Ok(elements) => elements,
+                Err(_) => continue,
+            };
+            let mut matches = Vec::new();
+            for element in elements {
+                if candidate_matches_ref_target(&element, target)? {
+                    matches.push(element);
+                }
+            }
+            if matches.len() == 1 {
+                return Ok(matches.into_iter().next());
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn refresh_ref_target(&self, ref_id: &str, element: &WebElement) -> OpenPageResult<()> {
+        let css_path = element.css_path().ok().filter(|value| !value.is_empty());
+        let xpath = element.xpath().ok().filter(|value| !value.is_empty());
+        let tag = element.tag().ok();
+        let attrs = element.attrs().ok().map(compact_element_attrs);
+        let text = element
+            .text()
+            .ok()
+            .flatten()
+            .map(|value| clip_agent_text(&value, 120));
+        let role = tag
+            .as_deref()
+            .zip(attrs.as_ref())
+            .map(|(tag, attrs)| element_role(tag, attrs));
+        let name = attrs
+            .as_ref()
+            .and_then(|attrs| element_name(text.as_deref(), attrs));
+
+        self.refs.borrow_mut().register_as(
+            ref_id.to_string(),
+            RefTarget {
+                target_id: self.current_target_id(),
+                frame_target: self.active_frame_target.clone(),
+                css_path,
+                xpath,
+                role,
+                tag,
+                name,
+                text,
+            },
+        );
+        Ok(())
+    }
+
+    fn register_snapshot_entries(&self, entries: &mut [Value]) {
+        self.refs.borrow_mut().clear();
+        let target_id = self.current_target_id();
+        let frame_target = self.active_frame_target.clone();
+        for entry in entries {
+            let Some(obj) = entry.as_object_mut() else {
+                continue;
+            };
+            let Some(ref_id) = obj.get("ref").and_then(Value::as_str).map(str::to_string) else {
+                continue;
+            };
+            let css_path = obj
+                .remove("_cssPath")
+                .and_then(|value| value.as_str().map(ToString::to_string))
+                .filter(|value| !value.is_empty());
+            let xpath = obj
+                .remove("_xpath")
+                .and_then(|value| value.as_str().map(ToString::to_string))
+                .filter(|value| !value.is_empty());
+            self.refs.borrow_mut().register_as(
+                ref_id,
+                RefTarget {
+                    target_id: target_id.clone(),
+                    frame_target: frame_target.clone(),
+                    css_path,
+                    xpath,
+                    role: obj
+                        .get("role")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string),
+                    tag: obj
+                        .get("tag")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string),
+                    name: obj
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string),
+                    text: obj
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .map(ToString::to_string),
+                },
+            );
+        }
+    }
+
+    fn element_payload(&self, element: WebElement) -> OpenPageResult<Value> {
+        let ref_id = self.register_element(&element)?;
+        web_element_to_json(element, Some(ref_id))
     }
 
     fn run_js(&self, script: &str) -> OpenPageResult<Value> {
@@ -173,6 +426,143 @@ impl ServeWebPage {
         }
     }
 
+    fn current_context_url(&self) -> Option<String> {
+        self.run_js("window.location.href")
+            .ok()
+            .and_then(|value| value.as_str().map(ToOwned::to_owned))
+            .filter(|value| !value.is_empty())
+    }
+
+    fn record_navigation_baseline(&mut self) -> String {
+        let baseline = self.capture_navigation_baseline();
+        let token = self.next_navigation_ticket();
+        self.navigation_baseline = Some(baseline.clone());
+        self.navigation_tickets.insert(
+            token.clone(),
+            NavigationTicket {
+                baseline,
+                target_id: self.current_target_id(),
+                frame_target: self.active_frame_target.clone(),
+            },
+        );
+        self.prune_navigation_tickets();
+        token
+    }
+
+    fn clear_navigation_baseline(&mut self) {
+        self.navigation_baseline = None;
+    }
+
+    fn clear_navigation_tickets(&mut self) {
+        self.navigation_tickets.clear();
+    }
+
+    fn capture_navigation_baseline(&self) -> NavigationBaseline {
+        if self.current_frame().ok().flatten().is_some() {
+            return NavigationBaseline::Frame {
+                url: self.current_context_url(),
+            };
+        }
+
+        match self.page.navigation_snapshot() {
+            Ok(snapshot) => NavigationBaseline::Page {
+                started_seq: snapshot.started_seq,
+                url: snapshot.current_url.or_else(|| self.current_context_url()),
+            },
+            Err(_) => NavigationBaseline::Frame {
+                url: self.current_context_url(),
+            },
+        }
+    }
+
+    fn discard_stale_navigation_baseline(&mut self) {
+        let Some(baseline) = self.navigation_baseline.as_ref() else {
+            return;
+        };
+        match baseline {
+            NavigationBaseline::Page { started_seq, url } => {
+                if let Ok(snapshot) = self.page.navigation_snapshot()
+                    && page_navigation_transition_observed(*started_seq, &snapshot)
+                    && page_navigation_settled(*started_seq, &snapshot)
+                {
+                    self.clear_navigation_baseline();
+                    return;
+                }
+                let Ok(snapshot) = ready_snapshot(self) else {
+                    return;
+                };
+                if snapshot.is_settled()
+                    && navigation_transition_observed(url.as_deref(), &snapshot)
+                {
+                    self.clear_navigation_baseline();
+                }
+            }
+            NavigationBaseline::Frame { url } => {
+                let Ok(snapshot) = ready_snapshot(self) else {
+                    return;
+                };
+                if snapshot.is_settled()
+                    && navigation_transition_observed(url.as_deref(), &snapshot)
+                {
+                    self.clear_navigation_baseline();
+                }
+            }
+        }
+    }
+
+    fn navigation_baseline_for_wait(
+        &mut self,
+        token: Option<&str>,
+    ) -> OpenPageResult<NavigationBaseline> {
+        match token {
+            Some(token) => {
+                let ticket = self.navigation_tickets.get(token).cloned().ok_or_else(|| {
+                    OpenPageError::BrowserOperation(format!("unknown navigation token: {token}"))
+                })?;
+                if ticket.target_id != self.current_target_id()
+                    || ticket.frame_target != self.active_frame_target
+                {
+                    return Err(OpenPageError::BrowserOperation(format!(
+                        "navigation token {token} belongs to another page or frame"
+                    )));
+                }
+                Ok(ticket.baseline)
+            }
+            None => Ok(self
+                .navigation_baseline
+                .take()
+                .unwrap_or_else(|| self.capture_navigation_baseline())),
+        }
+    }
+
+    fn consume_navigation_token(&mut self, token: Option<&str>) {
+        let Some(token) = token else {
+            return;
+        };
+        self.navigation_tickets.remove(token);
+    }
+
+    fn next_navigation_ticket(&mut self) -> String {
+        let token = format!("nav-{}", self.next_navigation_ticket_id);
+        self.next_navigation_ticket_id += 1;
+        token
+    }
+
+    fn prune_navigation_tickets(&mut self) {
+        const MAX_NAVIGATION_TICKETS: usize = 32;
+        if self.navigation_tickets.len() <= MAX_NAVIGATION_TICKETS {
+            return;
+        }
+        let floor = self
+            .next_navigation_ticket_id
+            .saturating_sub(MAX_NAVIGATION_TICKETS as u64);
+        self.navigation_tickets.retain(|token, _| {
+            token
+                .strip_prefix("nav-")
+                .and_then(|value| value.parse::<u64>().ok())
+                .is_some_and(|value| value >= floor)
+        });
+    }
     fn active_element(&self) -> OpenPageResult<Option<WebElement>> {
         match self.current_frame()? {
             Some(frame) => frame.active_element(),
@@ -185,6 +575,76 @@ impl ServeWebPage {
             Some(frame) => frame.wait_for_doc_loaded(timeout_ms),
             None => self.page.wait_for_doc_loaded(timeout_ms),
         }
+    }
+}
+
+#[derive(Default)]
+struct RefRegistry {
+    next_id: u64,
+    refs: HashMap<String, RefTarget>,
+    by_key: HashMap<String, String>,
+}
+
+#[derive(Clone)]
+struct RefTarget {
+    target_id: String,
+    frame_target: Option<String>,
+    css_path: Option<String>,
+    xpath: Option<String>,
+    role: Option<String>,
+    tag: Option<String>,
+    name: Option<String>,
+    text: Option<String>,
+}
+
+impl RefRegistry {
+    fn clear(&mut self) {
+        self.next_id = 0;
+        self.refs.clear();
+        self.by_key.clear();
+    }
+
+    fn get(&self, ref_id: &str) -> Option<&RefTarget> {
+        self.refs.get(ref_id)
+    }
+
+    fn register(&mut self, target: RefTarget) -> String {
+        let key = target.key();
+        if let Some(ref_id) = self.by_key.get(&key) {
+            self.refs.insert(ref_id.clone(), target);
+            return ref_id.clone();
+        }
+        self.next_id += 1;
+        let ref_id = format!("e{}", self.next_id);
+        self.register_as(ref_id.clone(), target);
+        ref_id
+    }
+
+    fn register_as(&mut self, ref_id: String, target: RefTarget) {
+        if let Some(number) = ref_id
+            .strip_prefix('e')
+            .and_then(|value| value.parse::<u64>().ok())
+        {
+            self.next_id = self.next_id.max(number);
+        }
+        self.by_key.insert(target.key(), ref_id.clone());
+        self.refs.insert(ref_id, target);
+    }
+}
+
+impl RefTarget {
+    fn key(&self) -> String {
+        format!(
+            "{}|{}|{}|{}|{}|{}|{}|{}",
+            self.target_id,
+            self.frame_target.as_deref().unwrap_or(""),
+            self.css_path.as_deref().unwrap_or(""),
+            self.xpath.as_deref().unwrap_or(""),
+            self.role.as_deref().unwrap_or(""),
+            self.tag.as_deref().unwrap_or(""),
+            self.name.as_deref().unwrap_or(""),
+            self.text.as_deref().unwrap_or("")
+        )
     }
 }
 
@@ -328,9 +788,16 @@ fn resolve_window_info<'a>(
 }
 
 impl ServeRuntime {
+    fn close_all_webpages(&mut self) {
+        for (_target, state) in self.webpages.drain() {
+            let _ = state.page.quit();
+        }
+    }
+
     fn dispatch(&mut self, request: Request) -> OpenPageResult<Value> {
         match request.op.as_str() {
             "daemon.shutdown" => {
+                self.close_all_webpages();
                 self.shutdown = true;
                 Ok(json!({"shutdown": true}))
             }
@@ -382,13 +849,22 @@ impl ServeRuntime {
         }
         let resolved = load_resolved_config()?;
         let mut launch = resolved.launch;
+        apply_session_default_user_data_dir(
+            &mut launch,
+            resolved.user_data_dir_source,
+            optional_str(params, "session").unwrap_or(&target),
+            optional_string(params, "user_data_dir").is_some(),
+        )?;
         let overrides = RuntimeOverrides {
             browser_path: optional_string(params, "browser_path").map(Into::into),
             user_data_dir: optional_string(params, "user_data_dir").map(Into::into),
+            local_port: optional_u64(params, "port").map(|value| value as u16),
             headless: optional_bool(params, "headless"),
             width: optional_u64(params, "width").map(|value| value as u32),
             height: optional_u64(params, "height").map(|value| value as u32),
             no_sandbox: optional_bool(params, "no_sandbox"),
+            incognito: optional_bool(params, "incognito"),
+            mute: optional_bool(params, "mute"),
         };
         overrides.apply_to_launch(&mut launch);
 
@@ -411,11 +887,43 @@ impl ServeRuntime {
     }
 }
 
+fn apply_session_default_user_data_dir(
+    launch: &mut crate::browser::LaunchOptions,
+    user_data_dir_source: ConfigValueSource,
+    session: &str,
+    explicit_user_data_dir: bool,
+) -> OpenPageResult<()> {
+    if explicit_user_data_dir || user_data_dir_source != ConfigValueSource::BuiltInDefault {
+        return Ok(());
+    }
+
+    let session = session.trim();
+    if session.is_empty() {
+        return Ok(());
+    }
+
+    launch.user_data_dir = Some(openpage_home()?.join("profiles").join(session));
+    Ok(())
+}
+
 fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenPageResult<Value> {
-    let page = &state.page;
+    if op != "wait.navigation" {
+        state.discard_stale_navigation_baseline();
+    }
+    let page = state.page.clone();
     match op {
-        "webpage.back" => Ok(json!({"back": page.back(1)?})),
-        "webpage.forward" => Ok(json!({"forward": page.forward(1)?})),
+        "webpage.back" => {
+            let navigation_token = state.record_navigation_baseline();
+            let result = json!({"back": page.back(1)?, "navigation_token": navigation_token});
+            state.clear_navigation_baseline();
+            Ok(result)
+        }
+        "webpage.forward" => {
+            let navigation_token = state.record_navigation_baseline();
+            let result = json!({"forward": page.forward(1)?, "navigation_token": navigation_token});
+            state.clear_navigation_baseline();
+            Ok(result)
+        }
         "history.list" => {
             let history = page.execute_cdp(GetNavigationHistoryParams::default())?;
             let current_index = history.current_index as usize;
@@ -441,6 +949,7 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             }))
         }
         "history.go" => {
+            let navigation_token = state.record_navigation_baseline();
             let requested_index = optional_u64(params, "index").ok_or_else(|| {
                 OpenPageError::BrowserOperation("missing numeric param: index".to_string())
             })? as usize;
@@ -460,13 +969,16 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
                     ))
                 })?;
             page.execute_cdp(NavigateToHistoryEntryParams::new(entry.id))?;
-            Ok(json!({
+            let result = json!({
                 "navigated": true,
                 "index": requested_index,
                 "id": entry.id,
                 "url": entry.url,
                 "title": entry.title,
-            }))
+                "navigation_token": navigation_token,
+            });
+            state.clear_navigation_baseline();
+            Ok(result)
         }
         "history.clear" => {
             page.execute_cdp(ResetNavigationHistoryParams::default())?;
@@ -495,19 +1007,43 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             }))
         }
         "webpage.reload" => {
+            let navigation_token = state.record_navigation_baseline();
             page.refresh(optional_bool(params, "ignore_cache").unwrap_or(false))?;
             state.wait_for_doc_loaded(optional_u64(params, "timeout_ms").unwrap_or(10_000))?;
-            Ok(json!({"reloaded": true}))
+            state.clear_navigation_baseline();
+            Ok(json!({"reloaded": true, "navigation_token": navigation_token}))
         }
         "webpage.stop_loading" => {
             page.stop_loading()?;
             Ok(json!({"stopped_loading": true}))
         }
-        "webpage.get" => Ok(json!({"loaded": page.get(required_str(params, "url")?)?})),
-        "webpage.post" => Ok(json!({"loaded": page.post(required_str(params, "url")?)?})),
-        "webpage.post_json" => Ok(json!({
-            "loaded": page.post_json(required_str(params, "url")?, params.get("payload").cloned())?
-        })),
+        "webpage.get" => {
+            let navigation_token = state.record_navigation_baseline();
+            let result = json!({
+                "loaded": page.get(required_str(params, "url")?)?,
+                "navigation_token": navigation_token,
+            });
+            state.clear_navigation_baseline();
+            Ok(result)
+        }
+        "webpage.post" => {
+            let navigation_token = state.record_navigation_baseline();
+            let result = json!({
+                "loaded": page.post(required_str(params, "url")?)?,
+                "navigation_token": navigation_token,
+            });
+            state.clear_navigation_baseline();
+            Ok(result)
+        }
+        "webpage.post_json" => {
+            let navigation_token = state.record_navigation_baseline();
+            let result = json!({
+                "loaded": page.post_json(required_str(params, "url")?, params.get("payload").cloned())?,
+                "navigation_token": navigation_token,
+            });
+            state.clear_navigation_baseline();
+            Ok(result)
+        }
         "webpage.change_mode" => {
             let mode = optional_str(params, "mode")
                 .map(WebMode::parse)
@@ -526,7 +1062,7 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             current_page_origin(state).as_deref(),
             current_page_title(state).as_deref(),
         )),
-        "webpage.snapshot" => snapshot_payload(state),
+        "webpage.snapshot" => snapshot_payload(state, params),
         "webpage.json" => Ok(json!({"json": page.json()?})),
         "webpage.cookies" => Ok(json!({"cookies": page.cookies()?})),
         "webpage.set_cookie" | "cookies.set" => {
@@ -668,14 +1204,14 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             page.cookies_to_browser()?;
             Ok(json!({"copied": true}))
         }
-        "window.list" => window_list_payload(page, &state.current_target_id()),
+        "window.list" => window_list_payload(&page, &state.current_target_id()),
         "window.switch" => {
             let target_id = required_str(params, "target_id")?;
             state.switch_target(target_id)?;
             Ok(json!({"switched": true, "target_id": target_id}))
         }
         "window.close" => {
-            let windows = collect_window_infos(page, &state.current_target_id())?;
+            let windows = collect_window_infos(&page, &state.current_target_id())?;
             let selected =
                 resolve_window_info(windows.as_slice(), optional_str(params, "target_id"))?;
             let targets = selected
@@ -932,7 +1468,10 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             Ok(json!({"saved": true}))
         }
         "webpage.active_element" => Ok(json!({
-            "element": state.active_element()?.map(web_element_to_json).transpose()?
+            "element": state
+                .active_element()?
+                .map(|element| state.element_payload(element))
+                .transpose()?
         })),
         "tab.list" => Ok(json!({
             "tabs": page
@@ -1030,7 +1569,11 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
                         "parent_id": frame.parent_id().ok().flatten(),
                         "tag": frame.tag().unwrap_or_default(),
                         "attrs": frame.attrs().unwrap_or_default(),
-                        "active": state.active_frame_target.as_deref() == Some(frame.id()),
+                        "active": state
+                            .active_frame_target
+                            .as_deref()
+                            .and_then(|target| target.strip_prefix("id:"))
+                            == Some(frame.id()),
                     })
                 })
                 .collect::<Vec<_>>()
@@ -1046,22 +1589,26 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             } else {
                 page.get_frame_context(target)?
             };
-            state.switch_frame(Some(target.to_string()));
+            state.switch_frame(Some(format!("id:{}", frame.id())));
             Ok(json!({
                 "switched": true,
                 "frame_id": frame.id(),
                 "target": target,
             }))
         }
-        "webpage.find" => Ok(web_element_to_json(
-            state.find(&required_locator_string(params)?)?,
-        )?),
-        "webpage.find_all" => Ok(json!({
-            "elements": state.find_all(&required_locator_string(params)?)?
+        "webpage.find" => {
+            let element = state.find(&required_locator_string(params)?)?;
+            Ok(state.element_payload(element)?)
+        }
+        "webpage.find_all" => {
+            let elements = state.find_all(&required_locator_string(params)?)?;
+            let payloads = elements
                 .into_iter()
-                .map(web_element_to_json)
-                .collect::<OpenPageResult<Vec<_>>>()?
-        })),
+                .map(|element| state.element_payload(element))
+                .collect::<OpenPageResult<Vec<_>>>()?;
+            Ok(json!({"elements": payloads}))
+        }
+        "webpage.locate" => locate_chain_payload(state, required_str(params, "chain")?),
         "webpage.count" => Ok(json!({
             "count": state.find_all(&required_locator_string(params)?)?.len()
         })),
@@ -1121,7 +1668,11 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         )),
         "webpage.ele.child_count" | "element.child_count" => Ok(payload_with_origin(
             "child_count",
-            json!(state.find(&required_locator_string(params)?)?.child_count()?),
+            json!(
+                state
+                    .find(&required_locator_string(params)?)?
+                    .child_count()?
+            ),
             current_page_origin(state).as_deref(),
         )),
         "webpage.ele.css_path" | "element.css_path" => Ok(payload_with_origin(
@@ -1149,8 +1700,9 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             current_page_origin(state).as_deref(),
         )),
         "webpage.ele.click" | "element.click" => {
+            let navigation_token = state.record_navigation_baseline();
             state.find(&required_locator_string(params)?)?.click()?;
-            Ok(json!({"clicked": true}))
+            Ok(json!({"clicked": true, "navigation_token": navigation_token}))
         }
         "webpage.ele.click_right" | "element.click_right" => {
             state
@@ -1159,25 +1711,28 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             Ok(json!({"clicked": true, "button": "right"}))
         }
         "webpage.ele.click_middle" | "element.click_middle" => {
+            let navigation_token = state.record_navigation_baseline();
             state
                 .find(&required_locator_string(params)?)?
                 .click_middle()?;
-            Ok(json!({"clicked": true, "button": "middle"}))
+            Ok(json!({"clicked": true, "button": "middle", "navigation_token": navigation_token}))
         }
         "webpage.ele.click_multi" | "element.click_multi" => {
+            let navigation_token = state.record_navigation_baseline();
             state
                 .find(&required_locator_string(params)?)?
                 .click_multi(optional_u64(params, "count").unwrap_or(2) as u32)?;
-            Ok(json!({"clicked": true}))
+            Ok(json!({"clicked": true, "navigation_token": navigation_token}))
         }
         "webpage.ele.click_at" | "element.click_at" => {
+            let navigation_token = state.record_navigation_baseline();
             state.find(&required_locator_string(params)?)?.click_at(
                 optional_f64(params, "x"),
                 optional_f64(params, "y"),
                 optional_str(params, "button").unwrap_or("left"),
                 optional_u64(params, "count").unwrap_or(1) as u32,
             )?;
-            Ok(json!({"clicked": true}))
+            Ok(json!({"clicked": true, "navigation_token": navigation_token}))
         }
         "webpage.ele.input" | "element.input" => {
             state
@@ -1383,8 +1938,9 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             Ok(json!({"cleared": true}))
         }
         "webpage.ele.submit" | "element.submit" => {
+            let navigation_token = state.record_navigation_baseline();
             state.find(&required_locator_string(params)?)?.submit()?;
-            Ok(json!({"submitted": true}))
+            Ok(json!({"submitted": true, "navigation_token": navigation_token}))
         }
         "webpage.ele.check" | "element.check" => {
             state
@@ -1403,17 +1959,17 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             Ok(json!({"hovered": true}))
         }
         "webpage.ele.hover_at" | "element.hover_at" => {
-            state.find(&required_locator_string(params)?)?.hover_with_offset(
-                optional_f64(params, "x"),
-                optional_f64(params, "y"),
-            )?;
+            state
+                .find(&required_locator_string(params)?)?
+                .hover_with_offset(optional_f64(params, "x"), optional_f64(params, "y"))?;
             Ok(json!({"hovered": true}))
         }
         "webpage.ele.press_key" | "element.press_key" => {
+            let navigation_token = state.record_navigation_baseline();
             state
                 .find(&required_locator_string(params)?)?
                 .press_key(required_str(params, "key")?)?;
-            Ok(json!({"pressed": true}))
+            Ok(json!({"pressed": true, "navigation_token": navigation_token}))
         }
         "webpage.ele.select" | "element.select" => {
             let element = state.find(&required_locator_string(params)?)?;
@@ -1548,9 +2104,7 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
                 "down" => element.scroll_down(optional_f64(params, "pixels").unwrap_or(300.0))?,
                 "up" => element.scroll_up(optional_f64(params, "pixels").unwrap_or(300.0))?,
                 "left" => element.scroll_left(optional_f64(params, "pixels").unwrap_or(300.0))?,
-                "right" => {
-                    element.scroll_right(optional_f64(params, "pixels").unwrap_or(300.0))?
-                }
+                "right" => element.scroll_right(optional_f64(params, "pixels").unwrap_or(300.0))?,
                 "top" => element.scroll_to_top()?,
                 "bottom" => element.scroll_to_bottom()?,
                 "half" => element.scroll_to_half()?,
@@ -1685,6 +2239,14 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         "wait.doc_loaded" => Ok(json!({
             "loaded": state.wait_for_doc_loaded(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
         })),
+        "wait.ready" => {
+            wait_for_ready_payload(state, optional_u64(params, "timeout_ms").unwrap_or(10_000))
+        }
+        "wait.navigation" => wait_for_navigation_payload(
+            state,
+            optional_u64(params, "timeout_ms").unwrap_or(10_000),
+            optional_str(params, "token"),
+        ),
         "wait.url_change" => Ok(json!({
             "changed": page.wait_for_url_change(
                 required_str(params, "text")?,
@@ -1749,8 +2311,11 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
             )?
         })),
         "wait.ele_deleted" => Ok(json!({
-            "ready": state.find(&required_locator_string(params)?)?
-                .wait_until_deleted(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
+            "ready": wait_for_deleted(
+                state,
+                &required_locator_string(params)?,
+                optional_u64(params, "timeout_ms").unwrap_or(10_000),
+            )?
         })),
         "wait.ele_clickable" => Ok(json!({
             "ready": state.find(&required_locator_string(params)?)?
@@ -1771,6 +2336,18 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
         "wait.ele_stop_moving" => Ok(json!({
             "ready": state.find(&required_locator_string(params)?)?
                 .wait_until_stop_moving(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
+        })),
+        "wait.ele_disabled_or_deleted" => Ok(json!({
+            "ready": wait_for_disabled_or_deleted(
+                state,
+                &required_locator_string(params)?,
+                optional_u64(params, "timeout_ms").unwrap_or(10_000),
+            )?
+        })),
+        "wait.upload_paths_inputted" => Ok(json!({
+            "inputted": page.wait_for_upload_paths_inputted(
+                optional_u64(params, "timeout_ms").unwrap_or(10_000),
+            )?
         })),
         "webpage.drag_in" | "page.drag_in" => {
             let target = state.find(&required_str(params, "target")?)?;
@@ -1841,7 +2418,10 @@ fn optional_u64(params: &Value, key: &str) -> Option<u64> {
     params.get(key).and_then(Value::as_u64)
 }
 
-fn session_options_from_request(params: &Value, mut session: SessionOptions) -> OpenPageResult<SessionOptions> {
+fn session_options_from_request(
+    params: &Value,
+    mut session: SessionOptions,
+) -> OpenPageResult<SessionOptions> {
     if let Some(timeout_secs) = optional_u64(params, "timeout_secs") {
         session.set_timeout(timeout_secs);
     }
@@ -1860,11 +2440,12 @@ fn optional_i64(params: &Value, key: &str) -> Option<i64> {
 }
 
 fn normalize_locator(locator: &str) -> Cow<'_, str> {
-    let trimmed = locator.trim();
-    if let Some(reference) = parse_ref(trimmed) {
-        return Cow::Owned(format!(r#"[data-op-ref="{}"]"#, reference));
+    let normalized = normalize_locator_shorthand(locator);
+    if normalized == locator {
+        Cow::Borrowed(locator)
+    } else {
+        Cow::Owned(normalized)
     }
-    Cow::Borrowed(locator)
 }
 
 fn parse_ref(input: &str) -> Option<&str> {
@@ -1885,82 +2466,320 @@ fn parse_plain_ref(input: &str) -> Option<&str> {
     }
 }
 
-fn agent_snapshot_script() -> &'static str {
-    r#"
-        (() => {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AgentSnapshotMode {
+    Interactive,
+    Semantic,
+    All,
+}
+
+impl AgentSnapshotMode {
+    fn parse(value: Option<&str>) -> OpenPageResult<Self> {
+        match value.unwrap_or("interactive") {
+            "interactive" => Ok(Self::Interactive),
+            "semantic" => Ok(Self::Semantic),
+            "all" => Ok(Self::All),
+            other => Err(OpenPageError::UnsupportedOperation(format!(
+                "unsupported snapshot mode: {other}"
+            ))),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Interactive => "interactive",
+            Self::Semantic => "semantic",
+            Self::All => "all",
+        }
+    }
+
+    fn default_depth(self) -> usize {
+        match self {
+            Self::Interactive => 10,
+            Self::Semantic => 8,
+            Self::All => 5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AgentSnapshotFormat {
+    Text,
+    Json,
+}
+
+impl AgentSnapshotFormat {
+    fn parse(value: Option<&str>) -> OpenPageResult<Self> {
+        match value.unwrap_or("text") {
+            "text" => Ok(Self::Text),
+            "json" => Ok(Self::Json),
+            other => Err(OpenPageError::UnsupportedOperation(format!(
+                "unsupported snapshot format: {other}"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct AgentSnapshotOptions {
+    mode: AgentSnapshotMode,
+    format: AgentSnapshotFormat,
+    raw: bool,
+    depth: usize,
+    selector: Option<String>,
+}
+
+impl AgentSnapshotOptions {
+    fn from_params(params: &Value) -> OpenPageResult<Self> {
+        let mode = AgentSnapshotMode::parse(optional_str(params, "mode"))?;
+        let format = AgentSnapshotFormat::parse(optional_str(params, "format"))?;
+        let depth = optional_u64(params, "depth")
+            .map(|value| value as usize)
+            .unwrap_or_else(|| mode.default_depth());
+
+        Ok(Self {
+            mode,
+            format,
+            raw: optional_bool(params, "raw").unwrap_or(false),
+            depth,
+            selector: optional_string(params, "selector"),
+        })
+    }
+}
+
+fn agent_snapshot_script(options: &AgentSnapshotOptions) -> OpenPageResult<String> {
+    let options_json = serde_json::to_string(&json!({
+        "mode": options.mode.as_str(),
+        "depth": options.depth,
+        "selector": options.selector,
+        "maxEntries": 200,
+    }))
+    .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
+
+    Ok(format!(
+        r#"
+        (() => {{
+            const options = {options_json};
             const interactiveTags = new Set(['a', 'button', 'input', 'textarea', 'select', 'option', 'summary']);
-            const interactiveRoles = new Set(['button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'option', 'textbox', 'combobox']);
+            const interactiveRoles = new Set(['button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'option', 'textbox', 'combobox', 'searchbox']);
+            const semanticTags = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'main', 'nav', 'article', 'section', 'aside', 'label']);
+            const semanticRoles = new Set(['heading', 'main', 'navigation', 'article', 'region', 'cell', 'gridcell', 'columnheader', 'rowheader', 'listitem']);
             const cleanText = (value) => (value || '').replace(/\s+/g, ' ').trim();
             const clipText = (value, limit = 80) => cleanText(value).slice(0, limit);
-            const labelText = (el) => {
+            const cssEscape = (value) => {{
+                if (globalThis.CSS && typeof globalThis.CSS.escape === 'function') return globalThis.CSS.escape(value);
+                return String(value).replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${{ch}}`);
+            }};
+            const roleOf = (el) => {{
+                const explicit = cleanText(el.getAttribute('role')).toLowerCase();
+                if (explicit) return explicit;
+                const tag = el.tagName.toLowerCase();
+                if (tag === 'a' && el.hasAttribute('href')) return 'link';
+                if (tag === 'button') return 'button';
+                if (tag === 'textarea') return 'textbox';
+                if (tag === 'select') return 'combobox';
+                if (tag === 'option') return 'option';
+                if (tag === 'input') {{
+                    const type = cleanText(el.getAttribute('type')).toLowerCase();
+                    if (type === 'checkbox') return 'checkbox';
+                    if (type === 'radio') return 'radio';
+                    if (type === 'button' || type === 'submit' || type === 'reset') return 'button';
+                    if (type === 'search') return 'searchbox';
+                    return 'textbox';
+                }}
+                if (/^h[1-6]$/.test(tag)) return 'heading';
+                return tag;
+            }};
+            const labelText = (el) => {{
                 if (!el.labels || el.labels.length === 0) return '';
                 return clipText(Array.from(el.labels)
                     .map(label => label.innerText || label.textContent || '')
                     .join(' '));
-            };
-            const isInteractive = (el) => {
+            }};
+            const accessibleName = (el) => {{
+                const aria = clipText(el.getAttribute('aria-label') || '');
+                if (aria) return aria;
+                const title = clipText(el.getAttribute('title') || '');
+                if (title) return title;
+                const alt = clipText(el.getAttribute('alt') || '');
+                if (alt) return alt;
+                const label = labelText(el);
+                if (label) return label;
+                const value = clipText(el.getAttribute('value') || '');
+                if (value && ['input', 'option'].includes(el.tagName.toLowerCase())) return value;
+                return clipText(el.innerText || el.textContent || '');
+            }};
+            const isVisible = (el) => {{
+                const rect = el.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) return false;
+                const style = getComputedStyle(el);
+                return style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || 1) !== 0;
+            }};
+            const isInteractive = (el) => {{
                 const tag = el.tagName.toLowerCase();
                 if (interactiveTags.has(tag)) return true;
                 if (el.onclick || el.hasAttribute('onclick')) return true;
-                const role = cleanText(el.getAttribute('role')).toLowerCase();
-                return interactiveRoles.has(role);
-            };
-            Array.from(document.querySelectorAll('[data-op-ref]'))
-                .forEach(el => el.removeAttribute('data-op-ref'));
-            const elements = Array.from(document.querySelectorAll('*'))
-                .filter(isInteractive);
+                if (el.hasAttribute('tabindex') && el.getAttribute('tabindex') !== '-1') return true;
+                if (getComputedStyle(el).cursor === 'pointer') return true;
+                if (el.isContentEditable) return true;
+                return interactiveRoles.has(roleOf(el));
+            }};
+            const isSemantic = (el) => {{
+                const tag = el.tagName.toLowerCase();
+                if (semanticTags.has(tag)) return true;
+                return semanticRoles.has(roleOf(el));
+            }};
+            const includeElement = (el) => {{
+                if (!(el instanceof HTMLElement) || !isVisible(el)) return false;
+                if (options.mode === 'interactive') return isInteractive(el);
+                if (options.mode === 'semantic') return isInteractive(el) || isSemantic(el);
+                return isInteractive(el) || isSemantic(el) || !!accessibleName(el);
+            }};
+            const nearestHeading = (el) => {{
+                let node = el.previousElementSibling;
+                while (node) {{
+                    if (/^H[1-6]$/.test(node.tagName)) return clipText(node.innerText || node.textContent || '');
+                    node = node.previousElementSibling;
+                }}
+                const parent = el.parentElement;
+                if (!parent) return '';
+                const heading = parent.querySelector('h1,h2,h3,h4,h5,h6');
+                return heading ? clipText(heading.innerText || heading.textContent || '') : '';
+            }};
+            const cssPathOf = (el) => {{
+                if (!(el instanceof Element)) return '';
+                const parts = [];
+                let node = el;
+                while (node && node.nodeType === Node.ELEMENT_NODE) {{
+                    const tag = node.tagName.toLowerCase();
+                    if (node.id) {{
+                        parts.unshift(`${{tag}}#${{cssEscape(node.id)}}`);
+                        break;
+                    }}
+                    let nth = 1;
+                    let sib = node;
+                    while ((sib = sib.previousElementSibling)) nth += 1;
+                    parts.unshift(`${{tag}}:nth-child(${{nth}})`);
+                    node = node.parentElement;
+                }}
+                return parts.join(' > ');
+            }};
+            const xpathOf = (el) => {{
+                if (!(el instanceof Element)) return '';
+                const parts = [];
+                let node = el;
+                while (node && node.nodeType === Node.ELEMENT_NODE) {{
+                    const tag = node.tagName.toLowerCase();
+                    let index = 1;
+                    let sib = node;
+                    while ((sib = sib.previousElementSibling)) {{
+                        if (sib.tagName.toLowerCase() === tag) index += 1;
+                    }}
+                    parts.unshift(`${{tag}}[${{index}}]`);
+                    node = node.parentElement;
+                }}
+                return '/' + parts.join('/');
+            }};
+            const root = options.selector ? document.querySelector(options.selector) : document.body;
+            if (!root) return {{ entries: [], truncated: false, error: options.selector ? `selector not found: ${{options.selector}}` : null, options }};
             const snapshot = [];
-            elements.forEach((el, i) => {
+            const visit = (el, depth) => {{
+                if (!el || snapshot.length >= options.maxEntries || depth > options.depth) return;
+                if (includeElement(el)) snapshot.push({{ el, depth }});
+                Array.from(el.children || []).forEach(child => visit(child, depth + 1));
+            }};
+            visit(root, 0);
+            const entries = [];
+            snapshot.forEach((item, i) => {{
+                const el = item.el;
                 const ref = 'e' + (i + 1);
-                el.setAttribute('data-op-ref', ref);
-                const attrs = {};
-                for (const attr of ['id', 'class', 'name', 'type', 'placeholder', 'href', 'role', 'aria-label', 'title', 'alt', 'value']) {
+                const attrs = {{}};
+                for (const attr of ['id', 'name', 'type', 'placeholder', 'href', 'role', 'aria-label', 'title', 'alt', 'value']) {{
                     if (!el.hasAttribute(attr)) continue;
                     const value = cleanText(el.getAttribute(attr));
                     if (value) attrs[attr] = value;
-                }
-                const entry = {
-                    ref: ref,
+                }}
+                const rect = el.getBoundingClientRect();
+                const entry = {{
+                    ref,
+                    role: roleOf(el),
                     tag: el.tagName.toLowerCase(),
+                    name: accessibleName(el),
                     text: clipText(el.innerText || el.textContent || ''),
-                    attrs: attrs,
-                };
+                    attrs,
+                    depth: item.depth,
+                    _cssPath: cssPathOf(el),
+                    _xpath: xpathOf(el),
+                    state: {{
+                        visible: true,
+                        disabled: !!el.disabled,
+                        checked: !!el.checked,
+                        selected: !!el.selected,
+                        focused: document.activeElement === el,
+                        inViewport: rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth,
+                    }},
+                }};
                 const label = labelText(el);
                 if (label) entry.label = label;
-                if ('disabled' in el && el.disabled) entry.disabled = true;
-                if ('checked' in el && el.checked) entry.checked = true;
-                if ('selected' in el && el.selected) entry.selected = true;
-                snapshot.push(entry);
-            });
-            return snapshot;
-        })()
+                const heading = nearestHeading(el);
+                if (heading && heading !== entry.name && heading !== entry.text) entry.context = heading;
+                entries.push(entry);
+            }});
+            return {{
+                entries,
+                truncated: snapshot.length >= options.maxEntries,
+                error: null,
+                options,
+            }};
+        }})()
     "#
+    ))
 }
 
-fn snapshot_payload(state: &ServeWebPage) -> OpenPageResult<Value> {
-    let snapshot = state.run_js(agent_snapshot_script())?;
+fn snapshot_payload(state: &mut ServeWebPage, params: &Value) -> OpenPageResult<Value> {
+    let options = AgentSnapshotOptions::from_params(params)?;
+    let snapshot = state.run_js(&agent_snapshot_script(&options)?)?;
 
     let origin = current_page_origin(state);
     let title = current_page_title(state);
+    let mut entries = snapshot
+        .get("entries")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    state.register_snapshot_entries(&mut entries);
 
     let mut payload = payload_object(
-        "snapshot",
-        snapshot.clone(),
+        "text",
+        Value::String(format_snapshot_text(
+            &entries,
+            title.as_deref(),
+            origin.as_deref(),
+        )),
         origin.as_deref(),
         title.as_deref(),
     );
-
-    if let Some(entries) = snapshot.as_array() {
-        payload.insert(
-            "text".to_string(),
-            Value::String(format_snapshot_text(
-                entries,
-                title.as_deref(),
-                origin.as_deref(),
-            )),
-        );
-        payload.insert("refs".to_string(), Value::Object(snapshot_refs(entries)));
-        payload.insert("interactive_count".to_string(), json!(entries.len()));
+    payload.insert("refs".to_string(), Value::Object(snapshot_refs(&entries)));
+    payload.insert("count".to_string(), json!(entries.len()));
+    payload.insert("mode".to_string(), json!(options.mode.as_str()));
+    payload.insert("depth".to_string(), json!(options.depth));
+    if let Some(selector) = options.selector {
+        payload.insert("selector".to_string(), json!(selector));
+    }
+    if snapshot
+        .get("truncated")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        payload.insert("truncated".to_string(), json!(true));
+    }
+    if let Some(error) = snapshot.get("error").and_then(Value::as_str) {
+        if !error.is_empty() {
+            payload.insert("warning".to_string(), json!(error));
+        }
+    }
+    if options.raw || options.format == AgentSnapshotFormat::Json {
+        payload.insert("snapshot".to_string(), Value::Array(entries));
     }
 
     Ok(Value::Object(payload))
@@ -2036,25 +2855,46 @@ fn format_snapshot_text(entries: &[Value], title: Option<&str>, origin: Option<&
             continue;
         };
         let ref_id = obj.get("ref").and_then(Value::as_str).unwrap_or("?");
+        let role = obj.get("role").and_then(Value::as_str).unwrap_or("element");
         let tag = obj.get("tag").and_then(Value::as_str).unwrap_or("unknown");
+        let name = obj.get("name").and_then(Value::as_str).unwrap_or("");
         let text = obj.get("text").and_then(Value::as_str).unwrap_or("");
         let attrs = obj.get("attrs").and_then(Value::as_object);
         let label = obj.get("label").and_then(Value::as_str).unwrap_or("");
-        let disabled = obj
-            .get("disabled")
+        let context = obj.get("context").and_then(Value::as_str).unwrap_or("");
+        let state = obj.get("state").and_then(Value::as_object);
+        let disabled = state
+            .and_then(|state| state.get("disabled"))
             .and_then(Value::as_bool)
             .unwrap_or(false);
-        let checked = obj.get("checked").and_then(Value::as_bool).unwrap_or(false);
-        let selected = obj
-            .get("selected")
+        let checked = state
+            .and_then(|state| state.get("checked"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let selected = state
+            .and_then(|state| state.get("selected"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let focused = state
+            .and_then(|state| state.get("focused"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let in_viewport = state
+            .and_then(|state| state.get("inViewport"))
             .and_then(Value::as_bool)
             .unwrap_or(false);
 
-        let mut line = format!("@{ref_id} [{tag}]");
-        if !text.is_empty() {
+        let indent = obj
+            .get("depth")
+            .and_then(Value::as_u64)
+            .map(|depth| "  ".repeat(depth.min(6) as usize))
+            .unwrap_or_default();
+        let display = if !name.is_empty() { name } else { text };
+        let mut line = format!("{indent}@{ref_id} {role} [{tag}]");
+        if !display.is_empty() {
             line.push(' ');
             line.push('"');
-            line.push_str(&escape_snapshot_value(text));
+            line.push_str(&escape_snapshot_value(display));
             line.push('"');
         }
         if !label.is_empty() {
@@ -2100,6 +2940,17 @@ fn format_snapshot_text(entries: &[Value], title: Option<&str>, origin: Option<&
         if disabled {
             line.push_str(" disabled");
         }
+        if focused {
+            line.push_str(" focused");
+        }
+        if in_viewport {
+            line.push_str(" in_viewport");
+        }
+        if !context.is_empty() {
+            line.push_str(" context=\"");
+            line.push_str(&escape_snapshot_value(context));
+            line.push('"');
+        }
 
         lines.push(line);
     }
@@ -2118,8 +2969,14 @@ fn snapshot_refs(entries: &[Value]) -> Map<String, Value> {
         };
 
         let mut ref_obj = Map::new();
+        if let Some(role) = obj.get("role").and_then(Value::as_str) {
+            ref_obj.insert("role".to_string(), Value::String(role.to_string()));
+        }
         if let Some(tag) = obj.get("tag").and_then(Value::as_str) {
             ref_obj.insert("tag".to_string(), Value::String(tag.to_string()));
+        }
+        if let Some(name) = obj.get("name").and_then(Value::as_str) {
+            ref_obj.insert("name".to_string(), Value::String(name.to_string()));
         }
         if let Some(text) = obj.get("text").and_then(Value::as_str) {
             ref_obj.insert("text".to_string(), Value::String(text.to_string()));
@@ -2130,10 +2987,8 @@ fn snapshot_refs(entries: &[Value]) -> Map<String, Value> {
         if let Some(attrs) = obj.get("attrs").and_then(Value::as_object) {
             ref_obj.insert("attrs".to_string(), Value::Object(attrs.clone()));
         }
-        for key in ["disabled", "checked", "selected"] {
-            if let Some(value) = obj.get(key).and_then(Value::as_bool) {
-                ref_obj.insert(key.to_string(), Value::Bool(value));
-            }
+        if let Some(state) = obj.get("state").and_then(Value::as_object) {
+            ref_obj.insert("state".to_string(), Value::Object(state.clone()));
         }
         refs.insert(ref_id.to_string(), Value::Object(ref_obj));
     }
@@ -2224,52 +3079,74 @@ mod tests {
         let entries = vec![
             json!({
                 "ref": "e1",
+                "role": "button",
                 "tag": "button",
+                "name": "Go",
                 "text": "Go",
-                "attrs": {"id": "go"}
+                "attrs": {"id": "go"},
+                "state": {"inViewport": true}
             }),
             json!({
                 "ref": "e2",
+                "role": "textbox",
                 "tag": "input",
+                "name": "Email",
                 "text": "",
                 "label": "Email",
                 "attrs": {"placeholder": "Email", "type": "text"},
-                "disabled": true
+                "state": {"disabled": true}
             }),
             json!({
                 "ref": "e3",
+                "role": "checkbox",
                 "tag": "input",
                 "text": "",
                 "attrs": {"type": "checkbox"},
-                "checked": true
+                "state": {"checked": true}
             }),
         ];
 
         let text = format_snapshot_text(&entries, Some("Example"), Some("https://example.com"));
         assert!(text.contains("Page: Example"));
         assert!(text.contains("URL: https://example.com"));
-        assert!(text.contains("@e1 [button] \"Go\" id=\"go\""));
-        assert!(text.contains("@e2 [input] label=\"Email\" type=\"text\" placeholder=\"Email\" disabled"));
-        assert!(text.contains("@e3 [input] type=\"checkbox\" checked"));
+        assert!(text.contains("@e1 button [button] \"Go\" id=\"go\" in_viewport"));
+        assert!(text
+            .contains("@e2 textbox [input] \"Email\" label=\"Email\" type=\"text\" placeholder=\"Email\" disabled"));
+        assert!(text.contains("@e3 checkbox [input] type=\"checkbox\" checked"));
     }
 
     #[test]
     fn snapshot_refs_builds_ref_index() {
         let entries = vec![json!({
             "ref": "e3",
+            "role": "link",
             "tag": "a",
+            "name": "Learn more",
             "text": "More",
             "label": "Learn more",
             "attrs": {"href": "https://example.com"},
-            "selected": true
+            "state": {"selected": true}
         })];
 
         let refs = snapshot_refs(&entries);
+        assert_eq!(refs["e3"]["role"], "link");
         assert_eq!(refs["e3"]["tag"], "a");
+        assert_eq!(refs["e3"]["name"], "Learn more");
         assert_eq!(refs["e3"]["text"], "More");
         assert_eq!(refs["e3"]["label"], "Learn more");
         assert_eq!(refs["e3"]["attrs"]["href"], "https://example.com");
-        assert_eq!(refs["e3"]["selected"], true);
+        assert_eq!(refs["e3"]["state"]["selected"], true);
+    }
+
+    #[test]
+    fn locator_chain_step_parses_operation_and_locator() {
+        let (op, locator) = parse_locator_chain_step("child text:\"Learn more\"").unwrap();
+        assert_eq!(op, "child");
+        assert_eq!(locator.as_deref(), Some("text=Learn more"));
+
+        let (op, locator) = parse_locator_chain_step("parent").unwrap();
+        assert_eq!(op, "parent");
+        assert!(locator.is_none());
     }
 
     #[test]
@@ -2308,6 +3185,66 @@ mod tests {
         assert_eq!(payload["title"], "Example");
     }
 
+    #[test]
+    fn ready_snapshot_settled_requires_complete_document() {
+        let settled = ReadySnapshot {
+            ready_state: "complete".to_string(),
+            has_document: true,
+            url: Some("https://example.com/next".to_string()),
+        };
+        assert!(settled.is_settled());
+
+        let interactive = ReadySnapshot {
+            ready_state: "interactive".to_string(),
+            has_document: true,
+            url: Some("https://example.com/next".to_string()),
+        };
+        assert!(!interactive.is_settled());
+
+        let missing_document = ReadySnapshot {
+            ready_state: "complete".to_string(),
+            has_document: false,
+            url: Some("https://example.com/next".to_string()),
+        };
+        assert!(!missing_document.is_settled());
+    }
+
+    #[test]
+    fn navigation_transition_observed_requires_url_change_or_loading_state() {
+        let same_complete = ReadySnapshot {
+            ready_state: "complete".to_string(),
+            has_document: true,
+            url: Some("https://example.com/current".to_string()),
+        };
+        assert!(!navigation_transition_observed(
+            Some("https://example.com/current"),
+            &same_complete
+        ));
+
+        let same_interactive = ReadySnapshot {
+            ready_state: "interactive".to_string(),
+            has_document: true,
+            url: Some("https://example.com/current".to_string()),
+        };
+        assert!(navigation_transition_observed(
+            Some("https://example.com/current"),
+            &same_interactive
+        ));
+
+        let changed_complete = ReadySnapshot {
+            ready_state: "complete".to_string(),
+            has_document: true,
+            url: Some("https://example.com/next".to_string()),
+        };
+        assert!(navigation_transition_observed(
+            Some("https://example.com/current"),
+            &changed_complete
+        ));
+
+        assert!(!navigation_transition_observed(None, &same_complete));
+        assert!(navigation_transition_observed(None, &same_interactive));
+    }
+
     fn make_temp_dir(label: &str) -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -2321,31 +3258,57 @@ mod tests {
         dir
     }
 
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.previous.as_ref() {
+                unsafe {
+                    std::env::set_var(self.key, value);
+                }
+            } else {
+                unsafe {
+                    std::env::remove_var(self.key);
+                }
+            }
+        }
+    }
+
     #[test]
     fn session_options_from_request_uses_base_defaults_when_params_omit_fields() {
         let mut base = SessionOptions::default();
-        base
-            .set_timeout(21)
+        base.set_timeout(21)
             .set_user_agent(Some("OpenPage/ServeIni".to_string()))
             .set_download_path("downloads")
             .set_retry(Some(4), Some(250));
 
-        let options = session_options_from_request(&json!({}), base)
-            .expect("load session options from base");
+        let options =
+            session_options_from_request(&json!({}), base).expect("load session options from base");
 
         assert_eq!(options.timeout_secs, 21);
         assert_eq!(options.user_agent.as_deref(), Some("OpenPage/ServeIni"));
         assert_eq!(options.download_path, std::path::PathBuf::from("downloads"));
         assert_eq!(options.retry_times, 4);
         assert_eq!(options.retry_interval_millis, 250);
-
     }
 
     #[test]
     fn session_options_from_request_overrides_explicit_params() {
         let mut base = SessionOptions::default();
-        base
-            .set_timeout(21)
+        base.set_timeout(21)
             .set_user_agent(Some("OpenPage/ServeIni".to_string()));
 
         let options = session_options_from_request(
@@ -2359,7 +3322,45 @@ mod tests {
 
         assert_eq!(options.timeout_secs, 5);
         assert_eq!(options.user_agent.as_deref(), Some("OpenPage/Request"));
+    }
 
+    #[test]
+    fn apply_session_default_user_data_dir_scopes_builtin_default_by_session() {
+        let home = make_temp_dir("session-profile");
+        let _guard = EnvVarGuard::set("OPENPAGE_HOME", home.to_string_lossy().as_ref());
+        let mut launch = crate::browser::LaunchOptions::default();
+
+        apply_session_default_user_data_dir(
+            &mut launch,
+            ConfigValueSource::BuiltInDefault,
+            "review",
+            false,
+        )
+        .expect("apply session profile");
+
+        assert_eq!(
+            launch.user_data_dir.as_deref(),
+            Some(home.join("profiles").join("review").as_path())
+        );
+    }
+
+    #[test]
+    fn apply_session_default_user_data_dir_preserves_explicit_source() {
+        let mut launch = crate::browser::LaunchOptions::default();
+        launch.user_data_dir = Some(PathBuf::from("/tmp/explicit-profile"));
+
+        apply_session_default_user_data_dir(
+            &mut launch,
+            ConfigValueSource::UserConfig,
+            "review",
+            false,
+        )
+        .expect("preserve configured profile");
+
+        assert_eq!(
+            launch.user_data_dir.as_deref(),
+            Some(PathBuf::from("/tmp/explicit-profile").as_path())
+        );
     }
 
     #[test]
@@ -2457,13 +3458,444 @@ fn mission_to_json(mission: DownloadMission) -> OpenPageResult<Value> {
     }))
 }
 
-fn web_element_to_json(element: WebElement) -> OpenPageResult<Value> {
-    Ok(json!({
-        "tag": element.tag()?,
-        "text": element.text()?,
-        "attrs": element.attrs()?,
-        "html": element.html()?,
-    }))
+fn locate_chain_payload(state: &mut ServeWebPage, chain: &str) -> OpenPageResult<Value> {
+    let (element, steps) = resolve_locator_chain(state, chain)?;
+    let mut payload = state.element_payload(element)?;
+    if let Some(obj) = payload.as_object_mut() {
+        obj.insert("chain".to_string(), Value::String(chain.to_string()));
+        obj.insert("steps".to_string(), json!(steps));
+    }
+    Ok(payload)
+}
+
+fn resolve_locator_chain(
+    state: &ServeWebPage,
+    chain: &str,
+) -> OpenPageResult<(WebElement, Vec<String>)> {
+    let parts = chain
+        .split(">>")
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if parts.is_empty() {
+        return Err(OpenPageError::UnsupportedLocator(
+            "locator chain is empty".to_string(),
+        ));
+    }
+
+    let root = normalize_locator_shorthand(parts[0]);
+    let mut element = state.find(&root)?;
+    let mut steps = vec![format!("root {root}")];
+
+    for part in parts.iter().skip(1) {
+        let (op, locator) = parse_locator_chain_step(part)?;
+        element = match op {
+            "parent" => match locator {
+                Some(locator) => element.parent_with(locator.as_str(), 1)?,
+                None => element.parent()?,
+            },
+            "child" => match locator {
+                Some(locator) => element.child_with(Some(locator.as_str()), 1)?,
+                None => element.child()?,
+            },
+            "prev" | "previous" => match locator {
+                Some(locator) => element.prev_with(Some(locator.as_str()), 1)?,
+                None => element.prev()?,
+            },
+            "next" => match locator {
+                Some(locator) => element.next_with(Some(locator.as_str()), 1)?,
+                None => element.next()?,
+            },
+            "before" => match locator {
+                Some(locator) => element.before_with(Some(locator.as_str()), 1)?,
+                None => element.before()?,
+            },
+            "after" => match locator {
+                Some(locator) => element.after_with(Some(locator.as_str()), 1)?,
+                None => element.after()?,
+            },
+            other => {
+                return Err(OpenPageError::UnsupportedLocator(format!(
+                    "unsupported locator chain step: {other}"
+                )));
+            }
+        };
+        steps.push(part.to_string());
+    }
+
+    Ok((element, steps))
+}
+
+fn parse_locator_chain_step(step: &str) -> OpenPageResult<(&str, Option<String>)> {
+    let mut parts = step.splitn(2, char::is_whitespace);
+    let op = parts.next().unwrap_or_default().trim();
+    if op.is_empty() {
+        return Err(OpenPageError::UnsupportedLocator(
+            "empty locator chain step".to_string(),
+        ));
+    }
+    let locator = parts
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(normalize_locator_shorthand);
+    Ok((op, locator))
+}
+
+fn normalize_locator_shorthand(locator: &str) -> String {
+    let trimmed = locator.trim();
+    if let Some(value) = trimmed.strip_prefix("text:") {
+        let value = value.trim().trim_matches('"').trim_matches('\'');
+        return format!("text={value}");
+    }
+    trimmed.to_string()
+}
+
+fn web_element_to_json(element: WebElement, ref_id: Option<String>) -> OpenPageResult<Value> {
+    let tag = element.tag()?;
+    let text = element.text()?.map(|value| clip_agent_text(&value, 120));
+    let attrs = compact_element_attrs(element.attrs()?);
+    let role = element_role(&tag, &attrs);
+    let name = element_name(text.as_deref(), &attrs);
+
+    let mut payload = json!({
+        "tag": tag,
+        "role": role,
+        "name": name,
+        "text": text,
+        "attrs": attrs,
+        "state": {
+            "visible": element.is_displayed().ok(),
+            "enabled": element.is_enabled().ok(),
+            "in_viewport": element.is_in_viewport().ok(),
+            "has_rect": element.has_rect().ok(),
+        },
+    });
+    if let Some(ref_id) = ref_id.filter(|value| !value.is_empty())
+        && let Some(obj) = payload.as_object_mut()
+    {
+        obj.insert("ref".to_string(), Value::String(ref_id));
+    }
+    Ok(payload)
+}
+
+fn clip_agent_text(value: &str, limit: usize) -> String {
+    let normalized = normalize_agent_text(value);
+    if normalized.chars().count() <= limit {
+        return normalized;
+    }
+    let byte_limit = normalized
+        .char_indices()
+        .nth(limit)
+        .map(|(index, _)| index)
+        .unwrap_or(normalized.len());
+    normalized[..byte_limit].to_string()
+}
+
+fn normalize_agent_text(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn compact_element_attrs(attrs: Vec<(String, String)>) -> Map<String, Value> {
+    let mut out = Map::new();
+    for (key, value) in attrs {
+        if !matches!(
+            key.as_str(),
+            "id" | "class"
+                | "name"
+                | "type"
+                | "placeholder"
+                | "href"
+                | "src"
+                | "role"
+                | "aria-label"
+                | "title"
+                | "alt"
+                | "value"
+        ) {
+            continue;
+        }
+        let value = clip_agent_text(&value, 120);
+        if !value.is_empty() {
+            out.insert(key, Value::String(value));
+        }
+    }
+    out
+}
+
+fn element_role(tag: &str, attrs: &Map<String, Value>) -> String {
+    if let Some(role) = attrs.get("role").and_then(Value::as_str) {
+        if !role.is_empty() {
+            return role.to_string();
+        }
+    }
+
+    match tag {
+        "a" if attrs.get("href").is_some() => "link",
+        "button" => "button",
+        "textarea" => "textbox",
+        "select" => "combobox",
+        "option" => "option",
+        "input" => match attrs
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+        {
+            "checkbox" => "checkbox",
+            "radio" => "radio",
+            "button" | "submit" | "reset" => "button",
+            "search" => "searchbox",
+            _ => "textbox",
+        },
+        "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => "heading",
+        _ => tag,
+    }
+    .to_string()
+}
+
+fn element_name(text: Option<&str>, attrs: &Map<String, Value>) -> Option<String> {
+    for key in ["aria-label", "title", "alt", "placeholder", "value"] {
+        if let Some(value) = attrs.get(key).and_then(Value::as_str) {
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    text.filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn candidate_matches_ref_target(element: &WebElement, target: &RefTarget) -> OpenPageResult<bool> {
+    let tag = element.tag()?;
+    if let Some(expected) = target.tag.as_deref()
+        && tag != expected
+    {
+        return Ok(false);
+    }
+
+    let text = element.text()?.unwrap_or_default();
+    let normalized_text = normalize_agent_text(&text);
+    let attrs = compact_element_attrs(element.attrs()?);
+    let role = element_role(&tag, &attrs);
+    if let Some(expected) = target.role.as_deref()
+        && role != expected
+    {
+        return Ok(false);
+    }
+
+    let name = element_name(Some(&normalized_text), &attrs).unwrap_or_default();
+    if let Some(expected) = target.name.as_deref() {
+        let expected = normalize_agent_text(expected);
+        if !expected.is_empty() && name != expected && !name.starts_with(&expected) {
+            return Ok(false);
+        }
+    }
+    if let Some(expected) = target.text.as_deref() {
+        let expected = normalize_agent_text(expected);
+        if !expected.is_empty()
+            && normalized_text != expected
+            && !normalized_text.starts_with(&expected)
+        {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+fn wait_for_ready_payload(state: &ServeWebPage, timeout_ms: u64) -> OpenPageResult<Value> {
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+
+    loop {
+        if let Ok(snapshot) = ready_snapshot(state) {
+            if snapshot.is_settled() {
+                return Ok(json!({
+                    "ready": true,
+                    "ready_state": snapshot.ready_state,
+                    "url": snapshot.url,
+                }));
+            }
+        }
+
+        if Instant::now() >= deadline {
+            return Err(OpenPageError::Timeout(format!(
+                "wait-for-ready timed out after {timeout_ms}ms"
+            )));
+        }
+        sleep(Duration::from_millis(50));
+    }
+}
+
+fn wait_for_navigation_payload(
+    state: &mut ServeWebPage,
+    timeout_ms: u64,
+    token: Option<&str>,
+) -> OpenPageResult<Value> {
+    let baseline = state.navigation_baseline_for_wait(token)?;
+    let from_url = match &baseline {
+        NavigationBaseline::Page { url, .. } | NavigationBaseline::Frame { url } => url.clone(),
+    };
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+    let mut saw_transition = false;
+
+    loop {
+        let page_snapshot = match &baseline {
+            NavigationBaseline::Page { .. } => state.page.navigation_snapshot().ok(),
+            NavigationBaseline::Frame { .. } => None,
+        };
+
+        let ready = ready_snapshot(state);
+        if let NavigationBaseline::Page { started_seq, .. } = &baseline
+            && page_snapshot
+                .as_ref()
+                .is_some_and(|snapshot| page_navigation_transition_observed(*started_seq, snapshot))
+        {
+            saw_transition = true;
+        }
+
+        match ready {
+            Ok(snapshot) => {
+                if navigation_transition_observed(from_url.as_deref(), &snapshot) {
+                    saw_transition = true;
+                }
+
+                let settled = match &baseline {
+                    NavigationBaseline::Page { started_seq, .. } => {
+                        page_snapshot
+                            .as_ref()
+                            .is_some_and(|page| page_navigation_settled(*started_seq, page))
+                            || (navigation_transition_observed(from_url.as_deref(), &snapshot)
+                                && snapshot.is_settled())
+                    }
+                    NavigationBaseline::Frame { .. } => {
+                        navigation_transition_observed(from_url.as_deref(), &snapshot)
+                            && snapshot.is_settled()
+                    }
+                };
+
+                if saw_transition && settled {
+                    state.consume_navigation_token(token);
+                    return Ok(json!({
+                        "navigated": true,
+                        "ready": true,
+                        "ready_state": snapshot.ready_state,
+                        "from_url": from_url,
+                        "url": snapshot.url,
+                        "token": token,
+                    }));
+                }
+            }
+            Err(_) => {
+                if let NavigationBaseline::Frame { .. } = &baseline {
+                    saw_transition = true;
+                }
+            }
+        }
+
+        if Instant::now() >= deadline {
+            return Err(OpenPageError::Timeout(format!(
+                "wait-for-navigation timed out after {timeout_ms}ms"
+            )));
+        }
+        sleep(Duration::from_millis(50));
+    }
+}
+
+struct ReadySnapshot {
+    ready_state: String,
+    has_document: bool,
+    url: Option<String>,
+}
+
+impl ReadySnapshot {
+    fn is_settled(&self) -> bool {
+        self.ready_state == "complete" && self.has_document
+    }
+}
+
+fn navigation_transition_observed(from_url: Option<&str>, snapshot: &ReadySnapshot) -> bool {
+    from_url.is_some_and(|url| snapshot.url.as_deref() != Some(url))
+        || snapshot.ready_state != "complete"
+}
+
+fn page_navigation_transition_observed(
+    started_seq: u64,
+    snapshot: &PageNavigationSnapshot,
+) -> bool {
+    snapshot.started_seq > started_seq
+}
+
+fn page_navigation_settled(started_seq: u64, snapshot: &PageNavigationSnapshot) -> bool {
+    snapshot.started_seq > started_seq && snapshot.settled_seq >= snapshot.started_seq
+}
+
+fn ready_snapshot(state: &ServeWebPage) -> OpenPageResult<ReadySnapshot> {
+    let value = state.run_js(
+        r#"(() => ({
+            readyState: document.readyState,
+            hasDocument: !!document.documentElement,
+            url: window.location.href
+        }))()"#,
+    )?;
+    Ok(ReadySnapshot {
+        ready_state: value
+            .get("readyState")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        has_document: value
+            .get("hasDocument")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        url: value
+            .get("url")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+            .filter(|value| !value.is_empty()),
+    })
+}
+
+fn wait_for_deleted(state: &ServeWebPage, locator: &str, timeout_ms: u64) -> OpenPageResult<bool> {
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+    loop {
+        match state.find(locator) {
+            Ok(element) => match element.is_alive() {
+                Ok(false) | Err(_) => return Ok(true),
+                Ok(true) => {}
+            },
+            Err(OpenPageError::ElementNotFound(_)) => return Ok(true),
+            Err(err) => return Err(err),
+        }
+
+        if Instant::now() >= deadline {
+            return wait_timeout_result("wait.ele_deleted", timeout_ms);
+        }
+        sleep(Duration::from_millis(50));
+    }
+}
+
+fn wait_for_disabled_or_deleted(
+    state: &ServeWebPage,
+    locator: &str,
+    timeout_ms: u64,
+) -> OpenPageResult<bool> {
+    let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+    loop {
+        match state.find(locator) {
+            Ok(element) => {
+                if !element.is_alive().unwrap_or(false) || !element.is_enabled().unwrap_or(false) {
+                    return Ok(true);
+                }
+            }
+            Err(OpenPageError::ElementNotFound(_)) => return Ok(true),
+            Err(err) => return Err(err),
+        }
+
+        if Instant::now() >= deadline {
+            return wait_timeout_result("wait.ele_disabled_or_deleted", timeout_ms);
+        }
+        sleep(Duration::from_millis(50));
+    }
 }
 
 fn wait_for_function_result(

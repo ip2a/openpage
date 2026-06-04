@@ -186,10 +186,9 @@ impl Locator {
                     "text locator requires non-empty text".to_string(),
                 ));
             }
-            let escaped = query.replace('"', "\"");
+            let text = xpath_string_literal(query);
             let xpath = format!(
-                ".//*[contains(text(), \"{text}\") or contains(., \"{text}\")]",
-                text = escaped
+                ".//*[contains(normalize-space(.), {text}) and not(.//*[contains(normalize-space(.), {text})])]"
             );
             return Ok(Self::new(raw, LocatorKind::XPath, xpath));
         }
@@ -436,6 +435,15 @@ mod tests {
         let locator = Locator::parse("@e5").expect("ref locator");
         assert_eq!(locator.kind(), LocatorKind::Css);
         assert_eq!(locator.query(), r#"[data-op-ref="e5"]"#);
+    }
+
+    #[test]
+    fn parse_text_locator_targets_smallest_text_element() {
+        let locator = Locator::parse("text=Learn more").expect("text locator");
+
+        assert_eq!(locator.kind(), LocatorKind::XPath);
+        assert!(locator.query().contains("normalize-space(.)"));
+        assert!(locator.query().contains("not(.//*"));
     }
 
     #[test]

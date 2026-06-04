@@ -162,9 +162,7 @@ pub(crate) struct DaemonInventory {
     pub cleaned: Vec<CleanedDaemonSession>,
 }
 
-pub(crate) fn incomplete_daemon_reasons(
-    incomplete: &IncompleteDaemonSession,
-) -> Vec<&'static str> {
+pub(crate) fn incomplete_daemon_reasons(incomplete: &IncompleteDaemonSession) -> Vec<&'static str> {
     let mut reasons = Vec::new();
     if !incomplete.pid_present {
         reasons.push("missing_pid");
@@ -239,9 +237,7 @@ pub(crate) fn incomplete_daemon_fix(incomplete: &IncompleteDaemonSession) -> Str
 }
 
 fn inactive_daemon_fix(session: &str) -> String {
-    format!(
-        "Start it with `openpage browser start --session {session}` before retrying."
-    )
+    format!("Start it with `openpage browser start --session {session}` before retrying.")
 }
 
 fn alive_but_unready_fix(session: &str) -> String {
@@ -251,10 +247,7 @@ fn alive_but_unready_fix(session: &str) -> String {
     )
 }
 
-fn daemon_status_fix(
-    status: &DaemonSessionInfo,
-    inventory: &DaemonInventory,
-) -> Option<String> {
+fn daemon_status_fix(status: &DaemonSessionInfo, inventory: &DaemonInventory) -> Option<String> {
     if let Some(incomplete) = inventory
         .incomplete
         .iter()
@@ -383,7 +376,11 @@ pub(crate) fn daemon_status_payload_json(
         return payload;
     }
 
-    payload["state"] = Value::from(if status.alive { "incomplete" } else { "inactive" });
+    payload["state"] = Value::from(if status.alive {
+        "incomplete"
+    } else {
+        "inactive"
+    });
     if status.alive {
         payload["reasons"] = json!(["daemon_not_ready"]);
     }
@@ -805,7 +802,8 @@ pub(crate) fn ensure_existing_daemon(session: &str) -> OpenPageResult<()> {
         )));
     }
 
-    let fix = daemon_status_fix(&status, &inventory).unwrap_or_else(|| inactive_daemon_fix(session));
+    let fix =
+        daemon_status_fix(&status, &inventory).unwrap_or_else(|| inactive_daemon_fix(session));
     Err(OpenPageError::BrowserOperation(format!(
         "session `{session}` is not active. {}",
         fix
@@ -924,6 +922,13 @@ fn is_transient_error(error: &OpenPageError) -> bool {
         || message.contains("empty daemon response")
 }
 
+fn daemon_transient_error(session: &str, error: &OpenPageError) -> OpenPageError {
+    OpenPageError::BrowserOperation(format!(
+        "daemon transient for session `{session}`: {}. Retry the same command.",
+        error.to_string()
+    ))
+}
+
 fn wait_for_daemon_exit(session: &str, attempts: u32, delay_ms: u64) -> OpenPageResult<bool> {
     for _ in 0..attempts {
         if !daemon_alive(session)? {
@@ -969,9 +974,12 @@ where
         }
     }
 
-    Err(last_error.unwrap_or_else(|| {
-        OpenPageError::Io("daemon request failed with no captured error".to_string())
-    }))
+    match last_error {
+        Some(error) => Err(daemon_transient_error(session, &error)),
+        None => Err(OpenPageError::Io(
+            "daemon request failed with no captured error".to_string(),
+        )),
+    }
 }
 
 pub(crate) struct SidecarGuard {
@@ -1242,6 +1250,27 @@ mod tests {
     }
 
     #[test]
+    fn send_request_with_retry_returns_structured_daemon_transient_after_exhaustion() {
+        let request = test_request();
+
+        let error = send_request_with_retry(
+            "retry-exhausted",
+            &request,
+            |_| Ok(()),
+            |_, _| Err(OpenPageError::Io("connection reset by peer".to_string())),
+        )
+        .expect_err("transient exhaustion should surface a structured daemon error");
+
+        match error {
+            OpenPageError::BrowserOperation(message) => {
+                assert!(message.starts_with("daemon transient for session `retry-exhausted`:"));
+                assert!(message.contains("Retry the same command."));
+            }
+            other => panic!("expected BrowserOperation, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn shutdown_daemon_cleans_stale_sidecars_when_process_is_gone() {
         let home = unique_openpage_home("shutdown-stale");
         let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
@@ -1333,10 +1362,12 @@ mod tests {
             json!(["missing_version", "daemon_not_ready"])
         );
         assert_eq!(payload["incomplete"][0]["log_path"], "/tmp/beta.log");
-        assert!(payload["incomplete"][0]["fix"]
-            .as_str()
-            .expect("incomplete fix should be present")
-            .contains("doctor --quick --fix"));
+        assert!(
+            payload["incomplete"][0]["fix"]
+                .as_str()
+                .expect("incomplete fix should be present")
+                .contains("doctor --quick --fix")
+        );
         assert_eq!(payload["cleaned"][0]["state"], "cleaned");
     }
 
@@ -1363,11 +1394,16 @@ mod tests {
         let payload = daemon_inventory_payload_json(&inventory);
         assert_eq!(payload["sessions"][0]["state"], "incompatible");
         assert_eq!(payload["sessions"][0]["version_matches_current_cli"], false);
-        assert_eq!(payload["sessions"][0]["reasons"], json!(["version_mismatch"]));
-        assert!(payload["sessions"][0]["fix"]
-            .as_str()
-            .expect("incompatible fix should be present")
-            .contains("browser stop --session alpha"));
+        assert_eq!(
+            payload["sessions"][0]["reasons"],
+            json!(["version_mismatch"])
+        );
+        assert!(
+            payload["sessions"][0]["fix"]
+                .as_str()
+                .expect("incompatible fix should be present")
+                .contains("browser stop --session alpha")
+        );
     }
 
     #[test]
@@ -1405,10 +1441,12 @@ mod tests {
         );
         assert_eq!(payload["incomplete"]["session"], "beta");
         assert_eq!(payload["incomplete"]["log_path"], "/tmp/beta.log");
-        assert!(payload["fix"]
-            .as_str()
-            .expect("incomplete fix should be present")
-            .contains("doctor --quick --fix"));
+        assert!(
+            payload["fix"]
+                .as_str()
+                .expect("incomplete fix should be present")
+                .contains("doctor --quick --fix")
+        );
     }
 
     #[test]
@@ -1427,10 +1465,12 @@ mod tests {
         let payload = super::daemon_status_payload_json(&status, &inventory);
         assert_eq!(payload["state"], "inactive");
         assert!(payload.get("reasons").is_none());
-        assert!(payload["fix"]
-            .as_str()
-            .expect("inactive fix should be present")
-            .contains("browser start --session missing"));
+        assert!(
+            payload["fix"]
+                .as_str()
+                .expect("inactive fix should be present")
+                .contains("browser start --session missing")
+        );
     }
 
     #[test]
@@ -1454,10 +1494,12 @@ mod tests {
         assert_eq!(payload["state"], "incompatible");
         assert_eq!(payload["version_matches_current_cli"], false);
         assert_eq!(payload["reasons"], json!(["version_mismatch"]));
-        assert!(payload["fix"]
-            .as_str()
-            .expect("incompatible fix should be present")
-            .contains("browser stop --session beta"));
+        assert!(
+            payload["fix"]
+                .as_str()
+                .expect("incompatible fix should be present")
+                .contains("browser stop --session beta")
+        );
     }
 
     #[test]

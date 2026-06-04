@@ -2993,15 +2993,23 @@ impl WebPage {
     }
 
     pub fn mode(&self) -> OpenPageResult<WebMode> {
-        self.mode
-            .lock()
-            .map(|mode| *mode)
-            .map_err(|_| {
-                OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
-                    "webpage mode",
-                    "网页模式",
-                ))
-            })
+        self.mode.lock().map(|mode| *mode).map_err(|_| {
+            OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                "webpage mode",
+                "网页模式",
+            ))
+        })
+    }
+
+    pub(crate) fn navigation_snapshot(
+        &self,
+    ) -> OpenPageResult<crate::page::PageNavigationSnapshot> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.navigation_snapshot(),
+            WebMode::Session => Err(OpenPageError::UnsupportedOperation(
+                "navigation_snapshot() is only available in driver mode".to_string(),
+            )),
+        }
     }
 
     pub fn set_none_element_value(&self, value: Option<&str>, on_off: bool) -> OpenPageResult<()> {

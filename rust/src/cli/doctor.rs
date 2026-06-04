@@ -12,10 +12,8 @@ use crate::cli::connection::{
     daemon_session_reasons, daemon_session_state, force_cleanup_daemon, incomplete_daemon_fix,
     incomplete_daemon_reasons, openpage_home,
 };
-use crate::config::{
-    ConfigValueSource, load_resolved_config, resolve_browser_executable_path,
-};
 use crate::cli::protocol::print_output_json;
+use crate::config::{ConfigValueSource, load_resolved_config, resolve_browser_executable_path};
 use crate::error::{OpenPageError, OpenPageResult};
 
 #[derive(Clone, Copy)]
@@ -148,9 +146,8 @@ impl Check {
         self.pid = session.pid;
         self.port = session.port;
         self.version = session.version.clone();
-        self.version_matches_current_cli = Some(
-            session.version.as_deref() == Some(env!("CARGO_PKG_VERSION")),
-        );
+        self.version_matches_current_cli =
+            Some(session.version.as_deref() == Some(env!("CARGO_PKG_VERSION")));
         self.log_path = Some(session.log_path.clone());
         self
     }
@@ -1187,11 +1184,16 @@ mod tests {
     #[test]
     fn check_serializes_state_and_reasons_when_present() {
         let value = serde_json::to_value(
-            Check::new("daemon.session.review", "Daemon", Status::Warn, "version mismatch")
-                .with_session("review")
-                .with_state("incompatible")
-                .with_reasons(vec!["version_mismatch"])
-                .with_fix("restart session"),
+            Check::new(
+                "daemon.session.review",
+                "Daemon",
+                Status::Warn,
+                "version mismatch",
+            )
+            .with_session("review")
+            .with_state("incompatible")
+            .with_reasons(vec!["version_mismatch"])
+            .with_fix("restart session"),
         )
         .expect("serialize check with state and reasons");
 
@@ -1204,20 +1206,25 @@ mod tests {
     #[test]
     fn check_serializes_daemon_runtime_fields_when_present() {
         let value = serde_json::to_value(
-            Check::new("daemon.session.review", "Daemon", Status::Warn, "version mismatch")
-                .with_session("review")
-                .with_state("incompatible")
-                .with_reasons(vec!["version_mismatch"])
-                .with_daemon_session_info(&DaemonSessionInfo {
-                    session: "review".to_string(),
-                    port: Some(1234),
-                    pid: Some(5678),
-                    version: Some("0.0.1".to_string()),
-                    alive: true,
-                    ready: true,
-                    log_path: "/tmp/review.log".to_string(),
-                })
-                .with_fix("restart session"),
+            Check::new(
+                "daemon.session.review",
+                "Daemon",
+                Status::Warn,
+                "version mismatch",
+            )
+            .with_session("review")
+            .with_state("incompatible")
+            .with_reasons(vec!["version_mismatch"])
+            .with_daemon_session_info(&DaemonSessionInfo {
+                session: "review".to_string(),
+                port: Some(1234),
+                pid: Some(5678),
+                version: Some("0.0.1".to_string()),
+                alive: true,
+                ready: true,
+                log_path: "/tmp/review.log".to_string(),
+            })
+            .with_fix("restart session"),
         )
         .expect("serialize check with daemon runtime fields");
 
@@ -1462,11 +1469,7 @@ mod tests {
 
         let session = "incomplete-daemon";
         fs::write(port_path(session).expect("port path"), "9").expect("write port");
-        fs::write(
-            pid_path(session).expect("pid path"),
-            child.id().to_string(),
-        )
-        .expect("write pid");
+        fs::write(pid_path(session).expect("pid path"), child.id().to_string()).expect("write pid");
 
         let fixed = super::apply_fixes().expect("apply fixes");
         assert!(fixed.iter().any(|line| {
@@ -1498,11 +1501,7 @@ mod tests {
 
         let session = "incompatible-daemon";
         fs::write(port_path(session).expect("port path"), port.to_string()).expect("write port");
-        fs::write(
-            pid_path(session).expect("pid path"),
-            child.id().to_string(),
-        )
-        .expect("write pid");
+        fs::write(pid_path(session).expect("pid path"), child.id().to_string()).expect("write pid");
         fs::write(version_path(session).expect("version path"), "0.0.1").expect("write version");
 
         let fixed = super::apply_fixes().expect("apply fixes");
@@ -1587,10 +1586,12 @@ mod tests {
             json!(["missing_version", "daemon_not_ready"])
         );
         assert_eq!(payload["incomplete"][0]["log_path"], "/tmp/beta.log");
-        assert!(payload["incomplete"][0]["fix"]
-            .as_str()
-            .expect("incomplete fix should be present")
-            .contains("doctor --quick --fix"));
+        assert!(
+            payload["incomplete"][0]["fix"]
+                .as_str()
+                .expect("incomplete fix should be present")
+                .contains("doctor --quick --fix")
+        );
         assert_eq!(payload["cleaned"][0]["state"], "cleaned");
     }
 
@@ -1604,8 +1605,11 @@ mod tests {
         let healthy_listener =
             std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind healthy listener");
         let healthy_port = healthy_listener.local_addr().expect("healthy addr").port();
-        fs::write(port_path("healthy").expect("healthy port path"), healthy_port.to_string())
-            .expect("write healthy port");
+        fs::write(
+            port_path("healthy").expect("healthy port path"),
+            healthy_port.to_string(),
+        )
+        .expect("write healthy port");
         fs::write(
             pid_path("healthy").expect("healthy pid path"),
             std::process::id().to_string(),
@@ -1639,11 +1643,8 @@ mod tests {
         )
         .expect("write mismatch version");
 
-        fs::write(
-            port_path("incomplete").expect("incomplete port path"),
-            "9",
-        )
-        .expect("write incomplete port");
+        fs::write(port_path("incomplete").expect("incomplete port path"), "9")
+            .expect("write incomplete port");
         fs::write(
             pid_path("incomplete").expect("incomplete pid path"),
             std::process::id().to_string(),
@@ -1670,7 +1671,14 @@ mod tests {
         assert_eq!(healthy["pid"], std::process::id());
         assert_eq!(healthy["version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(healthy["version_matches_current_cli"], true);
-        assert_eq!(healthy["log_path"], daemon_dir().expect("daemon dir").join("healthy.log").display().to_string());
+        assert_eq!(
+            healthy["log_path"],
+            daemon_dir()
+                .expect("daemon dir")
+                .join("healthy.log")
+                .display()
+                .to_string()
+        );
         assert!(healthy.get("reasons").is_none());
 
         let mismatch = checks
@@ -1686,11 +1694,20 @@ mod tests {
         assert_eq!(mismatch["pid"], std::process::id());
         assert_eq!(mismatch["version"], "0.0.1");
         assert_eq!(mismatch["version_matches_current_cli"], false);
-        assert_eq!(mismatch["log_path"], daemon_dir().expect("daemon dir").join("mismatch.log").display().to_string());
-        assert!(mismatch["fix"]
-            .as_str()
-            .expect("mismatch fix should exist")
-            .contains("browser stop --session mismatch"));
+        assert_eq!(
+            mismatch["log_path"],
+            daemon_dir()
+                .expect("daemon dir")
+                .join("mismatch.log")
+                .display()
+                .to_string()
+        );
+        assert!(
+            mismatch["fix"]
+                .as_str()
+                .expect("mismatch fix should exist")
+                .contains("browser stop --session mismatch")
+        );
 
         let incomplete = checks
             .iter()
@@ -1709,11 +1726,20 @@ mod tests {
         assert_eq!(incomplete["version_present"], false);
         assert_eq!(incomplete["pid_valid"], true);
         assert_eq!(incomplete["port_valid"], true);
-        assert_eq!(incomplete["log_path"], daemon_dir().expect("daemon dir").join("incomplete.log").display().to_string());
-        assert!(incomplete["fix"]
-            .as_str()
-            .expect("incomplete fix should exist")
-            .contains("doctor --quick --fix"));
+        assert_eq!(
+            incomplete["log_path"],
+            daemon_dir()
+                .expect("daemon dir")
+                .join("incomplete.log")
+                .display()
+                .to_string()
+        );
+        assert!(
+            incomplete["fix"]
+                .as_str()
+                .expect("incomplete fix should exist")
+                .contains("doctor --quick --fix")
+        );
 
         drop(healthy_listener);
         drop(incompatible_listener);
@@ -1732,8 +1758,10 @@ mod tests {
         assert!(inventory.sessions.is_empty());
         assert!(inventory.incomplete.is_empty());
         assert!(inventory.cleaned.is_empty());
-        assert!(checks
-            .iter()
-            .any(|check| check.id == "daemon.sessions" && check.status == "info"));
+        assert!(
+            checks
+                .iter()
+                .any(|check| check.id == "daemon.sessions" && check.status == "info")
+        );
     }
 }

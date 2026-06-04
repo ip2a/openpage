@@ -32,11 +32,10 @@ use crate::download::{
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::Page;
 use crate::settings::{
-    browser_connect_timeout_duration, cdp_timeout_duration,
-    component_state_lock_poisoned_message, invalid_auto_port_scope_message,
-    invalid_tab_index_message, no_free_port_in_auto_port_scope_message,
-    singleton_tab_obj_enabled, target_tab_not_found_message, timeout_duration_millis,
-    timeout_error, wait_failed_should_raise,
+    browser_connect_timeout_duration, cdp_timeout_duration, component_state_lock_poisoned_message,
+    invalid_auto_port_scope_message, invalid_tab_index_message,
+    no_free_port_in_auto_port_scope_message, singleton_tab_obj_enabled,
+    target_tab_not_found_message, timeout_duration_millis, timeout_error, wait_failed_should_raise,
 };
 use crate::webpage::WebPage;
 
@@ -1360,13 +1359,12 @@ impl Browser {
                 .with_browser_pid(self.inner.browser_pid));
         }
 
-        let mut cache =
-            self.inner.page_cache.lock().map_err(|_| {
-                OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
-                    "page cache",
-                    "页面缓存",
-                ))
-            })?;
+        let mut cache = self.inner.page_cache.lock().map_err(|_| {
+            OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                "page cache",
+                "页面缓存",
+            ))
+        })?;
         if let Some(base_page) = cache.get(&target_id) {
             base_page.set_runtime_load_mode(load_mode)?;
             return Ok(base_page
@@ -2604,7 +2602,9 @@ fn build_browser_config(
     options: &LaunchOptions,
     user_data_dir: Option<&Path>,
 ) -> OpenPageResult<BrowserConfig> {
-    let mut builder = BrowserConfig::builder().window_size(options.width, options.height);
+    let mut builder = BrowserConfig::builder()
+        .window_size(options.width, options.height)
+        .viewport(None);
     builder = builder.enable_request_intercept().disable_cache();
 
     if options.headless {

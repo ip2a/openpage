@@ -293,7 +293,9 @@ impl DownloadStore {
         for guid in &finished {
             state.missions.remove(guid);
         }
-        state.order.retain(|guid| !finished.iter().any(|item| item == guid));
+        state
+            .order
+            .retain(|guid| !finished.iter().any(|item| item == guid));
         state
             .completed_order
             .retain(|guid| !finished.iter().any(|item| item == guid));
@@ -802,8 +804,8 @@ fn download_rate(info: &DownloadInfo) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::DownloadStore;
-    use crate::settings::scoped_test_settings;
     use crate::Settings;
+    use crate::settings::scoped_test_settings;
     use std::sync::Arc;
     use std::thread;
 

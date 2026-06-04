@@ -29,7 +29,6 @@ pub use browser::{
     Browser, BrowserTabReference, BrowserTabSelector, BrowserTabTargetsInput, BrowserTabTypeInput,
     DownloadFileExistsMode, LaunchOptions, LoadMode, TabInfo,
 };
-pub use console::{Console, ConsoleMessage, ConsoleSteps};
 pub use config::{
     ConfigValueSource, OPENPAGE_BROWSER_HEADLESS_ENV, OPENPAGE_BROWSER_HEIGHT_ENV,
     OPENPAGE_BROWSER_NO_SANDBOX_ENV, OPENPAGE_BROWSER_USER_DATA_DIR_ENV,
@@ -38,6 +37,7 @@ pub use config::{
     load_resolved_config, openpage_home, resolve_browser_executable_path, user_config_path,
     workspace_config_path,
 };
+pub use console::{Console, ConsoleMessage, ConsoleSteps};
 pub use download::{DownloadInfo, DownloadMission, DownloadState};
 pub use element::{
     Element, ElementClicker, ElementResource, ElementScroller, ElementSelector, ElementSetter,

@@ -34,12 +34,11 @@ use crate::locator::{
     parse_locator_batch_input, parse_optional_locator_input,
 };
 use crate::settings::{
-    component_state_lock_poisoned_message,
-    cookie_name_empty_message, cookie_requires_url_or_domain_message,
-    cookie_text_separator_conflict_message, cookie_value_empty_message,
-    default_none_element_runtime_config, invalid_file_url_message, invalid_url_message,
+    component_state_lock_poisoned_message, cookie_name_empty_message,
+    cookie_requires_url_or_domain_message, cookie_text_separator_conflict_message,
+    cookie_value_empty_message, default_none_element_runtime_config, invalid_file_url_message,
+    invalid_url_message, session_cookie_requires_url_or_domain_message,
     session_page_no_current_url_message, session_page_no_loaded_document_message,
-    session_cookie_requires_url_or_domain_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -2572,7 +2571,8 @@ impl SessionPage {
     fn body_arc(&self) -> OpenPageResult<Arc<String>> {
         let mut state = self.lock_state()?;
         ensure_response_body_loaded(&mut state)?;
-        state.body
+        state
+            .body
             .as_ref()
             .cloned()
             .ok_or_else(|| OpenPageError::Http(session_page_no_loaded_document_message()))
@@ -2599,9 +2599,10 @@ impl SessionPage {
         match url {
             Some(url) => Url::parse(url).map_err(|err| OpenPageError::Http(err.to_string())),
             None => {
-                let current_url = self.lock_state()?.url.clone().ok_or_else(|| {
-                    OpenPageError::Http(session_page_no_current_url_message())
-                })?;
+                let current_url =
+                    self.lock_state()?.url.clone().ok_or_else(|| {
+                        OpenPageError::Http(session_page_no_current_url_message())
+                    })?;
                 Url::parse(&current_url).map_err(|err| OpenPageError::Http(err.to_string()))
             }
         }
@@ -4345,7 +4346,10 @@ fn ensure_response_body_loaded(state: &mut SessionState) -> OpenPageResult<()> {
         return Ok(());
     }
 
-    let pending = state.pending_response.take().expect("pending response checked");
+    let pending = state
+        .pending_response
+        .take()
+        .expect("pending response checked");
     let raw_data = Arc::new(
         pending
             .response
@@ -6330,15 +6334,12 @@ mod tests {
         let mut hooks = SessionHooks::new();
         hooks.add_response(move |event| {
             let body = String::from_utf8(event.raw_data.as_ref().clone()).expect("hook body utf8");
-            captured_for_hook
-                .lock()
-                .expect("lock hook capture")
-                .push((
-                    event.requested_url,
-                    event.response.url.clone(),
-                    event.response.status_code,
-                    body,
-                ));
+            captured_for_hook.lock().expect("lock hook capture").push((
+                event.requested_url,
+                event.response.url.clone(),
+                event.response.status_code,
+                body,
+            ));
         });
 
         let mut options = SessionOptions::default();
@@ -6707,9 +6708,9 @@ mod tests {
             .set_cookie("sid", "1", None, None, None)
             .expect_err("set_cookie() should require an explicit scope before navigation")
             .to_string();
-        assert!(english_set_cookie.contains(
-            "session page has no current url; provide url explicitly"
-        ));
+        assert!(
+            english_set_cookie.contains("session page has no current url; provide url explicitly")
+        );
 
         Settings::set_language("cn");
 
@@ -7531,10 +7532,7 @@ mod tests {
 
         cloned_page.set_timeout(27).expect("set shared timeout");
 
-        assert_eq!(
-            second_handle.snapshot().expect("snapshot").timeout_secs,
-            27
-        );
+        assert_eq!(second_handle.snapshot().expect("snapshot").timeout_secs, 27);
         assert_eq!(page.timeout_secs().expect("page timeout"), 27);
     }
 
@@ -7592,8 +7590,14 @@ mod tests {
             assert!(state.body.is_none());
             assert_eq!(state.encoding.as_deref(), Some("utf-8"));
         }
-        assert_eq!(page.response().expect("response").and_then(|r| r.encoding), Some("utf-8".to_string()));
-        assert_eq!(page.html().expect("load streamed body"), "streamed".to_string());
+        assert_eq!(
+            page.response().expect("response").and_then(|r| r.encoding),
+            Some("utf-8".to_string())
+        );
+        assert_eq!(
+            page.html().expect("load streamed body"),
+            "streamed".to_string()
+        );
         {
             let state = page.lock_state().expect("lock session state");
             assert!(state.pending_response.is_none());
@@ -7639,7 +7643,12 @@ mod tests {
         page.set_stream(true).expect("enable runtime stream");
         assert!(page.stream().expect("runtime stream getter"));
         assert!(page.get(&address).expect("runtime streaming request"));
-        assert!(page.lock_state().expect("lock session state").pending_response.is_some());
+        assert!(
+            page.lock_state()
+                .expect("lock session state")
+                .pending_response
+                .is_some()
+        );
 
         handle.join().expect("server thread");
     }

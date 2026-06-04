@@ -208,10 +208,9 @@ impl Screencast {
         let (mode, output_dir, capture_path, handle) = {
             let mut state = lock_state(&self.shared)?;
             if !state.running {
-                return Err(OpenPageError::BrowserOperation(component_not_running_message(
-                    "screencast",
-                    "录屏",
-                )));
+                return Err(OpenPageError::BrowserOperation(
+                    component_not_running_message("screencast", "录屏"),
+                ));
             }
             state.running = false;
             let output_dir = state.active_path.clone().ok_or_else(|| {

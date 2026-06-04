@@ -11,25 +11,23 @@ use serde_json::{Value, json};
 
 use crate::cli::args::{
     AlertCommand, AttrArgs, BatchArgs, BrowserCommand, BrowserLogsArgs, BrowserStartArgs,
-    BrowserStopArgs,
-    ClearCacheArgs, Cli, ClickAtArgs, ClickForNewTabArgs, ClickToDownloadArgs,
+    BrowserStopArgs, ClearCacheArgs, Cli, ClickAtArgs, ClickForNewTabArgs, ClickToDownloadArgs,
     ClickToUploadArgs, ClipboardCommand, Command, CookiesCommand, DownloadArgs,
-    DownloadsCancelArgs, DownloadsCommand, DownloadsModeArgs, DownloadsOpenArgs,
-    DownloadsPathArgs, DragArgs, DragInArgs, DragToArgs, DragToPointArgs, ElementArgs, FillArgs,
-    FindInPageArgs, FrameCommand, ElementScrollArgs, GotoArgs, HistoryCommand, HoverAtArgs,
-    InterceptCommand, JsArgs, KeyArgs, OpenLinkArgs, PageTextArgs, PdfArgs, PermissionSetArgs,
-    PermissionsCommand, PressArgs, ReloadArgs, SaveArgs, ScreenshotArgs,
-    ScreenshotElementArgs, ScrollArgs, ScrollIntoViewArgs, SelectArgs, SelectRangeArgs,
-    SelectTextArgs, SessionArgs, ShortcutArgs, StorageCommand, StorageScope, TabCommand,
-    TabDuplicateArgs, TabReopenArgs, TypeWithIntervalArgs, UploadArgs, WaitArgs, WaitElementArgs,
-    WaitForDownloadArgs, WaitForFunctionArgs, WaitForTextArgs, WaitForTitleArgs,
-    WaitForUrlArgs, WaitTimeoutArgs, WindowCloseArgs, WindowCommand, WindowMoveArgs,
-    WindowSwitchArgs, ZoomCommand, ZoomSetArgs, ZoomStepArgs,
+    DownloadsCancelArgs, DownloadsCommand, DownloadsModeArgs, DownloadsOpenArgs, DownloadsPathArgs,
+    DragArgs, DragInArgs, DragToArgs, DragToPointArgs, ElementArgs, ElementScrollArgs, FillArgs,
+    FindInPageArgs, FrameCommand, GotoArgs, HistoryCommand, HoverAtArgs, InterceptCommand, JsArgs,
+    KeyArgs, LocateArgs, OpenLinkArgs, PageTextArgs, PdfArgs, PermissionSetArgs,
+    PermissionsCommand, PressArgs, ReloadArgs, SaveArgs, ScreenshotArgs, ScreenshotElementArgs,
+    ScrollArgs, ScrollIntoViewArgs, SelectArgs, SelectRangeArgs, SelectTextArgs, SessionArgs,
+    ShortcutArgs, SnapshotArgs, StorageCommand, StorageScope, TabCommand, TabDuplicateArgs,
+    TabReopenArgs, TypeWithIntervalArgs, UploadArgs, WaitArgs, WaitElementArgs,
+    WaitElementsLoadedArgs, WaitForDownloadArgs, WaitForFunctionArgs, WaitForNavigationArgs,
+    WaitForTextArgs, WaitForTitleArgs, WaitForUrlArgs, WaitTimeoutArgs, WindowCloseArgs,
+    WindowCommand, WindowMoveArgs, WindowSwitchArgs, ZoomCommand, ZoomSetArgs, ZoomStepArgs,
 };
 use crate::cli::connection::{
-    daemon_dir, daemon_inventory, daemon_inventory_payload_json,
-    daemon_ready as tcp_daemon_ready, daemon_status_payload_for_session, read_port, send_request,
-    send_request_existing, shutdown_daemon,
+    daemon_dir, daemon_inventory, daemon_inventory_payload_json, daemon_status_payload_for_session,
+    read_port, send_request, send_request_existing, shutdown_daemon,
 };
 #[cfg(test)]
 use crate::cli::connection::{daemon_inventory_summary_json, incomplete_daemon_reasons};
@@ -101,6 +99,7 @@ fn run_single(command: Command) -> OpenPageResult<()> {
         Command::ChildCount(args) => run_child_count(args),
         Command::CssPath(args) => run_css_path(args),
         Command::Xpath(args) => run_xpath(args),
+        Command::ElementHtml(args) => run_element_html(args),
         Command::SelectedText(args) => run_selected_text(args),
         Command::Attr(args) => run_attr(args),
         Command::Wait(args) => run_wait(args),
@@ -145,6 +144,7 @@ fn run_single(command: Command) -> OpenPageResult<()> {
         Command::Find(args) => run_find(args),
         Command::FindInPage(args) => run_find_in_page(args),
         Command::FindAll(args) => run_find_all(args),
+        Command::Locate(args) => run_locate(args),
         Command::Count(args) => run_count(args),
         Command::WaitVisible(args) => run_wait_visible(args),
         Command::WaitHidden(args) => run_wait_hidden(args),
@@ -162,10 +162,16 @@ fn run_single(command: Command) -> OpenPageResult<()> {
         Command::WaitForDownloadsDone(args) => run_wait_for_downloads_done(args),
         Command::WaitForAlertClosed(args) => run_wait_for_alert_closed(args),
         Command::WaitForLoadStart(args) => run_wait_for_load_start(args),
+        Command::WaitForDocLoaded(args) => run_wait_for_doc_loaded(args),
+        Command::WaitForReady(args) => run_wait_for_ready(args),
+        Command::WaitForNavigation(args) => run_wait_for_navigation(args),
         Command::WaitForUrl(args) => run_wait_for_url(args),
         Command::WaitForTitle(args) => run_wait_for_title(args),
+        Command::WaitForElementsLoaded(args) => run_wait_for_elements_loaded(args),
         Command::WaitForFunction(args) => run_wait_for_function(args),
         Command::WaitForText(args) => run_wait_for_text(args),
+        Command::WaitDisabledOrDeleted(args) => run_wait_disabled_or_deleted(args),
+        Command::WaitUploadPathsInputted(args) => run_wait_upload_paths_inputted(args),
         Command::Save(args) => run_save(args),
         Command::Pdf(args) => run_pdf(args),
         Command::History(command) => run_history(command),
@@ -346,7 +352,7 @@ fn tail_log_lines(content: &str, limit: usize) -> String {
 
 fn run_goto(args: GotoArgs) -> OpenPageResult<()> {
     ensure_webpage_session(&args.session)?;
-    let _ = rpc_webpage(
+    let result = rpc_webpage(
         &args.session,
         "webpage.get",
         json!({
@@ -363,16 +369,16 @@ fn run_goto(args: GotoArgs) -> OpenPageResult<()> {
         )?;
     }
     let url = rpc_webpage(&args.session, "webpage.url", Value::Null)?;
-    print_json(simple_ok(
-        json!({"loaded": true, "url": url.get("url").cloned()}),
-    ))
+    print_json(simple_ok(json!({
+        "loaded": true,
+        "url": url.get("url").cloned(),
+        "navigation_token": result.get("navigation_token").cloned(),
+    })))
 }
 
 fn run_back(args: SessionArgs) -> OpenPageResult<()> {
-    let navigated = rpc_webpage(&args.session, "webpage.back", Value::Null)?
-        .get("back")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let result = rpc_webpage(&args.session, "webpage.back", Value::Null)?;
+    let navigated = result.get("back").and_then(Value::as_bool).unwrap_or(false);
     if navigated {
         let _ = rpc_webpage(
             &args.session,
@@ -381,13 +387,16 @@ fn run_back(args: SessionArgs) -> OpenPageResult<()> {
         )?;
     }
     let url = rpc_webpage(&args.session, "webpage.url", Value::Null)?;
-    print_json(simple_ok(
-        json!({"back": navigated, "url": url.get("url").cloned()}),
-    ))
+    print_json(simple_ok(json!({
+        "back": navigated,
+        "url": url.get("url").cloned(),
+        "navigation_token": result.get("navigation_token").cloned(),
+    })))
 }
 
 fn run_forward(args: SessionArgs) -> OpenPageResult<()> {
-    let navigated = rpc_webpage(&args.session, "webpage.forward", Value::Null)?
+    let result = rpc_webpage(&args.session, "webpage.forward", Value::Null)?;
+    let navigated = result
         .get("forward")
         .and_then(Value::as_bool)
         .unwrap_or(false);
@@ -399,13 +408,15 @@ fn run_forward(args: SessionArgs) -> OpenPageResult<()> {
         )?;
     }
     let url = rpc_webpage(&args.session, "webpage.url", Value::Null)?;
-    print_json(simple_ok(
-        json!({"forward": navigated, "url": url.get("url").cloned()}),
-    ))
+    print_json(simple_ok(json!({
+        "forward": navigated,
+        "url": url.get("url").cloned(),
+        "navigation_token": result.get("navigation_token").cloned(),
+    })))
 }
 
 fn run_reload(args: ReloadArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let result = rpc_webpage(
         &args.session,
         "webpage.reload",
         json!({
@@ -417,7 +428,8 @@ fn run_reload(args: ReloadArgs) -> OpenPageResult<()> {
     print_json(simple_ok(json!({
         "reloaded": true,
         "ignore_cache": args.ignore_cache,
-        "url": url.get("url").cloned()
+        "url": url.get("url").cloned(),
+        "navigation_token": result.get("navigation_token").cloned(),
     })))
 }
 
@@ -490,11 +502,17 @@ fn run_html(args: SessionArgs) -> OpenPageResult<()> {
     )?))
 }
 
-fn run_snapshot(args: SessionArgs) -> OpenPageResult<()> {
+fn run_snapshot(args: SnapshotArgs) -> OpenPageResult<()> {
     print_json(simple_ok(rpc_webpage(
         &args.session,
         "webpage.snapshot",
-        Value::Null,
+        json!({
+            "mode": args.mode.as_str(),
+            "format": args.format.as_str(),
+            "raw": args.raw,
+            "depth": args.depth,
+            "selector": args.selector,
+        }),
     )?))
 }
 
@@ -874,6 +892,14 @@ fn run_xpath(args: ElementArgs) -> OpenPageResult<()> {
     )?))
 }
 
+fn run_element_html(args: ElementArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "element.html",
+        json!({"locator": args.locator}),
+    )?))
+}
+
 fn run_attr(args: AttrArgs) -> OpenPageResult<()> {
     print_json(simple_ok(rpc_webpage(
         &args.session,
@@ -882,17 +908,26 @@ fn run_attr(args: AttrArgs) -> OpenPageResult<()> {
     )?))
 }
 
+fn wait_condition_op(condition: &str) -> Option<&'static str> {
+    let normalized = condition.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "load-start" | "load_start" | "start-loading" => Some("wait.load_start"),
+        "doc-loaded" | "doc_loaded" | "loaded" => Some("wait.doc_loaded"),
+        "ready" => Some("wait.ready"),
+        "navigation" => Some("wait.navigation"),
+        _ => None,
+    }
+}
+
 fn run_wait(args: WaitArgs) -> OpenPageResult<()> {
     let condition = args.condition.trim();
-    if condition.eq_ignore_ascii_case("navigation")
-        || condition.eq_ignore_ascii_case("load")
-        || condition.eq_ignore_ascii_case("loaded")
-    {
-        let _ = rpc_webpage(
-            &args.session,
-            "wait.doc_loaded",
-            json!({"timeout_ms": args.timeout}),
-        )?;
+    if let Some(op) = wait_condition_op(condition) {
+        let params = if op == "wait.navigation" {
+            json!({"timeout_ms": args.timeout, "token": args.token})
+        } else {
+            json!({"timeout_ms": args.timeout})
+        };
+        let _ = rpc_webpage(&args.session, op, params)?;
     } else {
         let locator = condition
             .strip_prefix("element ")
@@ -1148,7 +1183,10 @@ fn resolve_download_mission(session: &str, guid: Option<&str>) -> OpenPageResult
 }
 
 fn download_final_path(mission: &Value) -> OpenPageResult<String> {
-    let guid = mission.get("guid").and_then(Value::as_str).unwrap_or_default();
+    let guid = mission
+        .get("guid")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let path = mission
         .get("final_path")
         .and_then(Value::as_str)
@@ -1212,7 +1250,10 @@ fn reveal_path_with_system(path: &Path) -> OpenPageResult<()> {
     #[cfg(target_os = "linux")]
     let command = {
         let parent = path.parent().ok_or_else(|| {
-            OpenPageError::Io(format!("download path has no parent directory: {}", path.display()))
+            OpenPageError::Io(format!(
+                "download path has no parent directory: {}",
+                path.display()
+            ))
         })?;
         let mut command = ProcessCommand::new("xdg-open");
         command.arg(parent);
@@ -1452,6 +1493,7 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
             "headless": headless,
             "browser_path": args.browser_path,
             "user_data_dir": args.user_data_dir,
+            "port": args.port,
             "width": args.width,
             "height": args.height,
             "no_sandbox": args.no_sandbox,
@@ -1501,14 +1543,6 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
 }
 
 fn stop_browser_session(session: &str, quiet: bool) -> OpenPageResult<()> {
-    if tcp_daemon_ready(session) {
-        let _ = rpc_request(
-            session,
-            Some(session.to_string()),
-            "webpage.quit",
-            Value::Null,
-        );
-    }
     let shutdown = shutdown_daemon(session)?;
     let _ = write_recently_closed_tabs(session, &[]);
     if quiet {
@@ -1688,13 +1722,19 @@ fn ensure_webpage_session(session: &str) -> OpenPageResult<()> {
         "webpage.create",
         json!({
             "session": session,
-            "headless": true,
+            "port": 0,
         }),
     )?;
     Ok(())
 }
 
 fn rpc_webpage(session: &str, op: &str, params: Value) -> OpenPageResult<Value> {
+    ensure_webpage_session(session)?;
+    rpc_request_existing(session, Some(session.to_string()), op, params)
+}
+
+#[cfg(test)]
+fn rpc_webpage_existing(session: &str, op: &str, params: Value) -> OpenPageResult<Value> {
     rpc_request_existing(session, Some(session.to_string()), op, params)
 }
 
@@ -1939,12 +1979,11 @@ fn run_hover_at(args: HoverAtArgs) -> OpenPageResult<()> {
 }
 
 fn run_press(args: PressArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    print_json(simple_ok(rpc_webpage(
         &args.session,
         "element.press_key",
         json!({"locator": args.locator, "key": args.key.clone()}),
-    )?;
-    print_json(simple_ok(json!({"pressed": true, "key": args.key})))
+    )?))
 }
 
 fn run_select(args: SelectArgs) -> OpenPageResult<()> {
@@ -2221,6 +2260,14 @@ fn run_find_all(args: ElementArgs) -> OpenPageResult<()> {
     )?))
 }
 
+fn run_locate(args: LocateArgs) -> OpenPageResult<()> {
+    print_json(simple_ok(rpc_webpage(
+        &args.session,
+        "webpage.locate",
+        json!({"chain": args.chain.join(" ")}),
+    )?))
+}
+
 fn run_count(args: ElementArgs) -> OpenPageResult<()> {
     print_json(simple_ok(rpc_webpage(
         &args.session,
@@ -2419,6 +2466,55 @@ fn run_wait_for_load_start(args: WaitTimeoutArgs) -> OpenPageResult<()> {
     print_json(simple_ok(json!({"waited": started, "started": started})))
 }
 
+fn run_wait_for_doc_loaded(args: WaitTimeoutArgs) -> OpenPageResult<()> {
+    let loaded = rpc_webpage(
+        &args.session,
+        "wait.doc_loaded",
+        json!({"timeout_ms": args.timeout}),
+    )?
+    .get("loaded")
+    .and_then(Value::as_bool)
+    .unwrap_or(false);
+    print_json(simple_ok(json!({"waited": loaded, "loaded": loaded})))
+}
+
+fn run_wait_for_ready(args: WaitTimeoutArgs) -> OpenPageResult<()> {
+    let result = rpc_webpage(
+        &args.session,
+        "wait.ready",
+        json!({"timeout_ms": args.timeout}),
+    )?;
+    let ready = result
+        .get("ready")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    print_json(simple_ok(json!({
+        "waited": ready,
+        "ready": ready,
+        "ready_state": result.get("ready_state").cloned(),
+        "url": result.get("url").cloned(),
+    })))
+}
+
+fn run_wait_for_navigation(args: WaitForNavigationArgs) -> OpenPageResult<()> {
+    let result = rpc_webpage(
+        &args.session,
+        "wait.navigation",
+        json!({"timeout_ms": args.timeout, "token": args.token}),
+    )?;
+    let ready = result
+        .get("ready")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    print_json(simple_ok(json!({
+        "waited": ready,
+        "ready": ready,
+        "ready_state": result.get("ready_state").cloned(),
+        "url": result.get("url").cloned(),
+        "token": result.get("token").cloned(),
+    })))
+}
+
 fn run_wait_for_url(args: WaitForUrlArgs) -> OpenPageResult<()> {
     let _ = rpc_webpage(
         &args.session,
@@ -2441,6 +2537,22 @@ fn run_wait_for_title(args: WaitForTitleArgs) -> OpenPageResult<()> {
     print_json(simple_ok(
         json!({"waited": true, "title": title.get("title").cloned()}),
     ))
+}
+
+fn run_wait_for_elements_loaded(args: WaitElementsLoadedArgs) -> OpenPageResult<()> {
+    let loaded = rpc_webpage(
+        &args.session,
+        "wait.eles_loaded",
+        json!({
+            "locators": args.locators,
+            "any_one": args.any_one,
+            "timeout_ms": args.timeout,
+        }),
+    )?
+    .get("loaded")
+    .and_then(Value::as_bool)
+    .unwrap_or(false);
+    print_json(simple_ok(json!({"waited": loaded, "loaded": loaded})))
 }
 
 fn run_wait_for_function(args: WaitForFunctionArgs) -> OpenPageResult<()> {
@@ -2470,6 +2582,32 @@ fn run_wait_for_text(args: WaitForTextArgs) -> OpenPageResult<()> {
         }),
     )?;
     print_json(simple_ok(json!({"waited": true, "text": args.text})))
+}
+
+fn run_wait_disabled_or_deleted(args: WaitElementArgs) -> OpenPageResult<()> {
+    let ready = rpc_webpage(
+        &args.session,
+        "wait.ele_disabled_or_deleted",
+        json!({"locator": args.locator, "timeout_ms": args.timeout}),
+    )?
+    .get("ready")
+    .and_then(Value::as_bool)
+    .unwrap_or(false);
+    print_json(simple_ok(
+        json!({"disabled_or_deleted": ready, "waited": ready}),
+    ))
+}
+
+fn run_wait_upload_paths_inputted(args: WaitTimeoutArgs) -> OpenPageResult<()> {
+    let inputted = rpc_webpage(
+        &args.session,
+        "wait.upload_paths_inputted",
+        json!({"timeout_ms": args.timeout}),
+    )?
+    .get("inputted")
+    .and_then(Value::as_bool)
+    .unwrap_or(false);
+    print_json(simple_ok(json!({"waited": inputted, "inputted": inputted})))
 }
 
 fn run_save(args: SaveArgs) -> OpenPageResult<()> {
@@ -3055,10 +3193,12 @@ mod tests {
             json!(["missing_version", "daemon_not_ready"])
         );
         assert_eq!(payload["incomplete"][0]["log_path"], "/tmp/beta.log");
-        assert!(payload["incomplete"][0]["fix"]
-            .as_str()
-            .expect("incomplete fix should be present")
-            .contains("doctor --quick --fix"));
+        assert!(
+            payload["incomplete"][0]["fix"]
+                .as_str()
+                .expect("incomplete fix should be present")
+                .contains("doctor --quick --fix")
+        );
         assert_eq!(payload["cleaned"][0]["state"], "cleaned");
     }
 
@@ -3091,9 +3231,11 @@ mod tests {
 
         let error = super::download_final_path(&json!({"guid": "pending", "final_path": ""}))
             .expect_err("empty final_path should fail");
-        assert!(error
-            .to_string()
-            .contains("download has no finalized file path yet"));
+        assert!(
+            error
+                .to_string()
+                .contains("download has no finalized file path yet")
+        );
     }
 
     #[test]
@@ -3121,10 +3263,12 @@ mod tests {
             payload["reasons"],
             json!(["missing_version", "daemon_not_ready"])
         );
-        assert!(payload["fix"]
-            .as_str()
-            .expect("fix should be preserved")
-            .contains("doctor --quick --fix"));
+        assert!(
+            payload["fix"]
+                .as_str()
+                .expect("fix should be preserved")
+                .contains("doctor --quick --fix")
+        );
         assert_eq!(payload["path"], "/tmp/beta.log");
         assert_eq!(payload["exists"], true);
         assert_eq!(payload["tail"], 20);
@@ -3155,10 +3299,12 @@ mod tests {
         assert_eq!(payload["state"], "incompatible");
         assert_eq!(payload["version_matches_current_cli"], false);
         assert_eq!(payload["reasons"], json!(["version_mismatch"]));
-        assert!(payload["fix"]
-            .as_str()
-            .expect("fix should be preserved")
-            .contains("browser stop --session beta"));
+        assert!(
+            payload["fix"]
+                .as_str()
+                .expect("fix should be preserved")
+                .contains("browser stop --session beta")
+        );
         assert_eq!(payload["path"], "/tmp/beta.log");
         assert_eq!(payload["exists"], true);
         assert_eq!(payload["tail"], 5);
@@ -3191,7 +3337,44 @@ mod tests {
 
     #[test]
     fn parses_snapshot() {
-        Cli::try_parse_from(["openpage", "snapshot", "--session", "agent"]).unwrap();
+        Cli::try_parse_from([
+            "openpage",
+            "snapshot",
+            "--mode",
+            "semantic",
+            "--format",
+            "json",
+            "--raw",
+            "--depth",
+            "4",
+            "--selector",
+            "#main",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_element_html() {
+        Cli::try_parse_from(["openpage", "element-html", "#main", "--session", "agent"]).unwrap();
+    }
+
+    #[test]
+    fn parses_locate_chain() {
+        Cli::try_parse_from([
+            "openpage",
+            "locate",
+            "@e2",
+            ">>",
+            "parent",
+            ">>",
+            "child",
+            "a",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
     }
 
     #[test]
@@ -3784,6 +3967,117 @@ mod tests {
     }
 
     #[test]
+    fn parses_wait_for_doc_loaded() {
+        Cli::try_parse_from([
+            "openpage",
+            "wait-for-doc-loaded",
+            "--timeout",
+            "5000",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_wait_for_ready_and_navigation() {
+        Cli::try_parse_from([
+            "openpage",
+            "wait-for-ready",
+            "--timeout",
+            "5000",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+        Cli::try_parse_from([
+            "openpage",
+            "wait-for-navigation",
+            "--timeout",
+            "5000",
+            "--token",
+            "nav-3",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_wait_navigation_alias_with_token() {
+        Cli::try_parse_from([
+            "openpage",
+            "wait",
+            "navigation",
+            "--timeout",
+            "5000",
+            "--token",
+            "nav-7",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn wait_condition_aliases_map_to_distinct_wait_ops() {
+        assert_eq!(
+            super::wait_condition_op("load-start"),
+            Some("wait.load_start")
+        );
+        assert_eq!(
+            super::wait_condition_op("doc_loaded"),
+            Some("wait.doc_loaded")
+        );
+        assert_eq!(super::wait_condition_op("loaded"), Some("wait.doc_loaded"));
+        assert_eq!(super::wait_condition_op("ready"), Some("wait.ready"));
+        assert_eq!(
+            super::wait_condition_op("navigation"),
+            Some("wait.navigation")
+        );
+        assert_eq!(super::wait_condition_op("#result"), None);
+    }
+
+    #[test]
+    fn parses_wait_for_elements_loaded() {
+        Cli::try_parse_from([
+            "openpage",
+            "wait-for-elements-loaded",
+            "#a",
+            "#b",
+            "--any-one",
+            "--timeout",
+            "5000",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn parses_wait_disabled_or_deleted_and_upload_paths_inputted() {
+        Cli::try_parse_from([
+            "openpage",
+            "wait-disabled-or-deleted",
+            "#gone",
+            "--timeout",
+            "5000",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+        Cli::try_parse_from([
+            "openpage",
+            "wait-upload-paths-inputted",
+            "--timeout",
+            "5000",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+    }
+
+    #[test]
     fn parses_is_clickable() {
         Cli::try_parse_from(["openpage", "is-clickable", "#go", "--session", "agent"]).unwrap();
     }
@@ -4147,10 +4441,12 @@ mod tests {
         assert_eq!(payload["error"]["session"], "mismatch-review");
         assert_eq!(payload["error"]["state"], "incompatible");
         assert_eq!(payload["error"]["reasons"], json!(["version_mismatch"]));
-        assert!(payload["error"]["fix"]
-            .as_str()
-            .expect("fix should be present")
-            .contains("browser stop --session mismatch-review"));
+        assert!(
+            payload["error"]["fix"]
+                .as_str()
+                .expect("fix should be present")
+                .contains("browser stop --session mismatch-review")
+        );
     }
 
     #[test]
@@ -4160,7 +4456,7 @@ mod tests {
         let daemon = daemon_dir().expect("daemon dir path");
         assert!(!daemon.exists(), "test should start without daemon dir");
 
-        let error = super::rpc_webpage("inactive-review", "webpage.title", Value::Null)
+        let error = super::rpc_webpage_existing("inactive-review", "webpage.title", Value::Null)
             .expect_err("inactive session should fail instead of starting a fresh daemon/browser");
 
         match error {

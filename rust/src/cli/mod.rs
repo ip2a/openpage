@@ -14,7 +14,9 @@ use std::path::{Path, PathBuf};
 
 use crate::cli::args::{Cli, Command, CompatCli};
 use crate::cli::protocol::{print_output_json, simple_ok};
-use crate::config::{ensure_workspace_config_file, load_resolved_config, update_user_browser_paths};
+use crate::config::{
+    ensure_workspace_config_file, load_resolved_config, update_user_browser_paths,
+};
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::{Browser, LaunchOptions};
 
@@ -222,8 +224,8 @@ mod tests {
         CompatCli, clap_error_payload, dp_help_requested, load_dp_compat_launch_options,
         should_use_dp_compat_mode, update_dp_compat_launch_paths,
     };
-    use crate::config::OPENPAGE_CONFIG_ENV;
     use crate::cli::args::Cli;
+    use crate::config::OPENPAGE_CONFIG_ENV;
 
     struct EnvVarGuard {
         key: &'static str,
@@ -373,10 +375,8 @@ mod tests {
         let dir = temp_dir("compat-save");
         let config_path = dir.join("config.toml");
         fs::write(&config_path, "[browser]\n").expect("seed config");
-        let _config_guard = EnvVarGuard::set(
-            OPENPAGE_CONFIG_ENV,
-            config_path.to_string_lossy().as_ref(),
-        );
+        let _config_guard =
+            EnvVarGuard::set(OPENPAGE_CONFIG_ENV, config_path.to_string_lossy().as_ref());
 
         let saved = update_dp_compat_launch_paths(
             Some(Path::new("/tmp/compat-browser")),
@@ -401,10 +401,8 @@ mod tests {
             "[browser]\nexecutable_path = \"/tmp/compat-browser\"\n",
         )
         .expect("seed config");
-        let _config_guard = EnvVarGuard::set(
-            OPENPAGE_CONFIG_ENV,
-            config_path.to_string_lossy().as_ref(),
-        );
+        let _config_guard =
+            EnvVarGuard::set(OPENPAGE_CONFIG_ENV, config_path.to_string_lossy().as_ref());
 
         let keep = load_dp_compat_launch_options(Some(0)).expect("load config port");
         let override_port = load_dp_compat_launch_options(Some(9333)).expect("load override port");

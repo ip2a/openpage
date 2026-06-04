@@ -5,6 +5,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex as StdMutex, MutexGuard as StdMutexGuard};
 use std::thread::sleep;
 use std::time::{Duration, Instant};
 
@@ -28,9 +29,11 @@ use chromiumoxide::cdp::browser_protocol::network::{
     DeleteCookiesParams, EnableParams as NetworkEnableParams, Headers, SetBlockedUrLsParams,
     SetCookiesParams, SetExtraHttpHeadersParams,
 };
+use chromiumoxide::cdp::browser_protocol::page::SetLifecycleEventsEnabledParams;
 use chromiumoxide::cdp::browser_protocol::page::{
     AddScriptToEvaluateOnNewDocumentParams, CaptureScreenshotFormat, CaptureSnapshotFormat,
-    CaptureSnapshotParams, FrameId, FrameTree, GetNavigationHistoryParams,
+    CaptureSnapshotParams, EventFrameNavigated, EventLifecycleEvent, EventNavigatedWithinDocument,
+    Frame as CdpPageFrame, FrameId, FrameTree, GetNavigationHistoryParams,
     NavigateToHistoryEntryParams, PrintToPdfParams, ReloadParams,
     RemoveScriptToEvaluateOnNewDocumentParams, StopLoadingParams, Viewport as ClipViewport,
 };
@@ -41,10 +44,12 @@ use chromiumoxide::keys;
 use chromiumoxide::layout::Point;
 use chromiumoxide::page::{Page as OxPage, ScreenshotParams};
 use chromiumoxide::{Command, Method};
+use futures::StreamExt;
 use publicsuffix::{List as PublicSuffixList, Psl};
 use serde::Serialize;
 use serde_json::Value;
 use tokio::runtime::Runtime;
+use tokio::task::JoinHandle;
 use tokio::time::timeout as tokio_timeout;
 use url::Url;
 
@@ -76,11 +81,10 @@ use crate::settings::{
     cdp_timeout_duration, component_state_lock_poisoned_message,
     default_none_element_runtime_config, frame_execution_context_unavailable_message,
     frame_html_unavailable_message, frame_index_must_start_message,
-    frame_index_out_of_range_message, invalid_cookie_same_site_message,
-    invalid_file_url_message, invalid_url_message, no_new_tab_message,
-    page_connect_timed_out_message, singleton_tab_obj_enabled, suffixes_list_path,
-    timeout_duration_millis, timeout_error, timeout_must_be_non_negative_message,
-    wait_timeout_result,
+    frame_index_out_of_range_message, invalid_cookie_same_site_message, invalid_file_url_message,
+    invalid_url_message, no_new_tab_message, page_connect_timed_out_message,
+    singleton_tab_obj_enabled, suffixes_list_path, timeout_duration_millis, timeout_error,
+    timeout_must_be_non_negative_message, wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -103,6 +107,7 @@ pub struct Page {
     runtime: Arc<Runtime>,
     inner: OxPage,
     browser: Option<Browser>,
+    navigation: NavigationTracker,
     interceptor: Interceptor,
     console: Console,
     screencast: Screencast,
@@ -153,6 +158,46 @@ pub struct DisconnectedFrame {
     frame_backend_node_id: BackendNodeId,
 }
 
+#[derive(Clone, Debug, Default)]
+pub(crate) struct PageNavigationSnapshot {
+    pub started_seq: u64,
+    pub settled_seq: u64,
+    pub main_frame_id: Option<String>,
+    pub current_loader_id: Option<String>,
+    pub current_url: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct NavigationState {
+    snapshot: PageNavigationSnapshot,
+    loader_started: HashMap<String, u64>,
+    last_error: Option<String>,
+    lifecycle_task: Option<JoinHandle<()>>,
+    frame_navigated_task: Option<JoinHandle<()>>,
+    same_document_task: Option<JoinHandle<()>>,
+}
+
+#[derive(Debug)]
+struct NavigationShared {
+    state: StdMutex<NavigationState>,
+}
+
+impl NavigationShared {
+    fn new(snapshot: PageNavigationSnapshot) -> Self {
+        Self {
+            state: StdMutex::new(NavigationState {
+                snapshot,
+                ..NavigationState::default()
+            }),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct NavigationTracker {
+    shared: Arc<NavigationShared>,
+}
+
 impl DisconnectedFrame {
     pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<Frame> {
         let page = self.page.reconnect(wait_ms)?;
@@ -191,6 +236,239 @@ impl DisconnectedFrame {
 
         let frame_element = page.resolve_dom_backend_node_id(self.frame_backend_node_id)?;
         page.get_frame_context(&frame_element)
+    }
+}
+
+impl NavigationTracker {
+    fn new(runtime: Arc<Runtime>, page: OxPage) -> Self {
+        let snapshot = initial_navigation_snapshot(runtime.as_ref(), &page).unwrap_or_default();
+        let shared = Arc::new(NavigationShared::new(snapshot));
+        let tracker = Self {
+            shared: Arc::clone(&shared),
+        };
+
+        let _ = execute_page_command_blocking(
+            runtime.as_ref(),
+            &page,
+            SetLifecycleEventsEnabledParams::new(true),
+            "Page::set_lifecycle_events_enabled()",
+        );
+
+        let lifecycle_shared = Arc::clone(&shared);
+        let lifecycle_page = page.clone();
+        let lifecycle_task = runtime.spawn(async move {
+            let mut events = match lifecycle_page.event_listener::<EventLifecycleEvent>().await {
+                Ok(events) => events,
+                Err(err) => {
+                    set_navigation_last_error(&lifecycle_shared, err.to_string());
+                    return;
+                }
+            };
+
+            while let Some(event) = events.next().await {
+                update_navigation_from_lifecycle(&lifecycle_shared, &event);
+            }
+        });
+
+        let frame_shared = Arc::clone(&shared);
+        let frame_page = page.clone();
+        let frame_navigated_task = runtime.spawn(async move {
+            let mut events = match frame_page.event_listener::<EventFrameNavigated>().await {
+                Ok(events) => events,
+                Err(err) => {
+                    set_navigation_last_error(&frame_shared, err.to_string());
+                    return;
+                }
+            };
+
+            while let Some(event) = events.next().await {
+                update_navigation_from_frame_navigated(&frame_shared, &event);
+            }
+        });
+
+        let same_document_shared = Arc::clone(&shared);
+        let same_document_page = page;
+        let same_document_task = runtime.spawn(async move {
+            let mut events = match same_document_page
+                .event_listener::<EventNavigatedWithinDocument>()
+                .await
+            {
+                Ok(events) => events,
+                Err(err) => {
+                    set_navigation_last_error(&same_document_shared, err.to_string());
+                    return;
+                }
+            };
+
+            while let Some(event) = events.next().await {
+                update_navigation_from_same_document(&same_document_shared, &event);
+            }
+        });
+
+        if let Ok(mut state) = tracker.shared.state.lock() {
+            state.lifecycle_task = Some(lifecycle_task);
+            state.frame_navigated_task = Some(frame_navigated_task);
+            state.same_document_task = Some(same_document_task);
+        }
+
+        tracker
+    }
+
+    fn snapshot(&self) -> OpenPageResult<PageNavigationSnapshot> {
+        self.shared
+            .state
+            .lock()
+            .map(|state| state.snapshot.clone())
+            .map_err(|_| {
+                OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                    "page navigation state",
+                    "页面导航状态",
+                ))
+            })
+    }
+}
+
+fn initial_navigation_snapshot(
+    runtime: &Runtime,
+    page: &OxPage,
+) -> OpenPageResult<PageNavigationSnapshot> {
+    let tree = execute_page_command_blocking(
+        runtime,
+        page,
+        GetFrameTreeParams::default(),
+        "Page::initial_navigation_snapshot()",
+    )?;
+    Ok(PageNavigationSnapshot {
+        main_frame_id: Some(tree.frame_tree.frame.id.as_ref().to_string()),
+        current_loader_id: Some(tree.frame_tree.frame.loader_id.as_ref().to_string()),
+        current_url: Some(cdp_frame_url(&tree.frame_tree.frame)),
+        ..PageNavigationSnapshot::default()
+    })
+}
+
+fn set_navigation_last_error(shared: &Arc<NavigationShared>, detail: String) {
+    if let Ok(mut state) = shared.state.lock() {
+        state.last_error = Some(detail);
+    }
+}
+
+fn navigation_state_lock<'a>(
+    shared: &'a Arc<NavigationShared>,
+) -> Option<StdMutexGuard<'a, NavigationState>> {
+    shared.state.lock().ok()
+}
+
+fn is_main_frame_event(state: &NavigationState, frame_id: &str) -> bool {
+    state
+        .snapshot
+        .main_frame_id
+        .as_deref()
+        .map(|current| current == frame_id)
+        .unwrap_or(true)
+}
+
+fn mark_navigation_started(
+    state: &mut NavigationState,
+    loader_id: Option<&str>,
+    url: Option<String>,
+) -> u64 {
+    if let Some(loader_id) = loader_id
+        && let Some(seq) = state.loader_started.get(loader_id)
+    {
+        if let Some(url) = url {
+            state.snapshot.current_url = Some(url);
+        }
+        state.snapshot.current_loader_id = Some(loader_id.to_string());
+        return *seq;
+    }
+
+    state.snapshot.started_seq += 1;
+    let seq = state.snapshot.started_seq;
+    if let Some(loader_id) = loader_id {
+        state.loader_started.insert(loader_id.to_string(), seq);
+        state.snapshot.current_loader_id = Some(loader_id.to_string());
+    }
+    if let Some(url) = url {
+        state.snapshot.current_url = Some(url);
+    }
+    seq
+}
+
+fn mark_navigation_settled(state: &mut NavigationState, seq: u64) {
+    state.snapshot.settled_seq = state.snapshot.settled_seq.max(seq);
+    state.loader_started.retain(|_, value| *value > seq);
+}
+
+fn settle_loader(state: &mut NavigationState, loader_id: &str) {
+    if let Some(seq) = state.loader_started.get(loader_id).copied() {
+        mark_navigation_settled(state, seq);
+    }
+}
+
+fn update_navigation_from_frame_navigated(
+    shared: &Arc<NavigationShared>,
+    event: &EventFrameNavigated,
+) {
+    let Some(mut state) = navigation_state_lock(shared) else {
+        return;
+    };
+    if event.frame.parent_id.is_some() {
+        return;
+    }
+
+    state.snapshot.main_frame_id = Some(event.frame.id.as_ref().to_string());
+    let loader_id = event.frame.loader_id.as_ref().to_string();
+    let url = cdp_frame_url(&event.frame);
+    let _ = mark_navigation_started(&mut state, Some(&loader_id), Some(url));
+}
+
+fn update_navigation_from_lifecycle(shared: &Arc<NavigationShared>, event: &EventLifecycleEvent) {
+    let Some(mut state) = navigation_state_lock(shared) else {
+        return;
+    };
+    let frame_id = event.frame_id.as_ref().to_string();
+    if !is_main_frame_event(&state, &frame_id) {
+        return;
+    }
+    if state.snapshot.main_frame_id.is_none() {
+        state.snapshot.main_frame_id = Some(frame_id);
+    }
+
+    let loader_id = event.loader_id.as_ref().to_string();
+    match event.name.as_str() {
+        "init" => {
+            let _ = mark_navigation_started(&mut state, Some(&loader_id), None);
+        }
+        "load" => {
+            settle_loader(&mut state, &loader_id);
+        }
+        _ => {}
+    }
+}
+
+fn update_navigation_from_same_document(
+    shared: &Arc<NavigationShared>,
+    event: &EventNavigatedWithinDocument,
+) {
+    let Some(mut state) = navigation_state_lock(shared) else {
+        return;
+    };
+    let frame_id = event.frame_id.as_ref().to_string();
+    if !is_main_frame_event(&state, &frame_id) {
+        return;
+    }
+    if state.snapshot.main_frame_id.is_none() {
+        state.snapshot.main_frame_id = Some(frame_id);
+    }
+
+    let seq = mark_navigation_started(&mut state, None, Some(event.url.clone()));
+    mark_navigation_settled(&mut state, seq);
+}
+
+fn cdp_frame_url(frame: &CdpPageFrame) -> String {
+    match frame.url_fragment.as_deref() {
+        Some(fragment) if !fragment.is_empty() => format!("{}{}", frame.url, fragment),
+        _ => frame.url.clone(),
     }
 }
 
@@ -1005,9 +1283,10 @@ impl Frame {
 
     pub fn html(&self) -> OpenPageResult<String> {
         let tag = self.frame_element.tag()?;
-        let outer_html = self.frame_element.html()?.ok_or_else(|| {
-            OpenPageError::ElementNotFound(frame_html_unavailable_message())
-        })?;
+        let outer_html = self
+            .frame_element
+            .html()?
+            .ok_or_else(|| OpenPageError::ElementNotFound(frame_html_unavailable_message()))?;
         let inner_html = self.inner_html()?;
         Ok(compose_frame_html(&tag, &outer_html, &inner_html))
     }
@@ -2816,6 +3095,7 @@ impl Page {
         inner: OxPage,
         load_mode: LoadMode,
     ) -> Self {
+        let navigation = NavigationTracker::new(Arc::clone(&runtime), inner.clone());
         let interceptor = Interceptor::new(Arc::clone(&runtime), inner.clone());
         let console = Console::new(Arc::clone(&runtime), inner.clone());
         let screencast = Screencast::new(Arc::clone(&runtime), inner.clone());
@@ -2825,6 +3105,7 @@ impl Page {
             runtime,
             inner,
             browser: None,
+            navigation,
             interceptor,
             console,
             screencast,
@@ -2866,6 +3147,10 @@ impl Page {
         self.browser.as_ref()
     }
 
+    pub(crate) fn navigation_snapshot(&self) -> OpenPageResult<PageNavigationSnapshot> {
+        self.navigation.snapshot()
+    }
+
     fn browser_backed_ref(&self, method_name: &str) -> OpenPageResult<&Browser> {
         self.browser.as_ref().ok_or_else(|| {
             OpenPageError::UnsupportedOperation(format!(
@@ -2898,15 +3183,12 @@ impl Page {
             return Ok(fresh_config);
         }
 
-        let mut configs = self
-            .frame_none_element_configs
-            .lock()
-            .map_err(|_| {
-                OpenPageError::PageOperation(component_state_lock_poisoned_message(
-                    "frame none element config cache",
-                    "frame 未找到元素配置缓存",
-                ))
-            })?;
+        let mut configs = self.frame_none_element_configs.lock().map_err(|_| {
+            OpenPageError::PageOperation(component_state_lock_poisoned_message(
+                "frame none element config cache",
+                "frame 未找到元素配置缓存",
+            ))
+        })?;
         if let Some(config) = configs.get(frame_id) {
             return Ok(Arc::clone(config));
         }
@@ -5818,9 +6100,9 @@ impl Page {
                 .await
                 .map_err(|err| OpenPageError::PageOperation(err.to_string()))?
                 .ok_or_else(|| {
-                    OpenPageError::PageOperation(
-                        frame_execution_context_unavailable_message(frame_id),
-                    )
+                    OpenPageError::PageOperation(frame_execution_context_unavailable_message(
+                        frame_id,
+                    ))
                 })
         })
     }
@@ -6503,9 +6785,10 @@ fn frame_find_all_script(locator: &Locator, batch: &str) -> OpenPageResult<Strin
                 const attr = {attr}; \
                 const batch = {batch}; \
                 const result = []; \
-                const iterator = document.evaluate({query}, document, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null); \
+                const snapshot = document.evaluate({query}, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null); \
                 let index = 0; \
-                for (let node = iterator.iterateNext(); node; node = iterator.iterateNext()) {{ \
+                for (let i = 0; i < snapshot.snapshotLength; i++) {{ \
+                    const node = snapshot.snapshotItem(i); \
                     if (!(node instanceof Element)) continue; \
                     const marker = `${{batch}}-${{index++}}`; \
                     node.setAttribute(attr, marker); \
@@ -8256,8 +8539,8 @@ mod tests {
         let _settings = scoped_test_settings();
         Settings::reset();
 
-        let (browser, temp_dir) =
-            launch_headless_test_browser("page-lock-poisoned-l10n").expect("launch headless browser");
+        let (browser, temp_dir) = launch_headless_test_browser("page-lock-poisoned-l10n")
+            .expect("launch headless browser");
 
         let result = (|| -> OpenPageResult<()> {
             let page = browser.new_page(None)?;
@@ -8788,23 +9071,22 @@ mod tests {
                 })()"#,
             )?;
 
-            let frame_element = page
-                .get_frame_ele("css:#demo-frame")
-                .map_err(|err| OpenPageError::PageOperation(format!(
-                    "locator get_frame_ele: {err}"
-                )))?;
-            let frame = page.get_frame("css:#demo-frame").map_err(|err| {
-                OpenPageError::PageOperation(format!("locator get_frame: {err}"))
+            let frame_element = page.get_frame_ele("css:#demo-frame").map_err(|err| {
+                OpenPageError::PageOperation(format!("locator get_frame_ele: {err}"))
             })?;
+            let frame = page
+                .get_frame("css:#demo-frame")
+                .map_err(|err| OpenPageError::PageOperation(format!("locator get_frame: {err}")))?;
             let frame_by_index = page
                 .get_frame(1usize)
                 .map_err(|err| OpenPageError::PageOperation(format!("index get_frame: {err}")))?;
             let frame_element_by_index = page.get_frame_ele(1usize).map_err(|err| {
                 OpenPageError::PageOperation(format!("index get_frame_ele: {err}"))
             })?;
-            let frame_context_from_locator = page.get_frame_context("css:#demo-frame").map_err(|err| {
-                OpenPageError::PageOperation(format!("locator get_frame_context: {err}"))
-            })?;
+            let frame_context_from_locator =
+                page.get_frame_context("css:#demo-frame").map_err(|err| {
+                    OpenPageError::PageOperation(format!("locator get_frame_context: {err}"))
+                })?;
             let frame_context_by_index = page.get_frame_context(-1isize).map_err(|err| {
                 OpenPageError::PageOperation(format!("index get_frame_context: {err}"))
             })?;
@@ -8851,37 +9133,25 @@ mod tests {
             let host = page
                 .find("css:#host")
                 .map_err(|err| OpenPageError::PageOperation(format!("host find: {err}")))?;
-            let host_frame = host
-                .get_frame("css:#demo-frame")
-                .map_err(|err| OpenPageError::PageOperation(format!(
-                    "host get_frame(locator): {err}"
-                )))?;
+            let host_frame = host.get_frame("css:#demo-frame").map_err(|err| {
+                OpenPageError::PageOperation(format!("host get_frame(locator): {err}"))
+            })?;
             let host_frame_by_index = host
                 .get_frame(1usize)
-                .map_err(|err| OpenPageError::PageOperation(format!(
-                    "host get_frame(1): {err}"
-                )))?;
-            let host_frame_from_frame = host
-                .get_frame(&frame)
-                .map_err(|err| OpenPageError::PageOperation(format!(
-                    "host get_frame(&Frame): {err}"
-                )))?;
-            let web_host = WebElement::Browser(
-                page.find("css:#host")
-                    .map_err(|err| OpenPageError::PageOperation(format!(
-                        "web host find: {err}"
-                    )))?,
-            );
-            let web_host_frame = web_host
-                .get_frame("css:#demo-frame")
-                .map_err(|err| OpenPageError::PageOperation(format!(
-                    "web host get_frame(locator): {err}"
-                )))?;
-            let web_host_frame_by_index = web_host
-                .get_frame(1usize)
-                .map_err(|err| OpenPageError::PageOperation(format!(
-                    "web host get_frame(1): {err}"
-                )))?;
+                .map_err(|err| OpenPageError::PageOperation(format!("host get_frame(1): {err}")))?;
+            let host_frame_from_frame = host.get_frame(&frame).map_err(|err| {
+                OpenPageError::PageOperation(format!("host get_frame(&Frame): {err}"))
+            })?;
+            let web_host =
+                WebElement::Browser(page.find("css:#host").map_err(|err| {
+                    OpenPageError::PageOperation(format!("web host find: {err}"))
+                })?);
+            let web_host_frame = web_host.get_frame("css:#demo-frame").map_err(|err| {
+                OpenPageError::PageOperation(format!("web host get_frame(locator): {err}"))
+            })?;
+            let web_host_frame_by_index = web_host.get_frame(1usize).map_err(|err| {
+                OpenPageError::PageOperation(format!("web host get_frame(1): {err}"))
+            })?;
 
             assert_eq!(
                 frame_from_element
@@ -8971,11 +9241,11 @@ mod tests {
                 Some("demo-frame".to_string())
             );
             assert_eq!(
-                web_host_frame_by_index
-                    .attr("name")
-                    .map_err(|err| OpenPageError::PageOperation(format!(
+                web_host_frame_by_index.attr("name").map_err(
+                    |err| OpenPageError::PageOperation(format!(
                         "web_host_frame_by_index attr: {err}"
-                    )))?,
+                    ))
+                )?,
                 Some("demo-frame".to_string())
             );
             Ok(())

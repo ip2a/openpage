@@ -68,7 +68,7 @@ pub enum Command {
     /// Get the full page HTML
     Html(SessionArgs),
     /// Get a compact agent-friendly snapshot of the page
-    Snapshot(SessionArgs),
+    Snapshot(SnapshotArgs),
     /// Take a screenshot
     Screenshot(ScreenshotArgs),
     /// Take a screenshot of a specific element
@@ -146,6 +146,8 @@ pub enum Command {
     CssPath(ElementArgs),
     /// Get the element's XPath
     Xpath(ElementArgs),
+    /// Get an element's outer HTML
+    ElementHtml(ElementArgs),
     /// Get the currently selected text
     SelectedText(SessionArgs),
     /// Get an element attribute
@@ -239,6 +241,8 @@ pub enum Command {
     FindInPage(FindInPageArgs),
     /// Find all matching elements and return basic info
     FindAll(ElementArgs),
+    /// Resolve a locator chain and return a stable element summary
+    Locate(LocateArgs),
     /// Count matching elements
     Count(ElementArgs),
     /// Wait for an element to become visible
@@ -273,14 +277,26 @@ pub enum Command {
     WaitForAlertClosed(WaitTimeoutArgs),
     /// Wait for page loading to start
     WaitForLoadStart(WaitTimeoutArgs),
+    /// Wait for the current document to finish loading
+    WaitForDocLoaded(WaitTimeoutArgs),
+    /// Wait until the page is ready for follow-up JS/snapshot commands
+    WaitForReady(WaitTimeoutArgs),
+    /// Wait until navigation has settled enough for follow-up commands
+    WaitForNavigation(WaitForNavigationArgs),
     /// Wait for URL to contain text
     WaitForUrl(WaitForUrlArgs),
     /// Wait for title to contain text
     WaitForTitle(WaitForTitleArgs),
+    /// Wait for one or more locators to exist in the DOM
+    WaitForElementsLoaded(WaitElementsLoadedArgs),
     /// Wait for a JS function to return true
     WaitForFunction(WaitForFunctionArgs),
     /// Wait for an element to contain text
     WaitForText(WaitForTextArgs),
+    /// Wait for an element to become disabled or deleted
+    WaitDisabledOrDeleted(WaitElementArgs),
+    /// Wait for browser upload paths to be inputted
+    WaitUploadPathsInputted(WaitTimeoutArgs),
     /// Save page as an MHTML archive
     Save(SaveArgs),
     /// Save page as PDF
@@ -380,6 +396,59 @@ pub struct SessionArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct SnapshotArgs {
+    #[arg(long, default_value = "default")]
+    pub session: String,
+    /// Snapshot mode: interactive for actions, semantic for headings/content, all for broader visible DOM
+    #[arg(long, value_enum, default_value_t = SnapshotMode::Interactive)]
+    pub mode: SnapshotMode,
+    /// Snapshot output shape inside the JSON result
+    #[arg(long, value_enum, default_value_t = SnapshotFormat::Text)]
+    pub format: SnapshotFormat,
+    /// Include raw element entries in addition to the compact text
+    #[arg(long)]
+    pub raw: bool,
+    /// Limit traversal depth relative to the selected root
+    #[arg(long)]
+    pub depth: Option<usize>,
+    /// Restrict snapshot traversal to a CSS selector subtree
+    #[arg(long)]
+    pub selector: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum SnapshotMode {
+    Interactive,
+    Semantic,
+    All,
+}
+
+impl SnapshotMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Interactive => "interactive",
+            Self::Semantic => "semantic",
+            Self::All => "all",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum SnapshotFormat {
+    Text,
+    Json,
+}
+
+impl SnapshotFormat {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Json => "json",
+        }
+    }
+}
+
+#[derive(Debug, Args)]
 pub struct BrowserLogsArgs {
     #[arg(long, default_value = "default")]
     pub session: String,
@@ -465,6 +534,15 @@ pub struct FindInPageArgs {
     pub backward: bool,
     #[arg(long)]
     pub case_sensitive: bool,
+    #[arg(long, default_value = "default")]
+    pub session: String,
+}
+
+#[derive(Debug, Args)]
+pub struct LocateArgs {
+    /// Locator chain, e.g. '@e2 >> parent >> child a'
+    #[arg(required = true, num_args = 1..)]
+    pub chain: Vec<String>,
     #[arg(long, default_value = "default")]
     pub session: String,
 }
@@ -578,10 +656,34 @@ pub struct WaitArgs {
     pub session: String,
     #[arg(long, default_value_t = 10000)]
     pub timeout: u64,
+    #[arg(long)]
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Args)]
 pub struct WaitTimeoutArgs {
+    #[arg(long, default_value = "default")]
+    pub session: String,
+    #[arg(long, default_value_t = 10000)]
+    pub timeout: u64,
+}
+
+#[derive(Debug, Args)]
+pub struct WaitForNavigationArgs {
+    #[arg(long, default_value = "default")]
+    pub session: String,
+    #[arg(long, default_value_t = 10000)]
+    pub timeout: u64,
+    #[arg(long)]
+    pub token: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct WaitElementsLoadedArgs {
+    #[arg(required = true, num_args = 1..)]
+    pub locators: Vec<String>,
+    #[arg(long)]
+    pub any_one: bool,
     #[arg(long, default_value = "default")]
     pub session: String,
     #[arg(long, default_value_t = 10000)]

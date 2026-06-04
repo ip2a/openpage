@@ -15,6 +15,7 @@ pub const OPENPAGE_BROWSER_HEIGHT_ENV: &str = "OPENPAGE_HEIGHT";
 pub const OPENPAGE_BROWSER_NO_SANDBOX_ENV: &str = "OPENPAGE_NO_SANDBOX";
 pub const OPENPAGE_SESSION_TIMEOUT_SECS_ENV: &str = "OPENPAGE_SESSION_TIMEOUT_SECS";
 pub const OPENPAGE_SESSION_USER_AGENT_ENV: &str = "OPENPAGE_SESSION_USER_AGENT";
+const DEFAULT_DEBUGGER_ADDRESS: &str = "127.0.0.1:9222";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigValueSource {
@@ -44,16 +45,20 @@ pub struct ResolvedConfig {
     pub loaded_user_config: bool,
     pub loaded_workspace_config: bool,
     pub browser_path_source: ConfigValueSource,
+    pub user_data_dir_source: ConfigValueSource,
 }
 
 #[derive(Debug, Clone)]
 pub struct RuntimeOverrides {
     pub browser_path: Option<PathBuf>,
     pub user_data_dir: Option<PathBuf>,
+    pub local_port: Option<u16>,
     pub headless: Option<bool>,
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub no_sandbox: Option<bool>,
+    pub incognito: Option<bool>,
+    pub mute: Option<bool>,
 }
 
 impl RuntimeOverrides {
@@ -63,6 +68,9 @@ impl RuntimeOverrides {
         }
         if let Some(path) = self.user_data_dir.as_ref() {
             launch.user_data_dir = Some(path.clone());
+        }
+        if let Some(port) = self.local_port {
+            launch.set_local_port(port);
         }
         if let Some(value) = self.headless {
             launch.headless = value;
@@ -76,6 +84,12 @@ impl RuntimeOverrides {
         if let Some(value) = self.no_sandbox {
             launch.no_sandbox = value;
         }
+        if let Some(value) = self.incognito {
+            launch.incognito = value;
+        }
+        if let Some(value) = self.mute {
+            launch.mute = value;
+        }
     }
 }
 
@@ -84,10 +98,13 @@ impl Default for RuntimeOverrides {
         Self {
             browser_path: None,
             user_data_dir: None,
+            local_port: None,
             headless: None,
             width: None,
             height: None,
             no_sandbox: None,
+            incognito: None,
+            mute: None,
         }
     }
 }
@@ -103,8 +120,13 @@ struct ConfigFile {
 #[serde(default)]
 struct BrowserConfig {
     executable_path: Option<PathBuf>,
+    address: Option<String>,
+    local_port: Option<u16>,
     user_data_dir: Option<PathBuf>,
     download_path: Option<PathBuf>,
+    existing_only: Option<bool>,
+    disable_default_args: Option<bool>,
+    arguments: Option<Vec<String>>,
     headless: Option<bool>,
     width: Option<u32>,
     height: Option<u32>,
@@ -167,7 +189,8 @@ pub fn resolve_config_path(path: &str) -> OpenPageResult<PathBuf> {
 }
 
 pub fn load_resolved_config() -> OpenPageResult<ResolvedConfig> {
-    let mut launch = LaunchOptions::default();
+    let home = openpage_home()?;
+    let mut launch = default_launch_options(&home);
     let mut session = SessionOptions::default();
 
     let user_path = user_config_path()?;
@@ -175,6 +198,7 @@ pub fn load_resolved_config() -> OpenPageResult<ResolvedConfig> {
     let mut loaded_user = false;
     let mut loaded_workspace = false;
     let mut browser_path_source = ConfigValueSource::BuiltInDefault;
+    let mut user_data_dir_source = ConfigValueSource::BuiltInDefault;
 
     if let Ok(custom_path) = env::var(OPENPAGE_CONFIG_ENV) {
         let path = resolve_config_path(&custom_path)?;
@@ -185,6 +209,7 @@ pub fn load_resolved_config() -> OpenPageResult<ResolvedConfig> {
             &mut session,
             ConfigValueSource::WorkspaceConfig,
             &mut browser_path_source,
+            &mut user_data_dir_source,
         );
         return apply_env_overrides(ResolvedConfig {
             launch,
@@ -194,6 +219,7 @@ pub fn load_resolved_config() -> OpenPageResult<ResolvedConfig> {
             loaded_user_config: false,
             loaded_workspace_config: true,
             browser_path_source,
+            user_data_dir_source,
         });
     }
 
@@ -205,6 +231,7 @@ pub fn load_resolved_config() -> OpenPageResult<ResolvedConfig> {
             &mut session,
             ConfigValueSource::UserConfig,
             &mut browser_path_source,
+            &mut user_data_dir_source,
         );
         loaded_user = true;
     }
@@ -217,6 +244,7 @@ pub fn load_resolved_config() -> OpenPageResult<ResolvedConfig> {
             &mut session,
             ConfigValueSource::WorkspaceConfig,
             &mut browser_path_source,
+            &mut user_data_dir_source,
         );
         loaded_workspace = true;
     }
@@ -229,6 +257,7 @@ pub fn load_resolved_config() -> OpenPageResult<ResolvedConfig> {
         loaded_user_config: loaded_user,
         loaded_workspace_config: loaded_workspace,
         browser_path_source,
+        user_data_dir_source,
     })
 }
 
@@ -337,6 +366,7 @@ fn apply_env_overrides(mut resolved: ResolvedConfig) -> OpenPageResult<ResolvedC
         let path = PathBuf::from(path);
         if !path.as_os_str().is_empty() {
             resolved.launch.user_data_dir = Some(path);
+            resolved.user_data_dir_source = ConfigValueSource::Environment;
         }
     }
     if let Some(value) = env::var(OPENPAGE_BROWSER_HEADLESS_ENV)
@@ -381,16 +411,33 @@ fn apply_config_file(
     session: &mut SessionOptions,
     source: ConfigValueSource,
     browser_path_source: &mut ConfigValueSource,
+    user_data_dir_source: &mut ConfigValueSource,
 ) {
     if let Some(path) = config.browser.executable_path.as_ref() {
         launch.browser_path = Some(path.clone());
         *browser_path_source = source;
     }
+    if let Some(address) = config.browser.address.as_deref() {
+        launch.set_address(address);
+    }
+    if let Some(port) = config.browser.local_port {
+        launch.set_local_port(port);
+    }
     if let Some(path) = config.browser.user_data_dir.as_ref() {
         launch.user_data_dir = Some(path.clone());
+        *user_data_dir_source = source;
     }
     if let Some(path) = config.browser.download_path.as_ref() {
         launch.download_path = Some(path.clone());
+    }
+    if let Some(value) = config.browser.existing_only {
+        launch.existing_only(value);
+    }
+    if let Some(value) = config.browser.disable_default_args {
+        launch.disable_default_args = value;
+    }
+    if let Some(args) = config.browser.arguments.as_ref() {
+        launch.args = args.clone();
     }
     if let Some(value) = config.browser.headless {
         launch.headless = value;
@@ -474,6 +521,22 @@ fn parse_bool(raw: &str) -> Option<bool> {
         "0" | "false" | "no" | "off" => Some(false),
         _ => None,
     }
+}
+
+fn default_launch_options(home: &Path) -> LaunchOptions {
+    let mut launch = LaunchOptions::default();
+    launch.set_address(DEFAULT_DEBUGGER_ADDRESS);
+    launch.set_user_data_path(home.join("profiles").join("default"));
+    launch.disable_default_args = true;
+    launch.args = vec![
+        "no-default-browser-check".to_string(),
+        "disable-suggestions-ui".to_string(),
+        "no-first-run".to_string(),
+        "disable-popup-blocking".to_string(),
+        "hide-crash-restore-bubble".to_string(),
+        "disable-features=PrivacySandboxSettings4".to_string(),
+    ];
+    launch
 }
 
 fn dedup_existing_paths(candidates: Vec<PathBuf>) -> Vec<PathBuf> {
@@ -607,7 +670,14 @@ mod tests {
             config.launch.browser_path.as_deref(),
             Some(std::path::Path::new("/tmp/workspace-browser"))
         );
-        assert_eq!(config.browser_path_source, ConfigValueSource::WorkspaceConfig);
+        assert_eq!(
+            config.browser_path_source,
+            ConfigValueSource::WorkspaceConfig
+        );
+        assert_eq!(
+            config.user_data_dir_source,
+            ConfigValueSource::BuiltInDefault
+        );
     }
 
     #[test]
@@ -642,5 +712,36 @@ mod tests {
             Some(std::path::Path::new("/tmp/env-browser"))
         );
         assert_eq!(config.browser_path_source, ConfigValueSource::Environment);
+        assert_eq!(
+            config.user_data_dir_source,
+            ConfigValueSource::BuiltInDefault
+        );
+    }
+
+    #[test]
+    fn resolved_config_tracks_user_data_dir_source() {
+        let home = temp_dir("home-user-data-dir");
+        let cwd = temp_dir("cwd-user-data-dir");
+        let user_dir = home.join(".openpage");
+        fs::create_dir_all(&user_dir).expect("create user dir");
+        fs::write(
+            user_dir.join("config.toml"),
+            "[browser]\nuser_data_dir = \"/tmp/user-profile\"\n",
+        )
+        .expect("write user config");
+
+        let _home_guard = EnvGuard::set("HOME", home.to_string_lossy().as_ref());
+        let _cwd_guard = CurrentDirGuard::set(&cwd);
+        unsafe {
+            std::env::remove_var(OPENPAGE_CONFIG_ENV);
+            std::env::remove_var(OPENPAGE_BROWSER_PATH_ENV);
+        }
+
+        let config = load_resolved_config().expect("load resolved config");
+        assert_eq!(
+            config.launch.user_data_dir.as_deref(),
+            Some(std::path::Path::new("/tmp/user-profile"))
+        );
+        assert_eq!(config.user_data_dir_source, ConfigValueSource::UserConfig);
     }
 }

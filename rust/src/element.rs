@@ -50,10 +50,10 @@ use crate::session::{
 };
 use crate::settings::{
     click_failed_hidden_or_disabled_message, click_failed_no_rect_message,
-    click_failed_should_raise, element_html_unavailable_message,
-    element_no_visible_rect_message, element_resource_unavailable_message,
-    element_tag_name_unavailable_message, frame_index_must_start_message,
-    frame_index_out_of_range_message, no_new_tab_message, wait_timeout_result,
+    click_failed_should_raise, element_html_unavailable_message, element_no_visible_rect_message,
+    element_resource_unavailable_message, element_tag_name_unavailable_message,
+    frame_index_must_start_message, frame_index_out_of_range_message, no_new_tab_message,
+    wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -668,25 +668,25 @@ impl Element {
     }
 
     pub fn snapshot_root(&self) -> OpenPageResult<SessionElement> {
-        let html = self.html()?.ok_or_else(|| {
-            OpenPageError::ElementNotFound(element_html_unavailable_message())
-        })?;
+        let html = self
+            .html()?
+            .ok_or_else(|| OpenPageError::ElementNotFound(element_html_unavailable_message()))?;
         let base_url = value_as_optional_string(self.property("baseURI")?, "baseURI")?;
         snapshot_fragment_root_with_base_url(&html, base_url.as_deref())
     }
 
     pub fn snapshot_find(&self, locator: &str) -> OpenPageResult<SessionElement> {
-        let html = self.html()?.ok_or_else(|| {
-            OpenPageError::ElementNotFound(element_html_unavailable_message())
-        })?;
+        let html = self
+            .html()?
+            .ok_or_else(|| OpenPageError::ElementNotFound(element_html_unavailable_message()))?;
         let base_url = value_as_optional_string(self.property("baseURI")?, "baseURI")?;
         snapshot_fragment_find_with_base_url(&html, locator, base_url.as_deref())
     }
 
     pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
-        let html = self.html()?.ok_or_else(|| {
-            OpenPageError::ElementNotFound(element_html_unavailable_message())
-        })?;
+        let html = self
+            .html()?
+            .ok_or_else(|| OpenPageError::ElementNotFound(element_html_unavailable_message()))?;
         let base_url = value_as_optional_string(self.property("baseURI")?, "baseURI")?;
         snapshot_fragment_find_all_with_base_url(&html, locator, base_url.as_deref())
     }
@@ -709,9 +709,9 @@ impl Element {
         &self,
         expression: &str,
     ) -> OpenPageResult<Vec<SessionXPathResult>> {
-        let html = self.html()?.ok_or_else(|| {
-            OpenPageError::ElementNotFound(element_html_unavailable_message())
-        })?;
+        let html = self
+            .html()?
+            .ok_or_else(|| OpenPageError::ElementNotFound(element_html_unavailable_message()))?;
         let base_url = value_as_optional_string(self.property("baseURI")?, "baseURI")?;
         snapshot_fragment_query_xpath_with_base_url(&html, expression, base_url.as_deref())
     }
@@ -998,9 +998,9 @@ impl Element {
         timeout_ms: u64,
         rename: bool,
     ) -> OpenPageResult<PathBuf> {
-        let data = self.src(timeout_ms, true)?.ok_or_else(|| {
-            OpenPageError::PageOperation(element_resource_unavailable_message())
-        })?;
+        let data = self
+            .src(timeout_ms, true)?
+            .ok_or_else(|| OpenPageError::PageOperation(element_resource_unavailable_message()))?;
 
         let tag = self.tag()?;
         let src_attr = self.attr(src_attribute_name(&tag))?;
@@ -3036,9 +3036,7 @@ impl Element {
         };
         resolved_index
             .and_then(|resolved_index| frames.into_iter().nth(resolved_index))
-            .ok_or_else(|| {
-                OpenPageError::ElementNotFound(frame_index_out_of_range_message(index))
-            })
+            .ok_or_else(|| OpenPageError::ElementNotFound(frame_index_out_of_range_message(index)))
     }
 
     fn find_frame_element_from_object(&self, element: &Element) -> OpenPageResult<Element> {
@@ -3074,19 +3072,30 @@ impl Element {
     }
 
     fn offset_click_point(&self, x: Option<f64>, y: Option<f64>) -> OpenPageResult<(i64, i64)> {
+        let (frame_offset_x, frame_offset_y) = self
+            .frame_viewport_offset()
+            .map_err(|err| {
+                OpenPageError::PageOperation(format!("resolve frame viewport offset failed: {err}"))
+            })?
+            .ok_or_else(|| {
+                OpenPageError::PageOperation("element frame viewport offset unavailable".to_string())
+            })?;
         if x.is_none() && y.is_none() {
             let (point_x, point_y) = self
                 .rect_viewport_click_point()?
                 .ok_or_else(|| OpenPageError::PageOperation(element_no_visible_rect_message()))?;
-            return Ok((point_x.round() as i64, point_y.round() as i64));
+            return Ok((
+                (frame_offset_x + point_x).round() as i64,
+                (frame_offset_y + point_y).round() as i64,
+            ));
         }
 
         let (left, top) = self
             .rect_viewport_location()?
             .ok_or_else(|| OpenPageError::PageOperation(element_no_visible_rect_message()))?;
         Ok((
-            (left + x.unwrap_or(0.0)).round() as i64,
-            (top + y.unwrap_or(0.0)).round() as i64,
+            (frame_offset_x + left + x.unwrap_or(0.0)).round() as i64,
+            (frame_offset_y + top + y.unwrap_or(0.0)).round() as i64,
         ))
     }
 
@@ -3923,24 +3932,27 @@ impl Element {
 
     fn collect_relative_elements(&self, script: &str) -> OpenPageResult<Vec<Element>> {
         let batch = next_marker_batch();
-        let markers = value_as_string_vec(
+        let markers_json = value_as_string(
             self.run_js(&format!(
                 "const attr = {attr}; \
                  const batch = {batch}; \
                  const elements = (() => {{ {script} }})() || []; \
                  let index = 0; \
-                 return Array.from(elements) \
+                 const markers = Array.from(elements) \
                     .filter(element => element instanceof Element) \
                     .map(element => {{ \
                         const marker = `${{batch}}-${{index++}}`; \
                         element.setAttribute(attr, marker); \
                         return marker; \
-                    }});",
+                    }}); \
+                 return JSON.stringify(markers);",
                 attr = json_string(MARKER_ATTRIBUTE)?,
                 batch = json_string(&batch)?,
             ))?,
             "relative element markers",
         )?;
+        let markers: Vec<String> = serde_json::from_str(&markers_json)
+            .map_err(|err| OpenPageError::JavaScript(err.to_string()))?;
         let elements = self.resolve_marked_elements(&markers);
         let cleanup = self.clear_markers(&batch);
         match (elements, cleanup) {

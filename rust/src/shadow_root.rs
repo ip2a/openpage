@@ -17,14 +17,14 @@ use crate::element_list::{
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::{Locator, LocatorInput, LocatorKind, parse_optional_locator_input};
 use crate::page::execute_page_command_async;
-use crate::settings::{
-    javascript_execution_timed_out_message, shadow_root_object_id_unavailable_message,
-    shadow_root_xpath_traversal_not_implemented_message,
-};
 use crate::session::{
     SessionElement, SessionXPathResult, snapshot_fragment_find_all_with_base_url,
     snapshot_fragment_find_with_base_url, snapshot_fragment_query_xpath_with_base_url,
     snapshot_fragment_root_with_base_url,
+};
+use crate::settings::{
+    javascript_execution_timed_out_message, shadow_root_object_id_unavailable_message,
+    shadow_root_xpath_traversal_not_implemented_message,
 };
 
 const MARKER_ATTRIBUTE: &str = "data-openpage-marker";
