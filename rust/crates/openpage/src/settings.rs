@@ -865,6 +865,20 @@ pub(crate) fn missing_session_ini_field_message(field: &str) -> String {
     }
 }
 
+pub(crate) fn session_cert_read_failed_message(kind: &str, path: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => {
+            let kind = match kind {
+                "cert" => "证书",
+                "key" => "密钥",
+                _ => kind,
+            };
+            format!("读取 session {kind} {path} 失败: {err}")
+        }
+        _ => format!("failed to read {kind} {path}: {err}"),
+    }
+}
+
 pub(crate) fn select_element_required_message() -> String {
     localized_message(
         "select() is only available for <select> elements",
@@ -1323,8 +1337,9 @@ mod tests {
         screencast_save_path_must_be_directory_message, screenshot_clip_complete_message,
         screenshot_clip_order_message, select_element_required_message,
         session_backed_element_driver_target_message,
-        session_backed_web_element_driver_actions_message, session_page_no_current_url_message,
-        session_page_no_loaded_document_message, set_file_input_requires_at_least_one_file_message,
+        session_backed_web_element_driver_actions_message, session_cert_read_failed_message,
+        session_page_no_current_url_message, session_page_no_loaded_document_message,
+        set_file_input_requires_at_least_one_file_message,
         shadow_root_object_id_unavailable_message,
         shadow_root_xpath_traversal_not_implemented_message,
         snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
@@ -1491,6 +1506,10 @@ mod tests {
         assert_eq!(
             missing_session_ini_field_message("cookies.name"),
             "missing cookies.name in session options ini"
+        );
+        assert_eq!(
+            session_cert_read_failed_message("cert", "/tmp/client.pem", "not found"),
+            "failed to read cert /tmp/client.pem: not found"
         );
         assert_eq!(
             invalid_xpath_html_message("parse error"),
@@ -2003,6 +2022,10 @@ mod tests {
         assert_eq!(
             missing_session_ini_field_message("cookies.name"),
             "session options ini 缺少 cookies.name"
+        );
+        assert_eq!(
+            session_cert_read_failed_message("cert", "/tmp/client.pem", "not found"),
+            "读取 session 证书 /tmp/client.pem 失败: not found"
         );
         assert_eq!(
             invalid_xpath_html_message("parse error"),

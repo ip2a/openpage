@@ -42,13 +42,13 @@ use crate::settings::{
     invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
     invalid_xpath_segment_index_message, missing_session_ini_field_message,
     parent_element_index_must_start_message, parent_element_level_must_start_message,
-    parent_element_not_found_message, session_cookie_requires_url_or_domain_message,
-    session_page_no_current_url_message, session_page_no_loaded_document_message,
-    snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
-    snapshot_node_no_longer_exists_message, unsupported_snapshot_node_kind_message,
-    unsupported_xpath_path_message, unterminated_session_ini_python_string_message,
-    xpath_node_no_longer_exists_message, xpath_path_not_found_message,
-    xpath_segment_not_found_message,
+    parent_element_not_found_message, session_cert_read_failed_message,
+    session_cookie_requires_url_or_domain_message, session_page_no_current_url_message,
+    session_page_no_loaded_document_message, snapshot_fragment_root_not_found_message,
+    snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
+    unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
+    unterminated_session_ini_python_string_message, xpath_node_no_longer_exists_message,
+    xpath_path_not_found_message, xpath_segment_not_found_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -4074,17 +4074,29 @@ fn build_session_client(
 fn load_session_identity(cert: &SessionCert) -> OpenPageResult<Identity> {
     let pem = match cert {
         SessionCert::Pem(path) => std::fs::read(path).map_err(|err| {
-            OpenPageError::Io(format!("failed to read cert {}: {err}", path.display()))
+            OpenPageError::Io(session_cert_read_failed_message(
+                "cert",
+                &path.display().to_string(),
+                &err.to_string(),
+            ))
         })?,
         SessionCert::PemPair { cert, key } => {
             let mut pem = std::fs::read(cert).map_err(|err| {
-                OpenPageError::Io(format!("failed to read cert {}: {err}", cert.display()))
+                OpenPageError::Io(session_cert_read_failed_message(
+                    "cert",
+                    &cert.display().to_string(),
+                    &err.to_string(),
+                ))
             })?;
             if !pem.ends_with(b"\n") {
                 pem.push(b'\n');
             }
             pem.extend(std::fs::read(key).map_err(|err| {
-                OpenPageError::Io(format!("failed to read key {}: {err}", key.display()))
+                OpenPageError::Io(session_cert_read_failed_message(
+                    "key",
+                    &key.display().to_string(),
+                    &err.to_string(),
+                ))
             })?);
             pem
         }
