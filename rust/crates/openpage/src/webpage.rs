@@ -4628,7 +4628,7 @@ impl WebPage {
     pub fn run_js(&self, expression: &str) -> OpenPageResult<Value> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "run_js() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_js()"),
             ));
         }
         self.driver.run_js(expression)
@@ -4642,7 +4642,7 @@ impl WebPage {
     ) -> OpenPageResult<Value> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "run_js_with_args() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_js_with_args()"),
             ));
         }
         self.driver.run_js_with_args(script, args, as_expr)
@@ -4657,7 +4657,7 @@ impl WebPage {
     ) -> OpenPageResult<Value> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "run_js_with_options() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_js_with_options()"),
             ));
         }
         self.driver
@@ -4667,7 +4667,7 @@ impl WebPage {
     pub fn run_js_loaded(&self, script: &str) -> OpenPageResult<Value> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "run_js_loaded() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_js_loaded()"),
             ));
         }
         self.driver.run_js_loaded(script)
@@ -4681,7 +4681,7 @@ impl WebPage {
     ) -> OpenPageResult<Value> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "run_js_loaded_with_args() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_js_loaded_with_args()"),
             ));
         }
         self.driver.run_js_loaded_with_args(script, args, as_expr)
@@ -4696,7 +4696,7 @@ impl WebPage {
     ) -> OpenPageResult<Value> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "run_js_loaded_with_options() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_js_loaded_with_options()"),
             ));
         }
         self.driver
@@ -4706,7 +4706,7 @@ impl WebPage {
     pub fn run_async_js(&self, script: &str) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "run_async_js() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_async_js()"),
             ));
         }
         self.driver.run_async_js(script)
@@ -4720,7 +4720,7 @@ impl WebPage {
     ) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "run_async_js_with_args() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_async_js_with_args()"),
             ));
         }
         self.driver.run_async_js_with_args(script, args, as_expr)
@@ -4735,7 +4735,7 @@ impl WebPage {
     ) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "run_async_js_with_options() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_async_js_with_options()"),
             ));
         }
         self.driver
@@ -4745,7 +4745,7 @@ impl WebPage {
     pub fn stop_loading(&self) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "stop_loading() is only available in driver mode".to_string(),
+                driver_mode_only_message("stop_loading()"),
             ));
         }
         self.driver.stop_loading()
@@ -4757,7 +4757,7 @@ impl WebPage {
     {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "execute_cdp() is only available in driver mode".to_string(),
+                driver_mode_only_message("execute_cdp()"),
             ));
         }
         self.driver.execute_cdp(command)
@@ -4769,7 +4769,7 @@ impl WebPage {
     {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "run_cdp() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_cdp()"),
             ));
         }
         self.driver.run_cdp(command)
@@ -4781,7 +4781,7 @@ impl WebPage {
     {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "execute_cdp_loaded() is only available in driver mode".to_string(),
+                driver_mode_only_message("execute_cdp_loaded()"),
             ));
         }
         self.driver.execute_cdp_loaded(command)
@@ -4793,7 +4793,7 @@ impl WebPage {
     {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "run_cdp_loaded() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_cdp_loaded()"),
             ));
         }
         self.driver.run_cdp_loaded(command)
@@ -5958,6 +5958,66 @@ mod tests {
         let _ = page.quit();
         let _ = fs::remove_dir_all(&temp_dir);
         result.expect("webpage session frame errors should localize");
+    }
+
+    #[test]
+    fn webpage_session_script_cdp_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-session-script-cdp-errors", WebMode::Session)
+                .expect("launch headless webpage");
+        let result = (|| -> crate::OpenPageResult<()> {
+            let english = page
+                .run_js("return 1")
+                .expect_err("session-mode WebPage run_js should fail");
+            assert!(matches!(
+                english,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("run_js() is only available in driver mode")
+            ));
+
+            Settings::set_language("cn");
+
+            let chinese_loaded = page
+                .run_js_loaded("return 1")
+                .expect_err("session-mode WebPage run_js_loaded should fail");
+            assert!(matches!(
+                chinese_loaded,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("run_js_loaded() 仅在 driver 模式可用")
+            ));
+            let chinese_async = page
+                .run_async_js("return 1")
+                .expect_err("session-mode WebPage run_async_js should fail");
+            assert!(matches!(
+                chinese_async,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("run_async_js() 仅在 driver 模式可用")
+            ));
+            let chinese_stop = page
+                .stop_loading()
+                .expect_err("session-mode WebPage stop_loading should fail");
+            assert!(matches!(
+                chinese_stop,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("stop_loading() 仅在 driver 模式可用")
+            ));
+            let chinese_cdp = page
+                .run_cdp(SetDeviceMetricsOverrideParams::new(1280, 720, 1.0, false))
+                .expect_err("session-mode WebPage run_cdp should fail");
+            assert!(matches!(
+                chinese_cdp,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("run_cdp() 仅在 driver 模式可用")
+            ));
+            Ok(())
+        })();
+
+        let _ = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+        result.expect("webpage session script/cdp errors should localize");
     }
 
     #[test]
