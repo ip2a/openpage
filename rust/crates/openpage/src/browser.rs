@@ -35,14 +35,15 @@ use crate::settings::{
     browser_config_path_failed_message, browser_connect_timeout_duration,
     browser_temp_dir_create_failed_message, browser_user_data_dir_reset_failed_message,
     cdp_timeout_duration, component_state_lock_poisoned_message, download_canceled_message,
-    download_file_operation_failed_message, download_frame_not_mapped_to_tab_message,
-    download_path_not_configured_message, download_skipped_without_final_path_message,
-    invalid_auto_port_scope_message, invalid_download_file_exists_mode_message,
-    invalid_launch_options_ini_boolean_message, invalid_launch_options_ini_field_expected_message,
-    invalid_launch_options_ini_field_message, invalid_launch_options_ini_python_string_message,
-    invalid_load_mode_message, invalid_tab_index_message, no_free_port_in_auto_port_scope_message,
-    singleton_tab_obj_enabled, target_tab_not_found_message, timeout_duration_millis,
-    timeout_error, unterminated_launch_options_ini_python_string_message, wait_failed_should_raise,
+    download_did_not_complete_in_time_message, download_file_operation_failed_message,
+    download_frame_not_mapped_to_tab_message, download_path_not_configured_message,
+    download_skipped_without_final_path_message, invalid_auto_port_scope_message,
+    invalid_download_file_exists_mode_message, invalid_launch_options_ini_boolean_message,
+    invalid_launch_options_ini_field_expected_message, invalid_launch_options_ini_field_message,
+    invalid_launch_options_ini_python_string_message, invalid_load_mode_message,
+    invalid_tab_index_message, no_free_port_in_auto_port_scope_message, singleton_tab_obj_enabled,
+    target_tab_not_found_message, timeout_duration_millis, timeout_error,
+    unterminated_launch_options_ini_python_string_message, wait_failed_should_raise,
 };
 use crate::webpage::WebPage;
 
@@ -3957,7 +3958,7 @@ fn download_source_path(info: &DownloadInfo, download_dir: &Path) -> OpenPageRes
     }
 
     Err(OpenPageError::Timeout(
-        "download did not complete in time".to_string(),
+        download_did_not_complete_in_time_message(),
     ))
 }
 
@@ -4296,11 +4297,12 @@ mod tests {
         browser_load_mode_lock_poisoned_error, browser_newest_tab_lock_poisoned_error,
         browser_retry_interval_lock_poisoned_error, browser_retry_times_lock_poisoned_error,
         browser_tab_info_matches, browser_timeouts_lock_poisoned_error,
-        default_launch_options_ini_path, finalize_download_path, find_free_port, find_new_tab_id,
-        is_tab_like_type, isolated_context_lock_poisoned_error, make_temp_download_dir,
-        make_temp_user_data_dir, mission_download_settings_lock_poisoned_error,
-        normalize_browser_tab_types, page_download_settings_lock_poisoned_error,
-        reset_browser_user_data_dir, resolve_browser_tab_target_id, resolve_browser_tab_target_ids,
+        default_launch_options_ini_path, download_source_path, finalize_download_path,
+        find_free_port, find_new_tab_id, is_tab_like_type, isolated_context_lock_poisoned_error,
+        make_temp_download_dir, make_temp_user_data_dir,
+        mission_download_settings_lock_poisoned_error, normalize_browser_tab_types,
+        page_download_settings_lock_poisoned_error, reset_browser_user_data_dir,
+        resolve_browser_tab_target_id, resolve_browser_tab_target_ids,
         resolve_launch_options_ini_path, resolve_launch_user_data_dir, resolved_download_name,
         select_browser_tab_info_by_selector, system_user_data_dir, unique_download_path,
         validate_auto_port_scope, write_chrome_flags, write_chrome_prefs,
@@ -4310,7 +4312,10 @@ mod tests {
         download_path_not_configured_message, download_skipped_without_final_path_message,
         scoped_test_settings,
     };
-    use crate::{Page, Settings, WebPage, download::DownloadState};
+    use crate::{
+        Page, Settings, WebPage,
+        download::{DownloadInfo, DownloadState},
+    };
 
     static CURRENT_DIR_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -4501,6 +4506,37 @@ mod tests {
             "下载 frame `frame-1` 未映射到标签页"
         );
         assert_eq!(download_path_not_configured_message(), "未配置下载路径");
+    }
+
+    #[test]
+    fn download_source_path_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let dir = make_temp_dir("download-source-missing");
+        let info = DownloadInfo {
+            guid: "guid-1".to_string(),
+            frame_id: "frame-1".to_string(),
+            url: "https://example.test/file.txt".to_string(),
+            suggested_filename: "file.txt".to_string(),
+            state: DownloadState::Completed,
+            received_bytes: 0,
+            total_bytes: None,
+            final_path: Some(dir.join("missing-final").to_string_lossy().into_owned()),
+        };
+
+        let english = download_source_path(&info, &dir)
+            .expect_err("missing final and fallback paths should fail")
+            .to_string();
+        assert!(english.contains("download did not complete in time"));
+
+        Settings::set_language("cn");
+
+        let chinese = download_source_path(&info, &dir)
+            .expect_err("missing final and fallback paths should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains("下载未在规定时间内完成"));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     fn launch_headless_test_browser(
