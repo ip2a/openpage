@@ -50,11 +50,13 @@ use crate::session::{
 };
 use crate::settings::{
     click_at_count_must_be_positive_message, click_failed_hidden_or_disabled_message,
-    click_failed_no_rect_message, click_failed_should_raise, element_html_unavailable_message,
+    click_failed_no_rect_message, click_failed_should_raise,
+    element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
     element_no_visible_rect_message, element_resource_unavailable_message,
-    element_tag_name_unavailable_message, frame_index_must_start_message,
-    frame_index_out_of_range_message, no_new_tab_message, unsupported_key_message,
-    unsupported_mouse_button_message, wait_timeout_result,
+    element_tag_name_unavailable_message, element_top_frame_check_failed_message,
+    frame_index_must_start_message, frame_index_out_of_range_message, no_new_tab_message,
+    resolve_element_frame_id_failed_message, resolve_frame_viewport_offset_failed_message,
+    unsupported_key_message, unsupported_mouse_button_message, wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -3070,12 +3072,12 @@ impl Element {
         let (frame_offset_x, frame_offset_y) = self
             .frame_viewport_offset()
             .map_err(|err| {
-                OpenPageError::PageOperation(format!("resolve frame viewport offset failed: {err}"))
+                OpenPageError::PageOperation(resolve_frame_viewport_offset_failed_message(
+                    &err.to_string(),
+                ))
             })?
             .ok_or_else(|| {
-                OpenPageError::PageOperation(
-                    "element frame viewport offset unavailable".to_string(),
-                )
+                OpenPageError::PageOperation(element_frame_viewport_offset_unavailable_message())
             })?;
         if x.is_none() && y.is_none() {
             let (point_x, point_y) = self
@@ -3401,7 +3403,9 @@ impl Element {
             })?;
         let Some((frame_offset_x, frame_offset_y)) =
             self.frame_viewport_offset().map_err(|err| {
-                OpenPageError::PageOperation(format!("resolve frame viewport offset failed: {err}"))
+                OpenPageError::PageOperation(resolve_frame_viewport_offset_failed_message(
+                    &err.to_string(),
+                ))
             })?
         else {
             return Ok(None);
@@ -3455,7 +3459,7 @@ impl Element {
         let page = self.page_wrapper();
         let main_frame_id = page.main_frame_id()?;
         let current_frame_id = self.element_frame_id().map_err(|err| {
-            OpenPageError::PageOperation(format!("resolve element frame id failed: {err}"))
+            OpenPageError::PageOperation(resolve_element_frame_id_failed_message(&err.to_string()))
         })?;
         if current_frame_id == main_frame_id {
             return Ok(Some((0.0, 0.0)));
@@ -3512,7 +3516,9 @@ impl Element {
         if value_as_bool(
             self.run_js("return window.top === window;")
                 .map_err(|err| {
-                    OpenPageError::PageOperation(format!("element top-frame check failed: {err}"))
+                    OpenPageError::PageOperation(element_top_frame_check_failed_message(
+                        &err.to_string(),
+                    ))
                 })?,
             "element top-frame check",
         )? {

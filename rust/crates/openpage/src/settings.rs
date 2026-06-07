@@ -368,6 +368,37 @@ pub(crate) fn unsupported_key_message(key: &str) -> String {
     }
 }
 
+pub(crate) fn resolve_frame_viewport_offset_failed_message(detail: &str) -> String {
+    localized_error_with_detail(
+        "resolve frame viewport offset failed",
+        "解析 frame 视口偏移失败",
+        detail,
+    )
+}
+
+pub(crate) fn element_frame_viewport_offset_unavailable_message() -> String {
+    localized_message(
+        "element frame viewport offset unavailable",
+        "元素 frame 视口偏移不可用",
+    )
+}
+
+pub(crate) fn resolve_element_frame_id_failed_message(detail: &str) -> String {
+    localized_error_with_detail(
+        "resolve element frame id failed",
+        "解析元素 frame id 失败",
+        detail,
+    )
+}
+
+pub(crate) fn element_top_frame_check_failed_message(detail: &str) -> String {
+    localized_error_with_detail(
+        "element top-frame check failed",
+        "元素顶层 frame 检查失败",
+        detail,
+    )
+}
+
 pub(crate) fn frame_index_must_start_message() -> String {
     localized_message(
         "frame index must start from 1 or use negative indices from -1",
@@ -729,26 +760,29 @@ mod tests {
         component_not_active_start_message, component_not_running_message,
         component_not_running_with_error_message, component_state_lock_poisoned_message,
         component_stopped_while_waiting_message, cookie_name_empty_message,
-        default_suffixes_list_path, download_not_found_message, element_html_unavailable_message,
+        default_suffixes_list_path, download_not_found_message,
+        element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
         element_no_visible_rect_message, element_resource_unavailable_message,
-        element_tag_name_unavailable_message, file_chooser_backend_node_missing_message,
-        frame_execution_context_unavailable_message, frame_html_unavailable_message,
-        frame_index_must_start_message, frame_index_out_of_range_message,
-        invalid_auto_port_scope_message, invalid_cookie_same_site_message,
-        invalid_download_file_exists_mode_message, invalid_file_url_message,
-        invalid_load_mode_message, invalid_options_manager_ini_literal_message,
-        invalid_regex_message, invalid_screencast_data_url_message, invalid_tab_index_message,
-        invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
+        element_tag_name_unavailable_message, element_top_frame_check_failed_message,
+        file_chooser_backend_node_missing_message, frame_execution_context_unavailable_message,
+        frame_html_unavailable_message, frame_index_must_start_message,
+        frame_index_out_of_range_message, invalid_auto_port_scope_message,
+        invalid_cookie_same_site_message, invalid_download_file_exists_mode_message,
+        invalid_file_url_message, invalid_load_mode_message,
+        invalid_options_manager_ini_literal_message, invalid_regex_message,
+        invalid_screencast_data_url_message, invalid_tab_index_message, invalid_url_message,
+        invalid_xpath_html_message, invalid_xpath_query_message,
         invalid_xpath_segment_index_message, javascript_execution_timed_out_message,
-        no_new_tab_message, page_connect_timed_out_message, scoped_test_settings,
-        screencast_already_running_message, screencast_capture_path_unavailable_message,
-        screencast_empty_mime_type_message, screencast_encode_output_failed_message,
-        screencast_ffmpeg_encode_failed_message, screencast_ffmpeg_spawn_failed_message,
-        screencast_mode_change_while_running_message, screencast_mode_output_suffix_message,
-        screencast_no_frames_message, screencast_output_path_unavailable_message,
-        screencast_requires_save_path_message, screencast_save_path_must_be_directory_message,
-        session_page_no_current_url_message, session_page_no_loaded_document_message,
-        shadow_root_object_id_unavailable_message,
+        no_new_tab_message, page_connect_timed_out_message,
+        resolve_element_frame_id_failed_message, resolve_frame_viewport_offset_failed_message,
+        scoped_test_settings, screencast_already_running_message,
+        screencast_capture_path_unavailable_message, screencast_empty_mime_type_message,
+        screencast_encode_output_failed_message, screencast_ffmpeg_encode_failed_message,
+        screencast_ffmpeg_spawn_failed_message, screencast_mode_change_while_running_message,
+        screencast_mode_output_suffix_message, screencast_no_frames_message,
+        screencast_output_path_unavailable_message, screencast_requires_save_path_message,
+        screencast_save_path_must_be_directory_message, session_page_no_current_url_message,
+        session_page_no_loaded_document_message, shadow_root_object_id_unavailable_message,
         shadow_root_xpath_traversal_not_implemented_message, target_tab_not_found_message,
         timeout_error, timeout_must_be_non_negative_message, unsupported_key_message,
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
@@ -902,6 +936,22 @@ mod tests {
             "unsupported xpath path `broken`"
         );
         assert_eq!(unsupported_key_message("Hyper"), "unsupported key: Hyper");
+        assert_eq!(
+            resolve_frame_viewport_offset_failed_message("detail"),
+            "resolve frame viewport offset failed: detail"
+        );
+        assert_eq!(
+            element_frame_viewport_offset_unavailable_message(),
+            "element frame viewport offset unavailable"
+        );
+        assert_eq!(
+            resolve_element_frame_id_failed_message("detail"),
+            "resolve element frame id failed: detail"
+        );
+        assert_eq!(
+            element_top_frame_check_failed_message("detail"),
+            "element top-frame check failed: detail"
+        );
         assert_eq!(
             unsupported_mouse_button_message("side"),
             "unsupported mouse button: side"
@@ -1102,6 +1152,22 @@ mod tests {
             "不支持的 xpath 路径 `broken`"
         );
         assert_eq!(unsupported_key_message("Hyper"), "不支持的按键: Hyper");
+        assert_eq!(
+            resolve_frame_viewport_offset_failed_message("detail"),
+            "解析 frame 视口偏移失败: detail"
+        );
+        assert_eq!(
+            element_frame_viewport_offset_unavailable_message(),
+            "元素 frame 视口偏移不可用"
+        );
+        assert_eq!(
+            resolve_element_frame_id_failed_message("detail"),
+            "解析元素 frame id 失败: detail"
+        );
+        assert_eq!(
+            element_top_frame_check_failed_message("detail"),
+            "元素顶层 frame 检查失败: detail"
+        );
         assert_eq!(
             unsupported_mouse_button_message("side"),
             "不支持的鼠标按钮: side"
