@@ -900,6 +900,13 @@ pub(crate) fn relative_index_must_start_message(message: &str) -> String {
     }
 }
 
+pub(crate) fn xpath_locator_invalid_for_css_filtering_message() -> String {
+    localized_message(
+        "xpath locator is not valid for CSS filtering",
+        "CSS 过滤不支持 xpath locator",
+    )
+}
+
 pub(crate) fn snapshot_fragment_wrapper_not_found_message() -> String {
     localized_message(
         "snapshot fragment wrapper not found",

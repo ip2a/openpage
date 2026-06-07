@@ -60,8 +60,8 @@ use crate::settings::{
     snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
     snapshot_node_no_longer_exists_message, unsupported_snapshot_node_kind_message,
     unsupported_xpath_path_message, unterminated_session_ini_python_string_message,
-    xpath_node_no_longer_exists_message, xpath_path_not_found_message,
-    xpath_segment_not_found_message,
+    xpath_locator_invalid_for_css_filtering_message, xpath_node_no_longer_exists_message,
+    xpath_path_not_found_message, xpath_segment_not_found_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -5258,7 +5258,7 @@ fn parse_optional_selector(locator: Option<&str>) -> OpenPageResult<Option<Selec
         .map(|locator| match locator.kind() {
             LocatorKind::Css => parse_selector_query(locator.query()),
             LocatorKind::XPath => Err(OpenPageError::UnsupportedLocator(
-                "xpath locator is not valid for CSS filtering".to_string(),
+                xpath_locator_invalid_for_css_filtering_message(),
             )),
         })
         .transpose()
@@ -5861,9 +5861,9 @@ mod tests {
         SessionElement, SessionHandle, SessionHooks, SessionOptions, SessionPage,
         SessionRequestOptions, SessionXPathResult, append_query_params, cookie_assignment,
         cookie_input_to_params, cookies_from_header, default_referer_header,
-        nth_scraper_child_by_tag, parse_xpath_path, remove_cookie_from_header,
-        resolve_local_file_path, resolve_session_options_ini_path, snapshot_find,
-        snapshot_find_all, snapshot_fragment_find, snapshot_fragment_root,
+        nth_scraper_child_by_tag, parse_optional_selector, parse_xpath_path,
+        remove_cookie_from_header, resolve_local_file_path, resolve_session_options_ini_path,
+        snapshot_find, snapshot_find_all, snapshot_fragment_find, snapshot_fragment_root,
         snapshot_fragment_root_with_base_url, snapshot_root,
     };
     use crate::settings::scoped_test_settings;
@@ -8813,6 +8813,26 @@ mod tests {
             .to_string();
         assert!(chinese.contains("没有找到元素"));
         assert!(chinese.contains("无效的 css selector `[`"));
+    }
+
+    #[test]
+    fn snapshot_css_filtering_rejects_xpath_locator_with_language_setting() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let english = parse_optional_selector(Some("xpath://div"))
+            .expect_err("xpath locator should be rejected for CSS filtering")
+            .to_string();
+        assert!(english.contains("unsupported locator syntax"));
+        assert!(english.contains("xpath locator is not valid for CSS filtering"));
+
+        Settings::set_language("cn");
+
+        let chinese = parse_optional_selector(Some("xpath://div"))
+            .expect_err("xpath css filtering rejection should localize")
+            .to_string();
+        assert!(chinese.contains("定位符语法不受支持"));
+        assert!(chinese.contains("CSS 过滤不支持 xpath locator"));
     }
 
     #[test]
