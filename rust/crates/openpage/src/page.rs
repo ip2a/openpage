@@ -78,7 +78,7 @@ use crate::session::{
     snapshot_find, snapshot_find_all, snapshot_query_xpath, snapshot_root,
 };
 use crate::settings::{
-    cdp_timeout_duration, component_state_lock_poisoned_message,
+    browser_backed_page_only_message, cdp_timeout_duration, component_state_lock_poisoned_message,
     default_none_element_runtime_config, frame_execution_context_unavailable_message,
     frame_html_unavailable_message, frame_index_must_start_message,
     frame_index_out_of_range_message, invalid_cookie_same_site_message, invalid_file_url_message,
@@ -3442,9 +3442,9 @@ impl Page {
 
     pub fn download_file_exists_mode(&self) -> OpenPageResult<String> {
         let browser = self.browser.as_ref().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(
-                "download_file_exists_mode() is only available on browser-backed pages".to_string(),
-            )
+            OpenPageError::UnsupportedOperation(browser_backed_page_only_message(
+                "download_file_exists_mode()",
+            ))
         })?;
         browser.page_download_file_exists_mode(&self.target_id())
     }
@@ -4530,9 +4530,9 @@ impl Page {
 
     pub fn set_tab_download_path(&self, path: &str) -> OpenPageResult<()> {
         let browser = self.browser.as_ref().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(
-                "set_tab_download_path() is only available on browser-backed pages".to_string(),
-            )
+            OpenPageError::UnsupportedOperation(browser_backed_page_only_message(
+                "set_tab_download_path()",
+            ))
         })?;
         browser.set_page_download_path(&self.target_id(), path)
     }
@@ -4546,10 +4546,9 @@ impl Page {
         mode: DownloadFileExistsMode,
     ) -> OpenPageResult<()> {
         let browser = self.browser.as_ref().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(
-                "set_tab_download_file_exists_mode() is only available on browser-backed pages"
-                    .to_string(),
-            )
+            OpenPageError::UnsupportedOperation(browser_backed_page_only_message(
+                "set_tab_download_file_exists_mode()",
+            ))
         })?;
         browser.set_page_download_file_exists_mode(&self.target_id(), mode)
     }
@@ -4576,9 +4575,9 @@ impl Page {
         suffix_specified: bool,
     ) -> OpenPageResult<()> {
         let browser = self.browser.as_ref().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(
-                "set_tab_download_filename() is only available on browser-backed pages".to_string(),
-            )
+            OpenPageError::UnsupportedOperation(browser_backed_page_only_message(
+                "set_tab_download_filename()",
+            ))
         })?;
         browser.set_page_download_filename(&self.target_id(), rename, suffix, suffix_specified)
     }
@@ -4622,9 +4621,9 @@ impl Page {
         new_tab: bool,
     ) -> OpenPageResult<Option<DownloadMission>> {
         let browser = self.browser.as_ref().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(
-                "click_to_download() is only available on browser-backed pages".to_string(),
-            )
+            OpenPageError::UnsupportedOperation(browser_backed_page_only_message(
+                "click_to_download()",
+            ))
         })?;
         let target_id = self.target_id();
         let previous_settings = browser.snapshot_page_download_settings(&target_id)?;
@@ -4724,9 +4723,9 @@ impl Page {
         by_js: bool,
     ) -> OpenPageResult<Option<Page>> {
         let browser = self.browser.as_ref().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(
-                "click_for_new_tab() is only available on browser-backed pages".to_string(),
-            )
+            OpenPageError::UnsupportedOperation(browser_backed_page_only_message(
+                "click_for_new_tab()",
+            ))
         })?;
         let timeout_ms = timeout_ms.unwrap_or(browser.timeouts()?.implicit_wait);
         let current_tab_id = browser.newest_tab_id()?.unwrap_or_else(|| self.target_id());
@@ -4747,7 +4746,7 @@ impl Page {
     ) -> OpenPageResult<Option<Page>> {
         if get_tab && self.browser.is_none() {
             return Err(OpenPageError::UnsupportedOperation(
-                "click_middle(get_tab=True) is only available on browser-backed pages".to_string(),
+                browser_backed_page_only_message("click_middle(get_tab=True)"),
             ));
         }
         let timeout_ms = match timeout_ms {
@@ -4795,9 +4794,9 @@ impl Page {
         self.browser
             .as_ref()
             .ok_or_else(|| {
-                OpenPageError::UnsupportedOperation(
-                    "retry_times() is only available on browser-backed pages".to_string(),
-                )
+                OpenPageError::UnsupportedOperation(browser_backed_page_only_message(
+                    "retry_times()",
+                ))
             })?
             .retry_times()
     }
@@ -4806,9 +4805,9 @@ impl Page {
         self.browser
             .as_ref()
             .ok_or_else(|| {
-                OpenPageError::UnsupportedOperation(
-                    "retry_interval() is only available on browser-backed pages".to_string(),
-                )
+                OpenPageError::UnsupportedOperation(browser_backed_page_only_message(
+                    "retry_interval()",
+                ))
             })?
             .retry_interval_millis()
             .map(|millis| millis as f64 / 1000.0)
@@ -4820,9 +4819,7 @@ impl Page {
         retry_interval_secs: Option<f64>,
     ) -> OpenPageResult<()> {
         let browser = self.browser.as_ref().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(
-                "set_retry() is only available on browser-backed pages".to_string(),
-            )
+            OpenPageError::UnsupportedOperation(browser_backed_page_only_message("set_retry()"))
         })?;
         browser.set_retry(
             retry_times,
@@ -4837,9 +4834,7 @@ impl Page {
             .browser
             .as_ref()
             .ok_or_else(|| {
-                OpenPageError::UnsupportedOperation(
-                    "timeouts() is only available on browser-backed pages".to_string(),
-                )
+                OpenPageError::UnsupportedOperation(browser_backed_page_only_message("timeouts()"))
             })?
             .timeouts()?;
         Ok(HashMap::from([
@@ -4856,9 +4851,7 @@ impl Page {
         script_secs: Option<f64>,
     ) -> OpenPageResult<()> {
         let browser = self.browser.as_ref().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(
-                "set_timeouts() is only available on browser-backed pages".to_string(),
-            )
+            OpenPageError::UnsupportedOperation(browser_backed_page_only_message("set_timeouts()"))
         })?;
         let mut timeouts = browser.timeouts()?;
         if let Some(base_secs) = base_secs {
@@ -5171,9 +5164,9 @@ impl Page {
         cancel_it: bool,
     ) -> OpenPageResult<Option<DownloadMission>> {
         let browser = self.browser.as_ref().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(
-                "wait_for_download_begin() is only available on browser-backed pages".to_string(),
-            )
+            OpenPageError::UnsupportedOperation(browser_backed_page_only_message(
+                "wait_for_download_begin()",
+            ))
         })?;
         browser.wait_for_download_begin_in_frames(
             &self.download_scope_frame_ids()?,
@@ -5188,9 +5181,9 @@ impl Page {
         cancel_if_timeout: bool,
     ) -> OpenPageResult<bool> {
         let browser = self.browser.as_ref().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(
-                "wait_for_downloads_done() is only available on browser-backed pages".to_string(),
-            )
+            OpenPageError::UnsupportedOperation(browser_backed_page_only_message(
+                "wait_for_downloads_done()",
+            ))
         })?;
         browser.wait_for_downloads_done_in_frames(
             &self.download_scope_frame_ids()?,
@@ -8532,6 +8525,70 @@ mod tests {
             OpenPageError::PageOperation(ref message)
                 if message.contains("timeout 必须是有限且非负的数字")
         ));
+    }
+
+    #[test]
+    fn page_browser_backed_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (browser, temp_dir) = launch_headless_test_browser("page-browser-backed-l10n")
+            .expect("launch headless browser");
+
+        let result = (|| -> OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            let detached = Page {
+                browser: None,
+                ..page.clone()
+            };
+
+            let english = detached
+                .download_file_exists_mode()
+                .expect_err("download_file_exists_mode() should require browser backing");
+            assert!(matches!(
+                english,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains(
+                        "download_file_exists_mode() is only available on browser-backed pages"
+                    )
+            ));
+
+            Settings::set_language("cn");
+
+            let chinese_retry = detached
+                .retry_times()
+                .expect_err("retry_times() should require browser backing");
+            assert!(matches!(
+                chinese_retry,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("retry_times() 仅适用于 browser-backed 页面")
+            ));
+            let chinese_timeout = detached
+                .set_timeouts(Some(1.0), None, None)
+                .expect_err("set_timeouts() should require browser backing");
+            assert!(matches!(
+                chinese_timeout,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("set_timeouts() 仅适用于 browser-backed 页面")
+            ));
+            let chinese_wait = detached
+                .wait_for_downloads_done(10, true)
+                .expect_err("wait_for_downloads_done() should require browser backing");
+            assert!(matches!(
+                chinese_wait,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("wait_for_downloads_done() 仅适用于 browser-backed 页面")
+            ));
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("page browser-backed errors should localize");
     }
 
     #[test]
