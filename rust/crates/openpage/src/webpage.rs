@@ -22,8 +22,9 @@ use crate::locator::{
     Locator, LocatorBatchInput, LocatorInput, LocatorMatch, parse_locator_batch_input,
 };
 use crate::page::{
-    Actions, ActionsInput, Frame, FrameRect, FrameScroller, FrameSetter, FrameStates, FrameWait,
-    Page, PageElementContent, PageElementInfo, PageElementTarget, PageFrameTarget, PageSaveContent,
+    Actions, ActionsInput, DisconnectedFrame, Frame, FrameRect, FrameScroller, FrameSetter,
+    FrameStates, FrameWait, Page, PageElementContent, PageElementInfo, PageElementTarget,
+    PageFrameTarget, PageSaveContent,
 };
 use crate::screencast::Screencast;
 use crate::session::{
@@ -78,6 +79,11 @@ pub enum WebElement {
 
 pub enum WebFrame {
     Browser(Frame),
+}
+
+#[derive(Clone, Debug)]
+pub enum DisconnectedWebFrame {
+    Browser(DisconnectedFrame),
 }
 
 pub struct WebElementScroller<'a> {
@@ -190,6 +196,14 @@ impl DisconnectedWebPage {
             session: self.session.clone(),
             mode: Arc::clone(&self.mode),
         })
+    }
+}
+
+impl DisconnectedWebFrame {
+    pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<WebFrame> {
+        match self {
+            Self::Browser(frame) => frame.reconnect(wait_ms).map(WebFrame::Browser),
+        }
     }
 }
 
@@ -511,6 +525,12 @@ impl WebFrame {
     pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<Self> {
         match self {
             Self::Browser(frame) => frame.reconnect(wait_ms).map(Self::Browser),
+        }
+    }
+
+    pub fn disconnect(self) -> OpenPageResult<DisconnectedWebFrame> {
+        match self {
+            Self::Browser(frame) => frame.disconnect().map(DisconnectedWebFrame::Browser),
         }
     }
 
@@ -7222,6 +7242,9 @@ mod tests {
                 reconnected_frame.attr("id")?,
                 Some("demo-frame".to_string())
             );
+            let disconnected_frame = reconnected_frame.disconnect()?;
+            let roundtrip_frame = disconnected_frame.reconnect(0)?;
+            assert_eq!(roundtrip_frame.attr("id")?, Some("demo-frame".to_string()));
             frame.set_none_element_value(Some("missing"), true)?;
             assert_eq!(
                 frame_context.ele(".does-not-exist")?.text()?,

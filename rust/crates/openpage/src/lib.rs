@@ -74,9 +74,9 @@ pub use tools::{
 };
 pub use upload::UploadTracker;
 pub use webpage::{
-    DisconnectedWebPage, WebElement, WebElementClicker, WebElementScroller, WebElementSelector,
-    WebElementSetter, WebFrame, WebMode, WebPage, WebPageLoadModeSetter, WebPageScroller,
-    WebPageSetter, WebPageWindowSetter,
+    DisconnectedWebFrame, DisconnectedWebPage, WebElement, WebElementClicker, WebElementScroller,
+    WebElementSelector, WebElementSetter, WebFrame, WebMode, WebPage, WebPageLoadModeSetter,
+    WebPageScroller, WebPageSetter, WebPageWindowSetter,
 };
 pub use window::{activate_app, set_app_visibility};
 
