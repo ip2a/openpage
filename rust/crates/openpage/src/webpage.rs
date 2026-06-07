@@ -672,6 +672,18 @@ impl WebFrame {
         }
     }
 
+    pub fn get(&self, url: &str) -> OpenPageResult<bool> {
+        match self {
+            Self::Browser(frame) => frame.get(url),
+        }
+    }
+
+    pub fn goto(&self, url: &str) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.goto(url),
+        }
+    }
+
     pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<Self> {
         match self {
             Self::Browser(frame) => frame.reconnect(wait_ms).map(Self::Browser),
@@ -7634,6 +7646,13 @@ mod tests {
             assert_eq!(frames.len(), 1);
             assert_eq!(frames[0].attr("id")?, Some("demo-frame".to_string()));
             assert_eq!(frame_context.attr("id")?, Some("demo-frame".to_string()));
+            let frame_doc = "data:text/html,%3Chtml%3E%3Chead%3E%3Ctitle%3ENavigated%20Frame%3C/title%3E%3C/head%3E%3Cbody%3E%3Cdiv%20id%3D%27after-nav%27%3Eafter%3C/div%3E%3C/body%3E%3C/html%3E";
+            assert!(frame.get(frame_doc)?);
+            assert_eq!(frame.title()?, Some("Navigated Frame".to_string()));
+            assert_eq!(
+                frame.find("css:#after-nav")?.text()?,
+                Some("after".to_string())
+            );
             let reconnected_frame = frame.reconnect(0)?;
             assert_eq!(
                 reconnected_frame.attr("id")?,
@@ -7850,6 +7869,8 @@ mod tests {
             let _ = frame.click_to_upload("css:#upload", &files, Some(1_000), false);
             let _ = frame.click_for_new_tab("css:#open", Some(1_000), false);
             let _ = frame.click_middle("css:#open", Some(1_000), true);
+            let _ = frame.get("https://example.test/frame");
+            let _ = frame.goto("https://example.test/frame");
 
             let _ = web_page.set_upload_files(&files);
             let _ = web_page.set_upload_paths(&files);
@@ -7906,6 +7927,8 @@ mod tests {
             let _ = web_frame.click_to_upload("css:#upload", &files, Some(1_000), false);
             let _ = web_frame.click_for_new_tab("css:#open", Some(1_000), false);
             let _ = web_frame.click_middle("css:#open", Some(1_000), true);
+            let _ = web_frame.get("https://example.test/frame");
+            let _ = web_frame.goto("https://example.test/frame");
         }
 
         let _ = assert_calls as fn(&Frame, &WebPage, &WebFrame);

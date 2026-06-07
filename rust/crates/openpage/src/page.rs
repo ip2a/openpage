@@ -1413,6 +1413,46 @@ impl Frame {
         self.run_js("this.location.reload();").map(|_| ())
     }
 
+    pub fn get(&self, url: &str) -> OpenPageResult<bool> {
+        self.goto(url).map(|_| true)
+    }
+
+    pub fn goto(&self, url: &str) -> OpenPageResult<()> {
+        let url = normalize_navigation_target(url)?;
+        let old_url = self.url().ok().flatten();
+        let timeout_ms = self.page.navigation_page_load_timeout_ms()?;
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        let script = format!(
+            "(() => {{ window.location.href = {url}; return true; }})()",
+            url = serde_json::to_string(&url)
+                .map_err(|err| OpenPageError::Serialization(err.to_string()))?,
+        );
+        self.run_js(&script)?;
+
+        if self.page.load_mode_value()? == LoadMode::None {
+            return Ok(());
+        }
+
+        loop {
+            let current_url = self.url().ok().flatten();
+            if current_url.as_deref() == Some(url.as_str())
+                || (current_url.is_some() && current_url != old_url)
+            {
+                break;
+            }
+            if Instant::now() >= deadline {
+                return Err(OpenPageError::Timeout(page_connect_timed_out_message(&url)));
+            }
+            sleep(Duration::from_millis(50));
+        }
+
+        if self.wait_for_doc_loaded(remaining_timeout_ms(deadline))? {
+            Ok(())
+        } else {
+            Err(OpenPageError::Timeout(page_connect_timed_out_message(&url)))
+        }
+    }
+
     pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<Self> {
         let page = self.page.reconnect(wait_ms)?;
         if let Ok(Some(id)) = self.frame_element.attr("id")
