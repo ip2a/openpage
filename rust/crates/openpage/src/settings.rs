@@ -837,6 +837,34 @@ pub(crate) fn invalid_session_ini_field_expected_message(field: &str, expected: 
     }
 }
 
+pub(crate) fn invalid_session_ini_boolean_message(value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("session options ini 中的 boolean 无效: {value}"),
+        _ => format!("invalid boolean in session options ini: {value}"),
+    }
+}
+
+pub(crate) fn invalid_session_ini_python_string_message() -> String {
+    localized_message(
+        "invalid Python-style string in session options ini",
+        "session options ini 中的 Python 风格字符串无效",
+    )
+}
+
+pub(crate) fn unterminated_session_ini_python_string_message() -> String {
+    localized_message(
+        "unterminated Python-style string in session options ini",
+        "session options ini 中的 Python 风格字符串未闭合",
+    )
+}
+
+pub(crate) fn missing_session_ini_field_message(field: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("session options ini 缺少 {field}"),
+        _ => format!("missing {field} in session options ini"),
+    }
+}
+
 pub(crate) fn select_element_required_message() -> String {
     localized_message(
         "select() is only available for <select> elements",
@@ -1269,11 +1297,13 @@ mod tests {
         invalid_download_file_exists_mode_message, invalid_file_url_message,
         invalid_load_mode_message, invalid_options_manager_ini_literal_message,
         invalid_regex_message, invalid_screencast_data_url_message,
-        invalid_session_ini_field_expected_message, invalid_session_ini_field_message,
+        invalid_session_ini_boolean_message, invalid_session_ini_field_expected_message,
+        invalid_session_ini_field_message, invalid_session_ini_python_string_message,
         invalid_tab_index_message, invalid_url_message, invalid_xpath_html_message,
         invalid_xpath_query_message, invalid_xpath_segment_index_message,
         javascript_execution_timed_out_message, launched_browser_only_message,
-        multi_select_action_required_message, no_new_tab_message, page_connect_timed_out_message,
+        missing_session_ini_field_message, multi_select_action_required_message,
+        no_new_tab_message, page_connect_timed_out_message,
         parent_element_index_must_start_message, parent_element_level_must_start_message,
         parent_element_not_found_message, permission_origin_required_message,
         permission_origin_scheme_message, permission_setting_invalid_message,
@@ -1303,19 +1333,19 @@ mod tests {
         top_window_viewport_size_lookup_failed_message, unsupported_key_message,
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
         unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
-        upload_requires_at_least_one_file_message, value_coordinate_not_numeric_message,
-        value_coordinate_pair_exactly_two_message, value_coordinate_pair_parse_failed_message,
-        value_coordinate_pair_required_message, value_did_not_return_message,
-        value_non_negative_integer_required_message, value_number_required_message,
-        value_pair_entry_not_number_message, value_returned_non_string_entry_message,
-        value_state_bool_required_message, value_string_compatible_required_message,
-        value_string_required_message, value_string_vec_array_required_message,
-        value_string_vec_entry_required_message, value_unavailable_message,
-        web_browser_backed_option_required_message, web_driver_element_required_message,
-        web_element_list_driver_filter_message, web_mode_invalid_message,
-        web_timeout_base_non_negative_message, xpath_node_no_longer_exists_message,
-        xpath_path_not_found_message, xpath_segment_not_found_message,
-        zoom_factor_must_be_positive_message,
+        unterminated_session_ini_python_string_message, upload_requires_at_least_one_file_message,
+        value_coordinate_not_numeric_message, value_coordinate_pair_exactly_two_message,
+        value_coordinate_pair_parse_failed_message, value_coordinate_pair_required_message,
+        value_did_not_return_message, value_non_negative_integer_required_message,
+        value_number_required_message, value_pair_entry_not_number_message,
+        value_returned_non_string_entry_message, value_state_bool_required_message,
+        value_string_compatible_required_message, value_string_required_message,
+        value_string_vec_array_required_message, value_string_vec_entry_required_message,
+        value_unavailable_message, web_browser_backed_option_required_message,
+        web_driver_element_required_message, web_element_list_driver_filter_message,
+        web_mode_invalid_message, web_timeout_base_non_negative_message,
+        xpath_node_no_longer_exists_message, xpath_path_not_found_message,
+        xpath_segment_not_found_message, zoom_factor_must_be_positive_message,
     };
     use crate::error::OpenPageError;
     use std::path::Path;
@@ -1445,6 +1475,22 @@ mod tests {
         assert_eq!(
             invalid_session_ini_field_expected_message("params", "object or pair list"),
             "invalid params in session options ini: expected object or pair list"
+        );
+        assert_eq!(
+            invalid_session_ini_boolean_message("maybe"),
+            "invalid boolean in session options ini: maybe"
+        );
+        assert_eq!(
+            invalid_session_ini_python_string_message(),
+            "invalid Python-style string in session options ini"
+        );
+        assert_eq!(
+            unterminated_session_ini_python_string_message(),
+            "unterminated Python-style string in session options ini"
+        );
+        assert_eq!(
+            missing_session_ini_field_message("cookies.name"),
+            "missing cookies.name in session options ini"
         );
         assert_eq!(
             invalid_xpath_html_message("parse error"),
@@ -1941,6 +1987,22 @@ mod tests {
         assert_eq!(
             invalid_session_ini_field_expected_message("params", "object or pair list"),
             "session options ini 中的 params 无效: 期望 object or pair list"
+        );
+        assert_eq!(
+            invalid_session_ini_boolean_message("maybe"),
+            "session options ini 中的 boolean 无效: maybe"
+        );
+        assert_eq!(
+            invalid_session_ini_python_string_message(),
+            "session options ini 中的 Python 风格字符串无效"
+        );
+        assert_eq!(
+            unterminated_session_ini_python_string_message(),
+            "session options ini 中的 Python 风格字符串未闭合"
+        );
+        assert_eq!(
+            missing_session_ini_field_message("cookies.name"),
+            "session options ini 缺少 cookies.name"
         );
         assert_eq!(
             invalid_xpath_html_message("parse error"),

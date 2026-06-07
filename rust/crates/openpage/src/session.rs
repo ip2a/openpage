@@ -37,14 +37,16 @@ use crate::settings::{
     component_state_lock_poisoned_message, cookie_name_empty_message,
     cookie_requires_url_or_domain_message, cookie_text_separator_conflict_message,
     cookie_value_empty_message, default_none_element_runtime_config, invalid_file_url_message,
-    invalid_session_ini_field_expected_message, invalid_session_ini_field_message,
+    invalid_session_ini_boolean_message, invalid_session_ini_field_expected_message,
+    invalid_session_ini_field_message, invalid_session_ini_python_string_message,
     invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
-    invalid_xpath_segment_index_message, parent_element_index_must_start_message,
-    parent_element_level_must_start_message, parent_element_not_found_message,
-    session_cookie_requires_url_or_domain_message, session_page_no_current_url_message,
-    session_page_no_loaded_document_message, snapshot_fragment_root_not_found_message,
-    snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
-    unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
+    invalid_xpath_segment_index_message, missing_session_ini_field_message,
+    parent_element_index_must_start_message, parent_element_level_must_start_message,
+    parent_element_not_found_message, session_cookie_requires_url_or_domain_message,
+    session_page_no_current_url_message, session_page_no_loaded_document_message,
+    snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
+    snapshot_node_no_longer_exists_message, unsupported_snapshot_node_kind_message,
+    unsupported_xpath_path_message, unterminated_session_ini_python_string_message,
     xpath_node_no_longer_exists_message, xpath_path_not_found_message,
     xpath_segment_not_found_message,
 };
@@ -940,9 +942,9 @@ fn parse_optional_ini_string_pair(
             json_scalar_to_string(&items[0], field)?,
             json_scalar_to_string(&items[1], field)?,
         ))),
-        _ => Err(OpenPageError::Http(format!(
-            "invalid {field} in session options ini: expected 2-item list"
-        ))),
+        _ => Err(OpenPageError::Http(
+            invalid_session_ini_field_expected_message(field, "2-item list"),
+        )),
     }
 }
 
@@ -990,7 +992,7 @@ fn parse_optional_ini_cert(value: &str) -> OpenPageResult<Option<SessionCert>> {
             key: PathBuf::from(json_scalar_to_string(&items[1], "cert")?),
         })),
         _ => Err(OpenPageError::Http(
-            "invalid cert in session options ini: expected path or 2-item list".to_string(),
+            invalid_session_ini_field_expected_message("cert", "path or 2-item list"),
         )),
     }
 }
@@ -999,8 +1001,8 @@ fn parse_ini_bool(value: &str) -> OpenPageResult<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
         "true" | "1" | "yes" | "on" => Ok(true),
         "false" | "0" | "no" | "off" => Ok(false),
-        _ => Err(OpenPageError::Http(format!(
-            "invalid boolean in session options ini: {value}"
+        _ => Err(OpenPageError::Http(invalid_session_ini_boolean_message(
+            value,
         ))),
     }
 }
@@ -1034,7 +1036,7 @@ fn python_literal_to_json(value: &str) -> OpenPageResult<String> {
                         index += 1;
                         if index >= chars.len() {
                             return Err(OpenPageError::Http(
-                                "invalid Python-style string in session options ini".to_string(),
+                                invalid_session_ini_python_string_message(),
                             ));
                         }
                         let escaped = chars[index];
@@ -1061,7 +1063,7 @@ fn python_literal_to_json(value: &str) -> OpenPageResult<String> {
 
                 if !closed {
                     return Err(OpenPageError::Http(
-                        "unterminated Python-style string in session options ini".to_string(),
+                        unterminated_session_ini_python_string_message(),
                     ));
                 }
 
@@ -1106,15 +1108,15 @@ fn json_scalar_to_string(value: &Value, field: &str) -> OpenPageResult<String> {
         Value::String(text) => Ok(text.clone()),
         Value::Number(number) => Ok(number.to_string()),
         Value::Bool(boolean) => Ok(boolean.to_string()),
-        _ => Err(OpenPageError::Http(format!(
-            "invalid {field} in session options ini: expected scalar value"
-        ))),
+        _ => Err(OpenPageError::Http(
+            invalid_session_ini_field_expected_message(field, "scalar value"),
+        )),
     }
 }
 
 fn json_required_string(value: Option<&Value>, field: &str) -> OpenPageResult<String> {
     value
-        .ok_or_else(|| OpenPageError::Http(format!("missing {field} in session options ini")))
+        .ok_or_else(|| OpenPageError::Http(missing_session_ini_field_message(field)))
         .and_then(|value| json_scalar_to_string(value, field))
 }
 
@@ -1130,9 +1132,9 @@ fn json_optional_bool(value: Option<&Value>, field: &str) -> OpenPageResult<Opti
         None | Some(Value::Null) => Ok(None),
         Some(Value::Bool(boolean)) => Ok(Some(*boolean)),
         Some(Value::String(text)) => parse_optional_ini_bool(text),
-        _ => Err(OpenPageError::Http(format!(
-            "invalid {field} in session options ini: expected boolean"
-        ))),
+        _ => Err(OpenPageError::Http(
+            invalid_session_ini_field_expected_message(field, "boolean"),
+        )),
     }
 }
 
