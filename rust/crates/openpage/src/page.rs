@@ -6970,7 +6970,7 @@ fn screenshot_clip(
                     .height(height)
                     .scale(1.0)
                     .build()
-                    .map_err(|err| OpenPageError::PageOperation(err.to_string()))?,
+                    .map_err(|err| page_operation_error("build screenshot clip", err))?,
             ))
         }
         _ => Err(OpenPageError::PageOperation(
@@ -7312,7 +7312,7 @@ async fn page_has_cookie(
     let cookies = page
         .get_cookies()
         .await
-        .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+        .map_err(|err| page_operation_error("read cookies", err))?;
     Ok(cookies.into_iter().any(|current| {
         current.name == cookie.name
             && current.value == cookie.value
@@ -7452,7 +7452,7 @@ where
         .await
         .map_err(|_| timeout_error(operation, timeout_ms))?
         .map(|response| response.result)
-        .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+        .map_err(|err| page_operation_error(operation, err))
 }
 
 pub(crate) fn execute_page_command_blocking<T>(
