@@ -2086,6 +2086,56 @@ impl SessionPage {
         })
     }
 
+    pub fn post_form<K, V>(&self, url: &str, form: &[(K, V)]) -> OpenPageResult<bool>
+    where
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        self.post_form_with_options(url, form, &SessionRequestOptions::default())
+    }
+
+    pub fn post_form_with_options<K, V>(
+        &self,
+        url: &str,
+        form: &[(K, V)],
+        options: &SessionRequestOptions,
+    ) -> OpenPageResult<bool>
+    where
+        K: AsRef<str>,
+        V: AsRef<str>,
+    {
+        self.send_request_with_retry(url, Some(options), |context| {
+            let request_url = append_query_params(url, &context.params)?;
+            let headers = effective_request_headers(
+                &context.headers,
+                context.current_url.as_deref(),
+                &request_url,
+            )?;
+            let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+            for (name, value) in form {
+                serializer.append_pair(name.as_ref(), value.as_ref());
+            }
+            let body = serializer.finish();
+            apply_request_options(
+                context.client.post(&request_url),
+                context.user_agent.as_deref(),
+                &headers,
+                context.auth.as_ref(),
+                context.timeout_secs,
+            )
+            .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(body)
+            .send()
+            .map_err(|err| {
+                OpenPageError::Http(session_request_failed_message(
+                    "POST",
+                    &request_url,
+                    &format!("{err:?}"),
+                ))
+            })
+        })
+    }
+
     pub fn put(&self, url: &str) -> OpenPageResult<bool> {
         self.put_with_options(url, &SessionRequestOptions::default())
     }
@@ -8118,6 +8168,37 @@ mod tests {
             .expect("options response");
         assert_eq!(response.url.as_deref(), Some(url.as_str()));
         assert_eq!(response.status_code, Some(204));
+    }
+
+    #[test]
+    fn session_post_form_sends_urlencoded_body_and_updates_response_snapshot() {
+        let (address, handle) = spawn_capture_server("200 OK", "form accepted");
+        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let url = format!("{address}/submit");
+        let form = [("username", "openpage"), ("pwd", "secret")];
+
+        assert!(page.post_form(&url, &form).expect("post form request"));
+        let request = handle.join().expect("server thread");
+        assert!(
+            request.starts_with("POST /submit HTTP/1.1"),
+            "unexpected request: {request}"
+        );
+        assert!(
+            request.contains("content-type: application/x-www-form-urlencoded"),
+            "missing form content type: {request}"
+        );
+        assert!(
+            request.ends_with("username=openpage&pwd=secret"),
+            "unexpected form body: {request}"
+        );
+
+        let response = page
+            .response_snapshot()
+            .expect("form response snapshot")
+            .expect("form response");
+        assert_eq!(response.url.as_deref(), Some(url.as_str()));
+        assert_eq!(response.status_code, Some(200));
+        assert_eq!(page.html().expect("form response body"), "form accepted");
     }
 
     #[test]
