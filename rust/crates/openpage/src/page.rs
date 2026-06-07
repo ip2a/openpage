@@ -5552,7 +5552,7 @@ impl Page {
                 .inner
                 .get_cookies()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| page_operation_error("read cookies", err))?;
             if cookies.is_empty() {
                 return Ok(None);
             }
@@ -5591,7 +5591,7 @@ impl Page {
             self.inner
                 .set_cookies(cookies)
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| page_operation_error("set cookie header", err))?;
             Ok(())
         })
     }
@@ -5605,9 +5605,9 @@ impl Page {
             .as_deref()
             .map(Url::parse)
             .transpose()
-            .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            .map_err(|err| page_operation_error("parse cookie scope url", err))?;
         let cookies = cookie_input_to_params_allow_missing_scope(cookies.into())
-            .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            .map_err(|err| page_operation_error("parse cookies", err))?;
         if cookies.is_empty() {
             return Ok(());
         }
@@ -5633,7 +5633,7 @@ impl Page {
             self.inner
                 .set_cookie(cookie)
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| page_operation_error("set cookie", err))?;
             Ok(())
         })
     }
@@ -5650,7 +5650,7 @@ impl Page {
             self.inner
                 .delete_cookie(params)
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| page_operation_error("delete cookie", err))?;
             Ok(())
         })
     }
