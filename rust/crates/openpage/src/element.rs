@@ -51,24 +51,27 @@ use crate::session::{
 use crate::settings::{
     blob_src_data_url_required_message, browser_backed_element_only_message,
     click_at_count_must_be_positive_message, click_failed_hidden_or_disabled_message,
-    click_failed_no_rect_message, click_failed_should_raise,
+    click_failed_no_rect_message, click_failed_should_raise, data_url_missing_comma_message,
     element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
-    element_no_visible_rect_message, element_resource_unavailable_message,
-    element_tag_name_unavailable_message, element_top_frame_check_failed_message,
-    frame_index_must_start_message, frame_index_out_of_range_message,
-    javascript_execution_timed_out_message, multi_select_action_required_message,
-    no_new_tab_message, parent_element_index_must_start_message,
-    parent_element_level_must_start_message, relative_direction_index_must_start_message,
-    resolve_element_frame_id_failed_message, resolve_frame_viewport_offset_failed_message,
+    element_no_visible_rect_message, element_rect_corner_coordinate_count_message,
+    element_rect_corners_parse_failed_message, element_rect_corners_unexpected_value_message,
+    element_resource_unavailable_message, element_tag_name_unavailable_message,
+    element_top_frame_check_failed_message, frame_index_must_start_message,
+    frame_index_out_of_range_message, javascript_execution_timed_out_message,
+    multi_select_action_required_message, no_new_tab_message,
+    parent_element_index_must_start_message, parent_element_level_must_start_message,
+    relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
+    resolve_frame_viewport_offset_failed_message, resolved_node_missing_object_id_message,
     select_element_required_message, session_backed_element_driver_target_message,
     set_file_input_requires_at_least_one_file_message, shadow_root_object_id_unavailable_message,
-    unsupported_key_message, unsupported_mouse_button_message,
-    value_coordinate_not_numeric_message, value_coordinate_pair_exactly_two_message,
-    value_coordinate_pair_parse_failed_message, value_coordinate_pair_required_message,
-    value_non_negative_integer_required_message, value_number_required_message,
-    value_state_bool_required_message, value_string_compatible_required_message,
-    value_string_required_message, value_string_vec_array_required_message,
-    value_string_vec_entry_required_message, value_unavailable_message, wait_timeout_result,
+    top_window_device_pixel_ratio_not_numeric_message, unsupported_key_message,
+    unsupported_mouse_button_message, value_coordinate_not_numeric_message,
+    value_coordinate_pair_exactly_two_message, value_coordinate_pair_parse_failed_message,
+    value_coordinate_pair_required_message, value_non_negative_integer_required_message,
+    value_number_required_message, value_state_bool_required_message,
+    value_string_compatible_required_message, value_string_required_message,
+    value_string_vec_array_required_message, value_string_vec_entry_required_message,
+    value_unavailable_message, wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -2558,25 +2561,24 @@ impl Element {
             Value::Null => Ok(None),
             Value::String(serialized) => {
                 let points: Vec<Vec<f64>> = serde_json::from_str(&serialized).map_err(|err| {
-                    OpenPageError::Serialization(format!(
-                        "failed to parse element rect corners: {err}"
+                    OpenPageError::Serialization(element_rect_corners_parse_failed_message(
+                        &err.to_string(),
                     ))
                 })?;
                 let mut corners = Vec::with_capacity(points.len());
                 for point in points {
                     if point.len() != 2 {
                         return Err(OpenPageError::JavaScript(
-                            "element rect corner did not contain exactly two coordinates"
-                                .to_string(),
+                            element_rect_corner_coordinate_count_message(),
                         ));
                     }
                     corners.push((point[0], point[1]));
                 }
                 Ok(Some(corners))
             }
-            value => Err(OpenPageError::JavaScript(format!(
-                "element rect corners returned unexpected value: {value}"
-            ))),
+            value => Err(OpenPageError::JavaScript(
+                element_rect_corners_unexpected_value_message(&value.to_string()),
+            )),
         }
     }
 
@@ -2595,25 +2597,24 @@ impl Element {
             Value::Null => Ok(None),
             Value::String(serialized) => {
                 let points: Vec<Vec<f64>> = serde_json::from_str(&serialized).map_err(|err| {
-                    OpenPageError::Serialization(format!(
-                        "failed to parse element rect corners: {err}"
+                    OpenPageError::Serialization(element_rect_corners_parse_failed_message(
+                        &err.to_string(),
                     ))
                 })?;
                 let mut corners = Vec::with_capacity(points.len());
                 for point in points {
                     if point.len() != 2 {
                         return Err(OpenPageError::JavaScript(
-                            "element rect corner did not contain exactly two coordinates"
-                                .to_string(),
+                            element_rect_corner_coordinate_count_message(),
                         ));
                     }
                     corners.push((point[0], point[1]));
                 }
                 Ok(Some(corners))
             }
-            value => Err(OpenPageError::JavaScript(format!(
-                "element rect corners returned unexpected value: {value}"
-            ))),
+            value => Err(OpenPageError::JavaScript(
+                element_rect_corners_unexpected_value_message(&value.to_string()),
+            )),
         }
     }
 
@@ -3242,7 +3243,7 @@ impl Element {
             )
             .await?;
             let object_id = resolved.object.object_id.ok_or_else(|| {
-                OpenPageError::PageOperation("resolved node has no object id".to_string())
+                OpenPageError::PageOperation(resolved_node_missing_object_id_message())
             })?;
             let requested = execute_page_command_async(
                 &self.page,
@@ -3709,7 +3710,7 @@ impl Element {
             })?
             .as_f64()
             .ok_or_else(|| {
-                OpenPageError::JavaScript("top window devicePixelRatio was not numeric".to_string())
+                OpenPageError::JavaScript(top_window_device_pixel_ratio_not_numeric_message())
             })
     }
 
@@ -4995,9 +4996,9 @@ fn decode_data_url_content(
     data_url: &str,
     base64_to_bytes: bool,
 ) -> OpenPageResult<ElementResource> {
-    let (_, payload) = data_url.split_once(',').ok_or_else(|| {
-        OpenPageError::Serialization("data URL did not contain a comma separator".to_string())
-    })?;
+    let (_, payload) = data_url
+        .split_once(',')
+        .ok_or_else(|| OpenPageError::Serialization(data_url_missing_comma_message()))?;
     if base64_to_bytes {
         let bytes = BASE64_STANDARD
             .decode(payload.as_bytes())

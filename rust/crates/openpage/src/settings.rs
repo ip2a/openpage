@@ -566,6 +566,48 @@ pub(crate) fn blob_src_data_url_required_message(value: &str) -> String {
     }
 }
 
+pub(crate) fn element_rect_corners_parse_failed_message(detail: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("解析元素 rect corners 失败: {detail}"),
+        _ => format!("failed to parse element rect corners: {detail}"),
+    }
+}
+
+pub(crate) fn element_rect_corner_coordinate_count_message() -> String {
+    localized_message(
+        "element rect corner did not contain exactly two coordinates",
+        "元素 rect corner 未包含恰好两个坐标",
+    )
+}
+
+pub(crate) fn element_rect_corners_unexpected_value_message(value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("元素 rect corners 返回了非预期值: {value}"),
+        _ => format!("element rect corners returned unexpected value: {value}"),
+    }
+}
+
+pub(crate) fn resolved_node_missing_object_id_message() -> String {
+    localized_message(
+        "resolved node has no object id",
+        "解析出的 node 没有 object id",
+    )
+}
+
+pub(crate) fn top_window_device_pixel_ratio_not_numeric_message() -> String {
+    localized_message(
+        "top window devicePixelRatio was not numeric",
+        "顶层窗口 devicePixelRatio 不是数字",
+    )
+}
+
+pub(crate) fn data_url_missing_comma_message() -> String {
+    localized_message(
+        "data URL did not contain a comma separator",
+        "data URL 不包含逗号分隔符",
+    )
+}
+
 pub(crate) fn action_wait_seconds_non_negative_message() -> String {
     localized_message("wait() seconds must be >= 0", "wait() 秒数必须 >= 0")
 }
@@ -1090,10 +1132,12 @@ mod tests {
         component_not_active_start_message, component_not_running_message,
         component_not_running_with_error_message, component_state_lock_poisoned_message,
         component_stopped_while_waiting_message, cookie_name_empty_message,
-        default_suffixes_list_path, download_not_found_message, drag_in_file_path_empty_message,
-        drag_in_requires_file_path_message, driver_mode_only_message,
-        element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
-        element_no_visible_rect_message, element_resource_unavailable_message,
+        data_url_missing_comma_message, default_suffixes_list_path, download_not_found_message,
+        drag_in_file_path_empty_message, drag_in_requires_file_path_message,
+        driver_mode_only_message, element_frame_viewport_offset_unavailable_message,
+        element_html_unavailable_message, element_no_visible_rect_message,
+        element_rect_corner_coordinate_count_message, element_rect_corners_parse_failed_message,
+        element_rect_corners_unexpected_value_message, element_resource_unavailable_message,
         element_tag_name_unavailable_message, element_top_frame_check_failed_message,
         file_chooser_backend_node_missing_message, frame_element_missing_frame_id_message,
         frame_execution_context_unavailable_message, frame_html_unavailable_message,
@@ -1110,20 +1154,22 @@ mod tests {
         permission_origin_scheme_message, permission_setting_invalid_message,
         relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
         resolve_frame_viewport_offset_failed_message,
-        resolved_frame_owner_missing_object_id_message, scoped_test_settings,
-        screencast_already_running_message, screencast_capture_path_unavailable_message,
-        screencast_empty_mime_type_message, screencast_encode_output_failed_message,
-        screencast_ffmpeg_encode_failed_message, screencast_ffmpeg_spawn_failed_message,
-        screencast_mode_change_while_running_message, screencast_mode_output_suffix_message,
-        screencast_no_frames_message, screencast_output_path_unavailable_message,
-        screencast_requires_save_path_message, screencast_save_path_must_be_directory_message,
-        screenshot_clip_complete_message, screenshot_clip_order_message,
-        select_element_required_message, session_backed_element_driver_target_message,
+        resolved_frame_owner_missing_object_id_message, resolved_node_missing_object_id_message,
+        scoped_test_settings, screencast_already_running_message,
+        screencast_capture_path_unavailable_message, screencast_empty_mime_type_message,
+        screencast_encode_output_failed_message, screencast_ffmpeg_encode_failed_message,
+        screencast_ffmpeg_spawn_failed_message, screencast_mode_change_while_running_message,
+        screencast_mode_output_suffix_message, screencast_no_frames_message,
+        screencast_output_path_unavailable_message, screencast_requires_save_path_message,
+        screencast_save_path_must_be_directory_message, screenshot_clip_complete_message,
+        screenshot_clip_order_message, select_element_required_message,
+        session_backed_element_driver_target_message,
         session_backed_web_element_driver_actions_message, session_page_no_current_url_message,
         session_page_no_loaded_document_message, set_file_input_requires_at_least_one_file_message,
         shadow_root_object_id_unavailable_message,
         shadow_root_xpath_traversal_not_implemented_message, target_tab_not_found_message,
-        timeout_error, timeout_must_be_non_negative_message, unsupported_key_message,
+        timeout_error, timeout_must_be_non_negative_message,
+        top_window_device_pixel_ratio_not_numeric_message, unsupported_key_message,
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
         unsupported_xpath_path_message, upload_requires_at_least_one_file_message,
         value_coordinate_not_numeric_message, value_coordinate_pair_exactly_two_message,
@@ -1387,6 +1433,30 @@ mod tests {
         assert_eq!(
             blob_src_data_url_required_message("null"),
             "blob src did not return a data URL string: null"
+        );
+        assert_eq!(
+            element_rect_corners_parse_failed_message("parse error"),
+            "failed to parse element rect corners: parse error"
+        );
+        assert_eq!(
+            element_rect_corner_coordinate_count_message(),
+            "element rect corner did not contain exactly two coordinates"
+        );
+        assert_eq!(
+            element_rect_corners_unexpected_value_message("true"),
+            "element rect corners returned unexpected value: true"
+        );
+        assert_eq!(
+            resolved_node_missing_object_id_message(),
+            "resolved node has no object id"
+        );
+        assert_eq!(
+            top_window_device_pixel_ratio_not_numeric_message(),
+            "top window devicePixelRatio was not numeric"
+        );
+        assert_eq!(
+            data_url_missing_comma_message(),
+            "data URL did not contain a comma separator"
         );
         assert_eq!(
             action_wait_seconds_non_negative_message(),
@@ -1784,6 +1854,30 @@ mod tests {
         assert_eq!(
             blob_src_data_url_required_message("null"),
             "blob src 未返回 data URL 字符串: null"
+        );
+        assert_eq!(
+            element_rect_corners_parse_failed_message("parse error"),
+            "解析元素 rect corners 失败: parse error"
+        );
+        assert_eq!(
+            element_rect_corner_coordinate_count_message(),
+            "元素 rect corner 未包含恰好两个坐标"
+        );
+        assert_eq!(
+            element_rect_corners_unexpected_value_message("true"),
+            "元素 rect corners 返回了非预期值: true"
+        );
+        assert_eq!(
+            resolved_node_missing_object_id_message(),
+            "解析出的 node 没有 object id"
+        );
+        assert_eq!(
+            top_window_device_pixel_ratio_not_numeric_message(),
+            "顶层窗口 devicePixelRatio 不是数字"
+        );
+        assert_eq!(
+            data_url_missing_comma_message(),
+            "data URL 不包含逗号分隔符"
         );
         assert_eq!(
             action_wait_seconds_non_negative_message(),
