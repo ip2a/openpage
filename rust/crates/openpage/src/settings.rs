@@ -729,6 +729,34 @@ pub(crate) fn make_session_ele_index_resolution_failed_message() -> String {
     )
 }
 
+pub(crate) fn invalid_config_file_message(path: &str, detail: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("无效的配置文件 {path}: {detail}"),
+        _ => format!("invalid config file {path}: {detail}"),
+    }
+}
+
+pub(crate) fn invalid_toml_file_message(path: &str, detail: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("无效的 TOML 文件 {path}: {detail}"),
+        _ => format!("invalid TOML file {path}: {detail}"),
+    }
+}
+
+pub(crate) fn config_root_table_required_message() -> String {
+    localized_message(
+        "config root must be a TOML table",
+        "配置根节点必须是 TOML table",
+    )
+}
+
+pub(crate) fn config_section_table_required_message(key: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("配置 `{key}` section 必须是 TOML table"),
+        _ => format!("config `{key}` section must be a TOML table"),
+    }
+}
+
 pub(crate) fn resolve_top_viewport_screen_origin_failed_message(detail: &str) -> String {
     localized_error_with_detail(
         "resolve top viewport screen origin failed",

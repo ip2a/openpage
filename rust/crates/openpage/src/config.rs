@@ -6,6 +6,10 @@ use serde::Deserialize;
 use crate::browser::{LaunchOptions, OPENPAGE_BROWSER_PATH_ENV};
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::session::SessionOptions;
+use crate::settings::{
+    config_root_table_required_message, config_section_table_required_message,
+    invalid_config_file_message, invalid_toml_file_message,
+};
 
 pub const OPENPAGE_CONFIG_ENV: &str = "OPENPAGE_CONFIG";
 pub const OPENPAGE_BROWSER_USER_DATA_DIR_ENV: &str = "OPENPAGE_USER_DATA_DIR";
@@ -488,7 +492,10 @@ fn apply_config_file(
 fn load_config_file(path: &Path) -> OpenPageResult<ConfigFile> {
     let content = std::fs::read_to_string(path)?;
     toml::from_str::<ConfigFile>(&content).map_err(|err| {
-        OpenPageError::Serialization(format!("invalid config file {}: {err}", path.display()))
+        OpenPageError::Serialization(invalid_config_file_message(
+            &path.display().to_string(),
+            &err.to_string(),
+        ))
     })
 }
 
@@ -496,7 +503,10 @@ fn load_toml_value(path: &Path) -> OpenPageResult<toml::Value> {
     if path.is_file() {
         let content = std::fs::read_to_string(path)?;
         toml::from_str::<toml::Value>(&content).map_err(|err| {
-            OpenPageError::Serialization(format!("invalid TOML file {}: {err}", path.display()))
+            OpenPageError::Serialization(invalid_toml_file_message(
+                &path.display().to_string(),
+                &err.to_string(),
+            ))
         })
     } else {
         Ok(toml::Value::Table(toml::map::Map::new()))
@@ -517,15 +527,15 @@ fn ensure_table_entry<'a>(
     value: &'a mut toml::Value,
     key: &str,
 ) -> OpenPageResult<&'a mut toml::map::Map<String, toml::Value>> {
-    let table = value.as_table_mut().ok_or_else(|| {
-        OpenPageError::Serialization("config root must be a TOML table".to_string())
-    })?;
+    let table = value
+        .as_table_mut()
+        .ok_or_else(|| OpenPageError::Serialization(config_root_table_required_message()))?;
     let entry = table
         .entry(key.to_string())
         .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
-    entry.as_table_mut().ok_or_else(|| {
-        OpenPageError::Serialization(format!("config `{key}` section must be a TOML table"))
-    })
+    entry
+        .as_table_mut()
+        .ok_or_else(|| OpenPageError::Serialization(config_section_table_required_message(key)))
 }
 
 fn parse_bool(raw: &str) -> Option<bool> {
@@ -592,8 +602,11 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        ConfigValueSource, OPENPAGE_BROWSER_PATH_ENV, OPENPAGE_CONFIG_ENV, load_resolved_config,
+        ConfigValueSource, OPENPAGE_BROWSER_PATH_ENV, OPENPAGE_CONFIG_ENV, ensure_table_entry,
+        load_config_file, load_resolved_config, load_toml_value,
     };
+    use crate::Settings;
+    use crate::settings::scoped_test_settings;
 
     struct EnvGuard {
         key: &'static str,
@@ -781,5 +794,77 @@ mod tests {
         assert_eq!(config.launch.remote_debugging_port, Some(9555));
         assert_eq!(config.launch.address.as_deref(), Some("127.0.0.1:9555"));
         assert_eq!(config.debugger_source, ConfigValueSource::WorkspaceConfig);
+    }
+
+    #[test]
+    fn config_parse_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let dir = temp_dir("parse-errors");
+        let config_path = dir.join("config.toml");
+        fs::write(&config_path, "[browser\n").expect("write invalid config");
+
+        let english_config = load_config_file(&config_path)
+            .expect_err("invalid config should fail")
+            .to_string();
+        assert!(english_config.contains("invalid config file"));
+
+        let english_toml = load_toml_value(&config_path)
+            .expect_err("invalid TOML should fail")
+            .to_string();
+        assert!(english_toml.contains("invalid TOML file"));
+
+        Settings::set_language("cn");
+
+        let chinese_config = load_config_file(&config_path)
+            .expect_err("invalid config should localize")
+            .to_string();
+        assert!(chinese_config.contains("无效的配置文件"));
+
+        let chinese_toml = load_toml_value(&config_path)
+            .expect_err("invalid TOML should localize")
+            .to_string();
+        assert!(chinese_toml.contains("无效的 TOML 文件"));
+
+        fs::remove_dir_all(dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn config_table_shape_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let mut root = toml::Value::String("not-table".to_string());
+        let english_root = ensure_table_entry(&mut root, "browser")
+            .expect_err("non-table root should fail")
+            .to_string();
+        assert!(english_root.contains("config root must be a TOML table"));
+
+        let mut section = toml::Value::Table(toml::map::Map::from_iter([(
+            "browser".to_string(),
+            toml::Value::String("not-table".to_string()),
+        )]));
+        let english_section = ensure_table_entry(&mut section, "browser")
+            .expect_err("non-table section should fail")
+            .to_string();
+        assert!(english_section.contains("config `browser` section must be a TOML table"));
+
+        Settings::set_language("cn");
+
+        let mut root = toml::Value::String("not-table".to_string());
+        let chinese_root = ensure_table_entry(&mut root, "browser")
+            .expect_err("non-table root should localize")
+            .to_string();
+        assert!(chinese_root.contains("配置根节点必须是 TOML table"));
+
+        let mut section = toml::Value::Table(toml::map::Map::from_iter([(
+            "browser".to_string(),
+            toml::Value::String("not-table".to_string()),
+        )]));
+        let chinese_section = ensure_table_entry(&mut section, "browser")
+            .expect_err("non-table section should localize")
+            .to_string();
+        assert!(chinese_section.contains("配置 `browser` section 必须是 TOML table"));
     }
 }
