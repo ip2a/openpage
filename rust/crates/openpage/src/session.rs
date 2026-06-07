@@ -2120,6 +2120,40 @@ impl SessionPage {
         })
     }
 
+    pub fn delete(&self, url: &str) -> OpenPageResult<bool> {
+        self.delete_with_options(url, &SessionRequestOptions::default())
+    }
+
+    pub fn delete_with_options(
+        &self,
+        url: &str,
+        options: &SessionRequestOptions,
+    ) -> OpenPageResult<bool> {
+        self.send_request_with_retry(url, Some(options), |context| {
+            let request_url = append_query_params(url, &context.params)?;
+            let headers = effective_request_headers(
+                &context.headers,
+                context.current_url.as_deref(),
+                &request_url,
+            )?;
+            apply_request_options(
+                context.client.delete(&request_url),
+                context.user_agent.as_deref(),
+                &headers,
+                context.auth.as_ref(),
+                context.timeout_secs,
+            )
+            .send()
+            .map_err(|err| {
+                OpenPageError::Http(session_request_failed_message(
+                    "DELETE",
+                    &request_url,
+                    &format!("{err:?}"),
+                ))
+            })
+        })
+    }
+
     pub fn post_json(&self, url: &str, payload: Option<Value>) -> OpenPageResult<bool> {
         self.post_json_with_options(url, payload, &SessionRequestOptions::default())
     }
@@ -8072,6 +8106,28 @@ mod tests {
         assert_eq!(response.url.as_deref(), Some(url.as_str()));
         assert_eq!(response.status_code, Some(200));
         assert_eq!(page.html().expect("put response body"), "updated");
+    }
+
+    #[test]
+    fn session_delete_uses_request_pipeline_and_updates_response_snapshot() {
+        let (address, handle) = spawn_capture_server("200 OK", "deleted");
+        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let url = format!("{address}/items/1");
+
+        assert!(page.delete(&url).expect("delete request"));
+        let request = handle.join().expect("server thread");
+        assert!(
+            request.starts_with("DELETE /items/1 HTTP/1.1"),
+            "unexpected request: {request}"
+        );
+
+        let response = page
+            .response_snapshot()
+            .expect("delete response snapshot")
+            .expect("delete response");
+        assert_eq!(response.url.as_deref(), Some(url.as_str()));
+        assert_eq!(response.status_code, Some(200));
+        assert_eq!(page.html().expect("delete response body"), "deleted");
     }
 
     #[test]
