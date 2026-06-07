@@ -5303,6 +5303,10 @@ impl WebPage {
         Ok(())
     }
 
+    pub fn close_with_options(&self, others: bool, session: bool) -> OpenPageResult<()> {
+        self.close(others, session)
+    }
+
     pub fn close_driver(self) -> OpenPageResult<SessionPage> {
         self.change_mode(Some(WebMode::Session), true, true)?;
         let WebPage {
@@ -7164,6 +7168,8 @@ mod tests {
             let _ = page.reconnect(0);
             let _ = page.close(false, false);
             let _ = page.close(true, true);
+            let _ = page.close_with_options(false, false);
+            let _ = page.close_with_options(true, true);
         }
 
         let _ = assert_calls as fn(&WebPage);
