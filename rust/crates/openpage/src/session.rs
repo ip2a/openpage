@@ -49,11 +49,12 @@ use crate::settings::{
     session_cert_read_failed_message, session_cookie_requires_url_or_domain_message,
     session_download_status_message, session_identity_parse_failed_message,
     session_page_no_current_url_message, session_page_no_loaded_document_message,
-    session_request_failed_message, snapshot_fragment_root_not_found_message,
-    snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
-    unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
-    unterminated_session_ini_python_string_message, xpath_node_no_longer_exists_message,
-    xpath_path_not_found_message, xpath_segment_not_found_message,
+    session_request_failed_message, session_response_body_read_failed_message,
+    snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
+    snapshot_node_no_longer_exists_message, unsupported_snapshot_node_kind_message,
+    unsupported_xpath_path_message, unterminated_session_ini_python_string_message,
+    xpath_node_no_longer_exists_message, xpath_path_not_found_message,
+    xpath_segment_not_found_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -2780,7 +2781,12 @@ impl SessionPage {
                     let raw_data = Arc::new(
                         response
                             .bytes()
-                            .map_err(|err| OpenPageError::Http(format!("{err:?}")))?
+                            .map_err(|err| {
+                                OpenPageError::Http(session_response_body_read_failed_message(
+                                    &request_url,
+                                    &format!("{err:?}"),
+                                ))
+                            })?
                             .to_vec(),
                     );
                     run_response_hooks(
@@ -2885,7 +2891,12 @@ impl SessionPage {
         let raw_data = Arc::new(
             response
                 .bytes()
-                .map_err(|err| OpenPageError::Http(format!("{err:?}")))?
+                .map_err(|err| {
+                    OpenPageError::Http(session_response_body_read_failed_message(
+                        requested_url,
+                        &format!("{err:?}"),
+                    ))
+                })?
                 .to_vec(),
         );
 
@@ -6370,6 +6381,22 @@ mod tests {
         (address, handle)
     }
 
+    fn spawn_truncated_body_server() -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind truncated server");
+        let address = format!("http://{}", listener.local_addr().expect("server addr"));
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept request");
+            let mut buffer = [0_u8; 4096];
+            let _ = stream.read(&mut buffer).expect("read request");
+            let body = "short";
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: 999\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\n{body}",
+            );
+        });
+        (address, handle)
+    }
+
     #[test]
     fn session_options_default_http_settings_match_reference_behavior() {
         let options = SessionOptions::default();
@@ -8159,6 +8186,38 @@ mod tests {
             .expect_err("timeout should fail in Chinese")
             .to_string();
         assert!(chinese.contains(&format!("session GET 请求 {chinese_url} 失败")));
+        assert!(chinese.contains("HTTP 操作失败"));
+        let _ = chinese_handle.join();
+    }
+
+    #[test]
+    fn session_response_body_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let page = SessionPage::new(SessionOptions {
+            retry_times: 0,
+            ..SessionOptions::default()
+        })
+        .expect("session page");
+
+        let (english_url, english_handle) = spawn_truncated_body_server();
+        let english = page
+            .get(&english_url)
+            .expect_err("truncated response body should fail")
+            .to_string();
+        assert!(english.contains(&format!(
+            "failed to read session response body for {english_url}"
+        )));
+        let _ = english_handle.join();
+
+        Settings::set_language("cn");
+
+        let (chinese_url, chinese_handle) = spawn_truncated_body_server();
+        let chinese = page
+            .get(&chinese_url)
+            .expect_err("truncated response body should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains(&format!("读取 session 响应体 {chinese_url} 失败")));
         assert!(chinese.contains("HTTP 操作失败"));
         let _ = chinese_handle.join();
     }
