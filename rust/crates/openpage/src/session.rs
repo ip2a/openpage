@@ -2136,6 +2136,43 @@ impl SessionPage {
         })
     }
 
+    pub fn post_body(&self, url: &str, body: impl Into<String>) -> OpenPageResult<bool> {
+        self.post_body_with_options(url, body, &SessionRequestOptions::default())
+    }
+
+    pub fn post_body_with_options(
+        &self,
+        url: &str,
+        body: impl Into<String>,
+        options: &SessionRequestOptions,
+    ) -> OpenPageResult<bool> {
+        let body = body.into();
+        self.send_request_with_retry(url, Some(options), |context| {
+            let request_url = append_query_params(url, &context.params)?;
+            let headers = effective_request_headers(
+                &context.headers,
+                context.current_url.as_deref(),
+                &request_url,
+            )?;
+            apply_request_options(
+                context.client.post(&request_url),
+                context.user_agent.as_deref(),
+                &headers,
+                context.auth.as_ref(),
+                context.timeout_secs,
+            )
+            .body(body.clone())
+            .send()
+            .map_err(|err| {
+                OpenPageError::Http(session_request_failed_message(
+                    "POST",
+                    &request_url,
+                    &format!("{err:?}"),
+                ))
+            })
+        })
+    }
+
     pub fn put(&self, url: &str) -> OpenPageResult<bool> {
         self.put_with_options(url, &SessionRequestOptions::default())
     }
@@ -8199,6 +8236,32 @@ mod tests {
         assert_eq!(response.url.as_deref(), Some(url.as_str()));
         assert_eq!(response.status_code, Some(200));
         assert_eq!(page.html().expect("form response body"), "form accepted");
+    }
+
+    #[test]
+    fn session_post_body_sends_raw_body_and_updates_response_snapshot() {
+        let (address, handle) = spawn_capture_server("200 OK", "body accepted");
+        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let url = format!("{address}/submit");
+
+        assert!(page.post_body(&url, "abc=123").expect("post body request"));
+        let request = handle.join().expect("server thread");
+        assert!(
+            request.starts_with("POST /submit HTTP/1.1"),
+            "unexpected request: {request}"
+        );
+        assert!(
+            request.ends_with("abc=123"),
+            "unexpected raw body: {request}"
+        );
+
+        let response = page
+            .response_snapshot()
+            .expect("body response snapshot")
+            .expect("body response");
+        assert_eq!(response.url.as_deref(), Some(url.as_str()));
+        assert_eq!(response.status_code, Some(200));
+        assert_eq!(page.html().expect("body response body"), "body accepted");
     }
 
     #[test]
