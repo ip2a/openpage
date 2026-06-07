@@ -84,16 +84,20 @@ pub use window::{activate_app, set_app_visibility};
 pub type Chromium = Browser;
 pub type ChromiumElement = Element;
 pub type ChromiumFrame = Frame;
+pub type NoneElement = ElementsOneOwned<Element>;
 pub type ChromiumOptions = LaunchOptions;
 pub type ChromiumPage = Page;
 pub type ChromiumTab = Page;
 pub type MixTab = WebPage;
+pub type SessionNoneElement = ElementsOneOwned<SessionElement>;
+pub type WebNoneElement = ElementsOneOwned<WebElement>;
 
 #[cfg(test)]
 mod tests {
     use super::{
         Browser, Chromium, ChromiumElement, ChromiumFrame, ChromiumOptions, ChromiumPage,
-        ChromiumTab, Element, Frame, LaunchOptions, MixTab, Page, WebPage,
+        ChromiumTab, Element, ElementsOneOwned, Frame, LaunchOptions, MixTab, NoneElement, Page,
+        SessionElement, SessionNoneElement, WebElement, WebNoneElement, WebPage,
     };
 
     #[test]
@@ -106,5 +110,11 @@ mod tests {
         let _ = (|_: &ChromiumElement, _: &Element| {}) as fn(&ChromiumElement, &Element);
         let _ =
             (|_: &ChromiumOptions, _: &LaunchOptions| {}) as fn(&ChromiumOptions, &LaunchOptions);
+        let _ = (|_: &NoneElement, _: &ElementsOneOwned<Element>| {})
+            as fn(&NoneElement, &ElementsOneOwned<Element>);
+        let _ = (|_: &SessionNoneElement, _: &ElementsOneOwned<SessionElement>| {})
+            as fn(&SessionNoneElement, &ElementsOneOwned<SessionElement>);
+        let _ = (|_: &WebNoneElement, _: &ElementsOneOwned<WebElement>| {})
+            as fn(&WebNoneElement, &ElementsOneOwned<WebElement>);
     }
 }
