@@ -708,6 +708,27 @@ pub(crate) fn get_blob_data_url_required_message(value: &str) -> String {
     }
 }
 
+pub(crate) fn make_session_ele_index_zero_message() -> String {
+    localized_message(
+        "make_session_ele() index starts from 1 and does not accept 0",
+        "make_session_ele() index 从 1 开始，不接受 0",
+    )
+}
+
+pub(crate) fn make_session_ele_index_out_of_range_message(index: isize) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("make_session_ele() index {index} 超出范围"),
+        _ => format!("make_session_ele() index {index} is out of range"),
+    }
+}
+
+pub(crate) fn make_session_ele_index_resolution_failed_message() -> String {
+    localized_message(
+        "make_session_ele() index resolution failed",
+        "make_session_ele() index 解析失败",
+    )
+}
+
 pub(crate) fn resolve_top_viewport_screen_origin_failed_message(detail: &str) -> String {
     localized_error_with_detail(
         "resolve top viewport screen origin failed",

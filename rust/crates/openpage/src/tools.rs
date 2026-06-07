@@ -14,6 +14,8 @@ use crate::session::{SessionElement, SessionPage, snapshot_find_all, snapshot_ro
 use crate::settings::{
     data_url_missing_comma_message, get_blob_data_url_required_message,
     get_blob_resolve_failed_message, get_blob_url_required_message,
+    make_session_ele_index_out_of_range_message, make_session_ele_index_resolution_failed_message,
+    make_session_ele_index_zero_message,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::webpage::{WebElement, WebFrame, WebPage};
@@ -491,20 +493,20 @@ fn select_session_element(
 ) -> OpenPageResult<SessionElement> {
     if index == 0 {
         return Err(OpenPageError::ElementNotFound(
-            "make_session_ele() index starts from 1 and does not accept 0".to_string(),
+            make_session_ele_index_zero_message(),
         ));
     }
 
     let len = elements.len() as isize;
     let resolved = if index > 0 { index - 1 } else { len + index };
     if resolved < 0 || resolved >= len {
-        return Err(OpenPageError::ElementNotFound(format!(
-            "make_session_ele() index {index} is out of range"
-        )));
+        return Err(OpenPageError::ElementNotFound(
+            make_session_ele_index_out_of_range_message(index),
+        ));
     }
 
     elements.into_iter().nth(resolved as usize).ok_or_else(|| {
-        OpenPageError::ElementNotFound("make_session_ele() index resolution failed".to_string())
+        OpenPageError::ElementNotFound(make_session_ele_index_resolution_failed_message())
     })
 }
 
@@ -972,6 +974,44 @@ mod tests {
             }
             MakeSessionEleResult::Many(_) => panic!("expected single last element"),
         }
+    }
+
+    #[test]
+    fn make_session_ele_index_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let zero = make_session_ele(HTML, Some(".item"), Some(0))
+            .expect_err("index zero should be rejected")
+            .to_string();
+        assert!(zero.contains("index starts from 1 and does not accept 0"));
+
+        let positive_out_of_range = make_session_ele(HTML, Some(".item"), Some(4))
+            .expect_err("positive out-of-range index should be rejected")
+            .to_string();
+        assert!(positive_out_of_range.contains("index 4 is out of range"));
+
+        let negative_out_of_range = make_session_ele(HTML, Some(".item"), Some(-4))
+            .expect_err("negative out-of-range index should be rejected")
+            .to_string();
+        assert!(negative_out_of_range.contains("index -4 is out of range"));
+
+        Settings::set_language("cn");
+
+        let zero = make_session_ele(HTML, Some(".item"), Some(0))
+            .expect_err("index zero should localize")
+            .to_string();
+        assert!(zero.contains("index 从 1 开始，不接受 0"));
+
+        let positive_out_of_range = make_session_ele(HTML, Some(".item"), Some(4))
+            .expect_err("positive out-of-range index should localize")
+            .to_string();
+        assert!(positive_out_of_range.contains("index 4 超出范围"));
+
+        let negative_out_of_range = make_session_ele(HTML, Some(".item"), Some(-4))
+            .expect_err("negative out-of-range index should localize")
+            .to_string();
+        assert!(negative_out_of_range.contains("index -4 超出范围"));
     }
 
     #[test]
