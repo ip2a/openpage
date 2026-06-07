@@ -3748,10 +3748,10 @@ impl Element {
             self.inner
                 .scroll_into_view()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?
+                .map_err(|err| element_operation_error("scroll into view", err))?
                 .clickable_point()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                .map_err(|err| element_operation_error("resolve clickable point", err))
         })
     }
 
@@ -3776,7 +3776,7 @@ impl Element {
             self.page
                 .move_mouse(point)
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| element_operation_error("move mouse", err))?;
 
             let mut pressed = DispatchMouseEventParams::new(
                 DispatchMouseEventType::MousePressed,
@@ -3806,7 +3806,7 @@ impl Element {
             self.page
                 .move_mouse(start)
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| element_operation_error("move mouse", err))?;
             let mut pressed = DispatchMouseEventParams::new(
                 DispatchMouseEventType::MousePressed,
                 start.x,
@@ -3826,7 +3826,7 @@ impl Element {
                 self.page
                     .move_mouse(point)
                     .await
-                    .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                    .map_err(|err| element_operation_error("move mouse", err))?;
                 Ok::<(), OpenPageError>(())
             })?;
             if index + 1 < path_len {
