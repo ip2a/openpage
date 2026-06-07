@@ -19,7 +19,7 @@ use crate::page::execute_page_command_blocking;
 use crate::settings::{
     component_not_active_start_message, component_not_running_message,
     component_not_running_with_error_message, component_state_lock_poisoned_message,
-    component_stopped_while_waiting_message,
+    component_stopped_while_waiting_message, console_setup_operation_failed_message,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -237,13 +237,20 @@ async fn run_console(page: OxPage, shared: Arc<ConsoleShared>) -> OpenPageResult
     let mut events = page
         .event_listener::<EventConsoleApiCalled>()
         .await
-        .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+        .map_err(|err| console_setup_error("register console api listener", err))?;
 
     while let Some(event) = events.next().await {
         push_console_message(&shared, console_message_from_api_call(&event))?;
     }
 
     Ok(())
+}
+
+fn console_setup_error(operation: &str, err: impl ToString) -> OpenPageError {
+    OpenPageError::PageOperation(console_setup_operation_failed_message(
+        operation,
+        &err.to_string(),
+    ))
 }
 
 fn push_console_message(
@@ -440,7 +447,8 @@ mod tests {
 
     use super::{
         ConsoleMessage, ConsoleShared, console_message_from_entry, console_not_running_error,
-        drain_console_messages, push_console_message, wait_for_console_message,
+        console_setup_error, drain_console_messages, push_console_message,
+        wait_for_console_message,
     };
 
     fn sample_message(text: &str) -> ConsoleMessage {
@@ -571,6 +579,8 @@ mod tests {
             console_not_running_error(&state).to_string()
         };
         assert!(english_not_running.contains("console is not running: boom"));
+        let english_setup = console_setup_error("unit test setup", "boom").to_string();
+        assert!(english_setup.contains("console setup operation unit test setup failed: boom"));
 
         {
             let mut state = shared.state.lock().unwrap();
@@ -589,5 +599,7 @@ mod tests {
             console_not_running_error(&state).to_string()
         };
         assert!(chinese_not_running.contains("控制台未运行: boom"));
+        let chinese_setup = console_setup_error("unit test setup", "boom").to_string();
+        assert!(chinese_setup.contains("控制台初始化操作 unit test setup 失败: boom"));
     }
 }
