@@ -110,6 +110,36 @@ pub enum ElementResource {
     Text(String),
 }
 
+impl ElementResource {
+    pub fn as_bytes(&self) -> Option<&[u8]> {
+        match self {
+            Self::Bytes(bytes) => Some(bytes),
+            Self::Text(_) => None,
+        }
+    }
+
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Bytes(_) => None,
+            Self::Text(text) => Some(text),
+        }
+    }
+
+    pub fn into_bytes(self) -> Option<Vec<u8>> {
+        match self {
+            Self::Bytes(bytes) => Some(bytes),
+            Self::Text(_) => None,
+        }
+    }
+
+    pub fn into_text(self) -> Option<String> {
+        match self {
+            Self::Bytes(_) => None,
+            Self::Text(text) => Some(text),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Element {
     runtime: Arc<Runtime>,
@@ -5433,6 +5463,21 @@ mod tests {
     fn decode_resource_content_can_decode_page_base64() {
         let value = decode_resource_content("aGVsbG8=".to_string(), true, true).expect("decode");
         assert_eq!(value, ElementResource::Bytes(b"hello".to_vec()));
+    }
+
+    #[test]
+    fn element_resource_accessors_return_matching_variant_values() {
+        let bytes = ElementResource::Bytes(b"hello".to_vec());
+        assert_eq!(bytes.as_bytes(), Some(&b"hello"[..]));
+        assert_eq!(bytes.as_text(), None);
+        assert_eq!(bytes.clone().into_bytes(), Some(b"hello".to_vec()));
+        assert_eq!(bytes.into_text(), None);
+
+        let text = ElementResource::Text("aGVsbG8=".to_string());
+        assert_eq!(text.as_bytes(), None);
+        assert_eq!(text.as_text(), Some("aGVsbG8="));
+        assert_eq!(text.clone().into_bytes(), None);
+        assert_eq!(text.into_text(), Some("aGVsbG8=".to_string()));
     }
 
     #[test]
