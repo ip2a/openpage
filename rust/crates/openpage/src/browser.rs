@@ -35,14 +35,14 @@ use crate::settings::{
     browser_config_path_failed_message, browser_connect_timeout_duration,
     browser_temp_dir_create_failed_message, browser_user_data_dir_reset_failed_message,
     cdp_timeout_duration, component_state_lock_poisoned_message, download_canceled_message,
-    download_frame_not_mapped_to_tab_message, download_path_not_configured_message,
-    download_skipped_without_final_path_message, invalid_auto_port_scope_message,
-    invalid_download_file_exists_mode_message, invalid_launch_options_ini_boolean_message,
-    invalid_launch_options_ini_field_expected_message, invalid_launch_options_ini_field_message,
-    invalid_launch_options_ini_python_string_message, invalid_load_mode_message,
-    invalid_tab_index_message, no_free_port_in_auto_port_scope_message, singleton_tab_obj_enabled,
-    target_tab_not_found_message, timeout_duration_millis, timeout_error,
-    unterminated_launch_options_ini_python_string_message, wait_failed_should_raise,
+    download_file_operation_failed_message, download_frame_not_mapped_to_tab_message,
+    download_path_not_configured_message, download_skipped_without_final_path_message,
+    invalid_auto_port_scope_message, invalid_download_file_exists_mode_message,
+    invalid_launch_options_ini_boolean_message, invalid_launch_options_ini_field_expected_message,
+    invalid_launch_options_ini_field_message, invalid_launch_options_ini_python_string_message,
+    invalid_load_mode_message, invalid_tab_index_message, no_free_port_in_auto_port_scope_message,
+    singleton_tab_obj_enabled, target_tab_not_found_message, timeout_duration_millis,
+    timeout_error, unterminated_launch_options_ini_python_string_message, wait_failed_should_raise,
 };
 use crate::webpage::WebPage;
 
@@ -3977,15 +3977,27 @@ fn finalize_download_path(
         DownloadFileExistsMode::Rename => unique_download_path(preferred_path),
         DownloadFileExistsMode::Overwrite => {
             if preferred_path.exists() {
-                std::fs::remove_file(preferred_path)
-                    .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+                std::fs::remove_file(preferred_path).map_err(|err| {
+                    OpenPageError::BrowserOperation(download_file_operation_failed_message(
+                        "remove existing target",
+                        "删除已存在目标",
+                        preferred_path,
+                        &err.to_string(),
+                    ))
+                })?;
             }
             preferred_path.to_path_buf()
         }
         DownloadFileExistsMode::Skip => {
             if preferred_path.exists() {
-                std::fs::remove_file(source_path)
-                    .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+                std::fs::remove_file(source_path).map_err(|err| {
+                    OpenPageError::BrowserOperation(download_file_operation_failed_message(
+                        "remove temporary source",
+                        "删除临时源文件",
+                        source_path,
+                        &err.to_string(),
+                    ))
+                })?;
                 return Ok((
                     DownloadState::Skipped,
                     preferred_path.to_string_lossy().into_owned(),
@@ -3996,11 +4008,23 @@ fn finalize_download_path(
     };
 
     if let Some(parent) = final_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        std::fs::create_dir_all(parent).map_err(|err| {
+            OpenPageError::BrowserOperation(download_file_operation_failed_message(
+                "create target directory",
+                "创建目标目录",
+                parent,
+                &err.to_string(),
+            ))
+        })?;
     }
-    std::fs::rename(source_path, &final_path)
-        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+    std::fs::rename(source_path, &final_path).map_err(|err| {
+        OpenPageError::BrowserOperation(download_file_operation_failed_message(
+            "move final file",
+            "移动最终文件",
+            &final_path,
+            &err.to_string(),
+        ))
+    })?;
     Ok((
         DownloadState::Completed,
         final_path.to_string_lossy().into_owned(),
@@ -4620,6 +4644,34 @@ mod tests {
             fs::read_to_string(&target).expect("read target"),
             "existing"
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn finalize_download_path_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let dir = make_temp_dir("finalize-download-error");
+        let source = dir.join("guid-file");
+        let target_parent_file = dir.join("target-parent-file");
+        let target = target_parent_file.join("openpage.txt");
+        fs::write(&source, "new").expect("write source");
+        fs::write(&target_parent_file, "existing").expect("write target parent file");
+
+        let english = finalize_download_path(&source, &target, DownloadFileExistsMode::Overwrite)
+            .expect_err("file parent should fail")
+            .to_string();
+        assert!(english.contains("download file create target directory failed"));
+        assert!(english.contains("target-parent-file"));
+
+        Settings::set_language("cn");
+
+        let chinese = finalize_download_path(&source, &target, DownloadFileExistsMode::Overwrite)
+            .expect_err("file parent should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains("下载文件创建目标目录失败"));
+        assert!(chinese.contains("target-parent-file"));
+
         let _ = fs::remove_dir_all(&dir);
     }
 

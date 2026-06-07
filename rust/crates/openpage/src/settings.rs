@@ -444,6 +444,21 @@ pub(crate) fn download_path_not_configured_message() -> String {
     localized_message("download path is not configured", "未配置下载路径")
 }
 
+pub(crate) fn download_file_operation_failed_message(
+    action_en: &str,
+    action_zh_cn: &str,
+    path: &Path,
+    err: &str,
+) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("下载文件{action_zh_cn}失败 {}: {err}", path.display()),
+        _ => format!(
+            "download file {action_en} failed for {}: {err}",
+            path.display()
+        ),
+    }
+}
+
 pub(crate) fn invalid_options_manager_ini_literal_message(detail: &str) -> String {
     localized_error_with_detail(
         "invalid options manager ini literal",
