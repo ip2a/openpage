@@ -399,6 +399,22 @@ where
     get_blob_with_runner(url, as_bytes, |script| source.run_js(script))
 }
 
+pub fn get_blob_bytes<'a, S>(source: S, url: &str) -> OpenPageResult<Vec<u8>>
+where
+    S: Into<BlobSource<'a>>,
+{
+    let source = source.into();
+    get_blob_bytes_with_runner(url, |script| source.run_js(script))
+}
+
+pub fn get_blob_text<'a, S>(source: S, url: &str) -> OpenPageResult<String>
+where
+    S: Into<BlobSource<'a>>,
+{
+    let source = source.into();
+    get_blob_text_with_runner(url, |script| source.run_js(script))
+}
+
 pub fn tree<'a, S, T>(source: S, text: T, show_js: bool, show_css: bool) -> OpenPageResult<String>
 where
     S: Into<TreeSource<'a>>,
@@ -544,6 +560,28 @@ where
     decode_blob_fetch_result(result, as_bytes)
 }
 
+fn get_blob_bytes_with_runner<F>(url: &str, run_js: F) -> OpenPageResult<Vec<u8>>
+where
+    F: FnOnce(&str) -> OpenPageResult<Value>,
+{
+    match get_blob_with_runner(url, true, run_js)? {
+        ElementResource::Bytes(bytes) => Ok(bytes),
+        ElementResource::Text(text) => BASE64_STANDARD
+            .decode(text)
+            .map_err(|err| OpenPageError::Serialization(err.to_string())),
+    }
+}
+
+fn get_blob_text_with_runner<F>(url: &str, run_js: F) -> OpenPageResult<String>
+where
+    F: FnOnce(&str) -> OpenPageResult<Value>,
+{
+    match get_blob_with_runner(url, false, run_js)? {
+        ElementResource::Text(text) => Ok(text),
+        ElementResource::Bytes(bytes) => Ok(BASE64_STANDARD.encode(bytes)),
+    }
+}
+
 fn build_blob_fetch_script(url: &str) -> OpenPageResult<String> {
     let encoded_url =
         serde_json::to_string(url).map_err(|err| OpenPageError::Serialization(err.to_string()))?;
@@ -675,8 +713,9 @@ mod tests {
     use super::{
         By, DEFAULT_PROJECT_CONFIGS_NAME, Keys, MakeSessionEleResult, TreeTextInput,
         build_blob_fetch_script, configs_to_here, decode_blob_fetch_result, format_tree_label,
-        get_blob_with_runner, make_session_ele, make_session_ele_by,
-        resolve_configs_to_here_target, tree, tree_text_output, wait_until,
+        get_blob_bytes_with_runner, get_blob_text_with_runner, get_blob_with_runner,
+        make_session_ele, make_session_ele_by, resolve_configs_to_here_target, tree,
+        tree_text_output, wait_until,
     };
     use serde_json::Value;
     use std::fs;
@@ -784,6 +823,16 @@ mod tests {
     }
 
     #[test]
+    fn get_blob_bytes_helper_returns_bytes() {
+        let result = get_blob_bytes_with_runner("blob:https://example.com/demo", |_| {
+            Ok(Value::String("data:text/plain;base64,aGVsbG8=".to_string()))
+        })
+        .expect("blob bytes helper should return bytes");
+
+        assert_eq!(result, b"hello".to_vec());
+    }
+
+    #[test]
     fn get_blob_returns_base64_payload_when_as_bytes_is_false() {
         let result = get_blob_with_runner("blob:https://example.com/demo", false, |_| {
             Ok(Value::String("data:text/plain;base64,aGVsbG8=".to_string()))
@@ -791,6 +840,16 @@ mod tests {
         .expect("blob text should keep base64 payload");
 
         assert_eq!(result, ElementResource::Text("aGVsbG8=".to_string()));
+    }
+
+    #[test]
+    fn get_blob_text_helper_returns_base64_payload() {
+        let result = get_blob_text_with_runner("blob:https://example.com/demo", |_| {
+            Ok(Value::String("data:text/plain;base64,aGVsbG8=".to_string()))
+        })
+        .expect("blob text helper should return base64 payload");
+
+        assert_eq!(result, "aGVsbG8=");
     }
 
     #[test]
