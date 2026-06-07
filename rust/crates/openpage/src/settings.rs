@@ -373,6 +373,31 @@ pub(crate) fn download_did_not_complete_in_time_message() -> String {
     )
 }
 
+pub(crate) fn download_canceled_message(guid: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("下载任务 `{guid}` 已取消"),
+        _ => format!("download `{guid}` was canceled"),
+    }
+}
+
+pub(crate) fn download_skipped_without_final_path_message(guid: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("下载任务 `{guid}` 已跳过但没有最终路径"),
+        _ => format!("download `{guid}` was skipped without a final path"),
+    }
+}
+
+pub(crate) fn download_frame_not_mapped_to_tab_message(frame_id: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("下载 frame `{frame_id}` 未映射到标签页"),
+        _ => format!("download frame `{frame_id}` was not mapped to a tab"),
+    }
+}
+
+pub(crate) fn download_path_not_configured_message() -> String {
+    localized_message("download path is not configured", "未配置下载路径")
+}
+
 pub(crate) fn invalid_options_manager_ini_literal_message(detail: &str) -> String {
     localized_error_with_detail(
         "invalid options manager ini literal",

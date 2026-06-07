@@ -33,6 +33,8 @@ use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::Page;
 use crate::settings::{
     browser_connect_timeout_duration, cdp_timeout_duration, component_state_lock_poisoned_message,
+    download_canceled_message, download_frame_not_mapped_to_tab_message,
+    download_path_not_configured_message, download_skipped_without_final_path_message,
     invalid_auto_port_scope_message, invalid_download_file_exists_mode_message,
     invalid_launch_options_ini_boolean_message, invalid_launch_options_ini_field_expected_message,
     invalid_launch_options_ini_field_message, invalid_launch_options_ini_python_string_message,
@@ -2530,17 +2532,15 @@ impl Browser {
         filename: Option<&str>,
     ) -> OpenPageResult<String> {
         if info.state == DownloadState::Canceled {
-            return Err(OpenPageError::BrowserOperation(format!(
-                "download `{}` was canceled",
-                info.guid
+            return Err(OpenPageError::BrowserOperation(download_canceled_message(
+                &info.guid,
             )));
         }
 
         if info.state == DownloadState::Skipped {
             return info.final_path.clone().ok_or_else(|| {
-                OpenPageError::BrowserOperation(format!(
-                    "download `{}` was skipped without a final path",
-                    info.guid
+                OpenPageError::BrowserOperation(download_skipped_without_final_path_message(
+                    &info.guid,
                 ))
             });
         }
@@ -2601,9 +2601,9 @@ impl Browser {
             }
         }
 
-        Err(OpenPageError::BrowserOperation(format!(
-            "download frame `{frame_id}` was not mapped to a tab"
-        )))
+        Err(OpenPageError::BrowserOperation(
+            download_frame_not_mapped_to_tab_message(frame_id),
+        ))
     }
 
     fn load_mode_value(&self) -> OpenPageResult<LoadMode> {
@@ -2644,9 +2644,7 @@ impl Browser {
                 .map_err(|_| browser_download_path_lock_poisoned_error())?
                 .clone()
                 .ok_or_else(|| {
-                    OpenPageError::UnsupportedOperation(
-                        "download path is not configured".to_string(),
-                    )
+                    OpenPageError::UnsupportedOperation(download_path_not_configured_message())
                 })?
         };
         let mode = if let Some(mode) = page_settings.and_then(|settings| settings.file_exists) {
@@ -4235,7 +4233,11 @@ mod tests {
         select_browser_tab_info_by_selector, system_user_data_dir, unique_download_path,
         validate_auto_port_scope, write_chrome_flags, write_chrome_prefs,
     };
-    use crate::settings::scoped_test_settings;
+    use crate::settings::{
+        download_canceled_message, download_frame_not_mapped_to_tab_message,
+        download_path_not_configured_message, download_skipped_without_final_path_message,
+        scoped_test_settings,
+    };
     use crate::{Page, Settings, WebPage, download::DownloadState};
 
     static CURRENT_DIR_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -4388,6 +4390,45 @@ mod tests {
                 .to_string()
                 .contains("隔离上下文锁已损坏")
         );
+    }
+
+    #[test]
+    fn browser_download_runtime_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        assert_eq!(
+            download_canceled_message("guid-1"),
+            "download `guid-1` was canceled"
+        );
+        assert_eq!(
+            download_skipped_without_final_path_message("guid-1"),
+            "download `guid-1` was skipped without a final path"
+        );
+        assert_eq!(
+            download_frame_not_mapped_to_tab_message("frame-1"),
+            "download frame `frame-1` was not mapped to a tab"
+        );
+        assert_eq!(
+            download_path_not_configured_message(),
+            "download path is not configured"
+        );
+
+        Settings::set_language("cn");
+
+        assert_eq!(
+            download_canceled_message("guid-1"),
+            "下载任务 `guid-1` 已取消"
+        );
+        assert_eq!(
+            download_skipped_without_final_path_message("guid-1"),
+            "下载任务 `guid-1` 已跳过但没有最终路径"
+        );
+        assert_eq!(
+            download_frame_not_mapped_to_tab_message("frame-1"),
+            "下载 frame `frame-1` 未映射到标签页"
+        );
+        assert_eq!(download_path_not_configured_message(), "未配置下载路径");
     }
 
     fn launch_headless_test_browser(
