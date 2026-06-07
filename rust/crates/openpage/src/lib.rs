@@ -70,7 +70,7 @@ pub use shadow_root::ShadowRoot;
 pub use tools::{
     BlobSource, By, Keys, MakeSessionEleLocator, MakeSessionEleResult, MakeSessionEleSource,
     TreeSource, TreeTextInput, configs_to_here, get_blob, get_blob_bytes, get_blob_text,
-    make_session_ele, make_session_ele_by, tree, wait_until,
+    make_session_ele, make_session_ele_by, print_tree, tree, wait_until,
 };
 pub use upload::UploadTracker;
 pub use webpage::{

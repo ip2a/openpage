@@ -428,6 +428,15 @@ where
     Ok(lines.join("\n"))
 }
 
+pub fn print_tree<'a, S, T>(source: S, text: T, show_js: bool, show_css: bool) -> OpenPageResult<()>
+where
+    S: Into<TreeSource<'a>>,
+    T: Into<TreeTextInput>,
+{
+    println!("{}", tree(source, text, show_js, show_css)?);
+    Ok(())
+}
+
 pub fn configs_to_here(save_name: Option<&Path>) -> OpenPageResult<PathBuf> {
     let current_dir = std::env::current_dir()?;
     let path = resolve_configs_to_here_target(save_name, current_dir.as_path());
@@ -714,7 +723,7 @@ mod tests {
         By, DEFAULT_PROJECT_CONFIGS_NAME, Keys, MakeSessionEleResult, TreeTextInput,
         build_blob_fetch_script, configs_to_here, decode_blob_fetch_result, format_tree_label,
         get_blob_bytes_with_runner, get_blob_text_with_runner, get_blob_with_runner,
-        make_session_ele, make_session_ele_by, resolve_configs_to_here_target, tree,
+        make_session_ele, make_session_ele_by, print_tree, resolve_configs_to_here_target, tree,
         tree_text_output, wait_until,
     };
     use serde_json::Value;
@@ -986,6 +995,14 @@ mod tests {
             "<html>\n├───<head>\n└───<body>\n    └───<div id='main'>"
         );
         assert_eq!(negative_rendered, zero_rendered);
+    }
+
+    #[test]
+    fn print_tree_accepts_tree_inputs() {
+        let root = snapshot_root(r#"<html><body><div id="main">hello</div></body></html>"#)
+            .expect("snapshot root");
+
+        print_tree(&root, true, false, false).expect("print tree");
     }
 
     #[test]
