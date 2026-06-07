@@ -468,6 +468,97 @@ pub(crate) fn value_pair_entry_not_number_message(name: &str, entry: &str) -> St
     }
 }
 
+pub(crate) fn value_state_bool_required_message(name: &str, value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} 状态脚本未返回布尔值: {value}"),
+        _ => format!("{name} state script did not return a bool: {value}"),
+    }
+}
+
+pub(crate) fn value_coordinate_pair_parse_failed_message(name: &str, detail: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("解析 {name} 坐标对失败: {detail}"),
+        _ => format!("failed to parse {name} coordinate pair: {detail}"),
+    }
+}
+
+pub(crate) fn value_coordinate_pair_required_message(name: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} 未返回坐标对"),
+        _ => format!("{name} did not return a coordinate pair"),
+    }
+}
+
+pub(crate) fn value_coordinate_pair_exactly_two_message(name: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} 未返回恰好两个坐标"),
+        _ => format!("{name} did not return exactly two coordinates"),
+    }
+}
+
+pub(crate) fn value_coordinate_not_numeric_message(name: &str, axis: &str, value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} {axis} 坐标不是数字: {value}"),
+        _ => format!("{name} {axis} coordinate was not numeric: {value}"),
+    }
+}
+
+pub(crate) fn value_string_compatible_required_message(name: &str, value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} 未返回可转为字符串的值: {value}"),
+        _ => format!("{name} did not return a string-compatible value: {value}"),
+    }
+}
+
+pub(crate) fn value_non_negative_integer_required_message(name: &str, value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} 未返回非负整数: {value}"),
+        _ => format!("{name} did not return a non-negative integer: {value}"),
+    }
+}
+
+pub(crate) fn value_number_required_message(name: &str, value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} 未返回数字: {value}"),
+        _ => format!("{name} did not return a number: {value}"),
+    }
+}
+
+pub(crate) fn value_unavailable_message(name: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} 不可用"),
+        _ => format!("{name} is unavailable"),
+    }
+}
+
+pub(crate) fn value_string_required_message(name: &str, value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} 未返回字符串: {value}"),
+        _ => format!("{name} did not return a string: {value}"),
+    }
+}
+
+pub(crate) fn value_string_vec_entry_required_message(name: &str, value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} 包含不可转为字符串的值: {value}"),
+        _ => format!("{name} contained a non-string-compatible value: {value}"),
+    }
+}
+
+pub(crate) fn value_string_vec_array_required_message(name: &str, value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} 脚本未返回数组: {value}"),
+        _ => format!("{name} script did not return an array: {value}"),
+    }
+}
+
+pub(crate) fn blob_src_data_url_required_message(value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("blob src 未返回 data URL 字符串: {value}"),
+        _ => format!("blob src did not return a data URL string: {value}"),
+    }
+}
+
 pub(crate) fn action_wait_seconds_non_negative_message() -> String {
     localized_message("wait() seconds must be >= 0", "wait() 秒数必须 >= 0")
 }
@@ -985,25 +1076,26 @@ mod tests {
         Settings, SettingsSnapshot, action_click_times_positive_message,
         action_element_missing_clickable_rect_message,
         action_element_missing_rect_location_message, action_type_interval_non_negative_message,
-        action_wait_seconds_non_negative_message, browser_backed_page_only_message,
-        browser_connect_timeout_duration, click_at_count_must_be_positive_message,
-        click_failed_no_rect_message, clipboard_secure_context_required_message,
-        component_not_active_start_message, component_not_running_message,
-        component_not_running_with_error_message, component_state_lock_poisoned_message,
-        component_stopped_while_waiting_message, cookie_name_empty_message,
-        default_suffixes_list_path, download_not_found_message, drag_in_file_path_empty_message,
-        drag_in_requires_file_path_message, driver_mode_only_message,
-        element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
-        element_no_visible_rect_message, element_resource_unavailable_message,
-        element_tag_name_unavailable_message, element_top_frame_check_failed_message,
-        file_chooser_backend_node_missing_message, frame_element_missing_frame_id_message,
-        frame_execution_context_unavailable_message, frame_html_unavailable_message,
-        frame_index_must_start_message, frame_index_out_of_range_message,
-        invalid_auto_port_scope_message, invalid_cookie_same_site_message,
-        invalid_download_file_exists_mode_message, invalid_file_url_message,
-        invalid_load_mode_message, invalid_options_manager_ini_literal_message,
-        invalid_regex_message, invalid_screencast_data_url_message, invalid_tab_index_message,
-        invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
+        action_wait_seconds_non_negative_message, blob_src_data_url_required_message,
+        browser_backed_page_only_message, browser_connect_timeout_duration,
+        click_at_count_must_be_positive_message, click_failed_no_rect_message,
+        clipboard_secure_context_required_message, component_not_active_start_message,
+        component_not_running_message, component_not_running_with_error_message,
+        component_state_lock_poisoned_message, component_stopped_while_waiting_message,
+        cookie_name_empty_message, default_suffixes_list_path, download_not_found_message,
+        drag_in_file_path_empty_message, drag_in_requires_file_path_message,
+        driver_mode_only_message, element_frame_viewport_offset_unavailable_message,
+        element_html_unavailable_message, element_no_visible_rect_message,
+        element_resource_unavailable_message, element_tag_name_unavailable_message,
+        element_top_frame_check_failed_message, file_chooser_backend_node_missing_message,
+        frame_element_missing_frame_id_message, frame_execution_context_unavailable_message,
+        frame_html_unavailable_message, frame_index_must_start_message,
+        frame_index_out_of_range_message, invalid_auto_port_scope_message,
+        invalid_cookie_same_site_message, invalid_download_file_exists_mode_message,
+        invalid_file_url_message, invalid_load_mode_message,
+        invalid_options_manager_ini_literal_message, invalid_regex_message,
+        invalid_screencast_data_url_message, invalid_tab_index_message, invalid_url_message,
+        invalid_xpath_html_message, invalid_xpath_query_message,
         invalid_xpath_segment_index_message, javascript_execution_timed_out_message,
         launched_browser_only_message, multi_select_action_required_message, no_new_tab_message,
         page_connect_timed_out_message, parent_element_index_must_start_message,
@@ -1027,8 +1119,14 @@ mod tests {
         timeout_error, timeout_must_be_non_negative_message, unsupported_key_message,
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
         unsupported_xpath_path_message, upload_requires_at_least_one_file_message,
-        value_did_not_return_message, value_pair_entry_not_number_message,
-        value_returned_non_string_entry_message, web_element_list_driver_filter_message,
+        value_coordinate_not_numeric_message, value_coordinate_pair_exactly_two_message,
+        value_coordinate_pair_parse_failed_message, value_coordinate_pair_required_message,
+        value_did_not_return_message, value_non_negative_integer_required_message,
+        value_number_required_message, value_pair_entry_not_number_message,
+        value_returned_non_string_entry_message, value_state_bool_required_message,
+        value_string_compatible_required_message, value_string_required_message,
+        value_string_vec_array_required_message, value_string_vec_entry_required_message,
+        value_unavailable_message, web_element_list_driver_filter_message,
         xpath_node_no_longer_exists_message, xpath_path_not_found_message,
         xpath_segment_not_found_message, zoom_factor_must_be_positive_message,
     };
@@ -1229,6 +1327,55 @@ mod tests {
         assert_eq!(
             value_pair_entry_not_number_message("demo", "first"),
             "demo first entry is not a number"
+        );
+        assert_eq!(
+            value_state_bool_required_message("visible", "null"),
+            "visible state script did not return a bool: null"
+        );
+        assert_eq!(
+            value_coordinate_pair_parse_failed_message("rect", "parse error"),
+            "failed to parse rect coordinate pair: parse error"
+        );
+        assert_eq!(
+            value_coordinate_pair_required_message("rect"),
+            "rect did not return a coordinate pair"
+        );
+        assert_eq!(
+            value_coordinate_pair_exactly_two_message("rect"),
+            "rect did not return exactly two coordinates"
+        );
+        assert_eq!(
+            value_coordinate_not_numeric_message("rect", "x", "null"),
+            "rect x coordinate was not numeric: null"
+        );
+        assert_eq!(
+            value_string_compatible_required_message("attr", "[]"),
+            "attr did not return a string-compatible value: []"
+        );
+        assert_eq!(
+            value_non_negative_integer_required_message("child_count", "-1"),
+            "child_count did not return a non-negative integer: -1"
+        );
+        assert_eq!(
+            value_number_required_message("child_count", "null"),
+            "child_count did not return a number: null"
+        );
+        assert_eq!(value_unavailable_message("tag"), "tag is unavailable");
+        assert_eq!(
+            value_string_required_message("tag", "true"),
+            "tag did not return a string: true"
+        );
+        assert_eq!(
+            value_string_vec_entry_required_message("comments", "[]"),
+            "comments contained a non-string-compatible value: []"
+        );
+        assert_eq!(
+            value_string_vec_array_required_message("comments", "null"),
+            "comments script did not return an array: null"
+        );
+        assert_eq!(
+            blob_src_data_url_required_message("null"),
+            "blob src did not return a data URL string: null"
         );
         assert_eq!(
             action_wait_seconds_non_negative_message(),
@@ -1573,6 +1720,55 @@ mod tests {
         assert_eq!(
             value_pair_entry_not_number_message("demo", "first"),
             "demo first 条目不是数字"
+        );
+        assert_eq!(
+            value_state_bool_required_message("visible", "null"),
+            "visible 状态脚本未返回布尔值: null"
+        );
+        assert_eq!(
+            value_coordinate_pair_parse_failed_message("rect", "parse error"),
+            "解析 rect 坐标对失败: parse error"
+        );
+        assert_eq!(
+            value_coordinate_pair_required_message("rect"),
+            "rect 未返回坐标对"
+        );
+        assert_eq!(
+            value_coordinate_pair_exactly_two_message("rect"),
+            "rect 未返回恰好两个坐标"
+        );
+        assert_eq!(
+            value_coordinate_not_numeric_message("rect", "x", "null"),
+            "rect x 坐标不是数字: null"
+        );
+        assert_eq!(
+            value_string_compatible_required_message("attr", "[]"),
+            "attr 未返回可转为字符串的值: []"
+        );
+        assert_eq!(
+            value_non_negative_integer_required_message("child_count", "-1"),
+            "child_count 未返回非负整数: -1"
+        );
+        assert_eq!(
+            value_number_required_message("child_count", "null"),
+            "child_count 未返回数字: null"
+        );
+        assert_eq!(value_unavailable_message("tag"), "tag 不可用");
+        assert_eq!(
+            value_string_required_message("tag", "true"),
+            "tag 未返回字符串: true"
+        );
+        assert_eq!(
+            value_string_vec_entry_required_message("comments", "[]"),
+            "comments 包含不可转为字符串的值: []"
+        );
+        assert_eq!(
+            value_string_vec_array_required_message("comments", "null"),
+            "comments 脚本未返回数组: null"
+        );
+        assert_eq!(
+            blob_src_data_url_required_message("null"),
+            "blob src 未返回 data URL 字符串: null"
         );
         assert_eq!(
             action_wait_seconds_non_negative_message(),

@@ -49,19 +49,25 @@ use crate::session::{
     snapshot_fragment_root_with_base_url,
 };
 use crate::settings::{
-    click_at_count_must_be_positive_message, click_failed_hidden_or_disabled_message,
-    click_failed_no_rect_message, click_failed_should_raise,
-    element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
-    element_no_visible_rect_message, element_resource_unavailable_message,
-    element_tag_name_unavailable_message, element_top_frame_check_failed_message,
-    frame_index_must_start_message, frame_index_out_of_range_message,
-    multi_select_action_required_message, no_new_tab_message,
+    blob_src_data_url_required_message, click_at_count_must_be_positive_message,
+    click_failed_hidden_or_disabled_message, click_failed_no_rect_message,
+    click_failed_should_raise, element_frame_viewport_offset_unavailable_message,
+    element_html_unavailable_message, element_no_visible_rect_message,
+    element_resource_unavailable_message, element_tag_name_unavailable_message,
+    element_top_frame_check_failed_message, frame_index_must_start_message,
+    frame_index_out_of_range_message, multi_select_action_required_message, no_new_tab_message,
     parent_element_index_must_start_message, parent_element_level_must_start_message,
     relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
     resolve_frame_viewport_offset_failed_message, select_element_required_message,
     session_backed_element_driver_target_message,
     set_file_input_requires_at_least_one_file_message, shadow_root_object_id_unavailable_message,
-    unsupported_key_message, unsupported_mouse_button_message, wait_timeout_result,
+    unsupported_key_message, unsupported_mouse_button_message,
+    value_coordinate_not_numeric_message, value_coordinate_pair_exactly_two_message,
+    value_coordinate_pair_parse_failed_message, value_coordinate_pair_required_message,
+    value_non_negative_integer_required_message, value_number_required_message,
+    value_state_bool_required_message, value_string_compatible_required_message,
+    value_string_required_message, value_string_vec_array_required_message,
+    value_string_vec_entry_required_message, value_unavailable_message, wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -3871,9 +3877,9 @@ impl Element {
             Value::String(data_url) => {
                 decode_data_url_content(&data_url, base64_to_bytes).map(Some)
             }
-            other => Err(OpenPageError::JavaScript(format!(
-                "blob src did not return a data URL string: {other}"
-            ))),
+            other => Err(OpenPageError::JavaScript(
+                blob_src_data_url_required_message(&other.to_string()),
+            )),
         }
     }
 
@@ -4631,9 +4637,9 @@ fn select_input_values(input: ActionsInput<'_>) -> Vec<String> {
 fn value_as_bool(value: Value, name: &str) -> OpenPageResult<bool> {
     match value {
         Value::Bool(value) => Ok(value),
-        other => Err(OpenPageError::JavaScript(format!(
-            "{name} state script did not return a bool: {other}"
-        ))),
+        other => Err(OpenPageError::JavaScript(
+            value_state_bool_required_message(name, &other.to_string()),
+        )),
     }
 }
 
@@ -4642,32 +4648,36 @@ fn value_as_f64_pair(value: Value, name: &str) -> OpenPageResult<(f64, f64)> {
         Value::Array(values) => values,
         Value::String(serialized) => {
             serde_json::from_str::<Vec<Value>>(&serialized).map_err(|err| {
-                OpenPageError::Serialization(format!(
-                    "failed to parse {name} coordinate pair: {err}"
+                OpenPageError::Serialization(value_coordinate_pair_parse_failed_message(
+                    name,
+                    &err.to_string(),
                 ))
             })?
         }
         _ => {
-            return Err(OpenPageError::JavaScript(format!(
-                "{name} did not return a coordinate pair"
-            )));
+            return Err(OpenPageError::JavaScript(
+                value_coordinate_pair_required_message(name),
+            ));
         }
     };
     if values.len() != 2 {
         return Err(OpenPageError::JavaScript(format!(
-            "{name} did not return exactly two coordinates"
+            "{}",
+            value_coordinate_pair_exactly_two_message(name)
         )));
     }
     let x = values[0].as_f64().ok_or_else(|| {
-        OpenPageError::JavaScript(format!(
-            "{name} x coordinate was not numeric: {}",
-            values[0]
+        OpenPageError::JavaScript(value_coordinate_not_numeric_message(
+            name,
+            "x",
+            &values[0].to_string(),
         ))
     })?;
     let y = values[1].as_f64().ok_or_else(|| {
-        OpenPageError::JavaScript(format!(
-            "{name} y coordinate was not numeric: {}",
-            values[1]
+        OpenPageError::JavaScript(value_coordinate_not_numeric_message(
+            name,
+            "y",
+            &values[1].to_string(),
         ))
     })?;
     Ok((x, y))
@@ -4686,9 +4696,9 @@ fn value_as_optional_string(value: Option<Value>, name: &str) -> OpenPageResult<
         Some(Value::String(value)) => Ok(Some(value)),
         Some(Value::Bool(value)) => Ok(Some(value.to_string())),
         Some(Value::Number(value)) => Ok(Some(value.to_string())),
-        Some(other) => Err(OpenPageError::JavaScript(format!(
-            "{name} did not return a string-compatible value: {other}"
-        ))),
+        Some(other) => Err(OpenPageError::JavaScript(
+            value_string_compatible_required_message(name, &other.to_string()),
+        )),
     }
 }
 
@@ -4698,12 +4708,14 @@ fn value_as_usize(value: Value, name: &str) -> OpenPageResult<usize> {
             .as_u64()
             .and_then(|value| usize::try_from(value).ok())
             .ok_or_else(|| {
-                OpenPageError::JavaScript(format!(
-                    "{name} did not return a non-negative integer: {value}"
+                OpenPageError::JavaScript(value_non_negative_integer_required_message(
+                    name,
+                    &value.to_string(),
                 ))
             }),
-        other => Err(OpenPageError::JavaScript(format!(
-            "{name} did not return a number: {other}"
+        other => Err(OpenPageError::JavaScript(value_number_required_message(
+            name,
+            &other.to_string(),
         ))),
     }
 }
@@ -4776,11 +4788,12 @@ fn normalize_axis_xpath(axis: &str, xpath: &str) -> String {
 fn value_as_string(value: Value, name: &str) -> OpenPageResult<String> {
     match value {
         Value::String(value) => Ok(value),
-        Value::Null => Err(OpenPageError::ElementNotFound(format!(
-            "{name} is unavailable"
+        Value::Null => Err(OpenPageError::ElementNotFound(value_unavailable_message(
+            name,
         ))),
-        other => Err(OpenPageError::JavaScript(format!(
-            "{name} did not return a string: {other}"
+        other => Err(OpenPageError::JavaScript(value_string_required_message(
+            name,
+            &other.to_string(),
         ))),
     }
 }
@@ -4794,9 +4807,9 @@ fn value_as_string_vec(value: Value, name: &str) -> OpenPageResult<Vec<String>> 
                 Value::String(value) => Ok(Some(value)),
                 Value::Bool(value) => Ok(Some(value.to_string())),
                 Value::Number(value) => Ok(Some(value.to_string())),
-                other => Err(OpenPageError::JavaScript(format!(
-                    "{name} contained a non-string-compatible value: {other}"
-                ))),
+                other => Err(OpenPageError::JavaScript(
+                    value_string_vec_entry_required_message(name, &other.to_string()),
+                )),
             })
             .filter_map(|item| match item {
                 Ok(Some(value)) => Some(Ok(value)),
@@ -4804,9 +4817,9 @@ fn value_as_string_vec(value: Value, name: &str) -> OpenPageResult<Vec<String>> 
                 Err(err) => Some(Err(err)),
             })
             .collect(),
-        other => Err(OpenPageError::JavaScript(format!(
-            "{name} script did not return an array: {other}"
-        ))),
+        other => Err(OpenPageError::JavaScript(
+            value_string_vec_array_required_message(name, &other.to_string()),
+        )),
     }
 }
 
