@@ -52,15 +52,16 @@ use crate::settings::{
     parent_element_not_found_message, preceding_element_not_found_message,
     preceding_node_not_found_message, previous_element_not_found_message,
     previous_node_not_found_message, relative_index_must_start_message,
-    session_cert_read_failed_message, session_cookie_requires_url_or_domain_message,
-    session_download_file_failed_message, session_download_retry_loop_exited_message,
-    session_download_status_message, session_identity_parse_failed_message,
-    session_local_file_failed_message, session_page_no_current_url_message,
-    session_page_no_loaded_document_message, session_request_failed_message,
-    session_request_retry_loop_exited_message, session_response_body_read_failed_message,
-    snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
-    snapshot_node_no_longer_exists_message, unsupported_snapshot_node_kind_message,
-    unsupported_xpath_path_message, unterminated_session_ini_python_string_message,
+    session_cert_read_failed_message, session_cookie_header_decode_failed_message,
+    session_cookie_requires_url_or_domain_message, session_download_file_failed_message,
+    session_download_retry_loop_exited_message, session_download_status_message,
+    session_identity_parse_failed_message, session_local_file_failed_message,
+    session_page_no_current_url_message, session_page_no_loaded_document_message,
+    session_request_failed_message, session_request_retry_loop_exited_message,
+    session_response_body_read_failed_message, snapshot_fragment_root_not_found_message,
+    snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
+    unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
+    unterminated_session_ini_python_string_message,
     xpath_locator_invalid_for_css_filtering_message, xpath_node_no_longer_exists_message,
     xpath_path_not_found_message, xpath_segment_not_found_message,
 };
@@ -68,6 +69,12 @@ use crate::settings::{
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
 
 pub type SessionResponseHook = Arc<dyn Fn(SessionHookEvent) + Send + Sync + 'static>;
+
+fn session_cookie_header_decode_error(err: impl ToString) -> OpenPageError {
+    OpenPageError::Http(session_cookie_header_decode_failed_message(
+        &err.to_string(),
+    ))
+}
 
 #[derive(Clone, Debug)]
 pub struct SessionHookEvent {
@@ -2445,7 +2452,7 @@ impl SessionPage {
                 value
                     .to_str()
                     .map(|text| text.to_string())
-                    .map_err(|err| OpenPageError::Http(err.to_string()))
+                    .map_err(session_cookie_header_decode_error)
             })
             .transpose()
     }
@@ -5864,8 +5871,9 @@ mod tests {
         cookie_input_to_params, cookies_from_header, default_referer_header,
         nth_scraper_child_by_tag, parse_optional_selector, parse_xpath_path,
         remove_cookie_from_header, resolve_local_file_path, resolve_session_options_ini_path,
-        snapshot_find, snapshot_find_all, snapshot_fragment_find, snapshot_fragment_root,
-        snapshot_fragment_root_with_base_url, snapshot_root,
+        session_cookie_header_decode_error, snapshot_find, snapshot_find_all,
+        snapshot_fragment_find, snapshot_fragment_root, snapshot_fragment_root_with_base_url,
+        snapshot_root,
     };
     use crate::settings::scoped_test_settings;
     use crate::{By, ElementsListExt, LocatorInput, OpenPageError, Settings};
@@ -6884,6 +6892,26 @@ mod tests {
         .expect_err("cookie boolean validation should fail in Chinese")
         .to_string();
         assert!(chinese_bool.contains("cookie text.secure 无效: 期望 boolean"));
+    }
+
+    #[test]
+    fn session_cookie_header_decode_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english = session_cookie_header_decode_error("bad header").to_string();
+        assert_eq!(
+            english,
+            "http operation failed: failed to read session cookie header: bad header"
+        );
+
+        Settings::set_language("cn");
+
+        let chinese = session_cookie_header_decode_error("bad header").to_string();
+        assert_eq!(
+            chinese,
+            "HTTP 操作失败: 读取 session cookie header 失败: bad header"
+        );
     }
 
     #[test]

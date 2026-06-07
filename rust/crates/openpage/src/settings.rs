@@ -1272,6 +1272,13 @@ pub(crate) fn session_cert_read_failed_message(kind: &str, path: &str, err: &str
     }
 }
 
+pub(crate) fn session_cookie_header_decode_failed_message(err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("读取 session cookie header 失败: {err}"),
+        _ => format!("failed to read session cookie header: {err}"),
+    }
+}
+
 pub(crate) fn session_download_status_message(status_code: u16, request_url: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("下载请求 {request_url} 返回状态码 {status_code}"),
