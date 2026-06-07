@@ -78,18 +78,22 @@ use crate::session::{
     snapshot_find, snapshot_find_all, snapshot_query_xpath, snapshot_root,
 };
 use crate::settings::{
-    browser_backed_page_only_message, cdp_timeout_duration, component_state_lock_poisoned_message,
-    default_none_element_runtime_config, drag_in_file_path_empty_message,
-    drag_in_requires_file_path_message, frame_execution_context_unavailable_message,
-    frame_html_unavailable_message, frame_index_must_start_message,
-    frame_index_out_of_range_message, invalid_cookie_same_site_message, invalid_file_url_message,
-    invalid_url_message, no_new_tab_message, page_connect_timed_out_message,
-    permission_origin_scheme_message, permission_setting_invalid_message,
-    screenshot_clip_complete_message, screenshot_clip_order_message, singleton_tab_obj_enabled,
-    suffixes_list_path, timeout_duration_millis, timeout_error,
-    timeout_must_be_non_negative_message, unsupported_key_message, value_did_not_return_message,
-    value_pair_entry_not_number_message, value_returned_non_string_entry_message,
-    wait_timeout_result, zoom_factor_must_be_positive_message,
+    action_click_times_positive_message, action_type_interval_non_negative_message,
+    action_wait_seconds_non_negative_message, browser_backed_page_only_message,
+    cdp_timeout_duration, clipboard_secure_context_required_message,
+    component_state_lock_poisoned_message, default_none_element_runtime_config,
+    drag_in_file_path_empty_message, drag_in_requires_file_path_message,
+    frame_execution_context_unavailable_message, frame_html_unavailable_message,
+    frame_index_must_start_message, frame_index_out_of_range_message,
+    invalid_cookie_same_site_message, invalid_file_url_message, invalid_url_message,
+    launched_browser_only_message, no_new_tab_message, page_connect_timed_out_message,
+    permission_origin_required_message, permission_origin_scheme_message,
+    permission_setting_invalid_message, screenshot_clip_complete_message,
+    screenshot_clip_order_message, singleton_tab_obj_enabled, suffixes_list_path,
+    timeout_duration_millis, timeout_error, timeout_must_be_non_negative_message,
+    unsupported_key_message, value_did_not_return_message, value_pair_entry_not_number_message,
+    value_returned_non_string_entry_message, wait_timeout_result,
+    zoom_factor_must_be_positive_message,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -2831,7 +2835,7 @@ impl Actions {
     pub fn wait(&mut self, second: f64, scope: Option<f64>) -> OpenPageResult<&mut Self> {
         if second.is_sign_negative() {
             return Err(OpenPageError::PageOperation(
-                "wait() seconds must be >= 0".to_string(),
+                action_wait_seconds_non_negative_message(),
             ));
         }
         let wait_secs = match scope {
@@ -2872,7 +2876,7 @@ impl Actions {
         if let Some(interval_secs) = interval_secs {
             if interval_secs.is_sign_negative() {
                 return Err(OpenPageError::PageOperation(
-                    "type_with_interval() seconds must be >= 0".to_string(),
+                    action_type_interval_non_negative_message(),
                 ));
             }
         }
@@ -2991,7 +2995,7 @@ impl Actions {
     fn dispatch_click(&mut self, button: MouseButton, times: u32) -> OpenPageResult<()> {
         if times == 0 {
             return Err(OpenPageError::PageOperation(
-                "click() times must be >= 1".to_string(),
+                action_click_times_positive_message(),
             ));
         }
         let pressed_buttons = self.pressed_buttons | action_mouse_buttons(&button);
@@ -4510,7 +4514,7 @@ impl Page {
     pub fn window_hide(&self) -> OpenPageResult<()> {
         let Some(browser_pid) = self.browser_pid else {
             return Err(OpenPageError::UnsupportedOperation(
-                "window hide() is only available for launched browser instances".to_string(),
+                launched_browser_only_message("window hide()"),
             ));
         };
         set_app_visibility(browser_pid, false)
@@ -4519,7 +4523,7 @@ impl Page {
     pub fn window_show(&self) -> OpenPageResult<()> {
         let Some(browser_pid) = self.browser_pid else {
             return Err(OpenPageError::UnsupportedOperation(
-                "window show() is only available for launched browser instances".to_string(),
+                launched_browser_only_message("window show()"),
             ));
         };
         set_app_visibility(browser_pid, true)
@@ -5110,9 +5114,9 @@ impl Page {
         if available.as_bool() == Some(true) {
             Ok(())
         } else {
-            Err(OpenPageError::UnsupportedOperation(format!(
-                "{method_name}() requires a secure-context page with navigator.clipboard"
-            )))
+            Err(OpenPageError::UnsupportedOperation(
+                clipboard_secure_context_required_message(method_name),
+            ))
         }
     }
 
@@ -7188,11 +7192,8 @@ fn resolve_permission_origin(origin: Option<&str>, current_url: &str) -> OpenPag
     if let Some(origin) = origin {
         return permission_origin_from_input(origin);
     }
-    permission_origin_from_input(current_url).map_err(|_| {
-        OpenPageError::BrowserOperation(
-            "permission override requires an http(s) page or an explicit --origin".to_string(),
-        )
-    })
+    permission_origin_from_input(current_url)
+        .map_err(|_| OpenPageError::BrowserOperation(permission_origin_required_message()))
 }
 
 fn cookie_param(
@@ -7473,9 +7474,10 @@ mod tests {
         is_explicit_locator, marker_xpath, optional_frame_locator_input,
         page_element_info_properties_json, permission_origin_from_input, remaining_timeout_ms,
         resolve_implicit_wait_timeout_ms, resolve_navigation_local_file_path,
-        resolve_page_save_target_path, resolve_page_screenshot_target_path, run_with_timeout,
-        runtime_timeout_seconds_to_millis, screenshot_clip, storage_lookup_script,
-        value_as_f64_pair, value_as_optional_string, value_as_string, value_as_string_vec,
+        resolve_page_save_target_path, resolve_page_screenshot_target_path,
+        resolve_permission_origin, run_with_timeout, runtime_timeout_seconds_to_millis,
+        screenshot_clip, storage_lookup_script, value_as_f64_pair, value_as_optional_string,
+        value_as_string, value_as_string_vec,
     };
     use crate::element_list::ElementsListExt;
     use crate::error::OpenPageError;
@@ -8672,9 +8674,20 @@ mod tests {
                 OpenPageError::BrowserOperation(ref message)
                     if message.contains("zoom factor must be a positive finite number")
             ));
+            let mut english_actions = page.new_actions();
+            let english_action = match english_actions.wait(-0.1, None) {
+                Err(error) => error,
+                Ok(_) => panic!("negative action wait should fail"),
+            };
+            assert!(matches!(
+                english_action,
+                OpenPageError::PageOperation(ref message)
+                    if message.contains("wait() seconds must be >= 0")
+            ));
 
             let detached = Page {
                 browser: None,
+                browser_pid: None,
                 ..page.clone()
             };
 
@@ -8686,6 +8699,16 @@ mod tests {
                 OpenPageError::UnsupportedOperation(ref message)
                     if message.contains(
                         "download_file_exists_mode() is only available on browser-backed pages"
+                )
+            ));
+            let english_window = detached
+                .window_hide()
+                .expect_err("window_hide should require launched browser pid");
+            assert!(matches!(
+                english_window,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains(
+                        "window hide() is only available for launched browser instances"
                     )
             ));
 
@@ -8703,6 +8726,42 @@ mod tests {
                 chinese_permission,
                 OpenPageError::BrowserOperation(ref message)
                     if message.contains("permission setting 必须是 granted/denied/prompt 之一")
+            ));
+            let mut chinese_actions = page.new_actions();
+            let chinese_type = match chinese_actions.type_with_interval("x", -0.1) {
+                Err(error) => error,
+                Ok(_) => panic!("negative action type interval should fail"),
+            };
+            assert!(matches!(
+                chinese_type,
+                OpenPageError::PageOperation(ref message)
+                    if message.contains("type_with_interval() 秒数必须 >= 0")
+            ));
+            let chinese_click = match chinese_actions.m_click(None::<&str>, 0) {
+                Err(error) => error,
+                Ok(_) => panic!("zero action click count should fail"),
+            };
+            assert!(matches!(
+                chinese_click,
+                OpenPageError::PageOperation(ref message)
+                    if message.contains("click() 次数必须 >= 1")
+            ));
+            let chinese_clipboard = page
+                .clipboard_read_text()
+                .expect_err("about:blank clipboard should require secure context");
+            assert!(matches!(
+                chinese_clipboard,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains(
+                        "clipboard_read_text() 需要 secure-context 页面并支持 navigator.clipboard"
+                    )
+            ));
+            let chinese_origin = resolve_permission_origin(None, "about:blank")
+                .expect_err("permission origin should require http(s)");
+            assert!(matches!(
+                chinese_origin,
+                OpenPageError::BrowserOperation(ref message)
+                    if message.contains("permission override 需要 http(s) 页面或显式 --origin")
             ));
 
             let chinese_retry = detached

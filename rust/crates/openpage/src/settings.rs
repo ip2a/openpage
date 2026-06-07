@@ -468,6 +468,44 @@ pub(crate) fn value_pair_entry_not_number_message(name: &str, entry: &str) -> St
     }
 }
 
+pub(crate) fn action_wait_seconds_non_negative_message() -> String {
+    localized_message("wait() seconds must be >= 0", "wait() 秒数必须 >= 0")
+}
+
+pub(crate) fn action_type_interval_non_negative_message() -> String {
+    localized_message(
+        "type_with_interval() seconds must be >= 0",
+        "type_with_interval() 秒数必须 >= 0",
+    )
+}
+
+pub(crate) fn action_click_times_positive_message() -> String {
+    localized_message("click() times must be >= 1", "click() 次数必须 >= 1")
+}
+
+pub(crate) fn launched_browser_only_message(operation: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{operation} 仅适用于已启动的浏览器实例"),
+        _ => format!("{operation} is only available for launched browser instances"),
+    }
+}
+
+pub(crate) fn clipboard_secure_context_required_message(method_name: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => {
+            format!("{method_name}() 需要 secure-context 页面并支持 navigator.clipboard")
+        }
+        _ => format!("{method_name}() requires a secure-context page with navigator.clipboard"),
+    }
+}
+
+pub(crate) fn permission_origin_required_message() -> String {
+    localized_message(
+        "permission override requires an http(s) page or an explicit --origin",
+        "permission override 需要 http(s) 页面或显式 --origin",
+    )
+}
+
 pub(crate) fn resolve_frame_viewport_offset_failed_message(detail: &str) -> String {
     localized_error_with_detail(
         "resolve frame viewport offset failed",
@@ -855,9 +893,11 @@ pub(crate) fn scoped_test_settings() -> SettingsTestGuard {
 #[cfg(test)]
 mod tests {
     use super::{
-        Settings, SettingsSnapshot, browser_backed_page_only_message,
-        browser_connect_timeout_duration, click_at_count_must_be_positive_message,
-        click_failed_no_rect_message, component_not_active_start_message,
+        Settings, SettingsSnapshot, action_click_times_positive_message,
+        action_type_interval_non_negative_message, action_wait_seconds_non_negative_message,
+        browser_backed_page_only_message, browser_connect_timeout_duration,
+        click_at_count_must_be_positive_message, click_failed_no_rect_message,
+        clipboard_secure_context_required_message, component_not_active_start_message,
         component_not_running_message, component_not_running_with_error_message,
         component_state_lock_poisoned_message, component_stopped_while_waiting_message,
         cookie_name_empty_message, default_suffixes_list_path, download_not_found_message,
@@ -874,7 +914,8 @@ mod tests {
         invalid_regex_message, invalid_screencast_data_url_message, invalid_tab_index_message,
         invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
         invalid_xpath_segment_index_message, javascript_execution_timed_out_message,
-        no_new_tab_message, page_connect_timed_out_message, permission_origin_scheme_message,
+        launched_browser_only_message, no_new_tab_message, page_connect_timed_out_message,
+        permission_origin_required_message, permission_origin_scheme_message,
         permission_setting_invalid_message, resolve_element_frame_id_failed_message,
         resolve_frame_viewport_offset_failed_message, scoped_test_settings,
         screencast_already_running_message, screencast_capture_path_unavailable_message,
@@ -1092,6 +1133,30 @@ mod tests {
         assert_eq!(
             value_pair_entry_not_number_message("demo", "first"),
             "demo first entry is not a number"
+        );
+        assert_eq!(
+            action_wait_seconds_non_negative_message(),
+            "wait() seconds must be >= 0"
+        );
+        assert_eq!(
+            action_type_interval_non_negative_message(),
+            "type_with_interval() seconds must be >= 0"
+        );
+        assert_eq!(
+            action_click_times_positive_message(),
+            "click() times must be >= 1"
+        );
+        assert_eq!(
+            launched_browser_only_message("window hide()"),
+            "window hide() is only available for launched browser instances"
+        );
+        assert_eq!(
+            clipboard_secure_context_required_message("clipboard_read_text"),
+            "clipboard_read_text() requires a secure-context page with navigator.clipboard"
+        );
+        assert_eq!(
+            permission_origin_required_message(),
+            "permission override requires an http(s) page or an explicit --origin"
         );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),
@@ -1360,6 +1425,30 @@ mod tests {
         assert_eq!(
             value_pair_entry_not_number_message("demo", "first"),
             "demo first 条目不是数字"
+        );
+        assert_eq!(
+            action_wait_seconds_non_negative_message(),
+            "wait() 秒数必须 >= 0"
+        );
+        assert_eq!(
+            action_type_interval_non_negative_message(),
+            "type_with_interval() 秒数必须 >= 0"
+        );
+        assert_eq!(
+            action_click_times_positive_message(),
+            "click() 次数必须 >= 1"
+        );
+        assert_eq!(
+            launched_browser_only_message("window hide()"),
+            "window hide() 仅适用于已启动的浏览器实例"
+        );
+        assert_eq!(
+            clipboard_secure_context_required_message("clipboard_read_text"),
+            "clipboard_read_text() 需要 secure-context 页面并支持 navigator.clipboard"
+        );
+        assert_eq!(
+            permission_origin_required_message(),
+            "permission override 需要 http(s) 页面或显式 --origin"
         );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),
