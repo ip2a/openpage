@@ -7811,7 +7811,9 @@ mod tests {
     fn webframe_transfer_helper_signatures_accept_common_inputs() {
         fn assert_calls(frame: &Frame, web_page: &WebPage, web_frame: &WebFrame) {
             let files = vec!["/tmp/demo.txt".to_string()];
+            let cookies = json!({"sid": "abc", "domain": ".example.test", "path": "/"});
 
+            let _ = frame.set().cookie().set(&cookies);
             let _ = frame.set_upload_files(&files);
             let _ = frame.set_upload_paths(&files);
             let _ = frame.set_download_path("/tmp");
@@ -7866,6 +7868,7 @@ mod tests {
             let _ = web_page.click_for_new_tab("css:#open", Some(1_000), false);
             let _ = web_page.click_middle("css:#open", Some(1_000), true);
 
+            let _ = web_frame.set().cookie().set(&cookies);
             let _ = web_frame.set_upload_files(&files);
             let _ = web_frame.set_upload_paths(&files);
             let _ = web_frame.set_download_path("/tmp");

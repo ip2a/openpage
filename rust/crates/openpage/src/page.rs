@@ -517,6 +517,10 @@ pub struct FrameSetter<'a> {
     frame: &'a Frame,
 }
 
+pub struct FrameCookieSetter<'a> {
+    frame: &'a Frame,
+}
+
 pub struct FrameStates<'a> {
     frame: &'a Frame,
 }
@@ -2409,6 +2413,10 @@ impl PageLoadModeSetter<'_> {
 }
 
 impl FrameSetter<'_> {
+    pub fn cookie(&self) -> FrameCookieSetter<'_> {
+        FrameCookieSetter { frame: self.frame }
+    }
+
     pub fn cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()>
     where
         C: Into<CookieInput<'a>>,
@@ -2456,6 +2464,15 @@ impl FrameSetter<'_> {
     ) -> OpenPageResult<()> {
         self.frame
             .set_download_filename(name, suffix, suffix_specified)
+    }
+}
+
+impl FrameCookieSetter<'_> {
+    pub fn set<'a, C>(&self, cookies: C) -> OpenPageResult<()>
+    where
+        C: Into<CookieInput<'a>>,
+    {
+        self.frame.set_cookies(cookies)
     }
 }
 
