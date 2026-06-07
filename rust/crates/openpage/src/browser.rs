@@ -34,8 +34,9 @@ use crate::page::Page;
 use crate::settings::{
     browser_command_failed_message, browser_config_path_failed_message,
     browser_connect_timeout_duration, browser_launch_operation_failed_message,
-    browser_temp_dir_create_failed_message, browser_user_data_dir_reset_failed_message,
-    cdp_timeout_duration, component_state_lock_poisoned_message, download_canceled_message,
+    browser_setup_operation_failed_message, browser_temp_dir_create_failed_message,
+    browser_user_data_dir_reset_failed_message, cdp_timeout_duration,
+    component_state_lock_poisoned_message, download_canceled_message,
     download_did_not_complete_in_time_message, download_directory_create_failed_message,
     download_file_operation_failed_message, download_frame_not_mapped_to_tab_message,
     download_path_not_configured_message, download_skipped_without_final_path_message,
@@ -1004,11 +1005,11 @@ fn attach_newest_tab_tracker(
         let created_events = browser
             .event_listener::<EventTargetCreated>()
             .await
-            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+            .map_err(|err| browser_operation_error("register target created listener", err))?;
         let destroyed_events = browser
             .event_listener::<EventTargetDestroyed>()
             .await
-            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+            .map_err(|err| browser_operation_error("register target destroyed listener", err))?;
         Ok::<_, OpenPageError>((created_events, destroyed_events))
     })?;
 
@@ -1225,7 +1226,7 @@ impl Browser {
             browser
                 .fetch_targets()
                 .await
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))
+                .map_err(|err| browser_operation_error("fetch initial targets", err))
         })?;
 
         let (downloads, download_task) = attach_download_store(Arc::clone(&runtime), &browser)?;
@@ -3893,7 +3894,7 @@ fn configure_download_behavior(
             .download_path(download_path)
             .events_enabled(true)
             .build()
-            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+            .map_err(|err| browser_operation_error("build download behavior params", err))?;
         execute_browser_handle_command_async(
             browser,
             params,
@@ -3915,6 +3916,13 @@ fn create_download_directory(path: &Path) -> OpenPageResult<()> {
 
 fn browser_launch_error(operation: &str, err: impl ToString) -> OpenPageError {
     OpenPageError::BrowserLaunch(browser_launch_operation_failed_message(
+        operation,
+        &err.to_string(),
+    ))
+}
+
+fn browser_operation_error(operation: &str, err: impl ToString) -> OpenPageError {
+    OpenPageError::BrowserOperation(browser_setup_operation_failed_message(
         operation,
         &err.to_string(),
     ))
@@ -4320,9 +4328,9 @@ mod tests {
         browser_download_file_exists_lock_poisoned_error,
         browser_download_naming_lock_poisoned_error, browser_download_path_lock_poisoned_error,
         browser_launch_error, browser_load_mode_lock_poisoned_error,
-        browser_newest_tab_lock_poisoned_error, browser_retry_interval_lock_poisoned_error,
-        browser_retry_times_lock_poisoned_error, browser_tab_info_matches,
-        browser_timeouts_lock_poisoned_error, create_download_directory,
+        browser_newest_tab_lock_poisoned_error, browser_operation_error,
+        browser_retry_interval_lock_poisoned_error, browser_retry_times_lock_poisoned_error,
+        browser_tab_info_matches, browser_timeouts_lock_poisoned_error, create_download_directory,
         default_launch_options_ini_path, download_source_path, finalize_download_path,
         find_free_port, find_new_tab_id, is_tab_like_type, isolated_context_lock_poisoned_error,
         make_temp_download_dir, make_temp_user_data_dir,
@@ -4632,6 +4640,20 @@ mod tests {
 
         let chinese = browser_launch_error("unit test launch", "boom").to_string();
         assert!(chinese.contains("浏览器启动操作 unit test launch 失败: boom"));
+    }
+
+    #[test]
+    fn browser_setup_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english = browser_operation_error("unit test setup", "boom").to_string();
+        assert!(english.contains("browser setup operation unit test setup failed: boom"));
+
+        Settings::set_language("cn");
+
+        let chinese = browser_operation_error("unit test setup", "boom").to_string();
+        assert!(chinese.contains("浏览器初始化操作 unit test setup 失败: boom"));
     }
 
     fn launch_headless_test_browser(

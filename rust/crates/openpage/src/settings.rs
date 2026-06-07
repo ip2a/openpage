@@ -476,6 +476,13 @@ pub(crate) fn browser_command_failed_message(operation: &str, err: &str) -> Stri
     }
 }
 
+pub(crate) fn browser_setup_operation_failed_message(operation: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("浏览器初始化操作 {operation} 失败: {err}"),
+        _ => format!("browser setup operation {operation} failed: {err}"),
+    }
+}
+
 pub(crate) fn browser_launch_operation_failed_message(operation: &str, err: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("浏览器启动操作 {operation} 失败: {err}"),
