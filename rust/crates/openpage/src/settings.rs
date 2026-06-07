@@ -873,6 +873,26 @@ pub(crate) fn following_element_not_found_message() -> String {
     localized_message("following element not found", "没有找到后方元素")
 }
 
+pub(crate) fn child_node_not_found_message() -> String {
+    localized_message("child node not found", "没有找到子节点")
+}
+
+pub(crate) fn previous_node_not_found_message() -> String {
+    localized_message("previous node not found", "没有找到前一个节点")
+}
+
+pub(crate) fn next_node_not_found_message() -> String {
+    localized_message("next node not found", "没有找到后一个节点")
+}
+
+pub(crate) fn preceding_node_not_found_message() -> String {
+    localized_message("preceding node not found", "没有找到前方节点")
+}
+
+pub(crate) fn following_node_not_found_message() -> String {
+    localized_message("following node not found", "没有找到后方节点")
+}
+
 pub(crate) fn snapshot_fragment_wrapper_not_found_message() -> String {
     localized_message(
         "snapshot fragment wrapper not found",

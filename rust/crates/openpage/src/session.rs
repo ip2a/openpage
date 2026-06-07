@@ -34,22 +34,24 @@ use crate::locator::{
     parse_locator_batch_input, parse_optional_locator_input,
 };
 use crate::settings::{
-    child_element_not_found_message, component_state_lock_poisoned_message,
-    cookie_input_type_message, cookie_list_item_single_message, cookie_name_empty_message,
-    cookie_name_value_required_message, cookie_object_requires_assignment_message,
-    cookie_requires_url_or_domain_message, cookie_text_requires_assignment_message,
-    cookie_text_separator_conflict_message, cookie_value_empty_message,
-    css_locator_unsupported_for_node_queries_message, default_none_element_runtime_config,
-    following_element_not_found_message, invalid_cookie_field_boolean_message,
+    child_element_not_found_message, child_node_not_found_message,
+    component_state_lock_poisoned_message, cookie_input_type_message,
+    cookie_list_item_single_message, cookie_name_empty_message, cookie_name_value_required_message,
+    cookie_object_requires_assignment_message, cookie_requires_url_or_domain_message,
+    cookie_text_requires_assignment_message, cookie_text_separator_conflict_message,
+    cookie_value_empty_message, css_locator_unsupported_for_node_queries_message,
+    default_none_element_runtime_config, following_element_not_found_message,
+    following_node_not_found_message, invalid_cookie_field_boolean_message,
     invalid_cookie_text_missing_value_message, invalid_css_selector_message,
     invalid_file_url_message, invalid_session_ini_boolean_message,
     invalid_session_ini_field_expected_message, invalid_session_ini_field_message,
     invalid_session_ini_python_string_message, invalid_session_proxy_message, invalid_url_message,
     invalid_xpath_html_message, invalid_xpath_query_message, invalid_xpath_segment_index_message,
-    missing_session_ini_field_message, next_element_not_found_message,
+    missing_session_ini_field_message, next_element_not_found_message, next_node_not_found_message,
     parent_element_index_must_start_message, parent_element_level_must_start_message,
     parent_element_not_found_message, preceding_element_not_found_message,
-    previous_element_not_found_message, session_cert_read_failed_message,
+    preceding_node_not_found_message, previous_element_not_found_message,
+    previous_node_not_found_message, session_cert_read_failed_message,
     session_cookie_requires_url_or_domain_message, session_download_file_failed_message,
     session_download_status_message, session_identity_parse_failed_message,
     session_local_file_failed_message, session_page_no_current_url_message,
@@ -3588,7 +3590,7 @@ impl SessionElement {
         nth_from_start(
             self.children_nodes_with(locator)?,
             index,
-            "child node not found",
+            &child_node_not_found_message(),
         )
     }
 
@@ -3676,7 +3678,7 @@ impl SessionElement {
         nth_from_end(
             self.prev_nodes_with(locator)?,
             index,
-            "previous node not found",
+            &previous_node_not_found_message(),
         )
     }
 
@@ -3769,7 +3771,11 @@ impl SessionElement {
     where
         L: Into<LocatorInput<'a>>,
     {
-        nth_from_start(self.next_nodes_with(locator)?, index, "next node not found")
+        nth_from_start(
+            self.next_nodes_with(locator)?,
+            index,
+            &next_node_not_found_message(),
+        )
     }
 
     pub fn nexts(&self) -> OpenPageResult<Vec<SessionElement>> {
@@ -3860,7 +3866,7 @@ impl SessionElement {
         nth_from_end(
             self.before_nodes_with(locator)?,
             index,
-            "preceding node not found",
+            &preceding_node_not_found_message(),
         )
     }
 
@@ -3965,7 +3971,7 @@ impl SessionElement {
         nth_from_start(
             self.after_nodes_with(locator)?,
             index,
-            "following node not found",
+            &following_node_not_found_message(),
         )
     }
 
@@ -9091,6 +9097,78 @@ mod tests {
             .expect_err("missing following element should localize")
             .to_string();
         assert!(chinese_after.contains("没有找到后方元素"));
+    }
+
+    #[test]
+    fn snapshot_relative_node_not_found_errors_follow_language_setting() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let root = snapshot_fragment_root(r#"<div id="root"><span id="only"></span></div>"#)
+            .expect("fragment root should exist");
+        let only = root.find("#only").expect("only child should exist");
+
+        let english_child = only
+            .child_node_with(None, 1)
+            .expect_err("missing child node should fail")
+            .to_string();
+        assert!(english_child.contains("child node not found"));
+
+        let english_prev = only
+            .prev_node_with(None::<&str>, 1)
+            .expect_err("missing previous node should fail")
+            .to_string();
+        assert!(english_prev.contains("previous node not found"));
+
+        let english_next = only
+            .next_node_with(None::<&str>, 1)
+            .expect_err("missing next node should fail")
+            .to_string();
+        assert!(english_next.contains("next node not found"));
+
+        let english_before = root
+            .before_node_with(Some("xpath://missing"), 1)
+            .expect_err("missing preceding node should fail")
+            .to_string();
+        assert!(english_before.contains("preceding node not found"));
+
+        let english_after = root
+            .after_node_with(Some("xpath://missing"), 1)
+            .expect_err("missing following node should fail")
+            .to_string();
+        assert!(english_after.contains("following node not found"));
+
+        Settings::set_language("cn");
+
+        let chinese_child = only
+            .child_node_with(None, 1)
+            .expect_err("missing child node should localize")
+            .to_string();
+        assert!(chinese_child.contains("没有找到子节点"));
+
+        let chinese_prev = only
+            .prev_node_with(None::<&str>, 1)
+            .expect_err("missing previous node should localize")
+            .to_string();
+        assert!(chinese_prev.contains("没有找到前一个节点"));
+
+        let chinese_next = only
+            .next_node_with(None::<&str>, 1)
+            .expect_err("missing next node should localize")
+            .to_string();
+        assert!(chinese_next.contains("没有找到后一个节点"));
+
+        let chinese_before = root
+            .before_node_with(Some("xpath://missing"), 1)
+            .expect_err("missing preceding node should localize")
+            .to_string();
+        assert!(chinese_before.contains("没有找到前方节点"));
+
+        let chinese_after = root
+            .after_node_with(Some("xpath://missing"), 1)
+            .expect_err("missing following node should localize")
+            .to_string();
+        assert!(chinese_after.contains("没有找到后方节点"));
     }
 
     #[test]
