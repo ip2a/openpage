@@ -37,8 +37,9 @@ use crate::settings::{
     component_state_lock_poisoned_message, cookie_name_empty_message,
     cookie_requires_url_or_domain_message, cookie_text_separator_conflict_message,
     cookie_value_empty_message, default_none_element_runtime_config, invalid_file_url_message,
-    invalid_url_message, session_cookie_requires_url_or_domain_message,
-    session_page_no_current_url_message, session_page_no_loaded_document_message,
+    invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
+    session_cookie_requires_url_or_domain_message, session_page_no_current_url_message,
+    session_page_no_loaded_document_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -5279,14 +5280,17 @@ fn xpath_find_all_with_scope(
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
 ) -> OpenPageResult<Vec<SessionElement>> {
     let parsed = Html::parse_document(html.as_ref());
-    let xpath_tree = xpath_html::parse(html.as_ref())
-        .map_err(|err| OpenPageError::UnsupportedLocator(format!("invalid xpath html: {err}")))?;
+    let xpath_tree = xpath_html::parse(html.as_ref()).map_err(|err| {
+        OpenPageError::UnsupportedLocator(invalid_xpath_html_message(&err.to_string()))
+    })?;
     let xpath = xpath_engine::parse(&if scope_path.is_some() || scope_at_fragment_root {
         normalize_scoped_xpath_query(query)
     } else {
         query.trim().to_string()
     })
-    .map_err(|err| OpenPageError::UnsupportedLocator(format!("invalid xpath `{query}`: {err}")))?;
+    .map_err(|err| {
+        OpenPageError::UnsupportedLocator(invalid_xpath_query_message(query, &err.to_string()))
+    })?;
 
     let wrapper_scraper = if scope_at_fragment_root {
         Some(fragment_wrapper_from_document(&parsed)?)
@@ -5314,7 +5318,9 @@ fn xpath_find_all_with_scope(
             None => xpath.find_elements(&xpath_tree),
         },
     }
-    .map_err(|err| OpenPageError::UnsupportedLocator(format!("invalid xpath `{query}`: {err}")))?;
+    .map_err(|err| {
+        OpenPageError::UnsupportedLocator(invalid_xpath_query_message(query, &err.to_string()))
+    })?;
 
     let mapping_root = wrapper_scraper.map_or_else(|| parsed.tree.root(), |wrapper| *wrapper);
     xpath_matches
@@ -5344,14 +5350,17 @@ fn xpath_query_with_scope(
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
 ) -> OpenPageResult<Vec<SessionXPathResult>> {
     let parsed = Html::parse_document(html.as_ref());
-    let xpath_tree = xpath_html::parse(html.as_ref())
-        .map_err(|err| OpenPageError::UnsupportedLocator(format!("invalid xpath html: {err}")))?;
+    let xpath_tree = xpath_html::parse(html.as_ref()).map_err(|err| {
+        OpenPageError::UnsupportedLocator(invalid_xpath_html_message(&err.to_string()))
+    })?;
     let xpath = xpath_engine::parse(&if scope_path.is_some() || scope_at_fragment_root {
         normalize_scoped_xpath_query(query)
     } else {
         query.trim().to_string()
     })
-    .map_err(|err| OpenPageError::UnsupportedLocator(format!("invalid xpath `{query}`: {err}")))?;
+    .map_err(|err| {
+        OpenPageError::UnsupportedLocator(invalid_xpath_query_message(query, &err.to_string()))
+    })?;
 
     let wrapper_scraper = if scope_at_fragment_root {
         Some(fragment_wrapper_from_document(&parsed)?)
@@ -5379,7 +5388,9 @@ fn xpath_query_with_scope(
             None => xpath.apply(&xpath_tree),
         },
     }
-    .map_err(|err| OpenPageError::UnsupportedLocator(format!("invalid xpath `{query}`: {err}")))?;
+    .map_err(|err| {
+        OpenPageError::UnsupportedLocator(invalid_xpath_query_message(query, &err.to_string()))
+    })?;
 
     let mapping_root = wrapper_scraper.map_or_else(|| parsed.tree.root(), |wrapper| *wrapper);
     xpath_items
@@ -8143,6 +8154,26 @@ mod tests {
             Some("beta".to_string())
         );
         assert_eq!(all_items.len(), 2);
+    }
+
+    #[test]
+    fn snapshot_xpath_errors_follow_language_setting() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let english = snapshot_find(HTML, "xpath://[")
+            .expect_err("invalid xpath should fail")
+            .to_string();
+        assert!(english.contains("unsupported locator"));
+        assert!(english.contains("invalid xpath `//[`"));
+
+        Settings::set_language("cn");
+
+        let chinese = snapshot_find(HTML, "xpath://[")
+            .expect_err("invalid xpath should localize")
+            .to_string();
+        assert!(chinese.contains("定位符语法不受支持"));
+        assert!(chinese.contains("无效的 xpath `//[`"));
     }
 
     #[test]

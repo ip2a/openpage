@@ -318,6 +318,17 @@ pub(crate) fn invalid_options_manager_ini_literal_message(detail: &str) -> Strin
     )
 }
 
+pub(crate) fn invalid_xpath_html_message(detail: &str) -> String {
+    localized_error_with_detail("invalid xpath html", "无效的 xpath HTML", detail)
+}
+
+pub(crate) fn invalid_xpath_query_message(query: &str, detail: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("无效的 xpath `{query}`: {detail}"),
+        _ => format!("invalid xpath `{query}`: {detail}"),
+    }
+}
+
 pub(crate) fn frame_index_must_start_message() -> String {
     localized_message(
         "frame index must start from 1 or use negative indices from -1",
@@ -688,8 +699,9 @@ mod tests {
         invalid_download_file_exists_mode_message, invalid_file_url_message,
         invalid_load_mode_message, invalid_options_manager_ini_literal_message,
         invalid_regex_message, invalid_screencast_data_url_message, invalid_tab_index_message,
-        invalid_url_message, javascript_execution_timed_out_message, no_new_tab_message,
-        page_connect_timed_out_message, scoped_test_settings, screencast_already_running_message,
+        invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
+        javascript_execution_timed_out_message, no_new_tab_message, page_connect_timed_out_message,
+        scoped_test_settings, screencast_already_running_message,
         screencast_capture_path_unavailable_message, screencast_empty_mime_type_message,
         screencast_encode_output_failed_message, screencast_ffmpeg_encode_failed_message,
         screencast_ffmpeg_spawn_failed_message, screencast_mode_change_while_running_message,
@@ -817,6 +829,14 @@ mod tests {
         assert_eq!(
             invalid_options_manager_ini_literal_message("parse error"),
             "invalid options manager ini literal: parse error"
+        );
+        assert_eq!(
+            invalid_xpath_html_message("parse error"),
+            "invalid xpath html: parse error"
+        );
+        assert_eq!(
+            invalid_xpath_query_message("//[", "parse error"),
+            "invalid xpath `//[`: parse error"
         );
         assert_eq!(
             unsupported_mouse_button_message("side"),
@@ -991,6 +1011,14 @@ mod tests {
         assert_eq!(
             invalid_options_manager_ini_literal_message("parse error"),
             "无效的 OptionsManager ini 字面量: parse error"
+        );
+        assert_eq!(
+            invalid_xpath_html_message("parse error"),
+            "无效的 xpath HTML: parse error"
+        );
+        assert_eq!(
+            invalid_xpath_query_message("//[", "parse error"),
+            "无效的 xpath `//[`: parse error"
         );
         assert_eq!(
             unsupported_mouse_button_message("side"),
