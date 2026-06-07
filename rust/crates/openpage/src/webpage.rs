@@ -3311,6 +3311,10 @@ impl WebPage {
             .set_page_download_path(&self.driver.target_id(), path)
     }
 
+    pub fn set_tab_download_path(&self, path: &str) -> OpenPageResult<()> {
+        self.set_current_tab_download_path(path)
+    }
+
     pub fn set_blocked_urls(&self, patterns: &[String]) -> OpenPageResult<()> {
         self.driver.set_blocked_urls(patterns)
     }
@@ -3343,9 +3347,20 @@ impl WebPage {
             .set_page_download_file_exists_mode(&self.driver.target_id(), mode)
     }
 
+    pub fn set_tab_download_file_exists_mode(
+        &self,
+        mode: crate::browser::DownloadFileExistsMode,
+    ) -> OpenPageResult<()> {
+        self.set_current_tab_download_file_exists_mode(mode)
+    }
+
     pub fn when_current_tab_download_file_exists(&self, mode: &str) -> OpenPageResult<()> {
         self.browser
             .when_page_download_file_exists(&self.driver.target_id(), mode)
+    }
+
+    pub fn set_tab_when_download_file_exists(&self, mode: &str) -> OpenPageResult<()> {
+        self.when_current_tab_download_file_exists(mode)
     }
 
     pub fn set_current_tab_download_filename(
@@ -3362,6 +3377,24 @@ impl WebPage {
         )
     }
 
+    pub fn set_tab_download_filename(
+        &self,
+        rename: Option<&str>,
+        suffix: Option<&str>,
+        suffix_specified: bool,
+    ) -> OpenPageResult<()> {
+        self.set_current_tab_download_filename(rename, suffix, suffix_specified)
+    }
+
+    pub fn set_download_filename(
+        &self,
+        rename: Option<&str>,
+        suffix: Option<&str>,
+        suffix_specified: bool,
+    ) -> OpenPageResult<()> {
+        self.set_current_tab_download_filename(rename, suffix, suffix_specified)
+    }
+
     pub fn set_current_tab_download_file_name(
         &self,
         rename: Option<&str>,
@@ -3369,6 +3402,24 @@ impl WebPage {
         suffix_specified: bool,
     ) -> OpenPageResult<()> {
         self.set_current_tab_download_filename(rename, suffix, suffix_specified)
+    }
+
+    pub fn set_tab_download_file_name(
+        &self,
+        rename: Option<&str>,
+        suffix: Option<&str>,
+        suffix_specified: bool,
+    ) -> OpenPageResult<()> {
+        self.set_current_tab_download_file_name(rename, suffix, suffix_specified)
+    }
+
+    pub fn set_download_file_name(
+        &self,
+        rename: Option<&str>,
+        suffix: Option<&str>,
+        suffix_specified: bool,
+    ) -> OpenPageResult<()> {
+        self.set_current_tab_download_file_name(rename, suffix, suffix_specified)
     }
 
     pub fn click_to_download(
@@ -7555,6 +7606,13 @@ mod tests {
             let _ = web_page.set_download_path("/tmp");
             let _ = web_page.set_download_file_exists_mode(DownloadFileExistsMode::Overwrite);
             let _ = web_page.when_download_file_exists("overwrite");
+            let _ = web_page.set_tab_download_path("/tmp");
+            let _ = web_page.set_tab_download_file_exists_mode(DownloadFileExistsMode::Overwrite);
+            let _ = web_page.set_tab_when_download_file_exists("overwrite");
+            let _ = web_page.set_tab_download_filename(Some("demo"), Some(".txt"), true);
+            let _ = web_page.set_tab_download_file_name(Some("demo"), Some(".txt"), true);
+            let _ = web_page.set_download_filename(Some("demo"), Some(".txt"), true);
+            let _ = web_page.set_download_file_name(Some("demo"), Some(".txt"), true);
             let _ = web_page.set_current_tab_download_file_name(Some("demo"), Some(".txt"), true);
             let _ = web_page.wait_for_upload_paths_inputted(1_000);
             let _ = web_page.wait_for_download_begin(1_000, false);
