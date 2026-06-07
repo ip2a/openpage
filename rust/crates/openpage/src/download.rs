@@ -159,6 +159,10 @@ impl DownloadMission {
         self.browser.cancel_download(&self.guid)
     }
 
+    pub fn snapshot(&self) -> OpenPageResult<DownloadInfo> {
+        self.info()
+    }
+
     pub(crate) fn info(&self) -> OpenPageResult<DownloadInfo> {
         self.browser.download_info(&self.guid)
     }
@@ -813,7 +817,8 @@ fn download_rate(info: &DownloadInfo) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::DownloadStore;
+    use super::{DownloadInfo, DownloadMission, DownloadStore};
+    use crate::OpenPageResult;
     use crate::Settings;
     use crate::settings::scoped_test_settings;
     use std::sync::Arc;
@@ -830,6 +835,11 @@ mod tests {
         })
         .join();
         assert!(join.is_err(), "poison helper thread should panic");
+    }
+
+    #[test]
+    fn download_mission_snapshot_signature_returns_info() {
+        let _ = DownloadMission::snapshot as fn(&DownloadMission) -> OpenPageResult<DownloadInfo>;
     }
 
     #[test]
