@@ -68,6 +68,34 @@ fn browser_retry_interval_lock_poisoned_error() -> OpenPageError {
     ))
 }
 
+fn browser_download_path_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "browser download path",
+        "浏览器下载路径",
+    ))
+}
+
+fn browser_download_file_exists_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "browser download file-exists",
+        "浏览器下载文件存在策略",
+    ))
+}
+
+fn browser_download_naming_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "browser download naming",
+        "浏览器下载命名设置",
+    ))
+}
+
+fn browser_load_mode_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "browser load mode",
+        "浏览器加载模式",
+    ))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DownloadFileExistsMode {
     Rename,
@@ -1916,9 +1944,7 @@ impl Browser {
                 path.as_ref()
                     .map(|path| path.to_string_lossy().into_owned())
             })
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("browser download path lock poisoned".to_string())
-            })
+            .map_err(|_| browser_download_path_lock_poisoned_error())
     }
 
     pub fn set_download_path(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
@@ -1929,9 +1955,7 @@ impl Browser {
         self.inner
             .download_path
             .lock()
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("browser download path lock poisoned".to_string())
-            })?
+            .map_err(|_| browser_download_path_lock_poisoned_error())?
             .replace(path);
         Ok(())
     }
@@ -1941,22 +1965,18 @@ impl Browser {
             .download_file_exists
             .lock()
             .map(|mode| mode.as_str().to_string())
-            .map_err(|_| {
-                OpenPageError::BrowserOperation(
-                    "browser download file-exists lock poisoned".to_string(),
-                )
-            })
+            .map_err(|_| browser_download_file_exists_lock_poisoned_error())
     }
 
     pub fn set_download_file_exists_mode(
         &self,
         mode: DownloadFileExistsMode,
     ) -> OpenPageResult<()> {
-        *self.inner.download_file_exists.lock().map_err(|_| {
-            OpenPageError::BrowserOperation(
-                "browser download file-exists lock poisoned".to_string(),
-            )
-        })? = mode;
+        *self
+            .inner
+            .download_file_exists
+            .lock()
+            .map_err(|_| browser_download_file_exists_lock_poisoned_error())? = mode;
         Ok(())
     }
 
@@ -1967,22 +1987,18 @@ impl Browser {
             .inner
             .download_path
             .lock()
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("browser download path lock poisoned".to_string())
-            })?
+            .map_err(|_| browser_download_path_lock_poisoned_error())?
             .clone();
-        let file_exists = *self.inner.download_file_exists.lock().map_err(|_| {
-            OpenPageError::BrowserOperation(
-                "browser download file-exists lock poisoned".to_string(),
-            )
-        })?;
+        let file_exists = *self
+            .inner
+            .download_file_exists
+            .lock()
+            .map_err(|_| browser_download_file_exists_lock_poisoned_error())?;
         let naming = self
             .inner
             .browser_download_naming
             .lock()
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("browser download naming lock poisoned".to_string())
-            })?
+            .map_err(|_| browser_download_naming_lock_poisoned_error())?
             .clone();
         Ok(BrowserDownloadSettingsSnapshot {
             path,
@@ -1996,17 +2012,22 @@ impl Browser {
         &self,
         settings: BrowserDownloadSettingsSnapshot,
     ) -> OpenPageResult<()> {
-        *self.inner.download_path.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("browser download path lock poisoned".to_string())
-        })? = settings.path;
-        *self.inner.download_file_exists.lock().map_err(|_| {
-            OpenPageError::BrowserOperation(
-                "browser download file-exists lock poisoned".to_string(),
-            )
-        })? = settings.file_exists;
-        *self.inner.browser_download_naming.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("browser download naming lock poisoned".to_string())
-        })? = BrowserDownloadNaming {
+        *self
+            .inner
+            .download_path
+            .lock()
+            .map_err(|_| browser_download_path_lock_poisoned_error())? = settings.path;
+        *self
+            .inner
+            .download_file_exists
+            .lock()
+            .map_err(|_| browser_download_file_exists_lock_poisoned_error())? =
+            settings.file_exists;
+        *self
+            .inner
+            .browser_download_naming
+            .lock()
+            .map_err(|_| browser_download_naming_lock_poisoned_error())? = BrowserDownloadNaming {
             rename: settings.rename,
             suffix: settings.suffix,
         };
@@ -2021,17 +2042,22 @@ impl Browser {
             std::fs::create_dir_all(path)
                 .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
         }
-        *self.inner.download_path.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("browser download path lock poisoned".to_string())
-        })? = settings.path.clone();
-        *self.inner.download_file_exists.lock().map_err(|_| {
-            OpenPageError::BrowserOperation(
-                "browser download file-exists lock poisoned".to_string(),
-            )
-        })? = settings.file_exists;
-        *self.inner.browser_download_naming.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("browser download naming lock poisoned".to_string())
-        })? = BrowserDownloadNaming {
+        *self
+            .inner
+            .download_path
+            .lock()
+            .map_err(|_| browser_download_path_lock_poisoned_error())? = settings.path.clone();
+        *self
+            .inner
+            .download_file_exists
+            .lock()
+            .map_err(|_| browser_download_file_exists_lock_poisoned_error())? =
+            settings.file_exists;
+        *self
+            .inner
+            .browser_download_naming
+            .lock()
+            .map_err(|_| browser_download_naming_lock_poisoned_error())? = BrowserDownloadNaming {
             rename: settings.rename.clone(),
             suffix: settings.suffix.clone(),
         };
@@ -2047,9 +2073,11 @@ impl Browser {
     }
 
     pub fn set_load_mode(&self, mode: LoadMode) -> OpenPageResult<()> {
-        *self.inner.load_mode.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("browser load mode lock poisoned".to_string())
-        })? = mode;
+        *self
+            .inner
+            .load_mode
+            .lock()
+            .map_err(|_| browser_load_mode_lock_poisoned_error())? = mode;
         Ok(())
     }
 
@@ -4153,7 +4181,10 @@ mod tests {
     use super::{
         BrowserTabSelector, BrowserTabTargetsInput, BrowserTabTypeInput, DEFAULT_AUTO_PORT_SCOPE,
         DownloadFileExistsMode, LaunchOptions, LoadMode, TabInfo, browser_cookie_header_to_params,
-        browser_cookie_param, browser_delete_cookie_params, browser_newest_tab_lock_poisoned_error,
+        browser_cookie_param, browser_delete_cookie_params,
+        browser_download_file_exists_lock_poisoned_error,
+        browser_download_naming_lock_poisoned_error, browser_download_path_lock_poisoned_error,
+        browser_load_mode_lock_poisoned_error, browser_newest_tab_lock_poisoned_error,
         browser_retry_interval_lock_poisoned_error, browser_retry_times_lock_poisoned_error,
         browser_tab_info_matches, browser_timeouts_lock_poisoned_error,
         default_launch_options_ini_path, finalize_download_path, find_free_port, find_new_tab_id,
@@ -4225,6 +4256,56 @@ mod tests {
             browser_retry_interval_lock_poisoned_error()
                 .to_string()
                 .contains("浏览器重试间隔锁已损坏")
+        );
+    }
+
+    #[test]
+    fn browser_download_lock_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        assert!(
+            browser_download_path_lock_poisoned_error()
+                .to_string()
+                .contains("browser download path lock poisoned")
+        );
+        assert!(
+            browser_download_file_exists_lock_poisoned_error()
+                .to_string()
+                .contains("browser download file-exists lock poisoned")
+        );
+        assert!(
+            browser_download_naming_lock_poisoned_error()
+                .to_string()
+                .contains("browser download naming lock poisoned")
+        );
+        assert!(
+            browser_load_mode_lock_poisoned_error()
+                .to_string()
+                .contains("browser load mode lock poisoned")
+        );
+
+        Settings::set_language("cn");
+
+        assert!(
+            browser_download_path_lock_poisoned_error()
+                .to_string()
+                .contains("浏览器下载路径锁已损坏")
+        );
+        assert!(
+            browser_download_file_exists_lock_poisoned_error()
+                .to_string()
+                .contains("浏览器下载文件存在策略锁已损坏")
+        );
+        assert!(
+            browser_download_naming_lock_poisoned_error()
+                .to_string()
+                .contains("浏览器下载命名设置锁已损坏")
+        );
+        assert!(
+            browser_load_mode_lock_poisoned_error()
+                .to_string()
+                .contains("浏览器加载模式锁已损坏")
         );
     }
 
