@@ -3226,7 +3226,7 @@ impl WebPage {
                 new_tab,
             ),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "click_to_download() is only available in driver mode".to_string(),
+                driver_mode_only_message("click_to_download()"),
             )),
         }
     }
@@ -3243,7 +3243,7 @@ impl WebPage {
                 .driver
                 .click_to_upload(locator, files, timeout_ms, by_js),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "click_to_upload() is only available in driver mode".to_string(),
+                driver_mode_only_message("click_to_upload()"),
             )),
         }
     }
@@ -3257,7 +3257,7 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.driver.click_for_new_tab(locator, timeout_ms, by_js),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "click_for_new_tab() is only available in driver mode".to_string(),
+                driver_mode_only_message("click_for_new_tab()"),
             )),
         }
     }
@@ -3271,7 +3271,7 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.driver.click_middle(locator, timeout_ms, get_tab),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "click_middle() is only available in driver mode".to_string(),
+                driver_mode_only_message("click_middle()"),
             )),
         }
     }
@@ -6310,6 +6310,62 @@ mod tests {
         let _ = page.quit();
         let _ = fs::remove_dir_all(&temp_dir);
         result.expect("webpage session driver action errors should localize");
+    }
+
+    #[test]
+    fn webpage_session_click_helper_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-session-click-helper-errors", WebMode::Session)
+                .expect("launch headless webpage");
+        let result = (|| -> crate::OpenPageResult<()> {
+            let english = match page.click_to_download(
+                "css:#download",
+                None,
+                None,
+                None,
+                false,
+                Some(100),
+                false,
+                false,
+            ) {
+                Err(error) => error,
+                Ok(_) => panic!("session-mode WebPage click_to_download should fail"),
+            };
+            assert!(matches!(
+                english,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("click_to_download() is only available in driver mode")
+            ));
+
+            Settings::set_language("cn");
+
+            let files = vec!["/tmp/upload.txt".to_string()];
+            let chinese_upload = page
+                .click_to_upload("css:#upload", &files, Some(100), false)
+                .expect_err("session-mode WebPage click_to_upload should fail");
+            assert!(matches!(
+                chinese_upload,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("click_to_upload() 仅在 driver 模式可用")
+            ));
+            let chinese_new_tab = match page.click_for_new_tab("css:#open", Some(100), false) {
+                Err(error) => error,
+                Ok(_) => panic!("session-mode WebPage click_for_new_tab should fail"),
+            };
+            assert!(matches!(
+                chinese_new_tab,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("click_for_new_tab() 仅在 driver 模式可用")
+            ));
+            Ok(())
+        })();
+
+        let _ = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+        result.expect("webpage session click helper errors should localize");
     }
 
     #[test]
