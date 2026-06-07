@@ -32,8 +32,9 @@ use crate::download::{
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::Page;
 use crate::settings::{
-    browser_connect_timeout_duration, browser_user_data_dir_reset_failed_message,
-    cdp_timeout_duration, component_state_lock_poisoned_message, download_canceled_message,
+    browser_config_path_failed_message, browser_connect_timeout_duration,
+    browser_user_data_dir_reset_failed_message, cdp_timeout_duration,
+    component_state_lock_poisoned_message, download_canceled_message,
     download_frame_not_mapped_to_tab_message, download_path_not_configured_message,
     download_skipped_without_final_path_message, invalid_auto_port_scope_message,
     invalid_download_file_exists_mode_message, invalid_launch_options_ini_boolean_message,
@@ -3666,12 +3667,24 @@ fn write_chrome_prefs(
     prefs_to_remove: &[String],
 ) -> OpenPageResult<()> {
     let prefs_dir = user_data_dir.join(chrome_profile_directory(args));
-    std::fs::create_dir_all(&prefs_dir)
-        .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?;
+    std::fs::create_dir_all(&prefs_dir).map_err(|err| {
+        OpenPageError::BrowserLaunch(browser_config_path_failed_message(
+            "create Chrome profile directory",
+            "创建 Chrome profile 目录",
+            &prefs_dir,
+            &err.to_string(),
+        ))
+    })?;
     let prefs_path = prefs_dir.join("Preferences");
     let mut existing: serde_json::Value = if prefs_path.exists() {
-        let content = std::fs::read_to_string(&prefs_path)
-            .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?;
+        let content = std::fs::read_to_string(&prefs_path).map_err(|err| {
+            OpenPageError::BrowserLaunch(browser_config_path_failed_message(
+                "read Chrome Preferences",
+                "读取 Chrome Preferences",
+                &prefs_path,
+                &err.to_string(),
+            ))
+        })?;
         serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
     } else {
         serde_json::json!({})
@@ -3682,8 +3695,14 @@ fn write_chrome_prefs(
     for key in prefs_to_remove {
         remove_nested_json_value(&mut existing, key);
     }
-    std::fs::write(&prefs_path, serde_json::to_string(&existing).unwrap())
-        .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?;
+    std::fs::write(&prefs_path, serde_json::to_string(&existing).unwrap()).map_err(|err| {
+        OpenPageError::BrowserLaunch(browser_config_path_failed_message(
+            "write Chrome Preferences",
+            "写入 Chrome Preferences",
+            &prefs_path,
+            &err.to_string(),
+        ))
+    })?;
     Ok(())
 }
 
@@ -3749,8 +3768,14 @@ fn write_chrome_flags(
 ) -> OpenPageResult<()> {
     let local_state_path = user_data_dir.join("Local State");
     let mut existing: serde_json::Value = if local_state_path.exists() {
-        let content = std::fs::read_to_string(&local_state_path)
-            .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?;
+        let content = std::fs::read_to_string(&local_state_path).map_err(|err| {
+            OpenPageError::BrowserLaunch(browser_config_path_failed_message(
+                "read Chrome Local State",
+                "读取 Chrome Local State",
+                &local_state_path,
+                &err.to_string(),
+            ))
+        })?;
         serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
     } else {
         serde_json::json!({})
@@ -3787,8 +3812,16 @@ fn write_chrome_flags(
                 .collect(),
         ),
     );
-    std::fs::write(&local_state_path, serde_json::to_string(&existing).unwrap())
-        .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?;
+    std::fs::write(&local_state_path, serde_json::to_string(&existing).unwrap()).map_err(
+        |err| {
+            OpenPageError::BrowserLaunch(browser_config_path_failed_message(
+                "write Chrome Local State",
+                "写入 Chrome Local State",
+                &local_state_path,
+                &err.to_string(),
+            ))
+        },
+    )?;
     Ok(())
 }
 
@@ -6248,6 +6281,36 @@ mod tests {
     }
 
     #[test]
+    fn write_chrome_prefs_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let dir = make_temp_dir("prefs-error");
+        let user_data_file = dir.join("user-data-file");
+        fs::write(&user_data_file, "content").expect("write user data file");
+        let prefs = HashMap::new();
+        let prefs_to_remove = Vec::new();
+
+        let english = write_chrome_prefs(&user_data_file, &[], &prefs, &prefs_to_remove)
+            .expect_err("file user data path should fail")
+            .to_string();
+        assert!(
+            english.contains("failed to create Chrome profile directory at browser config path")
+        );
+        assert!(english.contains("Default"));
+
+        Settings::set_language("cn");
+
+        let chinese = write_chrome_prefs(&user_data_file, &[], &prefs, &prefs_to_remove)
+            .expect_err("file user data path should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains("创建 Chrome profile 目录时处理浏览器配置路径"));
+        assert!(chinese.contains("Default"));
+
+        let _ = fs::remove_file(&user_data_file);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn write_chrome_flags_merges_existing_flags_by_default() {
         let dir = make_temp_dir("flags-merge");
         let state_path = dir.join("Local State");
@@ -6268,6 +6331,32 @@ mod tests {
             json!(["existing", "kept", "new"])
         );
 
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_chrome_flags_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let dir = make_temp_dir("flags-error");
+        let user_data_file = dir.join("user-data-file");
+        fs::write(&user_data_file, "content").expect("write user data file");
+
+        let english = write_chrome_flags(&user_data_file, &["new".to_string()], false)
+            .expect_err("file user data path should fail")
+            .to_string();
+        assert!(english.contains("failed to write Chrome Local State at browser config path"));
+        assert!(english.contains("Local State"));
+
+        Settings::set_language("cn");
+
+        let chinese = write_chrome_flags(&user_data_file, &["new".to_string()], false)
+            .expect_err("file user data path should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains("写入 Chrome Local State时处理浏览器配置路径"));
+        assert!(chinese.contains("Local State"));
+
+        let _ = fs::remove_file(&user_data_file);
         let _ = fs::remove_dir_all(&dir);
     }
 
