@@ -7,8 +7,8 @@ use crate::browser::{LaunchOptions, OPENPAGE_BROWSER_PATH_ENV};
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::session::SessionOptions;
 use crate::settings::{
-    config_root_table_required_message, config_section_table_required_message,
-    invalid_config_file_message, invalid_toml_file_message,
+    config_path_empty_message, config_root_table_required_message,
+    config_section_table_required_message, invalid_config_file_message, invalid_toml_file_message,
 };
 
 pub const OPENPAGE_CONFIG_ENV: &str = "OPENPAGE_CONFIG";
@@ -180,9 +180,8 @@ pub fn workspace_config_path() -> OpenPageResult<PathBuf> {
 pub fn resolve_config_path(path: &str) -> OpenPageResult<PathBuf> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
-        return Err(OpenPageError::BrowserOperation(format!(
-            "{} cannot be empty",
-            OPENPAGE_CONFIG_ENV
+        return Err(OpenPageError::BrowserOperation(config_path_empty_message(
+            OPENPAGE_CONFIG_ENV,
         )));
     }
     let path = PathBuf::from(trimmed);
@@ -603,7 +602,7 @@ mod tests {
 
     use super::{
         ConfigValueSource, OPENPAGE_BROWSER_PATH_ENV, OPENPAGE_CONFIG_ENV, ensure_table_entry,
-        load_config_file, load_resolved_config, load_toml_value,
+        load_config_file, load_resolved_config, load_toml_value, resolve_config_path,
     };
     use crate::Settings;
     use crate::settings::scoped_test_settings;
@@ -815,6 +814,11 @@ mod tests {
             .to_string();
         assert!(english_toml.contains("invalid TOML file"));
 
+        let english_empty_path = resolve_config_path(" ")
+            .expect_err("empty config path should fail")
+            .to_string();
+        assert!(english_empty_path.contains("OPENPAGE_CONFIG cannot be empty"));
+
         Settings::set_language("cn");
 
         let chinese_config = load_config_file(&config_path)
@@ -826,6 +830,11 @@ mod tests {
             .expect_err("invalid TOML should localize")
             .to_string();
         assert!(chinese_toml.contains("无效的 TOML 文件"));
+
+        let chinese_empty_path = resolve_config_path(" ")
+            .expect_err("empty config path should localize")
+            .to_string();
+        assert!(chinese_empty_path.contains("OPENPAGE_CONFIG 不能为空"));
 
         fs::remove_dir_all(dir).expect("remove temp dir");
     }

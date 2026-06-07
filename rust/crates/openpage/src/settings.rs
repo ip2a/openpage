@@ -796,6 +796,13 @@ pub(crate) fn config_section_table_required_message(key: &str) -> String {
     }
 }
 
+pub(crate) fn config_path_empty_message(env_name: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{env_name} 不能为空"),
+        _ => format!("{env_name} cannot be empty"),
+    }
+}
+
 pub(crate) fn resolve_top_viewport_screen_origin_failed_message(detail: &str) -> String {
     localized_error_with_detail(
         "resolve top viewport screen origin failed",
