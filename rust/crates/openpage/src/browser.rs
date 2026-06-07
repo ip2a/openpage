@@ -40,6 +40,34 @@ use crate::settings::{
 };
 use crate::webpage::WebPage;
 
+fn browser_newest_tab_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "browser newest tab",
+        "浏览器最新标签页",
+    ))
+}
+
+fn browser_timeouts_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "browser timeouts",
+        "浏览器超时设置",
+    ))
+}
+
+fn browser_retry_times_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "browser retry times",
+        "浏览器重试次数",
+    ))
+}
+
+fn browser_retry_interval_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "browser retry interval",
+        "浏览器重试间隔",
+    ))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DownloadFileExistsMode {
     Rename,
@@ -1184,15 +1212,15 @@ impl Browser {
             .newest_tab_id
             .lock()
             .map(|target_id| target_id.clone())
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("browser newest tab lock poisoned".to_string())
-            })
+            .map_err(|_| browser_newest_tab_lock_poisoned_error())
     }
 
     fn set_tracked_newest_tab_id(&self, target_id: Option<String>) -> OpenPageResult<()> {
-        *self.inner.newest_tab_id.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("browser newest tab lock poisoned".to_string())
-        })? = target_id;
+        *self
+            .inner
+            .newest_tab_id
+            .lock()
+            .map_err(|_| browser_newest_tab_lock_poisoned_error())? = target_id;
         Ok(())
     }
 
@@ -1782,15 +1810,19 @@ impl Browser {
     }
 
     pub fn timeouts(&self) -> OpenPageResult<TimeoutConfig> {
-        self.inner.timeouts.lock().map(|t| t.clone()).map_err(|_| {
-            OpenPageError::BrowserOperation("browser timeouts lock poisoned".to_string())
-        })
+        self.inner
+            .timeouts
+            .lock()
+            .map(|t| t.clone())
+            .map_err(|_| browser_timeouts_lock_poisoned_error())
     }
 
     pub fn set_timeouts(&self, timeouts: TimeoutConfig) -> OpenPageResult<()> {
-        *self.inner.timeouts.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("browser timeouts lock poisoned".to_string())
-        })? = timeouts;
+        *self
+            .inner
+            .timeouts
+            .lock()
+            .map_err(|_| browser_timeouts_lock_poisoned_error())? = timeouts;
         Ok(())
     }
 
@@ -1799,9 +1831,7 @@ impl Browser {
             .retry_times
             .lock()
             .map(|retry_times| *retry_times)
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("browser retry times lock poisoned".to_string())
-            })
+            .map_err(|_| browser_retry_times_lock_poisoned_error())
     }
 
     pub fn retry_interval_millis(&self) -> OpenPageResult<u64> {
@@ -1809,9 +1839,7 @@ impl Browser {
             .retry_interval_millis
             .lock()
             .map(|retry_interval_millis| *retry_interval_millis)
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("browser retry interval lock poisoned".to_string())
-            })
+            .map_err(|_| browser_retry_interval_lock_poisoned_error())
     }
 
     pub fn set_retry(
@@ -1820,14 +1848,18 @@ impl Browser {
         retry_interval_millis: Option<u64>,
     ) -> OpenPageResult<()> {
         if let Some(retry_times) = retry_times {
-            *self.inner.retry_times.lock().map_err(|_| {
-                OpenPageError::BrowserOperation("browser retry times lock poisoned".to_string())
-            })? = retry_times;
+            *self
+                .inner
+                .retry_times
+                .lock()
+                .map_err(|_| browser_retry_times_lock_poisoned_error())? = retry_times;
         }
         if let Some(retry_interval_millis) = retry_interval_millis {
-            *self.inner.retry_interval_millis.lock().map_err(|_| {
-                OpenPageError::BrowserOperation("browser retry interval lock poisoned".to_string())
-            })? = retry_interval_millis;
+            *self
+                .inner
+                .retry_interval_millis
+                .lock()
+                .map_err(|_| browser_retry_interval_lock_poisoned_error())? = retry_interval_millis;
         }
         Ok(())
     }
@@ -4121,7 +4153,9 @@ mod tests {
     use super::{
         BrowserTabSelector, BrowserTabTargetsInput, BrowserTabTypeInput, DEFAULT_AUTO_PORT_SCOPE,
         DownloadFileExistsMode, LaunchOptions, LoadMode, TabInfo, browser_cookie_header_to_params,
-        browser_cookie_param, browser_delete_cookie_params, browser_tab_info_matches,
+        browser_cookie_param, browser_delete_cookie_params, browser_newest_tab_lock_poisoned_error,
+        browser_retry_interval_lock_poisoned_error, browser_retry_times_lock_poisoned_error,
+        browser_tab_info_matches, browser_timeouts_lock_poisoned_error,
         default_launch_options_ini_path, finalize_download_path, find_free_port, find_new_tab_id,
         is_tab_like_type, normalize_browser_tab_types, reset_browser_user_data_dir,
         resolve_browser_tab_target_id, resolve_browser_tab_target_ids,
@@ -4142,6 +4176,56 @@ mod tests {
         let dir = env::temp_dir().join(format!("openpage-{name}-{suffix}"));
         fs::create_dir_all(&dir).expect("create temp dir");
         dir
+    }
+
+    #[test]
+    fn browser_state_lock_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        assert!(
+            browser_newest_tab_lock_poisoned_error()
+                .to_string()
+                .contains("browser newest tab lock poisoned")
+        );
+        assert!(
+            browser_timeouts_lock_poisoned_error()
+                .to_string()
+                .contains("browser timeouts lock poisoned")
+        );
+        assert!(
+            browser_retry_times_lock_poisoned_error()
+                .to_string()
+                .contains("browser retry times lock poisoned")
+        );
+        assert!(
+            browser_retry_interval_lock_poisoned_error()
+                .to_string()
+                .contains("browser retry interval lock poisoned")
+        );
+
+        Settings::set_language("cn");
+
+        assert!(
+            browser_newest_tab_lock_poisoned_error()
+                .to_string()
+                .contains("浏览器最新标签页锁已损坏")
+        );
+        assert!(
+            browser_timeouts_lock_poisoned_error()
+                .to_string()
+                .contains("浏览器超时设置锁已损坏")
+        );
+        assert!(
+            browser_retry_times_lock_poisoned_error()
+                .to_string()
+                .contains("浏览器重试次数锁已损坏")
+        );
+        assert!(
+            browser_retry_interval_lock_poisoned_error()
+                .to_string()
+                .contains("浏览器重试间隔锁已损坏")
+        );
     }
 
     fn launch_headless_test_browser(
