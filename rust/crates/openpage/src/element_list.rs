@@ -6,7 +6,9 @@ use serde_json::Value;
 use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::session::SessionElement;
-use crate::settings::web_element_list_driver_filter_message;
+use crate::settings::{
+    component_state_lock_poisoned_message, web_element_list_driver_filter_message,
+};
 use crate::webpage::WebElement;
 
 pub(crate) type ElementsOneRuntimeConfigHandle = Arc<Mutex<ElementsOneRuntimeConfig>>;
@@ -222,7 +224,10 @@ impl ElementsSearch {
 }
 
 fn elements_one_config_lock_error() -> OpenPageError {
-    OpenPageError::PageOperation("none element runtime config lock poisoned".to_string())
+    OpenPageError::PageOperation(component_state_lock_poisoned_message(
+        "none element runtime config",
+        "未找到元素运行时配置",
+    ))
 }
 
 fn elements_one_missing_config_snapshot(
@@ -5353,6 +5358,7 @@ mod tests {
     use super::ElementsListExt;
     use serde_json::json;
     use std::sync::{Arc, Mutex};
+    use std::thread;
 
     use crate::session::snapshot_find_all;
     use crate::settings::scoped_test_settings;
@@ -5854,5 +5860,39 @@ mod tests {
             matches!(error, crate::OpenPageError::ElementNotFound(_)),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn elements_one_config_lock_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let config = Arc::new(Mutex::new(super::ElementsOneRuntimeConfig::default()));
+        let missing: super::ElementsOne<'_, FakeItem> =
+            super::ElementsOne::none_with_config(Some(&config));
+
+        let config_for_thread = Arc::clone(&config);
+        let join = thread::spawn(move || {
+            let _guard = config_for_thread
+                .lock()
+                .expect("elements one config lock should be available");
+            panic!("poison elements one config lock");
+        })
+        .join();
+        assert!(join.is_err(), "poison helper thread should panic");
+
+        let english = missing
+            .text()
+            .expect_err("poisoned config should fail in English")
+            .to_string();
+        assert!(english.contains("none element runtime config lock poisoned"));
+
+        Settings::set_language("cn");
+
+        let chinese = missing
+            .text()
+            .expect_err("poisoned config should localize after language switch")
+            .to_string();
+        assert!(chinese.contains("未找到元素运行时配置锁已损坏"));
     }
 }
