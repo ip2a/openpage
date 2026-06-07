@@ -78,22 +78,25 @@ use crate::session::{
     snapshot_find, snapshot_find_all, snapshot_query_xpath, snapshot_root,
 };
 use crate::settings::{
-    action_click_times_positive_message, action_type_interval_non_negative_message,
+    action_click_times_positive_message, action_element_missing_clickable_rect_message,
+    action_element_missing_rect_location_message, action_type_interval_non_negative_message,
     action_wait_seconds_non_negative_message, browser_backed_page_only_message,
     cdp_timeout_duration, clipboard_secure_context_required_message,
     component_state_lock_poisoned_message, default_none_element_runtime_config,
     drag_in_file_path_empty_message, drag_in_requires_file_path_message,
-    frame_execution_context_unavailable_message, frame_html_unavailable_message,
-    frame_index_must_start_message, frame_index_out_of_range_message,
-    invalid_cookie_same_site_message, invalid_file_url_message, invalid_url_message,
-    launched_browser_only_message, no_new_tab_message, page_connect_timed_out_message,
-    permission_origin_required_message, permission_origin_scheme_message,
-    permission_setting_invalid_message, screenshot_clip_complete_message,
-    screenshot_clip_order_message, singleton_tab_obj_enabled, suffixes_list_path,
-    timeout_duration_millis, timeout_error, timeout_must_be_non_negative_message,
-    unsupported_key_message, value_did_not_return_message, value_pair_entry_not_number_message,
-    value_returned_non_string_entry_message, wait_timeout_result,
-    zoom_factor_must_be_positive_message,
+    frame_element_missing_frame_id_message, frame_execution_context_unavailable_message,
+    frame_html_unavailable_message, frame_index_must_start_message,
+    frame_index_out_of_range_message, invalid_cookie_same_site_message, invalid_file_url_message,
+    invalid_url_message, launched_browser_only_message, no_new_tab_message,
+    page_connect_timed_out_message, permission_origin_required_message,
+    permission_origin_scheme_message, permission_setting_invalid_message,
+    resolved_frame_owner_missing_object_id_message, screenshot_clip_complete_message,
+    screenshot_clip_order_message, session_backed_element_driver_target_message,
+    session_backed_web_element_driver_actions_message, singleton_tab_obj_enabled,
+    suffixes_list_path, timeout_duration_millis, timeout_error,
+    timeout_must_be_non_negative_message, unsupported_key_message, value_did_not_return_message,
+    value_pair_entry_not_number_message, value_returned_non_string_entry_message,
+    wait_timeout_result, zoom_factor_must_be_positive_message,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -5948,7 +5951,7 @@ impl Page {
                 .frame_id
                 .map(|frame_id| frame_id.as_ref().to_string())
                 .ok_or_else(|| {
-                    OpenPageError::PageOperation("frame element has no frame id".to_string())
+                    OpenPageError::PageOperation(frame_element_missing_frame_id_message())
                 })
         });
         let frame_id = match frame_id {
@@ -6033,7 +6036,7 @@ impl Page {
             )
             .await?;
             let object_id = resolved.object.object_id.ok_or_else(|| {
-                OpenPageError::PageOperation("resolved frame owner has no object id".to_string())
+                OpenPageError::PageOperation(resolved_frame_owner_missing_object_id_message())
             })?;
             let requested = execute_page_command_async(
                 &self.inner,
@@ -6235,14 +6238,20 @@ fn resolve_page_element_target<'a>(
         )),
         PageElementTarget::Element(element) => Ok(ResolvedPageElementTarget::Borrowed(element)),
         PageElementTarget::SessionElement(_) => Err(OpenPageError::UnsupportedOperation(
-            "session-backed SessionElement is not supported for driver page element targeting"
-                .to_string(),
+            session_backed_element_driver_target_message(
+                "SessionElement",
+                "page element",
+                "页面元素定位",
+            ),
         )),
         PageElementTarget::WebElement(element) => match element {
             WebElement::Browser(element) => Ok(ResolvedPageElementTarget::Borrowed(element)),
             WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "session-backed WebElement is not supported for driver page element targeting"
-                    .to_string(),
+                session_backed_element_driver_target_message(
+                    "WebElement",
+                    "page element",
+                    "页面元素定位",
+                ),
             )),
         },
     }
@@ -6262,8 +6271,11 @@ fn resolve_page_frame_target<'a>(
         PageFrameTarget::WebElement(element) => match element {
             WebElement::Browser(element) => find_frame_element_from_object(page, element),
             WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "session-backed WebElement is not supported for driver page frame targeting"
-                    .to_string(),
+                session_backed_element_driver_target_message(
+                    "WebElement",
+                    "page frame",
+                    "页面 frame 定位",
+                ),
             )),
         },
         PageFrameTarget::Frame(frame) => {
@@ -6356,7 +6368,7 @@ fn resolve_actions_target_point<'a>(
                 action_point_from_element(page, element, offset_x, offset_y)
             }
             WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "session-backed WebElement is not supported for driver actions".to_string(),
+                session_backed_web_element_driver_actions_message(),
             )),
         },
         ActionsTarget::Coordinates(x, y) => action_point_from_page_coordinates(
@@ -6376,11 +6388,11 @@ fn action_point_from_element(
     element.scroll_to_see(Some(false))?;
     let (page_x, page_y) = if offset_x.is_none() && offset_y.is_none() {
         element.rect_midpoint()?.ok_or_else(|| {
-            OpenPageError::ElementNotFound("element has no clickable rect for actions".to_string())
+            OpenPageError::ElementNotFound(action_element_missing_clickable_rect_message())
         })?
     } else {
         let (left, top) = element.rect_location()?.ok_or_else(|| {
-            OpenPageError::ElementNotFound("element has no rect location for actions".to_string())
+            OpenPageError::ElementNotFound(action_element_missing_rect_location_message())
         })?;
         (
             left + offset_x.unwrap_or(0.0),

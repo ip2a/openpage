@@ -56,7 +56,8 @@ use crate::settings::{
     element_tag_name_unavailable_message, element_top_frame_check_failed_message,
     frame_index_must_start_message, frame_index_out_of_range_message, no_new_tab_message,
     resolve_element_frame_id_failed_message, resolve_frame_viewport_offset_failed_message,
-    unsupported_key_message, unsupported_mouse_button_message, wait_timeout_result,
+    session_backed_element_driver_target_message, unsupported_key_message,
+    unsupported_mouse_button_message, wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -3003,8 +3004,11 @@ impl Element {
                     self.find_frame_element_from_object(element)
                 }
                 crate::webpage::WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                    "session-backed WebElement is not supported for driver element frame targeting"
-                        .to_string(),
+                    session_backed_element_driver_target_message(
+                        "WebElement",
+                        "element frame",
+                        "元素 frame 定位",
+                    ),
                 )),
             },
             PageFrameTarget::Frame(frame) => {

@@ -506,6 +506,53 @@ pub(crate) fn permission_origin_required_message() -> String {
     )
 }
 
+pub(crate) fn session_backed_element_driver_target_message(
+    element_type: &str,
+    target_en: &str,
+    target_zh_cn: &str,
+) -> String {
+    match current_language_code() {
+        Some("zh_cn") => {
+            format!("session-backed {element_type} 不支持用于 driver {target_zh_cn}")
+        }
+        _ => format!(
+            "session-backed {element_type} is not supported for driver {target_en} targeting"
+        ),
+    }
+}
+
+pub(crate) fn session_backed_web_element_driver_actions_message() -> String {
+    localized_message(
+        "session-backed WebElement is not supported for driver actions",
+        "session-backed WebElement 不支持用于 driver actions",
+    )
+}
+
+pub(crate) fn frame_element_missing_frame_id_message() -> String {
+    localized_message("frame element has no frame id", "frame 元素没有 frame id")
+}
+
+pub(crate) fn resolved_frame_owner_missing_object_id_message() -> String {
+    localized_message(
+        "resolved frame owner has no object id",
+        "解析出的 frame owner 没有 object id",
+    )
+}
+
+pub(crate) fn action_element_missing_clickable_rect_message() -> String {
+    localized_message(
+        "element has no clickable rect for actions",
+        "元素没有可用于 actions 的可点击位置及大小",
+    )
+}
+
+pub(crate) fn action_element_missing_rect_location_message() -> String {
+    localized_message(
+        "element has no rect location for actions",
+        "元素没有可用于 actions 的位置",
+    )
+}
+
 pub(crate) fn resolve_frame_viewport_offset_failed_message(detail: &str) -> String {
     localized_error_with_detail(
         "resolve frame viewport offset failed",
@@ -894,18 +941,20 @@ pub(crate) fn scoped_test_settings() -> SettingsTestGuard {
 mod tests {
     use super::{
         Settings, SettingsSnapshot, action_click_times_positive_message,
-        action_type_interval_non_negative_message, action_wait_seconds_non_negative_message,
-        browser_backed_page_only_message, browser_connect_timeout_duration,
-        click_at_count_must_be_positive_message, click_failed_no_rect_message,
-        clipboard_secure_context_required_message, component_not_active_start_message,
-        component_not_running_message, component_not_running_with_error_message,
-        component_state_lock_poisoned_message, component_stopped_while_waiting_message,
-        cookie_name_empty_message, default_suffixes_list_path, download_not_found_message,
-        drag_in_file_path_empty_message, drag_in_requires_file_path_message,
-        driver_mode_only_message, element_frame_viewport_offset_unavailable_message,
-        element_html_unavailable_message, element_no_visible_rect_message,
-        element_resource_unavailable_message, element_tag_name_unavailable_message,
-        element_top_frame_check_failed_message, file_chooser_backend_node_missing_message,
+        action_element_missing_clickable_rect_message,
+        action_element_missing_rect_location_message, action_type_interval_non_negative_message,
+        action_wait_seconds_non_negative_message, browser_backed_page_only_message,
+        browser_connect_timeout_duration, click_at_count_must_be_positive_message,
+        click_failed_no_rect_message, clipboard_secure_context_required_message,
+        component_not_active_start_message, component_not_running_message,
+        component_not_running_with_error_message, component_state_lock_poisoned_message,
+        component_stopped_while_waiting_message, cookie_name_empty_message,
+        default_suffixes_list_path, download_not_found_message, drag_in_file_path_empty_message,
+        drag_in_requires_file_path_message, driver_mode_only_message,
+        element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
+        element_no_visible_rect_message, element_resource_unavailable_message,
+        element_tag_name_unavailable_message, element_top_frame_check_failed_message,
+        file_chooser_backend_node_missing_message, frame_element_missing_frame_id_message,
         frame_execution_context_unavailable_message, frame_html_unavailable_message,
         frame_index_must_start_message, frame_index_out_of_range_message,
         invalid_auto_port_scope_message, invalid_cookie_same_site_message,
@@ -917,7 +966,8 @@ mod tests {
         launched_browser_only_message, no_new_tab_message, page_connect_timed_out_message,
         permission_origin_required_message, permission_origin_scheme_message,
         permission_setting_invalid_message, resolve_element_frame_id_failed_message,
-        resolve_frame_viewport_offset_failed_message, scoped_test_settings,
+        resolve_frame_viewport_offset_failed_message,
+        resolved_frame_owner_missing_object_id_message, scoped_test_settings,
         screencast_already_running_message, screencast_capture_path_unavailable_message,
         screencast_empty_mime_type_message, screencast_encode_output_failed_message,
         screencast_ffmpeg_encode_failed_message, screencast_ffmpeg_spawn_failed_message,
@@ -925,8 +975,9 @@ mod tests {
         screencast_no_frames_message, screencast_output_path_unavailable_message,
         screencast_requires_save_path_message, screencast_save_path_must_be_directory_message,
         screenshot_clip_complete_message, screenshot_clip_order_message,
-        session_page_no_current_url_message, session_page_no_loaded_document_message,
-        shadow_root_object_id_unavailable_message,
+        session_backed_element_driver_target_message,
+        session_backed_web_element_driver_actions_message, session_page_no_current_url_message,
+        session_page_no_loaded_document_message, shadow_root_object_id_unavailable_message,
         shadow_root_xpath_traversal_not_implemented_message, target_tab_not_found_message,
         timeout_error, timeout_must_be_non_negative_message, unsupported_key_message,
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
@@ -1157,6 +1208,34 @@ mod tests {
         assert_eq!(
             permission_origin_required_message(),
             "permission override requires an http(s) page or an explicit --origin"
+        );
+        assert_eq!(
+            session_backed_element_driver_target_message(
+                "WebElement",
+                "page frame",
+                "页面 frame 定位"
+            ),
+            "session-backed WebElement is not supported for driver page frame targeting"
+        );
+        assert_eq!(
+            session_backed_web_element_driver_actions_message(),
+            "session-backed WebElement is not supported for driver actions"
+        );
+        assert_eq!(
+            frame_element_missing_frame_id_message(),
+            "frame element has no frame id"
+        );
+        assert_eq!(
+            resolved_frame_owner_missing_object_id_message(),
+            "resolved frame owner has no object id"
+        );
+        assert_eq!(
+            action_element_missing_clickable_rect_message(),
+            "element has no clickable rect for actions"
+        );
+        assert_eq!(
+            action_element_missing_rect_location_message(),
+            "element has no rect location for actions"
         );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),
@@ -1449,6 +1528,34 @@ mod tests {
         assert_eq!(
             permission_origin_required_message(),
             "permission override 需要 http(s) 页面或显式 --origin"
+        );
+        assert_eq!(
+            session_backed_element_driver_target_message(
+                "WebElement",
+                "page frame",
+                "页面 frame 定位"
+            ),
+            "session-backed WebElement 不支持用于 driver 页面 frame 定位"
+        );
+        assert_eq!(
+            session_backed_web_element_driver_actions_message(),
+            "session-backed WebElement 不支持用于 driver actions"
+        );
+        assert_eq!(
+            frame_element_missing_frame_id_message(),
+            "frame 元素没有 frame id"
+        );
+        assert_eq!(
+            resolved_frame_owner_missing_object_id_message(),
+            "解析出的 frame owner 没有 object id"
+        );
+        assert_eq!(
+            action_element_missing_clickable_rect_message(),
+            "元素没有可用于 actions 的可点击位置及大小"
+        );
+        assert_eq!(
+            action_element_missing_rect_location_message(),
+            "元素没有可用于 actions 的位置"
         );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),
