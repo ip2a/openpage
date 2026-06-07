@@ -3744,6 +3744,10 @@ impl WebPage {
         }
     }
 
+    pub fn goto(&self, url: &str) -> OpenPageResult<()> {
+        self.get(url).map(|_| ())
+    }
+
     pub fn post(&self, url: &str) -> OpenPageResult<bool> {
         if self.mode()? == WebMode::Driver {
             self.cookies_to_session(true)?;
@@ -3800,6 +3804,10 @@ impl WebPage {
         }
     }
 
+    pub fn browser(&self) -> Option<&Browser> {
+        Some(&self.browser)
+    }
+
     pub fn browser_pid(&self) -> Option<u32> {
         self.driver.browser_pid()
     }
@@ -3827,6 +3835,15 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.driver.html(),
             WebMode::Session => self.session.html(),
+        }
+    }
+
+    pub fn evaluate(&self, expression: &str) -> OpenPageResult<Value> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.evaluate(expression),
+            WebMode::Session => Err(OpenPageError::UnsupportedOperation(
+                driver_mode_only_message("evaluate()"),
+            )),
         }
     }
 
@@ -4730,6 +4747,15 @@ impl WebPage {
                 .map(WebElement::Browser),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("add_element_info()"),
+            )),
+        }
+    }
+
+    pub fn main_frame_id(&self) -> OpenPageResult<String> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.main_frame_id(),
+            WebMode::Session => Err(OpenPageError::UnsupportedOperation(
+                driver_mode_only_message("main_frame_id()"),
             )),
         }
     }
@@ -7046,6 +7072,12 @@ mod tests {
             assert_eq!(page.process_id(), page.browser.process_id());
             assert_eq!(page.address()?, page.browser.address());
             assert_eq!(page.browser_version()?, page.browser.version()?);
+            assert_eq!(
+                page.browser().map(|browser| browser.address()),
+                Some(page.browser.address())
+            );
+            let main_frame_id = page.main_frame_id()?;
+            assert!(!main_frame_id.is_empty());
             Ok(())
         })();
 
@@ -7712,9 +7744,11 @@ mod tests {
         fn assert_calls(page: &Page, web_page: &WebPage) {
             let _ = page.run_cdp(SetDeviceMetricsOverrideParams::new(1280, 720, 1.0, false));
             let _ = page.run_cdp_loaded(SetDeviceMetricsOverrideParams::new(1280, 720, 1.0, false));
+            let _ = page.evaluate("1 + 1");
             let _ = web_page.run_cdp(SetDeviceMetricsOverrideParams::new(1280, 720, 1.0, false));
             let _ =
                 web_page.run_cdp_loaded(SetDeviceMetricsOverrideParams::new(1280, 720, 1.0, false));
+            let _ = web_page.evaluate("1 + 1");
         }
 
         let _ = assert_calls as fn(&Page, &WebPage);
@@ -7726,9 +7760,12 @@ mod tests {
             let _ = page.retry_times();
             let _ = page.retry_interval();
             let _ = page.timeouts();
+            let _ = page.browser();
             let _ = page.set_retry(Some(5), Some(0.25));
             let _ = page.set_timeouts(Some(1.5), Some(6.0), Some(0.75));
 
+            let _ = web_page.goto("https://example.test/");
+            let _ = web_page.browser();
             let _ = web_page.retry_times();
             let _ = web_page.retry_interval();
             let _ = web_page.timeouts();
