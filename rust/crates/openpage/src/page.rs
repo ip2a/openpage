@@ -79,12 +79,16 @@ use crate::session::{
 };
 use crate::settings::{
     browser_backed_page_only_message, cdp_timeout_duration, component_state_lock_poisoned_message,
-    default_none_element_runtime_config, frame_execution_context_unavailable_message,
+    default_none_element_runtime_config, drag_in_file_path_empty_message,
+    drag_in_requires_file_path_message, frame_execution_context_unavailable_message,
     frame_html_unavailable_message, frame_index_must_start_message,
     frame_index_out_of_range_message, invalid_cookie_same_site_message, invalid_file_url_message,
     invalid_url_message, no_new_tab_message, page_connect_timed_out_message,
-    singleton_tab_obj_enabled, suffixes_list_path, timeout_duration_millis, timeout_error,
+    permission_origin_scheme_message, permission_setting_invalid_message,
+    screenshot_clip_complete_message, screenshot_clip_order_message, singleton_tab_obj_enabled,
+    suffixes_list_path, timeout_duration_millis, timeout_error,
     timeout_must_be_non_negative_message, unsupported_key_message, wait_timeout_result,
+    zoom_factor_must_be_positive_message,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -5014,9 +5018,9 @@ impl Page {
 
     pub fn set_zoom_factor(&self, factor: f64) -> OpenPageResult<()> {
         if !factor.is_finite() || factor <= 0.0 {
-            return Err(OpenPageError::BrowserOperation(format!(
-                "zoom factor must be a positive finite number: {factor}"
-            )));
+            return Err(OpenPageError::BrowserOperation(
+                zoom_factor_must_be_positive_message(factor),
+            ));
         }
         let script = format!(
             "(() => {{ \
@@ -5649,9 +5653,7 @@ impl Page {
             .map(permission_origin_from_input)
             .transpose()?;
         let setting = setting.parse::<PermissionSetting>().map_err(|_| {
-            OpenPageError::BrowserOperation(format!(
-                "permission setting must be one of granted/denied/prompt, got {setting}"
-            ))
+            OpenPageError::BrowserOperation(permission_setting_invalid_message(setting))
         })?;
         let context_id = browser.browser_context_id(&self.target_id())?;
         browser.set_permission(
@@ -6597,7 +6599,7 @@ fn action_drag_payload(data: ActionsDragData<'_>) -> OpenPageResult<ActionsDragP
             let files = action_drag_files(files)?;
             if files.is_empty() {
                 return Err(OpenPageError::PageOperation(
-                    "drag_in() requires at least one file path".to_string(),
+                    drag_in_requires_file_path_message(),
                 ));
             }
             Ok(ActionsDragPayload {
@@ -6651,7 +6653,7 @@ fn action_drag_files(files: ActionsInput<'_>) -> OpenPageResult<Vec<String>> {
             let path = path.trim();
             if path.is_empty() {
                 return Err(OpenPageError::PageOperation(
-                    "drag_in() file path must not be empty".to_string(),
+                    drag_in_file_path_empty_message(),
                 ));
             }
             absolutize_path(PathBuf::from(path)).map(|path| path.to_string_lossy().into_owned())
@@ -6909,9 +6911,7 @@ fn screenshot_clip(
             let width = right - x;
             let height = bottom - y;
             if width <= 0.0 || height <= 0.0 {
-                return Err(OpenPageError::PageOperation(
-                    "screenshot clip requires right_bottom to be greater than left_top".to_string(),
-                ));
+                return Err(OpenPageError::PageOperation(screenshot_clip_order_message()));
             }
             Ok(Some(
                 ClipViewport::builder()
@@ -6925,7 +6925,7 @@ fn screenshot_clip(
             ))
         }
         _ => Err(OpenPageError::PageOperation(
-            "screenshot clip requires both left_top and right_bottom".to_string(),
+            screenshot_clip_complete_message(),
         )),
     }
 }
@@ -7149,9 +7149,9 @@ fn permission_origin_from_input(value: &str) -> OpenPageResult<String> {
         OpenPageError::BrowserOperation(invalid_url_message(value, Some(&err.to_string())))
     })?;
     if !matches!(parsed.scheme(), "http" | "https") {
-        return Err(OpenPageError::BrowserOperation(format!(
-            "permission origin must use http or https, got {value}"
-        )));
+        return Err(OpenPageError::BrowserOperation(
+            permission_origin_scheme_message(value),
+        ));
     }
     Ok(parsed.origin().ascii_serialization())
 }
@@ -7443,10 +7443,10 @@ mod tests {
         cookie_domain_candidates_for_url, cookie_param, default_frame_locator,
         delete_cookie_params, frame_locator, frame_locator_input, history_entry_index,
         is_explicit_locator, marker_xpath, optional_frame_locator_input,
-        page_element_info_properties_json, remaining_timeout_ms, resolve_implicit_wait_timeout_ms,
-        resolve_navigation_local_file_path, resolve_page_save_target_path,
-        resolve_page_screenshot_target_path, run_with_timeout, runtime_timeout_seconds_to_millis,
-        screenshot_clip, storage_lookup_script,
+        page_element_info_properties_json, permission_origin_from_input, remaining_timeout_ms,
+        resolve_implicit_wait_timeout_ms, resolve_navigation_local_file_path,
+        resolve_page_save_target_path, resolve_page_screenshot_target_path, run_with_timeout,
+        runtime_timeout_seconds_to_millis, screenshot_clip, storage_lookup_script,
     };
     use crate::element_list::ElementsListExt;
     use crate::error::OpenPageError;
@@ -8528,6 +8528,64 @@ mod tests {
     }
 
     #[test]
+    fn page_host_validation_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english_drag = action_drag_payload(crate::ActionsDragData::files(Vec::<String>::new()))
+            .expect_err("empty drag file list should fail");
+        assert!(matches!(
+            english_drag,
+            OpenPageError::PageOperation(ref message)
+                if message.contains("drag_in() requires at least one file path")
+        ));
+
+        let english_clip = screenshot_clip(Some((10.0, 10.0)), Some((5.0, 20.0)))
+            .expect_err("invalid screenshot clip order should fail");
+        assert!(matches!(
+            english_clip,
+            OpenPageError::PageOperation(ref message)
+                if message.contains(
+                    "screenshot clip requires right_bottom to be greater than left_top"
+                )
+        ));
+
+        let english_origin = permission_origin_from_input("ftp://example.test")
+            .expect_err("permission origin scheme should fail");
+        assert!(matches!(
+            english_origin,
+            OpenPageError::BrowserOperation(ref message)
+                if message.contains("permission origin must use http or https")
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese_drag = action_drag_payload(crate::ActionsDragData::files(vec![""]))
+            .expect_err("empty drag file path should fail");
+        assert!(matches!(
+            chinese_drag,
+            OpenPageError::PageOperation(ref message)
+                if message.contains("drag_in() 文件路径不能为空")
+        ));
+
+        let chinese_clip = screenshot_clip(Some((10.0, 10.0)), None)
+            .expect_err("partial screenshot clip should fail");
+        assert!(matches!(
+            chinese_clip,
+            OpenPageError::PageOperation(ref message)
+                if message.contains("截图裁剪需要同时提供 left_top 和 right_bottom")
+        ));
+
+        let chinese_origin = permission_origin_from_input("ftp://example.test")
+            .expect_err("permission origin scheme should localize");
+        assert!(matches!(
+            chinese_origin,
+            OpenPageError::BrowserOperation(ref message)
+                if message.contains("permission origin 必须使用 http 或 https")
+        ));
+    }
+
+    #[test]
     fn page_browser_backed_errors_follow_language_setting() {
         let _settings = scoped_test_settings();
         Settings::reset();
@@ -8537,6 +8595,15 @@ mod tests {
 
         let result = (|| -> OpenPageResult<()> {
             let page = browser.new_page(None)?;
+            let english_zoom = page
+                .set_zoom_factor(0.0)
+                .expect_err("invalid zoom factor should fail");
+            assert!(matches!(
+                english_zoom,
+                OpenPageError::BrowserOperation(ref message)
+                    if message.contains("zoom factor must be a positive finite number")
+            ));
+
             let detached = Page {
                 browser: None,
                 ..page.clone()
@@ -8554,6 +8621,20 @@ mod tests {
             ));
 
             Settings::set_language("cn");
+
+            let chinese_permission = page
+                .set_permission(
+                    "clipboard-read",
+                    "maybe",
+                    Some("https://example.test"),
+                    None,
+                )
+                .expect_err("invalid permission setting should fail");
+            assert!(matches!(
+                chinese_permission,
+                OpenPageError::BrowserOperation(ref message)
+                    if message.contains("permission setting 必须是 granted/denied/prompt 之一")
+            ));
 
             let chinese_retry = detached
                 .retry_times()

@@ -391,6 +391,57 @@ pub(crate) fn browser_backed_page_only_message(operation: &str) -> String {
     }
 }
 
+pub(crate) fn zoom_factor_must_be_positive_message(factor: f64) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("zoom factor 必须是有限正数，当前为 {factor}"),
+        _ => format!("zoom factor must be a positive finite number: {factor}"),
+    }
+}
+
+pub(crate) fn permission_setting_invalid_message(setting: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => {
+            format!("permission setting 必须是 granted/denied/prompt 之一，当前为 {setting}")
+        }
+        _ => format!("permission setting must be one of granted/denied/prompt, got {setting}"),
+    }
+}
+
+pub(crate) fn permission_origin_scheme_message(value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("permission origin 必须使用 http 或 https，当前为 {value}"),
+        _ => format!("permission origin must use http or https, got {value}"),
+    }
+}
+
+pub(crate) fn drag_in_requires_file_path_message() -> String {
+    localized_message(
+        "drag_in() requires at least one file path",
+        "drag_in() 至少需要一个文件路径",
+    )
+}
+
+pub(crate) fn drag_in_file_path_empty_message() -> String {
+    localized_message(
+        "drag_in() file path must not be empty",
+        "drag_in() 文件路径不能为空",
+    )
+}
+
+pub(crate) fn screenshot_clip_order_message() -> String {
+    localized_message(
+        "screenshot clip requires right_bottom to be greater than left_top",
+        "截图裁剪要求 right_bottom 大于 left_top",
+    )
+}
+
+pub(crate) fn screenshot_clip_complete_message() -> String {
+    localized_message(
+        "screenshot clip requires both left_top and right_bottom",
+        "截图裁剪需要同时提供 left_top 和 right_bottom",
+    )
+}
+
 pub(crate) fn resolve_frame_viewport_offset_failed_message(detail: &str) -> String {
     localized_error_with_detail(
         "resolve frame viewport offset failed",
@@ -784,6 +835,7 @@ mod tests {
         component_not_running_message, component_not_running_with_error_message,
         component_state_lock_poisoned_message, component_stopped_while_waiting_message,
         cookie_name_empty_message, default_suffixes_list_path, download_not_found_message,
+        drag_in_file_path_empty_message, drag_in_requires_file_path_message,
         driver_mode_only_message, element_frame_viewport_offset_unavailable_message,
         element_html_unavailable_message, element_no_visible_rect_message,
         element_resource_unavailable_message, element_tag_name_unavailable_message,
@@ -796,22 +848,25 @@ mod tests {
         invalid_regex_message, invalid_screencast_data_url_message, invalid_tab_index_message,
         invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
         invalid_xpath_segment_index_message, javascript_execution_timed_out_message,
-        no_new_tab_message, page_connect_timed_out_message,
-        resolve_element_frame_id_failed_message, resolve_frame_viewport_offset_failed_message,
-        scoped_test_settings, screencast_already_running_message,
-        screencast_capture_path_unavailable_message, screencast_empty_mime_type_message,
-        screencast_encode_output_failed_message, screencast_ffmpeg_encode_failed_message,
-        screencast_ffmpeg_spawn_failed_message, screencast_mode_change_while_running_message,
-        screencast_mode_output_suffix_message, screencast_no_frames_message,
-        screencast_output_path_unavailable_message, screencast_requires_save_path_message,
-        screencast_save_path_must_be_directory_message, session_page_no_current_url_message,
-        session_page_no_loaded_document_message, shadow_root_object_id_unavailable_message,
+        no_new_tab_message, page_connect_timed_out_message, permission_origin_scheme_message,
+        permission_setting_invalid_message, resolve_element_frame_id_failed_message,
+        resolve_frame_viewport_offset_failed_message, scoped_test_settings,
+        screencast_already_running_message, screencast_capture_path_unavailable_message,
+        screencast_empty_mime_type_message, screencast_encode_output_failed_message,
+        screencast_ffmpeg_encode_failed_message, screencast_ffmpeg_spawn_failed_message,
+        screencast_mode_change_while_running_message, screencast_mode_output_suffix_message,
+        screencast_no_frames_message, screencast_output_path_unavailable_message,
+        screencast_requires_save_path_message, screencast_save_path_must_be_directory_message,
+        screenshot_clip_complete_message, screenshot_clip_order_message,
+        session_page_no_current_url_message, session_page_no_loaded_document_message,
+        shadow_root_object_id_unavailable_message,
         shadow_root_xpath_traversal_not_implemented_message, target_tab_not_found_message,
         timeout_error, timeout_must_be_non_negative_message, unsupported_key_message,
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
         unsupported_xpath_path_message, upload_requires_at_least_one_file_message,
         web_element_list_driver_filter_message, xpath_node_no_longer_exists_message,
         xpath_path_not_found_message, xpath_segment_not_found_message,
+        zoom_factor_must_be_positive_message,
     };
     use crate::error::OpenPageError;
     use std::path::Path;
@@ -970,6 +1025,34 @@ mod tests {
         assert_eq!(
             browser_backed_page_only_message("retry_times()"),
             "retry_times() is only available on browser-backed pages"
+        );
+        assert_eq!(
+            zoom_factor_must_be_positive_message(0.0),
+            "zoom factor must be a positive finite number: 0"
+        );
+        assert_eq!(
+            permission_setting_invalid_message("maybe"),
+            "permission setting must be one of granted/denied/prompt, got maybe"
+        );
+        assert_eq!(
+            permission_origin_scheme_message("ftp://example.test"),
+            "permission origin must use http or https, got ftp://example.test"
+        );
+        assert_eq!(
+            drag_in_requires_file_path_message(),
+            "drag_in() requires at least one file path"
+        );
+        assert_eq!(
+            drag_in_file_path_empty_message(),
+            "drag_in() file path must not be empty"
+        );
+        assert_eq!(
+            screenshot_clip_order_message(),
+            "screenshot clip requires right_bottom to be greater than left_top"
+        );
+        assert_eq!(
+            screenshot_clip_complete_message(),
+            "screenshot clip requires both left_top and right_bottom"
         );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),
@@ -1198,6 +1281,34 @@ mod tests {
         assert_eq!(
             browser_backed_page_only_message("retry_times()"),
             "retry_times() 仅适用于 browser-backed 页面"
+        );
+        assert_eq!(
+            zoom_factor_must_be_positive_message(0.0),
+            "zoom factor 必须是有限正数，当前为 0"
+        );
+        assert_eq!(
+            permission_setting_invalid_message("maybe"),
+            "permission setting 必须是 granted/denied/prompt 之一，当前为 maybe"
+        );
+        assert_eq!(
+            permission_origin_scheme_message("ftp://example.test"),
+            "permission origin 必须使用 http 或 https，当前为 ftp://example.test"
+        );
+        assert_eq!(
+            drag_in_requires_file_path_message(),
+            "drag_in() 至少需要一个文件路径"
+        );
+        assert_eq!(
+            drag_in_file_path_empty_message(),
+            "drag_in() 文件路径不能为空"
+        );
+        assert_eq!(
+            screenshot_clip_order_message(),
+            "截图裁剪要求 right_bottom 大于 left_top"
+        );
+        assert_eq!(
+            screenshot_clip_complete_message(),
+            "截图裁剪需要同时提供 left_top 和 right_bottom"
         );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),
