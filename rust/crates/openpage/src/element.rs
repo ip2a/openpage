@@ -53,8 +53,8 @@ use crate::settings::{
     click_failed_no_rect_message, click_failed_should_raise, element_html_unavailable_message,
     element_no_visible_rect_message, element_resource_unavailable_message,
     element_tag_name_unavailable_message, frame_index_must_start_message,
-    frame_index_out_of_range_message, no_new_tab_message, unsupported_mouse_button_message,
-    wait_timeout_result,
+    frame_index_out_of_range_message, no_new_tab_message, unsupported_key_message,
+    unsupported_mouse_button_message, wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -1657,7 +1657,7 @@ impl Element {
 
     fn press_key_with_modifiers(&self, key: &str, modifiers: i64) -> OpenPageResult<()> {
         let definition = keys::get_key_definition(key)
-            .ok_or_else(|| OpenPageError::PageOperation(format!("Key not found: {key}")))?;
+            .ok_or_else(|| OpenPageError::PageOperation(unsupported_key_message(key)))?;
         let key_down = build_key_event(definition, modifiers, false);
         let key_up = build_key_event(definition, modifiers, true);
         execute_page_command_blocking(

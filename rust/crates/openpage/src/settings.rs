@@ -361,6 +361,13 @@ pub(crate) fn unsupported_xpath_path_message(path: &str) -> String {
     }
 }
 
+pub(crate) fn unsupported_key_message(key: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("不支持的按键: {key}"),
+        _ => format!("unsupported key: {key}"),
+    }
+}
+
 pub(crate) fn frame_index_must_start_message() -> String {
     localized_message(
         "frame index must start from 1 or use negative indices from -1",
@@ -743,10 +750,11 @@ mod tests {
         session_page_no_current_url_message, session_page_no_loaded_document_message,
         shadow_root_object_id_unavailable_message,
         shadow_root_xpath_traversal_not_implemented_message, target_tab_not_found_message,
-        timeout_error, timeout_must_be_non_negative_message, unsupported_mouse_button_message,
-        unsupported_screencast_output_suffix_message, unsupported_xpath_path_message,
-        upload_requires_at_least_one_file_message, xpath_node_no_longer_exists_message,
-        xpath_path_not_found_message, xpath_segment_not_found_message,
+        timeout_error, timeout_must_be_non_negative_message, unsupported_key_message,
+        unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
+        unsupported_xpath_path_message, upload_requires_at_least_one_file_message,
+        xpath_node_no_longer_exists_message, xpath_path_not_found_message,
+        xpath_segment_not_found_message,
     };
     use crate::error::OpenPageError;
     use std::path::Path;
@@ -893,6 +901,7 @@ mod tests {
             unsupported_xpath_path_message("broken"),
             "unsupported xpath path `broken`"
         );
+        assert_eq!(unsupported_key_message("Hyper"), "unsupported key: Hyper");
         assert_eq!(
             unsupported_mouse_button_message("side"),
             "unsupported mouse button: side"
@@ -1092,6 +1101,7 @@ mod tests {
             unsupported_xpath_path_message("broken"),
             "不支持的 xpath 路径 `broken`"
         );
+        assert_eq!(unsupported_key_message("Hyper"), "不支持的按键: Hyper");
         assert_eq!(
             unsupported_mouse_button_message("side"),
             "不支持的鼠标按钮: side"

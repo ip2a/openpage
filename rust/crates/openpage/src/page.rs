@@ -84,7 +84,7 @@ use crate::settings::{
     frame_index_out_of_range_message, invalid_cookie_same_site_message, invalid_file_url_message,
     invalid_url_message, no_new_tab_message, page_connect_timed_out_message,
     singleton_tab_obj_enabled, suffixes_list_path, timeout_duration_millis, timeout_error,
-    timeout_must_be_non_negative_message, wait_timeout_result,
+    timeout_must_be_non_negative_message, unsupported_key_message, wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -2761,7 +2761,7 @@ impl Actions {
 
     pub fn key_down(&mut self, key: &str) -> OpenPageResult<&mut Self> {
         let definition = keys::get_key_definition(key)
-            .ok_or_else(|| OpenPageError::PageOperation(format!("unsupported key: {key}")))?;
+            .ok_or_else(|| OpenPageError::PageOperation(unsupported_key_message(key)))?;
         let next_modifiers = self.modifiers | action_modifier_bit(definition.key).unwrap_or(0);
         self.dispatch_key_event(action_build_key_event(&definition, next_modifiers, false))?;
         self.modifiers = next_modifiers;
@@ -2770,7 +2770,7 @@ impl Actions {
 
     pub fn key_up(&mut self, key: &str) -> OpenPageResult<&mut Self> {
         let definition = keys::get_key_definition(key)
-            .ok_or_else(|| OpenPageError::PageOperation(format!("unsupported key: {key}")))?;
+            .ok_or_else(|| OpenPageError::PageOperation(unsupported_key_message(key)))?;
         let next_modifiers = self.modifiers & !action_modifier_bit(definition.key).unwrap_or(0);
         self.dispatch_key_event(action_build_key_event(&definition, next_modifiers, true))?;
         self.modifiers = next_modifiers;
@@ -3079,7 +3079,7 @@ impl Actions {
 
     fn press_key_value(&self, value: &str, modifiers: i64) -> OpenPageResult<()> {
         let definition = keys::get_key_definition(value)
-            .ok_or_else(|| OpenPageError::PageOperation(format!("unsupported key: {value}")))?;
+            .ok_or_else(|| OpenPageError::PageOperation(unsupported_key_message(value)))?;
         self.dispatch_key_event(action_build_key_event(&definition, modifiers, false))?;
         self.dispatch_key_event(action_build_key_event(&definition, modifiers, true))
     }
