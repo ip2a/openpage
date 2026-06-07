@@ -329,6 +329,38 @@ pub(crate) fn invalid_xpath_query_message(query: &str, detail: &str) -> String {
     }
 }
 
+pub(crate) fn xpath_node_no_longer_exists_message() -> String {
+    localized_message("xpath node no longer exists", "xpath 节点已不存在")
+}
+
+pub(crate) fn invalid_xpath_segment_index_message(tag: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("xpath 片段 `{tag}` 的序号无效"),
+        _ => format!("invalid xpath segment index for `{tag}`"),
+    }
+}
+
+pub(crate) fn xpath_segment_not_found_message(tag: &str, index: usize) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("没有找到 xpath 片段 `{tag}[{index}]`"),
+        _ => format!("xpath segment `{tag}[{index}]` not found"),
+    }
+}
+
+pub(crate) fn xpath_path_not_found_message(path: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("没有找到 xpath 路径 `{path}`"),
+        _ => format!("xpath path `{path}` not found"),
+    }
+}
+
+pub(crate) fn unsupported_xpath_path_message(path: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("不支持的 xpath 路径 `{path}`"),
+        _ => format!("unsupported xpath path `{path}`"),
+    }
+}
+
 pub(crate) fn frame_index_must_start_message() -> String {
     localized_message(
         "frame index must start from 1 or use negative indices from -1",
@@ -700,18 +732,21 @@ mod tests {
         invalid_load_mode_message, invalid_options_manager_ini_literal_message,
         invalid_regex_message, invalid_screencast_data_url_message, invalid_tab_index_message,
         invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
-        javascript_execution_timed_out_message, no_new_tab_message, page_connect_timed_out_message,
-        scoped_test_settings, screencast_already_running_message,
-        screencast_capture_path_unavailable_message, screencast_empty_mime_type_message,
-        screencast_encode_output_failed_message, screencast_ffmpeg_encode_failed_message,
-        screencast_ffmpeg_spawn_failed_message, screencast_mode_change_while_running_message,
-        screencast_mode_output_suffix_message, screencast_no_frames_message,
-        screencast_output_path_unavailable_message, screencast_requires_save_path_message,
-        screencast_save_path_must_be_directory_message, session_page_no_current_url_message,
-        session_page_no_loaded_document_message, shadow_root_object_id_unavailable_message,
+        invalid_xpath_segment_index_message, javascript_execution_timed_out_message,
+        no_new_tab_message, page_connect_timed_out_message, scoped_test_settings,
+        screencast_already_running_message, screencast_capture_path_unavailable_message,
+        screencast_empty_mime_type_message, screencast_encode_output_failed_message,
+        screencast_ffmpeg_encode_failed_message, screencast_ffmpeg_spawn_failed_message,
+        screencast_mode_change_while_running_message, screencast_mode_output_suffix_message,
+        screencast_no_frames_message, screencast_output_path_unavailable_message,
+        screencast_requires_save_path_message, screencast_save_path_must_be_directory_message,
+        session_page_no_current_url_message, session_page_no_loaded_document_message,
+        shadow_root_object_id_unavailable_message,
         shadow_root_xpath_traversal_not_implemented_message, target_tab_not_found_message,
         timeout_error, timeout_must_be_non_negative_message, unsupported_mouse_button_message,
-        unsupported_screencast_output_suffix_message, upload_requires_at_least_one_file_message,
+        unsupported_screencast_output_suffix_message, unsupported_xpath_path_message,
+        upload_requires_at_least_one_file_message, xpath_node_no_longer_exists_message,
+        xpath_path_not_found_message, xpath_segment_not_found_message,
     };
     use crate::error::OpenPageError;
     use std::path::Path;
@@ -837,6 +872,26 @@ mod tests {
         assert_eq!(
             invalid_xpath_query_message("//[", "parse error"),
             "invalid xpath `//[`: parse error"
+        );
+        assert_eq!(
+            xpath_node_no_longer_exists_message(),
+            "xpath node no longer exists"
+        );
+        assert_eq!(
+            invalid_xpath_segment_index_message("div"),
+            "invalid xpath segment index for `div`"
+        );
+        assert_eq!(
+            xpath_segment_not_found_message("section", 2),
+            "xpath segment `section[2]` not found"
+        );
+        assert_eq!(
+            xpath_path_not_found_message("/html/body/main[1]"),
+            "xpath path `/html/body/main[1]` not found"
+        );
+        assert_eq!(
+            unsupported_xpath_path_message("broken"),
+            "unsupported xpath path `broken`"
         );
         assert_eq!(
             unsupported_mouse_button_message("side"),
@@ -1019,6 +1074,23 @@ mod tests {
         assert_eq!(
             invalid_xpath_query_message("//[", "parse error"),
             "无效的 xpath `//[`: parse error"
+        );
+        assert_eq!(xpath_node_no_longer_exists_message(), "xpath 节点已不存在");
+        assert_eq!(
+            invalid_xpath_segment_index_message("div"),
+            "xpath 片段 `div` 的序号无效"
+        );
+        assert_eq!(
+            xpath_segment_not_found_message("section", 2),
+            "没有找到 xpath 片段 `section[2]`"
+        );
+        assert_eq!(
+            xpath_path_not_found_message("/html/body/main[1]"),
+            "没有找到 xpath 路径 `/html/body/main[1]`"
+        );
+        assert_eq!(
+            unsupported_xpath_path_message("broken"),
+            "不支持的 xpath 路径 `broken`"
         );
         assert_eq!(
             unsupported_mouse_button_message("side"),

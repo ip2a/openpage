@@ -38,8 +38,10 @@ use crate::settings::{
     cookie_requires_url_or_domain_message, cookie_text_separator_conflict_message,
     cookie_value_empty_message, default_none_element_runtime_config, invalid_file_url_message,
     invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
-    session_cookie_requires_url_or_domain_message, session_page_no_current_url_message,
-    session_page_no_loaded_document_message,
+    invalid_xpath_segment_index_message, session_cookie_requires_url_or_domain_message,
+    session_page_no_current_url_message, session_page_no_loaded_document_message,
+    unsupported_xpath_path_message, xpath_node_no_longer_exists_message,
+    xpath_path_not_found_message, xpath_segment_not_found_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -5553,7 +5555,7 @@ fn xpath_element_index_in_parent(
     }
 
     Err(OpenPageError::ElementNotFound(
-        "xpath node no longer exists".to_string(),
+        xpath_node_no_longer_exists_message(),
     ))
 }
 
@@ -5592,18 +5594,16 @@ fn nth_xpath_child_by_tag<'a>(
     index: usize,
 ) -> OpenPageResult<&'a XpathElementNode> {
     if index == 0 {
-        return Err(OpenPageError::ElementNotFound(format!(
-            "invalid xpath segment index for `{tag}`"
-        )));
+        return Err(OpenPageError::ElementNotFound(
+            invalid_xpath_segment_index_message(tag),
+        ));
     }
     children
         .iter()
         .filter_map(|child| child.as_element_node().ok())
         .filter(|child| child.name == tag)
         .nth(index - 1)
-        .ok_or_else(|| {
-            OpenPageError::ElementNotFound(format!("xpath segment `{tag}[{index}]` not found"))
-        })
+        .ok_or_else(|| OpenPageError::ElementNotFound(xpath_segment_not_found_message(tag, index)))
 }
 
 fn find_scraper_element_by_path<'a>(
@@ -5638,7 +5638,7 @@ fn find_scraper_element_by_path_from<'a>(
     }
 
     ElementRef::wrap(current)
-        .ok_or_else(|| OpenPageError::ElementNotFound(format!("xpath path `{path}` not found")))
+        .ok_or_else(|| OpenPageError::ElementNotFound(xpath_path_not_found_message(path)))
 }
 
 fn nth_scraper_child_by_tag<'a>(
@@ -5647,18 +5647,16 @@ fn nth_scraper_child_by_tag<'a>(
     index: usize,
 ) -> OpenPageResult<NodeRef<'a, Node>> {
     if index == 0 {
-        return Err(OpenPageError::ElementNotFound(format!(
-            "invalid xpath segment index for `{tag}`"
-        )));
+        return Err(OpenPageError::ElementNotFound(
+            invalid_xpath_segment_index_message(tag),
+        ));
     }
     node.children()
         .filter_map(ElementRef::wrap)
         .filter(|child| child.value().name() == tag)
         .nth(index - 1)
         .map(|child| *child)
-        .ok_or_else(|| {
-            OpenPageError::ElementNotFound(format!("xpath segment `{tag}[{index}]` not found"))
-        })
+        .ok_or_else(|| OpenPageError::ElementNotFound(xpath_segment_not_found_message(tag, index)))
 }
 
 fn top_scraper_node(node: NodeRef<'_, Node>) -> NodeRef<'_, Node> {
@@ -5712,10 +5710,10 @@ fn parse_xpath_path(path: &str) -> OpenPageResult<Vec<XPathPathSegment>> {
                 .rsplit_once('[')
                 .and_then(|(tag, rest)| rest.strip_suffix(']').map(|index| (tag, index)))
                 .ok_or_else(|| {
-                    OpenPageError::ElementNotFound(format!("unsupported xpath path `{path}`"))
+                    OpenPageError::ElementNotFound(unsupported_xpath_path_message(path))
                 })?;
             let index = index.parse::<usize>().map_err(|_| {
-                OpenPageError::ElementNotFound(format!("unsupported xpath path `{path}`"))
+                OpenPageError::ElementNotFound(unsupported_xpath_path_message(path))
             })?;
             Ok(XPathPathSegment {
                 tag: tag.to_string(),
@@ -5742,15 +5740,16 @@ mod tests {
         CookieInput, SessionAdapter, SessionAdapterMount, SessionCert, SessionCookieParam,
         SessionElement, SessionHandle, SessionHooks, SessionOptions, SessionPage,
         SessionRequestOptions, SessionXPathResult, append_query_params, cookie_assignment,
-        cookie_input_to_params, default_referer_header, remove_cookie_from_header,
-        resolve_local_file_path, resolve_session_options_ini_path, snapshot_find,
-        snapshot_find_all, snapshot_fragment_find, snapshot_fragment_root,
+        cookie_input_to_params, default_referer_header, nth_scraper_child_by_tag, parse_xpath_path,
+        remove_cookie_from_header, resolve_local_file_path, resolve_session_options_ini_path,
+        snapshot_find, snapshot_find_all, snapshot_fragment_find, snapshot_fragment_root,
         snapshot_fragment_root_with_base_url, snapshot_root,
     };
     use crate::settings::scoped_test_settings;
     use crate::{By, ElementsListExt, LocatorInput, OpenPageError, Settings};
     use base64::Engine;
     use base64::prelude::BASE64_STANDARD;
+    use scraper::Html;
     use serde_json::json;
     use std::env;
     use std::fs;
@@ -8174,6 +8173,42 @@ mod tests {
             .to_string();
         assert!(chinese.contains("定位符语法不受支持"));
         assert!(chinese.contains("无效的 xpath `//[`"));
+    }
+
+    #[test]
+    fn xpath_path_errors_follow_language_setting() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let english = parse_xpath_path("broken")
+            .expect_err("unsupported xpath path should fail")
+            .to_string();
+        assert!(english.contains("element not found"));
+        assert!(english.contains("unsupported xpath path `broken`"));
+
+        let parsed = Html::parse_document("<html><body><div></div></body></html>");
+        let missing = nth_scraper_child_by_tag(parsed.tree.root(), "section", 2)
+            .expect_err("missing xpath segment should fail")
+            .to_string();
+        assert!(missing.contains("xpath segment `section[2]` not found"));
+
+        Settings::set_language("cn");
+
+        let chinese = parse_xpath_path("broken")
+            .expect_err("unsupported xpath path should localize")
+            .to_string();
+        assert!(chinese.contains("没有找到元素"));
+        assert!(chinese.contains("不支持的 xpath 路径 `broken`"));
+
+        let invalid_index = nth_scraper_child_by_tag(parsed.tree.root(), "section", 0)
+            .expect_err("invalid xpath segment index should localize")
+            .to_string();
+        assert!(invalid_index.contains("xpath 片段 `section` 的序号无效"));
+
+        let missing = nth_scraper_child_by_tag(parsed.tree.root(), "section", 2)
+            .expect_err("missing xpath segment should localize")
+            .to_string();
+        assert!(missing.contains("没有找到 xpath 片段 `section[2]`"));
     }
 
     #[test]
