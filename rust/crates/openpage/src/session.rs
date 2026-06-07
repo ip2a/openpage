@@ -49,11 +49,11 @@ use crate::settings::{
     session_cert_read_failed_message, session_cookie_requires_url_or_domain_message,
     session_download_status_message, session_identity_parse_failed_message,
     session_page_no_current_url_message, session_page_no_loaded_document_message,
-    snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
-    snapshot_node_no_longer_exists_message, unsupported_snapshot_node_kind_message,
-    unsupported_xpath_path_message, unterminated_session_ini_python_string_message,
-    xpath_node_no_longer_exists_message, xpath_path_not_found_message,
-    xpath_segment_not_found_message,
+    session_request_failed_message, snapshot_fragment_root_not_found_message,
+    snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
+    unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
+    unterminated_session_ini_python_string_message, xpath_node_no_longer_exists_message,
+    xpath_path_not_found_message, xpath_segment_not_found_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -1947,7 +1947,13 @@ impl SessionPage {
                 context.timeout_secs,
             )
             .send()
-            .map_err(|err| OpenPageError::Http(format!("{err:?}")))
+            .map_err(|err| {
+                OpenPageError::Http(session_request_failed_message(
+                    "GET",
+                    &request_url,
+                    &format!("{err:?}"),
+                ))
+            })
         })
     }
 
@@ -1975,7 +1981,13 @@ impl SessionPage {
                 context.timeout_secs,
             )
             .send()
-            .map_err(|err| OpenPageError::Http(format!("{err:?}")))
+            .map_err(|err| {
+                OpenPageError::Http(session_request_failed_message(
+                    "POST",
+                    &request_url,
+                    &format!("{err:?}"),
+                ))
+            })
         })
     }
 
@@ -2004,13 +2016,20 @@ impl SessionPage {
                 context.timeout_secs,
             );
             match &payload {
-                Some(payload) => request
-                    .json(payload)
-                    .send()
-                    .map_err(|err| OpenPageError::Http(format!("{err:?}"))),
-                None => request
-                    .send()
-                    .map_err(|err| OpenPageError::Http(format!("{err:?}"))),
+                Some(payload) => request.json(payload).send().map_err(|err| {
+                    OpenPageError::Http(session_request_failed_message(
+                        "POST",
+                        &request_url,
+                        &format!("{err:?}"),
+                    ))
+                }),
+                None => request.send().map_err(|err| {
+                    OpenPageError::Http(session_request_failed_message(
+                        "POST",
+                        &request_url,
+                        &format!("{err:?}"),
+                    ))
+                }),
             }
         })
     }
@@ -2726,7 +2745,13 @@ impl SessionPage {
                 context.timeout_secs,
             )
             .send()
-            .map_err(|err| OpenPageError::Http(format!("{err:?}")));
+            .map_err(|err| {
+                OpenPageError::Http(session_request_failed_message(
+                    "GET",
+                    &request_url,
+                    &format!("{err:?}"),
+                ))
+            });
 
             match response {
                 Ok(response) => {
@@ -8102,6 +8127,40 @@ mod tests {
         let result = page.get_with_options(&url, &request_options);
         assert!(result.is_err());
         handle.join().expect("server thread");
+    }
+
+    #[test]
+    fn session_request_send_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let page = SessionPage::new(SessionOptions {
+            retry_times: 0,
+            ..SessionOptions::default()
+        })
+        .expect("session page");
+        let request_options = SessionRequestOptions {
+            timeout_secs: Some(1),
+            ..SessionRequestOptions::default()
+        };
+
+        let (english_url, english_handle) = spawn_delayed_server(Duration::from_millis(1200));
+        let english = page
+            .get_with_options(&english_url, &request_options)
+            .expect_err("timeout should fail")
+            .to_string();
+        assert!(english.contains(&format!("session GET request failed for {english_url}")));
+        let _ = english_handle.join();
+
+        Settings::set_language("cn");
+
+        let (chinese_url, chinese_handle) = spawn_delayed_server(Duration::from_millis(1200));
+        let chinese = page
+            .get_with_options(&chinese_url, &request_options)
+            .expect_err("timeout should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains(&format!("session GET 请求 {chinese_url} 失败")));
+        assert!(chinese.contains("HTTP 操作失败"));
+        let _ = chinese_handle.join();
     }
 
     #[test]

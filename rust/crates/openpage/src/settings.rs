@@ -949,6 +949,13 @@ pub(crate) fn session_identity_parse_failed_message(err: &str) -> String {
     }
 }
 
+pub(crate) fn session_request_failed_message(method: &str, request_url: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("session {method} 请求 {request_url} 失败: {err}"),
+        _ => format!("session {method} request failed for {request_url}: {err}"),
+    }
+}
+
 pub(crate) fn select_element_required_message() -> String {
     localized_message(
         "select() is only available for <select> elements",
