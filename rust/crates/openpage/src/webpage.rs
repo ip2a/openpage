@@ -1761,7 +1761,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.over().map(|value| value.map(Self::Browser)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "over() is only available in driver mode".to_string(),
+                driver_mode_only_message("over()"),
             )),
         }
     }
@@ -1772,7 +1772,7 @@ impl WebElement {
                 .over_with_timeout(timeout_ms)
                 .map(|value| value.map(Self::Browser)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "over_with_timeout() is only available in driver mode".to_string(),
+                driver_mode_only_message("over_with_timeout()"),
             )),
         }
     }
@@ -1790,7 +1790,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.offset(locator, x, y, timeout_ms).map(Self::Browser),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "offset() is only available in driver mode".to_string(),
+                driver_mode_only_message("offset()"),
             )),
         }
     }
@@ -1804,7 +1804,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.east(locator, pixels, index).map(Self::Browser),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "east() is only available in driver mode".to_string(),
+                driver_mode_only_message("east()"),
             )),
         }
     }
@@ -1818,7 +1818,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.south(locator, pixels, index).map(Self::Browser),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "south() is only available in driver mode".to_string(),
+                driver_mode_only_message("south()"),
             )),
         }
     }
@@ -1832,7 +1832,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.west(locator, pixels, index).map(Self::Browser),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "west() is only available in driver mode".to_string(),
+                driver_mode_only_message("west()"),
             )),
         }
     }
@@ -1846,7 +1846,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.north(locator, pixels, index).map(Self::Browser),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "north() is only available in driver mode".to_string(),
+                driver_mode_only_message("north()"),
             )),
         }
     }
@@ -1855,7 +1855,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.click(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "click() is only available in driver mode".to_string(),
+                driver_mode_only_message("click()"),
             )),
         }
     }
@@ -1869,7 +1869,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.click_with_options(by_js, timeout_ms, wait_stop),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "click_with_options() is only available in driver mode".to_string(),
+                driver_mode_only_message("click_with_options()"),
             )),
         }
     }
@@ -1884,7 +1884,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.click_at(offset_x, offset_y, button, count),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "click_at() is only available in driver mode".to_string(),
+                driver_mode_only_message("click_at()"),
             )),
         }
     }
@@ -1893,7 +1893,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.click_multi(times),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "click_multi() is only available in driver mode".to_string(),
+                driver_mode_only_message("click_multi()"),
             )),
         }
     }
@@ -1902,7 +1902,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.click_left(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "click_left() is only available in driver mode".to_string(),
+                driver_mode_only_message("click_left()"),
             )),
         }
     }
@@ -1916,7 +1916,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.click_left_with_options(by_js, timeout_ms, wait_stop),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "click_left_with_options() is only available in driver mode".to_string(),
+                driver_mode_only_message("click_left_with_options()"),
             )),
         }
     }
@@ -1925,7 +1925,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.click_middle(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "click_middle() is only available in driver mode".to_string(),
+                driver_mode_only_message("click_middle()"),
             )),
         }
     }
@@ -1934,7 +1934,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.click_right(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "click_right() is only available in driver mode".to_string(),
+                driver_mode_only_message("click_right()"),
             )),
         }
     }
@@ -1943,7 +1943,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.input(text),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "input() is only available in driver mode".to_string(),
+                driver_mode_only_message("input()"),
             )),
         }
     }
@@ -1952,7 +1952,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.input_with_options(text, clear, by_js),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "input_with_options() is only available in driver mode".to_string(),
+                driver_mode_only_message("input_with_options()"),
             )),
         }
     }
@@ -1966,7 +1966,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.input_keys_with_options(values, clear, by_js),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "input_keys_with_options() is only available in driver mode".to_string(),
+                driver_mode_only_message("input_keys_with_options()"),
             )),
         }
     }
@@ -1975,7 +1975,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.clear(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "clear() is only available in driver mode".to_string(),
+                driver_mode_only_message("clear()"),
             )),
         }
     }
@@ -1984,7 +1984,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.submit(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "submit() is only available in driver mode".to_string(),
+                driver_mode_only_message("submit()"),
             )),
         }
     }
@@ -1993,7 +1993,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.clear_with_mode(by_js),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "clear_with_mode() is only available in driver mode".to_string(),
+                driver_mode_only_message("clear_with_mode()"),
             )),
         }
     }
@@ -2002,7 +2002,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.set_file_input_files(files),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "set_file_input_files() is only available in driver mode".to_string(),
+                driver_mode_only_message("set_file_input_files()"),
             )),
         }
     }
@@ -2011,7 +2011,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.press_key(key),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "press_key() is only available in driver mode".to_string(),
+                driver_mode_only_message("press_key()"),
             )),
         }
     }
@@ -5986,6 +5986,53 @@ mod tests {
             chinese_shadow,
             OpenPageError::UnsupportedOperation(ref message)
                 if message.contains("shadow_root() 仅在 driver 模式可用")
+        ));
+    }
+
+    #[test]
+    fn web_element_session_driver_only_interaction_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let element = WebElement::Session(
+            snapshot_root("<html><body><button id='ok'>OK</button></body></html>")
+                .expect("session snapshot root should parse"),
+        );
+        let english = match element.offset(None::<&str>, None, None, 100) {
+            Err(error) => error,
+            Ok(_) => panic!("session-backed WebElement offset should fail"),
+        };
+        assert!(matches!(
+            english,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("offset() is only available in driver mode")
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese_click = element
+            .click()
+            .expect_err("session-backed WebElement click should fail");
+        assert!(matches!(
+            chinese_click,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("click() 仅在 driver 模式可用")
+        ));
+        let chinese_input = element
+            .input("text")
+            .expect_err("session-backed WebElement input should fail");
+        assert!(matches!(
+            chinese_input,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("input() 仅在 driver 模式可用")
+        ));
+        let chinese_key = element
+            .press_key("Enter")
+            .expect_err("session-backed WebElement press_key should fail");
+        assert!(matches!(
+            chinese_key,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("press_key() 仅在 driver 模式可用")
         ));
     }
 
