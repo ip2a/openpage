@@ -933,7 +933,7 @@ impl Element {
             self.inner
                 .scroll_into_view()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| element_operation_error("scroll into view", err))?;
             Ok::<(), OpenPageError>(())
         })?;
         if center == Some(true) || (center != Some(false) && self.is_covered().unwrap_or(false)) {
@@ -1577,7 +1577,7 @@ impl Element {
             self.inner
                 .screenshot(CaptureScreenshotFormat::Png)
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                .map_err(|err| element_operation_error("capture screenshot", err))
         })
     }
 
@@ -1607,7 +1607,7 @@ impl Element {
             self.inner
                 .save_screenshot(CaptureScreenshotFormat::Png, path)
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| element_operation_error("save screenshot", err))?;
             Ok(())
         })
     }
@@ -1677,7 +1677,7 @@ impl Element {
             self.inner
                 .type_str(value)
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| element_operation_error("type text", err))?;
             Ok(())
         })
     }
@@ -1707,7 +1707,7 @@ impl Element {
             self.inner
                 .focus()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| element_operation_error("focus", err))?;
             Ok(())
         })
     }
@@ -1746,7 +1746,7 @@ impl Element {
                 self.inner
                     .hover()
                     .await
-                    .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                    .map_err(|err| element_operation_error("hover", err))?;
                 Ok(())
             });
         }
@@ -1755,7 +1755,7 @@ impl Element {
             self.inner
                 .scroll_into_view()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| element_operation_error("scroll into view", err))?;
             Ok::<(), OpenPageError>(())
         })?;
         let (x, y) = self.offset_target_point(offset_x, offset_y)?;
@@ -1763,7 +1763,7 @@ impl Element {
             self.page
                 .move_mouse(Point::new(x as f64, y as f64))
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| element_operation_error("move mouse", err))?;
             Ok(())
         })
     }
