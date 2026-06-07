@@ -4365,7 +4365,7 @@ impl WebPage {
                 .active_element()
                 .map(|element| element.map(WebElement::Browser)),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "active_element() is only available in driver mode".to_string(),
+                driver_mode_only_message("active_element()"),
             )),
         }
     }
@@ -4377,7 +4377,7 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.driver.remove_element(locator),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "remove_element() is only available in driver mode".to_string(),
+                driver_mode_only_message("remove_element()"),
             )),
         }
     }
@@ -4405,7 +4405,7 @@ impl WebPage {
                 .add_element_html(html, insert_to, before)
                 .map(WebElement::Browser),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "add_element_html() is only available in driver mode".to_string(),
+                driver_mode_only_message("add_element_html()"),
             )),
         }
     }
@@ -4427,7 +4427,7 @@ impl WebPage {
                 .add_element(content, insert_to, before)
                 .map(WebElement::Browser),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "add_element() is only available in driver mode".to_string(),
+                driver_mode_only_message("add_element()"),
             )),
         }
     }
@@ -4463,7 +4463,7 @@ impl WebPage {
                 .add_element_info(info, insert_to, before)
                 .map(WebElement::Browser),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "add_element_info() is only available in driver mode".to_string(),
+                driver_mode_only_message("add_element_info()"),
             )),
         }
     }
@@ -6500,6 +6500,52 @@ mod tests {
         let _ = page.quit();
         let _ = fs::remove_dir_all(&temp_dir);
         result.expect("webpage session scroll errors should localize");
+    }
+
+    #[test]
+    fn webpage_session_element_mutation_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) = launch_headless_test_webpage(
+            "webpage-session-element-mutation-errors",
+            WebMode::Session,
+        )
+        .expect("launch headless webpage");
+        let result = (|| -> crate::OpenPageResult<()> {
+            let english = page
+                .active_element()
+                .expect_err("session-mode WebPage active_element should fail");
+            assert!(matches!(
+                english,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("active_element() is only available in driver mode")
+            ));
+
+            Settings::set_language("cn");
+
+            let chinese_remove = page
+                .remove_element("css:#gone")
+                .expect_err("session-mode WebPage remove_element should fail");
+            assert!(matches!(
+                chinese_remove,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("remove_element() 仅在 driver 模式可用")
+            ));
+            let chinese_add = page
+                .add_element_html("<div></div>", None::<&str>, None::<&str>)
+                .expect_err("session-mode WebPage add_element_html should fail");
+            assert!(matches!(
+                chinese_add,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("add_element_html() 仅在 driver 模式可用")
+            ));
+            Ok(())
+        })();
+
+        let _ = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+        result.expect("webpage session element mutation errors should localize");
     }
 
     #[test]
