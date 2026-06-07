@@ -87,7 +87,9 @@ impl Settings {
 
     pub fn set_language(code: impl Into<String>) -> Self {
         let code = code.into();
-        with_settings_write(|settings| settings.language = Some(code.clone()));
+        with_settings_write(|settings| {
+            settings.language = normalize_language_code(&code).map(str::to_string);
+        });
         Self
     }
 
@@ -1986,6 +1988,33 @@ mod tests {
         let snapshot = Settings::snapshot();
         assert_eq!(snapshot.cdp_timeout, 1.5);
         assert_eq!(snapshot.browser_connect_timeout, 2.5);
+    }
+
+    #[test]
+    fn settings_language_setter_stores_normalized_codes() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        Settings::set_language("cn");
+        assert_eq!(Settings::snapshot().language.as_deref(), Some("zh_cn"));
+        assert_eq!(
+            click_failed_no_rect_message(),
+            "模拟点击失败，因为元素没有位置及大小"
+        );
+
+        Settings::set_language("EN");
+        assert_eq!(Settings::snapshot().language.as_deref(), Some("en"));
+        assert_eq!(
+            click_failed_no_rect_message(),
+            "simulated click failed because element has no rect"
+        );
+
+        Settings::set_language("unsupported");
+        assert_eq!(Settings::snapshot().language, None);
+        assert_eq!(
+            click_failed_no_rect_message(),
+            "simulated click failed because element has no rect"
+        );
     }
 
     #[test]
