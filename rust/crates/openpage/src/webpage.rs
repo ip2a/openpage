@@ -3340,8 +3340,7 @@ impl WebPage {
             WebMode::Session => {
                 if page_load_secs.is_some() || script_secs.is_some() {
                     return Err(OpenPageError::UnsupportedOperation(
-                        "set_timeouts(page_load/script) is only available in driver mode"
-                            .to_string(),
+                        driver_mode_only_message("set_timeouts(page_load/script)"),
                     ));
                 }
                 if let Some(base_secs) = base_secs {
@@ -4997,9 +4996,7 @@ impl WebPage {
     pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<Self> {
         let driver = self.driver.reconnect(wait_ms)?;
         let browser = driver.browser().cloned().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(
-                "reconnect() is only available in driver mode".to_string(),
-            )
+            OpenPageError::UnsupportedOperation(driver_mode_only_message("reconnect()"))
         })?;
         Ok(Self {
             browser,
@@ -5071,7 +5068,7 @@ impl<'a> WebElementClicker<'a> {
         match self.element {
             WebElement::Browser(element) => Ok(element.clicker()),
             WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "clicker() is only available in driver mode".to_string(),
+                driver_mode_only_message("clicker()"),
             )),
         }
     }
@@ -5879,6 +5876,49 @@ mod tests {
             OpenPageError::UnsupportedOperation(ref message)
                 if message.contains("timeout 必须是有限且非负的数字")
         ));
+    }
+
+    #[test]
+    fn webpage_session_tail_driver_only_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-session-tail-driver-errors", WebMode::Session)
+                .expect("launch headless webpage");
+        let result = (|| -> crate::OpenPageResult<()> {
+            let english = page
+                .set_timeouts(None, Some(1.0), None)
+                .expect_err("session-mode WebPage page_load timeout should fail");
+            assert!(matches!(
+                english,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains(
+                        "set_timeouts(page_load/script) is only available in driver mode"
+                    )
+            ));
+
+            Settings::set_language("cn");
+
+            let element = WebElement::Session(
+                snapshot_root("<html><body><button>OK</button></body></html>")
+                    .expect("session snapshot root should parse"),
+            );
+            let chinese_clicker = element
+                .clicker()
+                .middle(false)
+                .expect_err("session-backed WebElement clicker should fail");
+            assert!(matches!(
+                chinese_clicker,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("clicker() 仅在 driver 模式可用")
+            ));
+            Ok(())
+        })();
+
+        let _ = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+        result.expect("webpage session tail driver-only errors should localize");
     }
 
     #[test]
