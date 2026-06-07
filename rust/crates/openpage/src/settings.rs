@@ -375,6 +375,15 @@ pub(crate) fn driver_mode_only_message(operation: &str) -> String {
     }
 }
 
+pub(crate) fn web_element_list_driver_filter_message(operation: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => {
+            format!("{operation} 过滤器仅适用于 driver-backed WebElement 列表")
+        }
+        _ => format!("{operation} filters are only available for driver-backed WebElement lists"),
+    }
+}
+
 pub(crate) fn resolve_frame_viewport_offset_failed_message(detail: &str) -> String {
     localized_error_with_detail(
         "resolve frame viewport offset failed",
@@ -794,8 +803,8 @@ mod tests {
         timeout_error, timeout_must_be_non_negative_message, unsupported_key_message,
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
         unsupported_xpath_path_message, upload_requires_at_least_one_file_message,
-        xpath_node_no_longer_exists_message, xpath_path_not_found_message,
-        xpath_segment_not_found_message,
+        web_element_list_driver_filter_message, xpath_node_no_longer_exists_message,
+        xpath_path_not_found_message, xpath_segment_not_found_message,
     };
     use crate::error::OpenPageError;
     use std::path::Path;
@@ -946,6 +955,10 @@ mod tests {
         assert_eq!(
             driver_mode_only_message("get_frame()"),
             "get_frame() is only available in driver mode"
+        );
+        assert_eq!(
+            web_element_list_driver_filter_message("displayed()"),
+            "displayed() filters are only available for driver-backed WebElement lists"
         );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),
@@ -1166,6 +1179,10 @@ mod tests {
         assert_eq!(
             driver_mode_only_message("get_frame()"),
             "get_frame() 仅在 driver 模式可用"
+        );
+        assert_eq!(
+            web_element_list_driver_filter_message("displayed()"),
+            "displayed() 过滤器仅适用于 driver-backed WebElement 列表"
         );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),

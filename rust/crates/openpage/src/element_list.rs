@@ -6,6 +6,7 @@ use serde_json::Value;
 use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::session::SessionElement;
+use crate::settings::web_element_list_driver_filter_message;
 use crate::webpage::WebElement;
 
 pub(crate) type ElementsOneRuntimeConfigHandle = Arc<Mutex<ElementsOneRuntimeConfig>>;
@@ -5085,8 +5086,7 @@ impl ElementListStateItem for WebElement {
         match self {
             Self::Browser(element) => element.is_displayed(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "displayed() filters are only available for driver-backed WebElement lists"
-                    .to_string(),
+                web_element_list_driver_filter_message("displayed()"),
             )),
         }
     }
@@ -5095,8 +5095,7 @@ impl ElementListStateItem for WebElement {
         match self {
             Self::Browser(element) => element.is_checked(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "checked() filters are only available for driver-backed WebElement lists"
-                    .to_string(),
+                web_element_list_driver_filter_message("checked()"),
             )),
         }
     }
@@ -5105,8 +5104,7 @@ impl ElementListStateItem for WebElement {
         match self {
             Self::Browser(element) => element.is_selected(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "selected() filters are only available for driver-backed WebElement lists"
-                    .to_string(),
+                web_element_list_driver_filter_message("selected()"),
             )),
         }
     }
@@ -5115,8 +5113,7 @@ impl ElementListStateItem for WebElement {
         match self {
             Self::Browser(element) => element.is_enabled(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "enabled() filters are only available for driver-backed WebElement lists"
-                    .to_string(),
+                web_element_list_driver_filter_message("enabled()"),
             )),
         }
     }
@@ -5125,8 +5122,7 @@ impl ElementListStateItem for WebElement {
         match self {
             Self::Browser(element) => element.is_clickable(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "clickable() filters are only available for driver-backed WebElement lists"
-                    .to_string(),
+                web_element_list_driver_filter_message("clickable()"),
             )),
         }
     }
@@ -5135,8 +5131,7 @@ impl ElementListStateItem for WebElement {
         match self {
             Self::Browser(element) => element.has_rect(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "have_rect() filters are only available for driver-backed WebElement lists"
-                    .to_string(),
+                web_element_list_driver_filter_message("have_rect()"),
             )),
         }
     }
@@ -5147,7 +5142,7 @@ impl ElementListDriverItem for WebElement {
         match self {
             Self::Browser(element) => element.style(name, None),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "style() filters are only available for driver-backed WebElement lists".to_string(),
+                web_element_list_driver_filter_message("style()"),
             )),
         }
     }
@@ -5156,8 +5151,7 @@ impl ElementListDriverItem for WebElement {
         match self {
             Self::Browser(element) => element.property(name),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "property() filters are only available for driver-backed WebElement lists"
-                    .to_string(),
+                web_element_list_driver_filter_message("property()"),
             )),
         }
     }
@@ -5360,8 +5354,9 @@ mod tests {
     use serde_json::json;
     use std::sync::{Arc, Mutex};
 
-    use crate::OpenPageResult;
     use crate::session::snapshot_find_all;
+    use crate::settings::scoped_test_settings;
+    use crate::{OpenPageError, OpenPageResult, Settings, WebElement};
 
     #[derive(Debug)]
     struct FakeItem {
@@ -5578,6 +5573,49 @@ mod tests {
                 Some("https://example.test/two".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn web_element_list_driver_filter_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let items: Vec<WebElement> = snapshot_find_all(
+            r#"
+            <div>
+                <button class="item" id="ok">OK</button>
+            </div>
+            "#,
+            ".item",
+        )
+        .expect("snapshot elements")
+        .into_iter()
+        .map(WebElement::Session)
+        .collect();
+
+        let english = items
+            .filter()
+            .displayed(true)
+            .expect_err("session-backed WebElement displayed filter should fail");
+        assert!(matches!(
+            english,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains(
+                    "displayed() filters are only available for driver-backed WebElement lists"
+                )
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese_style = items
+            .filter()
+            .style("display", "block", true)
+            .expect_err("session-backed WebElement style filter should fail");
+        assert!(matches!(
+            chinese_style,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("style() 过滤器仅适用于 driver-backed WebElement 列表")
+        ));
     }
 
     #[test]
