@@ -47,12 +47,12 @@ use crate::settings::{
     missing_session_ini_field_message, parent_element_index_must_start_message,
     parent_element_level_must_start_message, parent_element_not_found_message,
     session_cert_read_failed_message, session_cookie_requires_url_or_domain_message,
-    session_page_no_current_url_message, session_page_no_loaded_document_message,
-    snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
-    snapshot_node_no_longer_exists_message, unsupported_snapshot_node_kind_message,
-    unsupported_xpath_path_message, unterminated_session_ini_python_string_message,
-    xpath_node_no_longer_exists_message, xpath_path_not_found_message,
-    xpath_segment_not_found_message,
+    session_download_status_message, session_page_no_current_url_message,
+    session_page_no_loaded_document_message, snapshot_fragment_root_not_found_message,
+    snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
+    unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
+    unterminated_session_ini_python_string_message, xpath_node_no_longer_exists_message,
+    xpath_path_not_found_message, xpath_segment_not_found_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -2777,8 +2777,9 @@ impl SessionPage {
                     );
                     if !(200..400).contains(&status_code) {
                         if attempt == retry_times {
-                            return Err(OpenPageError::Http(format!(
-                                "download request returned status {status_code} for {request_url}"
+                            return Err(OpenPageError::Http(session_download_status_message(
+                                status_code,
+                                &request_url,
                             )));
                         }
                     } else {
@@ -7311,6 +7312,41 @@ mod tests {
         let _ = handle.join().expect("server thread");
         let _ = fs::remove_file(&target_path);
         let _ = fs::remove_dir_all(&target_dir);
+    }
+
+    #[test]
+    fn session_download_status_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let page = SessionPage::new(SessionOptions {
+            retry_times: 0,
+            retry_interval_millis: 0,
+            ..SessionOptions::default()
+        })
+        .expect("session page");
+        let (english_address, english_handle) = spawn_capture_server("404 Not Found", "missing");
+        let english_url = format!("{english_address}/missing.bin");
+        let english_error = page
+            .download(&english_url)
+            .expect_err("download status validation should fail")
+            .to_string();
+        assert!(english_error.contains(&format!(
+            "download request returned status 404 for {english_url}"
+        )));
+        let _ = english_handle.join().expect("english server thread");
+
+        Settings::set_language("cn");
+
+        let (chinese_address, chinese_handle) = spawn_capture_server("404 Not Found", "missing");
+        let chinese_url = format!("{chinese_address}/missing.bin");
+        let chinese_error = page
+            .download(&chinese_url)
+            .expect_err("download status validation should fail in Chinese")
+            .to_string();
+        assert!(chinese_error.contains(&format!("下载请求 {chinese_url} 返回状态码 404")));
+        assert!(chinese_error.contains("HTTP 操作失败"));
+        let _ = chinese_handle.join().expect("chinese server thread");
     }
 
     #[test]

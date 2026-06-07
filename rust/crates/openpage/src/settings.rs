@@ -928,6 +928,13 @@ pub(crate) fn session_cert_read_failed_message(kind: &str, path: &str, err: &str
     }
 }
 
+pub(crate) fn session_download_status_message(status_code: u16, request_url: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("下载请求 {request_url} 返回状态码 {status_code}"),
+        _ => format!("download request returned status {status_code} for {request_url}"),
+    }
+}
+
 pub(crate) fn select_element_required_message() -> String {
     localized_message(
         "select() is only available for <select> elements",
