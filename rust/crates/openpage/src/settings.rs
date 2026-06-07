@@ -823,6 +823,20 @@ pub(crate) fn unsupported_snapshot_node_kind_message() -> String {
     localized_message("unsupported snapshot node kind", "不支持的快照节点类型")
 }
 
+pub(crate) fn invalid_session_ini_field_message(field: &str, detail: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("session options ini 中的 {field} 无效: {detail}"),
+        _ => format!("invalid {field} in session options ini: {detail}"),
+    }
+}
+
+pub(crate) fn invalid_session_ini_field_expected_message(field: &str, expected: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("session options ini 中的 {field} 无效: 期望 {expected}"),
+        _ => format!("invalid {field} in session options ini: expected {expected}"),
+    }
+}
+
 pub(crate) fn select_element_required_message() -> String {
     localized_message(
         "select() is only available for <select> elements",
@@ -1254,15 +1268,16 @@ mod tests {
         invalid_auto_port_scope_message, invalid_cookie_same_site_message,
         invalid_download_file_exists_mode_message, invalid_file_url_message,
         invalid_load_mode_message, invalid_options_manager_ini_literal_message,
-        invalid_regex_message, invalid_screencast_data_url_message, invalid_tab_index_message,
-        invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
-        invalid_xpath_segment_index_message, javascript_execution_timed_out_message,
-        launched_browser_only_message, multi_select_action_required_message, no_new_tab_message,
-        page_connect_timed_out_message, parent_element_index_must_start_message,
-        parent_element_level_must_start_message, parent_element_not_found_message,
-        permission_origin_required_message, permission_origin_scheme_message,
-        permission_setting_invalid_message, relative_direction_index_must_start_message,
-        resolve_element_frame_id_failed_message,
+        invalid_regex_message, invalid_screencast_data_url_message,
+        invalid_session_ini_field_expected_message, invalid_session_ini_field_message,
+        invalid_tab_index_message, invalid_url_message, invalid_xpath_html_message,
+        invalid_xpath_query_message, invalid_xpath_segment_index_message,
+        javascript_execution_timed_out_message, launched_browser_only_message,
+        multi_select_action_required_message, no_new_tab_message, page_connect_timed_out_message,
+        parent_element_index_must_start_message, parent_element_level_must_start_message,
+        parent_element_not_found_message, permission_origin_required_message,
+        permission_origin_scheme_message, permission_setting_invalid_message,
+        relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
         resolve_frame_owner_viewport_location_failed_message,
         resolve_frame_viewport_offset_failed_message,
         resolve_top_viewport_screen_origin_failed_message,
@@ -1418,6 +1433,14 @@ mod tests {
         assert_eq!(
             invalid_options_manager_ini_literal_message("parse error"),
             "invalid options manager ini literal: parse error"
+        );
+        assert_eq!(
+            invalid_session_ini_field_message("retry_times", "parse error"),
+            "invalid retry_times in session options ini: parse error"
+        );
+        assert_eq!(
+            invalid_session_ini_field_expected_message("retry_times", "positive integer"),
+            "invalid retry_times in session options ini: expected positive integer"
         );
         assert_eq!(
             invalid_xpath_html_message("parse error"),
@@ -1902,6 +1925,14 @@ mod tests {
         assert_eq!(
             invalid_options_manager_ini_literal_message("parse error"),
             "无效的 OptionsManager ini 字面量: parse error"
+        );
+        assert_eq!(
+            invalid_session_ini_field_message("retry_times", "parse error"),
+            "session options ini 中的 retry_times 无效: parse error"
+        );
+        assert_eq!(
+            invalid_session_ini_field_expected_message("retry_times", "positive integer"),
+            "session options ini 中的 retry_times 无效: 期望 positive integer"
         );
         assert_eq!(
             invalid_xpath_html_message("parse error"),

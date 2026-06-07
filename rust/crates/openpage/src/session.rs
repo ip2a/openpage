@@ -37,6 +37,7 @@ use crate::settings::{
     component_state_lock_poisoned_message, cookie_name_empty_message,
     cookie_requires_url_or_domain_message, cookie_text_separator_conflict_message,
     cookie_value_empty_message, default_none_element_runtime_config, invalid_file_url_message,
+    invalid_session_ini_field_expected_message, invalid_session_ini_field_message,
     invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
     invalid_xpath_segment_index_message, parent_element_index_must_start_message,
     parent_element_level_must_start_message, parent_element_not_found_message,
@@ -544,7 +545,10 @@ fn parse_session_options_ini(content: &str) -> OpenPageResult<SessionOptions> {
 
     if let Some(retry_times) = ini_non_empty(ini_section_value(&ini, "others", "retry_times")) {
         options.retry_times = retry_times.parse::<usize>().map_err(|err| {
-            OpenPageError::Http(format!("invalid retry_times in session options ini: {err}"))
+            OpenPageError::Http(invalid_session_ini_field_message(
+                "retry_times",
+                &err.to_string(),
+            ))
         })?;
     }
     if let Some(retry_interval) = ini_non_empty(ini_section_value(&ini, "others", "retry_interval"))
@@ -822,26 +826,32 @@ fn ini_non_empty(value: Option<&str>) -> Option<&str> {
 
 fn parse_ini_timeout_secs(value: &str) -> OpenPageResult<u64> {
     let timeout = value.parse::<f64>().map_err(|err| {
-        OpenPageError::Http(format!("invalid timeout in session options ini: {err}"))
+        OpenPageError::Http(invalid_session_ini_field_message(
+            "timeout",
+            &err.to_string(),
+        ))
     })?;
     if timeout.is_sign_negative() {
-        return Err(OpenPageError::Http(
-            "invalid timeout in session options ini: negative value".to_string(),
-        ));
+        return Err(OpenPageError::Http(invalid_session_ini_field_message(
+            "timeout",
+            "negative value",
+        )));
     }
     Ok(timeout.ceil() as u64)
 }
 
 fn parse_ini_retry_interval_millis(value: &str) -> OpenPageResult<u64> {
     let retry_interval = value.parse::<f64>().map_err(|err| {
-        OpenPageError::Http(format!(
-            "invalid retry_interval in session options ini: {err}"
+        OpenPageError::Http(invalid_session_ini_field_message(
+            "retry_interval",
+            &err.to_string(),
         ))
     })?;
     if retry_interval.is_sign_negative() {
-        return Err(OpenPageError::Http(
-            "invalid retry_interval in session options ini: negative value".to_string(),
-        ));
+        return Err(OpenPageError::Http(invalid_session_ini_field_message(
+            "retry_interval",
+            "negative value",
+        )));
     }
     Ok((retry_interval * 1000.0).round() as u64)
 }
@@ -956,16 +966,18 @@ fn parse_optional_ini_usize(value: &str, field: &str) -> OpenPageResult<Option<u
             .map(|value| value as usize)
             .map(Some)
             .ok_or_else(|| {
-                OpenPageError::Http(format!(
-                    "invalid {field} in session options ini: expected positive integer"
+                OpenPageError::Http(invalid_session_ini_field_expected_message(
+                    field,
+                    "positive integer",
                 ))
             }),
         Value::String(text) if text.trim().is_empty() => Ok(None),
         Value::String(text) => text.parse::<usize>().map(Some).map_err(|err| {
-            OpenPageError::Http(format!("invalid {field} in session options ini: {err}"))
+            OpenPageError::Http(invalid_session_ini_field_message(field, &err.to_string()))
         }),
         _ => Err(OpenPageError::Http(format!(
-            "invalid {field} in session options ini: expected integer or null"
+            "{}",
+            invalid_session_ini_field_expected_message(field, "integer or null")
         ))),
     }
 }
