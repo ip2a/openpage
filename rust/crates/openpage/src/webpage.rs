@@ -2680,7 +2680,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.select_all(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "select_all() is only available in driver mode".to_string(),
+                driver_mode_only_message("select_all()"),
             )),
         }
     }
@@ -2689,7 +2689,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.invert_selected(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "invert_selected() is only available in driver mode".to_string(),
+                driver_mode_only_message("invert_selected()"),
             )),
         }
     }
@@ -2698,7 +2698,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.clear_selected(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "clear_selected() is only available in driver mode".to_string(),
+                driver_mode_only_message("clear_selected()"),
             )),
         }
     }
@@ -2707,7 +2707,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.rect_corners(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "rect_corners() is only available in driver mode".to_string(),
+                driver_mode_only_message("rect_corners()"),
             )),
         }
     }
@@ -2716,7 +2716,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.rect_viewport_corners(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "rect_viewport_corners() is only available in driver mode".to_string(),
+                driver_mode_only_message("rect_viewport_corners()"),
             )),
         }
     }
@@ -2725,7 +2725,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.rect_location(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "rect_location() is only available in driver mode".to_string(),
+                driver_mode_only_message("rect_location()"),
             )),
         }
     }
@@ -2734,7 +2734,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.rect_viewport_location(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "rect_viewport_location() is only available in driver mode".to_string(),
+                driver_mode_only_message("rect_viewport_location()"),
             )),
         }
     }
@@ -2743,7 +2743,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.rect_screen_location(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "rect_screen_location() is only available in driver mode".to_string(),
+                driver_mode_only_message("rect_screen_location()"),
             )),
         }
     }
@@ -2752,7 +2752,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.rect_midpoint(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "rect_midpoint() is only available in driver mode".to_string(),
+                driver_mode_only_message("rect_midpoint()"),
             )),
         }
     }
@@ -2761,7 +2761,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.rect_viewport_midpoint(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "rect_viewport_midpoint() is only available in driver mode".to_string(),
+                driver_mode_only_message("rect_viewport_midpoint()"),
             )),
         }
     }
@@ -2770,7 +2770,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.rect_click_point(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "rect_click_point() is only available in driver mode".to_string(),
+                driver_mode_only_message("rect_click_point()"),
             )),
         }
     }
@@ -2779,7 +2779,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.rect_viewport_click_point(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "rect_viewport_click_point() is only available in driver mode".to_string(),
+                driver_mode_only_message("rect_viewport_click_point()"),
             )),
         }
     }
@@ -2788,7 +2788,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.rect_size(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "rect_size() is only available in driver mode".to_string(),
+                driver_mode_only_message("rect_size()"),
             )),
         }
     }
@@ -2797,7 +2797,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.rect_screen_midpoint(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "rect_screen_midpoint() is only available in driver mode".to_string(),
+                driver_mode_only_message("rect_screen_midpoint()"),
             )),
         }
     }
@@ -2806,7 +2806,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.rect_screen_click_point(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "rect_screen_click_point() is only available in driver mode".to_string(),
+                driver_mode_only_message("rect_screen_click_point()"),
             )),
         }
     }
@@ -2815,7 +2815,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.rect_scroll_position(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "rect_scroll_position() is only available in driver mode".to_string(),
+                driver_mode_only_message("rect_scroll_position()"),
             )),
         }
     }
@@ -6187,6 +6187,44 @@ mod tests {
             chinese_option,
             OpenPageError::UnsupportedOperation(ref message)
                 if message.contains("cancel_by_option() 仅在 driver 模式可用")
+        ));
+    }
+
+    #[test]
+    fn web_element_session_driver_only_select_tail_rect_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let element = WebElement::Session(
+            snapshot_root("<html><body><div id='box'>box</div></body></html>")
+                .expect("session snapshot root should parse"),
+        );
+        let english = element
+            .select_all()
+            .expect_err("session-backed WebElement select_all should fail");
+        assert!(matches!(
+            english,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("select_all() is only available in driver mode")
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese_rect = element
+            .rect_location()
+            .expect_err("session-backed WebElement rect_location should fail");
+        assert!(matches!(
+            chinese_rect,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("rect_location() 仅在 driver 模式可用")
+        ));
+        let chinese_size = element
+            .rect_size()
+            .expect_err("session-backed WebElement rect_size should fail");
+        assert!(matches!(
+            chinese_size,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("rect_size() 仅在 driver 模式可用")
         ));
     }
 
