@@ -608,6 +608,62 @@ pub(crate) fn data_url_missing_comma_message() -> String {
     )
 }
 
+pub(crate) fn resolve_top_viewport_screen_origin_failed_message(detail: &str) -> String {
+    localized_error_with_detail(
+        "resolve top viewport screen origin failed",
+        "解析顶层视口屏幕原点失败",
+        detail,
+    )
+}
+
+pub(crate) fn resolve_top_window_device_pixel_ratio_failed_message(detail: &str) -> String {
+    localized_error_with_detail(
+        "resolve top window devicePixelRatio failed",
+        "解析顶层窗口 devicePixelRatio 失败",
+        detail,
+    )
+}
+
+pub(crate) fn top_window_viewport_size_lookup_failed_message(detail: &str) -> String {
+    localized_error_with_detail(
+        "top window viewport size lookup failed",
+        "查询顶层窗口视口大小失败",
+        detail,
+    )
+}
+
+pub(crate) fn resolve_frame_owner_viewport_location_failed_message(
+    frame_id: &str,
+    detail: &str,
+) -> String {
+    match current_language_code() {
+        Some("zh_cn") => {
+            format!("解析 frame owner 视口位置失败，frame {frame_id}: {detail}")
+        }
+        _ => format!("resolve frame owner viewport location failed for {frame_id}: {detail}"),
+    }
+}
+
+pub(crate) fn scan_frame_marker_javascript_failed_message(frame_id: &str, detail: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => {
+            format!("扫描 frame {frame_id} 中的 marker 失败: JavaScript 执行失败: {detail}")
+        }
+        _ => {
+            format!(
+                "scan frame {frame_id} for marker failed: javascript evaluation failed: {detail}"
+            )
+        }
+    }
+}
+
+pub(crate) fn scan_frame_marker_failed_message(frame_id: &str, detail: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("扫描 frame {frame_id} 中的 marker 失败: {detail}"),
+        _ => format!("scan frame {frame_id} for marker failed: {detail}"),
+    }
+}
+
 pub(crate) fn action_wait_seconds_non_negative_message() -> String {
     localized_message("wait() seconds must be >= 0", "wait() 秒数必须 >= 0")
 }
@@ -1153,8 +1209,12 @@ mod tests {
         parent_element_level_must_start_message, permission_origin_required_message,
         permission_origin_scheme_message, permission_setting_invalid_message,
         relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
+        resolve_frame_owner_viewport_location_failed_message,
         resolve_frame_viewport_offset_failed_message,
+        resolve_top_viewport_screen_origin_failed_message,
+        resolve_top_window_device_pixel_ratio_failed_message,
         resolved_frame_owner_missing_object_id_message, resolved_node_missing_object_id_message,
+        scan_frame_marker_failed_message, scan_frame_marker_javascript_failed_message,
         scoped_test_settings, screencast_already_running_message,
         screencast_capture_path_unavailable_message, screencast_empty_mime_type_message,
         screencast_encode_output_failed_message, screencast_ffmpeg_encode_failed_message,
@@ -1169,7 +1229,8 @@ mod tests {
         shadow_root_object_id_unavailable_message,
         shadow_root_xpath_traversal_not_implemented_message, target_tab_not_found_message,
         timeout_error, timeout_must_be_non_negative_message,
-        top_window_device_pixel_ratio_not_numeric_message, unsupported_key_message,
+        top_window_device_pixel_ratio_not_numeric_message,
+        top_window_viewport_size_lookup_failed_message, unsupported_key_message,
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
         unsupported_xpath_path_message, upload_requires_at_least_one_file_message,
         value_coordinate_not_numeric_message, value_coordinate_pair_exactly_two_message,
@@ -1457,6 +1518,30 @@ mod tests {
         assert_eq!(
             data_url_missing_comma_message(),
             "data URL did not contain a comma separator"
+        );
+        assert_eq!(
+            resolve_top_viewport_screen_origin_failed_message("detail"),
+            "resolve top viewport screen origin failed: detail"
+        );
+        assert_eq!(
+            resolve_top_window_device_pixel_ratio_failed_message("detail"),
+            "resolve top window devicePixelRatio failed: detail"
+        );
+        assert_eq!(
+            top_window_viewport_size_lookup_failed_message("detail"),
+            "top window viewport size lookup failed: detail"
+        );
+        assert_eq!(
+            resolve_frame_owner_viewport_location_failed_message("frame-1", "detail"),
+            "resolve frame owner viewport location failed for frame-1: detail"
+        );
+        assert_eq!(
+            scan_frame_marker_javascript_failed_message("frame-1", "detail"),
+            "scan frame frame-1 for marker failed: javascript evaluation failed: detail"
+        );
+        assert_eq!(
+            scan_frame_marker_failed_message("frame-1", "detail"),
+            "scan frame frame-1 for marker failed: detail"
         );
         assert_eq!(
             action_wait_seconds_non_negative_message(),
@@ -1878,6 +1963,30 @@ mod tests {
         assert_eq!(
             data_url_missing_comma_message(),
             "data URL 不包含逗号分隔符"
+        );
+        assert_eq!(
+            resolve_top_viewport_screen_origin_failed_message("detail"),
+            "解析顶层视口屏幕原点失败: detail"
+        );
+        assert_eq!(
+            resolve_top_window_device_pixel_ratio_failed_message("detail"),
+            "解析顶层窗口 devicePixelRatio 失败: detail"
+        );
+        assert_eq!(
+            top_window_viewport_size_lookup_failed_message("detail"),
+            "查询顶层窗口视口大小失败: detail"
+        );
+        assert_eq!(
+            resolve_frame_owner_viewport_location_failed_message("frame-1", "detail"),
+            "解析 frame owner 视口位置失败，frame frame-1: detail"
+        );
+        assert_eq!(
+            scan_frame_marker_javascript_failed_message("frame-1", "detail"),
+            "扫描 frame frame-1 中的 marker 失败: JavaScript 执行失败: detail"
+        );
+        assert_eq!(
+            scan_frame_marker_failed_message("frame-1", "detail"),
+            "扫描 frame frame-1 中的 marker 失败: detail"
         );
         assert_eq!(
             action_wait_seconds_non_negative_message(),

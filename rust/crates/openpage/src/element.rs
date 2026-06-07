@@ -61,10 +61,15 @@ use crate::settings::{
     multi_select_action_required_message, no_new_tab_message,
     parent_element_index_must_start_message, parent_element_level_must_start_message,
     relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
-    resolve_frame_viewport_offset_failed_message, resolved_node_missing_object_id_message,
+    resolve_frame_owner_viewport_location_failed_message,
+    resolve_frame_viewport_offset_failed_message,
+    resolve_top_viewport_screen_origin_failed_message,
+    resolve_top_window_device_pixel_ratio_failed_message, resolved_node_missing_object_id_message,
+    scan_frame_marker_failed_message, scan_frame_marker_javascript_failed_message,
     select_element_required_message, session_backed_element_driver_target_message,
     set_file_input_requires_at_least_one_file_message, shadow_root_object_id_unavailable_message,
-    top_window_device_pixel_ratio_not_numeric_message, unsupported_key_message,
+    top_window_device_pixel_ratio_not_numeric_message,
+    top_window_viewport_size_lookup_failed_message, unsupported_key_message,
     unsupported_mouse_button_message, value_coordinate_not_numeric_message,
     value_coordinate_pair_exactly_two_message, value_coordinate_pair_parse_failed_message,
     value_coordinate_pair_required_message, value_non_negative_integer_required_message,
@@ -3411,8 +3416,8 @@ impl Element {
     fn viewport_point_to_screen(&self, point: (f64, f64)) -> OpenPageResult<Option<(f64, f64)>> {
         let (viewport_screen_x, viewport_screen_y) =
             self.top_viewport_screen_origin().map_err(|err| {
-                OpenPageError::PageOperation(format!(
-                    "resolve top viewport screen origin failed: {err}"
+                OpenPageError::PageOperation(resolve_top_viewport_screen_origin_failed_message(
+                    &err.to_string(),
                 ))
             })?;
         let Some((frame_offset_x, frame_offset_y)) =
@@ -3425,8 +3430,8 @@ impl Element {
             return Ok(None);
         };
         let device_pixel_ratio = self.top_window_device_pixel_ratio().map_err(|err| {
-            OpenPageError::PageOperation(format!(
-                "resolve top window devicePixelRatio failed: {err}"
+            OpenPageError::PageOperation(resolve_top_window_device_pixel_ratio_failed_message(
+                &err.to_string(),
             ))
         })?;
         Ok(Some((
@@ -3443,8 +3448,8 @@ impl Element {
         let (viewport_width, viewport_height) = value_as_f64_pair(
             page.run_js("[window.innerWidth, window.innerHeight]")
                 .map_err(|err| {
-                    OpenPageError::PageOperation(format!(
-                        "top window viewport size lookup failed: {err}"
+                    OpenPageError::PageOperation(top_window_viewport_size_lookup_failed_message(
+                        &err.to_string(),
                     ))
                 })?,
             "top window viewport size with scrollbar",
@@ -3482,8 +3487,9 @@ impl Element {
         let absolute_owner_location = self
             .frame_owner_viewport_location(&current_frame_id)
             .map_err(|err| {
-                OpenPageError::PageOperation(format!(
-                    "resolve frame owner viewport location failed for {current_frame_id}: {err}"
+                OpenPageError::PageOperation(resolve_frame_owner_viewport_location_failed_message(
+                    &current_frame_id,
+                    &err.to_string(),
                 ))
             })?;
         if absolute_owner_location.is_some() {
@@ -3497,9 +3503,12 @@ impl Element {
             let Some((owner_x, owner_y)) = self
                 .frame_owner_viewport_location(&current_frame_id)
                 .map_err(|err| {
-                    OpenPageError::PageOperation(format!(
-                        "resolve frame owner viewport location failed for {current_frame_id}: {err}"
-                    ))
+                    OpenPageError::PageOperation(
+                        resolve_frame_owner_viewport_location_failed_message(
+                            &current_frame_id,
+                            &err.to_string(),
+                        ),
+                    )
                 })?
             else {
                 return Ok(None);
@@ -3563,15 +3572,15 @@ impl Element {
                         if message.contains("No value found") =>
                     {
                         if deferred_scan_error.is_none() {
-                            deferred_scan_error = Some(OpenPageError::PageOperation(format!(
-                                "scan frame {frame_id} for marker failed: javascript evaluation failed: {message}"
-                            )));
+                            deferred_scan_error = Some(OpenPageError::PageOperation(
+                                scan_frame_marker_javascript_failed_message(&frame_id, &message),
+                            ));
                         }
                     }
                     Err(err) => {
-                        return Err(OpenPageError::PageOperation(format!(
-                            "scan frame {frame_id} for marker failed: {err}"
-                        )));
+                        return Err(OpenPageError::PageOperation(
+                            scan_frame_marker_failed_message(&frame_id, &err.to_string()),
+                        ));
                     }
                 }
             }
