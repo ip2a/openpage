@@ -1410,7 +1410,15 @@ impl Frame {
     }
 
     pub fn refresh(&self) -> OpenPageResult<()> {
-        self.run_js("this.location.reload();").map(|_| ())
+        self.refresh_with_options(false)
+    }
+
+    pub fn refresh_with_options(&self, ignore_cache: bool) -> OpenPageResult<()> {
+        let script = format!(
+            "(() => {{ window.location.reload({ignore_cache}); return true; }})()",
+            ignore_cache = if ignore_cache { "true" } else { "false" },
+        );
+        self.run_js(&script).map(|_| ())
     }
 
     pub fn get(&self, url: &str) -> OpenPageResult<bool> {

@@ -672,6 +672,12 @@ impl WebFrame {
         }
     }
 
+    pub fn refresh_with_options(&self, ignore_cache: bool) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.refresh_with_options(ignore_cache),
+        }
+    }
+
     pub fn get(&self, url: &str) -> OpenPageResult<bool> {
         match self {
             Self::Browser(frame) => frame.get(url),
@@ -7871,6 +7877,7 @@ mod tests {
             let _ = frame.click_middle("css:#open", Some(1_000), true);
             let _ = frame.get("https://example.test/frame");
             let _ = frame.goto("https://example.test/frame");
+            let _ = frame.refresh_with_options(true);
 
             let _ = web_page.set_upload_files(&files);
             let _ = web_page.set_upload_paths(&files);
@@ -7929,6 +7936,7 @@ mod tests {
             let _ = web_frame.click_middle("css:#open", Some(1_000), true);
             let _ = web_frame.get("https://example.test/frame");
             let _ = web_frame.goto("https://example.test/frame");
+            let _ = web_frame.refresh_with_options(true);
         }
 
         let _ = assert_calls as fn(&Frame, &WebPage, &WebFrame);
