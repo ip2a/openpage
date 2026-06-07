@@ -35,15 +35,15 @@ use crate::settings::{
     browser_config_path_failed_message, browser_connect_timeout_duration,
     browser_temp_dir_create_failed_message, browser_user_data_dir_reset_failed_message,
     cdp_timeout_duration, component_state_lock_poisoned_message, download_canceled_message,
-    download_did_not_complete_in_time_message, download_file_operation_failed_message,
-    download_frame_not_mapped_to_tab_message, download_path_not_configured_message,
-    download_skipped_without_final_path_message, invalid_auto_port_scope_message,
-    invalid_download_file_exists_mode_message, invalid_launch_options_ini_boolean_message,
-    invalid_launch_options_ini_field_expected_message, invalid_launch_options_ini_field_message,
-    invalid_launch_options_ini_python_string_message, invalid_load_mode_message,
-    invalid_tab_index_message, no_free_port_in_auto_port_scope_message, singleton_tab_obj_enabled,
-    target_tab_not_found_message, timeout_duration_millis, timeout_error,
-    unterminated_launch_options_ini_python_string_message, wait_failed_should_raise,
+    download_did_not_complete_in_time_message, download_directory_create_failed_message,
+    download_file_operation_failed_message, download_frame_not_mapped_to_tab_message,
+    download_path_not_configured_message, download_skipped_without_final_path_message,
+    invalid_auto_port_scope_message, invalid_download_file_exists_mode_message,
+    invalid_launch_options_ini_boolean_message, invalid_launch_options_ini_field_expected_message,
+    invalid_launch_options_ini_field_message, invalid_launch_options_ini_python_string_message,
+    invalid_load_mode_message, invalid_tab_index_message, no_free_port_in_auto_port_scope_message,
+    singleton_tab_obj_enabled, target_tab_not_found_message, timeout_duration_millis,
+    timeout_error, unterminated_launch_options_ini_python_string_message, wait_failed_should_raise,
 };
 use crate::webpage::WebPage;
 
@@ -1973,8 +1973,7 @@ impl Browser {
 
     pub fn set_download_path(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
         let path = path.as_ref().to_path_buf();
-        std::fs::create_dir_all(&path)
-            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        create_download_directory(&path)?;
 
         self.inner
             .download_path
@@ -2063,8 +2062,7 @@ impl Browser {
         settings: &BrowserDownloadSettingsSnapshot,
     ) -> OpenPageResult<()> {
         if let Some(path) = &settings.path {
-            std::fs::create_dir_all(path)
-                .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+            create_download_directory(path)?;
         }
         *self
             .inner
@@ -2129,8 +2127,7 @@ impl Browser {
     ) -> OpenPageResult<()> {
         let frame_id = self.resolve_page_frame_id(target_id)?;
         let path = path.as_ref().to_path_buf();
-        std::fs::create_dir_all(&path)
-            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        create_download_directory(&path)?;
         let mut settings = self
             .inner
             .page_download_settings
@@ -3900,6 +3897,15 @@ fn configure_download_behavior(
     })
 }
 
+fn create_download_directory(path: &Path) -> OpenPageResult<()> {
+    std::fs::create_dir_all(path).map_err(|err| {
+        OpenPageError::BrowserOperation(download_directory_create_failed_message(
+            path,
+            &err.to_string(),
+        ))
+    })
+}
+
 async fn execute_browser_handle_command_async<T>(
     browser: &OxBrowser,
     command: T,
@@ -4296,7 +4302,7 @@ mod tests {
         browser_download_naming_lock_poisoned_error, browser_download_path_lock_poisoned_error,
         browser_load_mode_lock_poisoned_error, browser_newest_tab_lock_poisoned_error,
         browser_retry_interval_lock_poisoned_error, browser_retry_times_lock_poisoned_error,
-        browser_tab_info_matches, browser_timeouts_lock_poisoned_error,
+        browser_tab_info_matches, browser_timeouts_lock_poisoned_error, create_download_directory,
         default_launch_options_ini_path, download_source_path, finalize_download_path,
         find_free_port, find_new_tab_id, is_tab_like_type, isolated_context_lock_poisoned_error,
         make_temp_download_dir, make_temp_user_data_dir,
@@ -4535,6 +4541,33 @@ mod tests {
             .expect_err("missing final and fallback paths should fail in Chinese")
             .to_string();
         assert!(chinese.contains("下载未在规定时间内完成"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn download_directory_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let dir = make_temp_dir("download-dir-error");
+        let parent_file = dir.join("parent-file");
+        let download_dir = parent_file.join("downloads");
+        fs::write(&parent_file, "content").expect("write parent file");
+
+        let english = create_download_directory(&download_dir)
+            .expect_err("file parent should fail")
+            .to_string();
+        assert!(english.contains("failed to create download directory"));
+        assert!(english.contains("parent-file"));
+
+        Settings::set_language("cn");
+
+        let chinese = create_download_directory(&download_dir)
+            .expect_err("file parent should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains("创建下载目录"));
+        assert!(chinese.contains("失败"));
+        assert!(chinese.contains("parent-file"));
 
         let _ = fs::remove_dir_all(&dir);
     }
