@@ -96,6 +96,27 @@ fn browser_load_mode_lock_poisoned_error() -> OpenPageError {
     ))
 }
 
+fn page_download_settings_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "page download settings",
+        "页面下载设置",
+    ))
+}
+
+fn mission_download_settings_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "mission download settings",
+        "下载任务设置",
+    ))
+}
+
+fn isolated_context_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "isolated context",
+        "隔离上下文",
+    ))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DownloadFileExistsMode {
     Rename,
@@ -1483,9 +1504,7 @@ impl Browser {
             .map(|mut contexts| {
                 contexts.insert(target_id.to_string(), browser_context_id.to_string());
             })
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("isolated context lock poisoned".to_string())
-            })
+            .map_err(|_| isolated_context_lock_poisoned_error())
     }
 
     fn isolated_context_id(&self, target_id: &str) -> OpenPageResult<Option<String>> {
@@ -1493,9 +1512,7 @@ impl Browser {
             .isolated_contexts
             .lock()
             .map(|contexts| contexts.get(target_id).cloned())
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("isolated context lock poisoned".to_string())
-            })
+            .map_err(|_| isolated_context_lock_poisoned_error())
     }
 
     pub(crate) fn browser_context_id(&self, target_id: &str) -> OpenPageResult<Option<String>> {
@@ -2083,9 +2100,11 @@ impl Browser {
 
     pub fn page_download_path(&self, target_id: &str) -> OpenPageResult<Option<String>> {
         let frame_id = self.resolve_page_frame_id(target_id)?;
-        let settings = self.inner.page_download_settings.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("page download settings lock poisoned".to_string())
-        })?;
+        let settings = self
+            .inner
+            .page_download_settings
+            .lock()
+            .map_err(|_| page_download_settings_lock_poisoned_error())?;
         if let Some(path) = settings
             .get(&frame_id)
             .and_then(|settings| settings.path.as_ref())
@@ -2105,18 +2124,22 @@ impl Browser {
         let path = path.as_ref().to_path_buf();
         std::fs::create_dir_all(&path)
             .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
-        let mut settings = self.inner.page_download_settings.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("page download settings lock poisoned".to_string())
-        })?;
+        let mut settings = self
+            .inner
+            .page_download_settings
+            .lock()
+            .map_err(|_| page_download_settings_lock_poisoned_error())?;
         settings.entry(frame_id).or_default().path = Some(path);
         Ok(())
     }
 
     pub fn page_download_file_exists_mode(&self, target_id: &str) -> OpenPageResult<String> {
         let frame_id = self.resolve_page_frame_id(target_id)?;
-        let settings = self.inner.page_download_settings.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("page download settings lock poisoned".to_string())
-        })?;
+        let settings = self
+            .inner
+            .page_download_settings
+            .lock()
+            .map_err(|_| page_download_settings_lock_poisoned_error())?;
         if let Some(mode) = settings
             .get(&frame_id)
             .and_then(|settings| settings.file_exists)
@@ -2133,9 +2156,11 @@ impl Browser {
         mode: DownloadFileExistsMode,
     ) -> OpenPageResult<()> {
         let frame_id = self.resolve_page_frame_id(target_id)?;
-        let mut settings = self.inner.page_download_settings.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("page download settings lock poisoned".to_string())
-        })?;
+        let mut settings = self
+            .inner
+            .page_download_settings
+            .lock()
+            .map_err(|_| page_download_settings_lock_poisoned_error())?;
         settings.entry(frame_id).or_default().file_exists = Some(mode);
         Ok(())
     }
@@ -2156,9 +2181,11 @@ impl Browser {
         suffix_specified: bool,
     ) -> OpenPageResult<()> {
         let frame_id = self.resolve_page_frame_id(target_id)?;
-        let mut settings = self.inner.page_download_settings.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("page download settings lock poisoned".to_string())
-        })?;
+        let mut settings = self
+            .inner
+            .page_download_settings
+            .lock()
+            .map_err(|_| page_download_settings_lock_poisoned_error())?;
         let entry = settings.entry(frame_id).or_default();
         entry.rename = rename.map(str::to_string);
         entry.suffix = if suffix_specified {
@@ -2174,9 +2201,11 @@ impl Browser {
         target_id: &str,
     ) -> OpenPageResult<Option<PageDownloadSettings>> {
         let frame_id = self.resolve_page_frame_id(target_id)?;
-        let settings = self.inner.page_download_settings.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("page download settings lock poisoned".to_string())
-        })?;
+        let settings = self
+            .inner
+            .page_download_settings
+            .lock()
+            .map_err(|_| page_download_settings_lock_poisoned_error())?;
         Ok(settings.get(&frame_id).cloned())
     }
 
@@ -2186,9 +2215,11 @@ impl Browser {
         settings: Option<PageDownloadSettings>,
     ) -> OpenPageResult<()> {
         let frame_id = self.resolve_page_frame_id(target_id)?;
-        let mut current = self.inner.page_download_settings.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("page download settings lock poisoned".to_string())
-        })?;
+        let mut current = self
+            .inner
+            .page_download_settings
+            .lock()
+            .map_err(|_| page_download_settings_lock_poisoned_error())?;
         if let Some(settings) = settings {
             current.insert(frame_id, settings);
         } else {
@@ -2379,48 +2410,39 @@ impl Browser {
             .page_download_settings
             .lock()
             .map(|settings| settings.clone())
-            .map_err(|_| {
-                OpenPageError::BrowserOperation(
-                    "browser page download settings lock poisoned".to_string(),
-                )
-            })?;
+            .map_err(|_| page_download_settings_lock_poisoned_error())?;
         let mission_download_settings = self
             .inner
             .mission_download_settings
             .lock()
             .map(|settings| settings.clone())
-            .map_err(|_| {
-                OpenPageError::BrowserOperation(
-                    "browser mission download settings lock poisoned".to_string(),
-                )
-            })?;
+            .map_err(|_| mission_download_settings_lock_poisoned_error())?;
         let isolated_contexts = self
             .inner
             .isolated_contexts
             .lock()
             .map(|contexts| contexts.clone())
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("isolated context lock poisoned".to_string())
-            })?;
+            .map_err(|_| isolated_context_lock_poisoned_error())?;
 
         if let Some(state) = Arc::get_mut(&mut browser.inner) {
             state.browser_pid = self.inner.browser_pid;
             state.headless = self.inner.headless;
             state.temp_user_data_dir = self.inner.temp_user_data_dir.clone();
             state.temp_download_dir = self.inner.temp_download_dir.clone();
-            *state.page_download_settings.get_mut().map_err(|_| {
-                OpenPageError::BrowserOperation(
-                    "browser page download settings lock poisoned".to_string(),
-                )
-            })? = page_download_settings;
-            *state.mission_download_settings.get_mut().map_err(|_| {
-                OpenPageError::BrowserOperation(
-                    "browser mission download settings lock poisoned".to_string(),
-                )
-            })? = mission_download_settings;
-            *state.isolated_contexts.get_mut().map_err(|_| {
-                OpenPageError::BrowserOperation("isolated context lock poisoned".to_string())
-            })? = isolated_contexts;
+            *state
+                .page_download_settings
+                .get_mut()
+                .map_err(|_| page_download_settings_lock_poisoned_error())? =
+                page_download_settings;
+            *state
+                .mission_download_settings
+                .get_mut()
+                .map_err(|_| mission_download_settings_lock_poisoned_error())? =
+                mission_download_settings;
+            *state
+                .isolated_contexts
+                .get_mut()
+                .map_err(|_| isolated_context_lock_poisoned_error())? = isolated_contexts;
         }
 
         Ok(browser)
@@ -2552,9 +2574,11 @@ impl Browser {
 
     fn capture_mission_download_settings(&self, info: &DownloadInfo) -> OpenPageResult<()> {
         let settings = self.resolve_download_settings(info)?;
-        let mut mission_settings = self.inner.mission_download_settings.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("mission download settings lock poisoned".to_string())
-        })?;
+        let mut mission_settings = self
+            .inner
+            .mission_download_settings
+            .lock()
+            .map_err(|_| mission_download_settings_lock_poisoned_error())?;
         mission_settings.insert(info.guid.clone(), settings);
         Ok(())
     }
@@ -2581,9 +2605,11 @@ impl Browser {
     }
 
     fn load_mode_value(&self) -> OpenPageResult<LoadMode> {
-        self.inner.load_mode.lock().map(|mode| *mode).map_err(|_| {
-            OpenPageError::BrowserOperation("browser load mode lock poisoned".to_string())
-        })
+        self.inner
+            .load_mode
+            .lock()
+            .map(|mode| *mode)
+            .map_err(|_| browser_load_mode_lock_poisoned_error())
     }
 
     fn resolve_download_settings(
@@ -2594,20 +2620,18 @@ impl Browser {
             .inner
             .mission_download_settings
             .lock()
-            .map_err(|_| {
-                OpenPageError::BrowserOperation(
-                    "mission download settings lock poisoned".to_string(),
-                )
-            })?
+            .map_err(|_| mission_download_settings_lock_poisoned_error())?
             .get(&info.guid)
             .cloned()
         {
             return Ok(settings);
         }
 
-        let page_settings = self.inner.page_download_settings.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("page download settings lock poisoned".to_string())
-        })?;
+        let page_settings = self
+            .inner
+            .page_download_settings
+            .lock()
+            .map_err(|_| page_download_settings_lock_poisoned_error())?;
         let page_settings = page_settings.get(&info.frame_id);
         let path = if let Some(path) = page_settings.and_then(|settings| settings.path.clone()) {
             path
@@ -2615,11 +2639,7 @@ impl Browser {
             self.inner
                 .download_path
                 .lock()
-                .map_err(|_| {
-                    OpenPageError::BrowserOperation(
-                        "browser download path lock poisoned".to_string(),
-                    )
-                })?
+                .map_err(|_| browser_download_path_lock_poisoned_error())?
                 .clone()
                 .ok_or_else(|| {
                     OpenPageError::UnsupportedOperation(
@@ -2630,16 +2650,18 @@ impl Browser {
         let mode = if let Some(mode) = page_settings.and_then(|settings| settings.file_exists) {
             mode
         } else {
-            *self.inner.download_file_exists.lock().map_err(|_| {
-                OpenPageError::BrowserOperation(
-                    "browser download file-exists lock poisoned".to_string(),
-                )
-            })?
+            *self
+                .inner
+                .download_file_exists
+                .lock()
+                .map_err(|_| browser_download_file_exists_lock_poisoned_error())?
         };
         let rename = page_settings.and_then(|settings| settings.rename.clone());
-        let browser_naming = self.inner.browser_download_naming.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("browser download naming lock poisoned".to_string())
-        })?;
+        let browser_naming = self
+            .inner
+            .browser_download_naming
+            .lock()
+            .map_err(|_| browser_download_naming_lock_poisoned_error())?;
         let rename = rename.or_else(|| browser_naming.rename.clone());
         let suffix = page_settings
             .and_then(|settings| settings.suffix.clone())
@@ -4188,7 +4210,9 @@ mod tests {
         browser_retry_interval_lock_poisoned_error, browser_retry_times_lock_poisoned_error,
         browser_tab_info_matches, browser_timeouts_lock_poisoned_error,
         default_launch_options_ini_path, finalize_download_path, find_free_port, find_new_tab_id,
-        is_tab_like_type, normalize_browser_tab_types, reset_browser_user_data_dir,
+        is_tab_like_type, isolated_context_lock_poisoned_error,
+        mission_download_settings_lock_poisoned_error, normalize_browser_tab_types,
+        page_download_settings_lock_poisoned_error, reset_browser_user_data_dir,
         resolve_browser_tab_target_id, resolve_browser_tab_target_ids,
         resolve_launch_options_ini_path, resolve_launch_user_data_dir, resolved_download_name,
         select_browser_tab_info_by_selector, system_user_data_dir, unique_download_path,
@@ -4306,6 +4330,46 @@ mod tests {
             browser_load_mode_lock_poisoned_error()
                 .to_string()
                 .contains("浏览器加载模式锁已损坏")
+        );
+    }
+
+    #[test]
+    fn browser_page_download_and_context_lock_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        assert!(
+            page_download_settings_lock_poisoned_error()
+                .to_string()
+                .contains("page download settings lock poisoned")
+        );
+        assert!(
+            mission_download_settings_lock_poisoned_error()
+                .to_string()
+                .contains("mission download settings lock poisoned")
+        );
+        assert!(
+            isolated_context_lock_poisoned_error()
+                .to_string()
+                .contains("isolated context lock poisoned")
+        );
+
+        Settings::set_language("cn");
+
+        assert!(
+            page_download_settings_lock_poisoned_error()
+                .to_string()
+                .contains("页面下载设置锁已损坏")
+        );
+        assert!(
+            mission_download_settings_lock_poisoned_error()
+                .to_string()
+                .contains("下载任务设置锁已损坏")
+        );
+        assert!(
+            isolated_context_lock_poisoned_error()
+                .to_string()
+                .contains("隔离上下文锁已损坏")
         );
     }
 
