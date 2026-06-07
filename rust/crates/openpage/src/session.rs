@@ -48,13 +48,13 @@ use crate::settings::{
     parent_element_level_must_start_message, parent_element_not_found_message,
     session_cert_read_failed_message, session_cookie_requires_url_or_domain_message,
     session_download_status_message, session_identity_parse_failed_message,
-    session_page_no_current_url_message, session_page_no_loaded_document_message,
-    session_request_failed_message, session_response_body_read_failed_message,
-    snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
-    snapshot_node_no_longer_exists_message, unsupported_snapshot_node_kind_message,
-    unsupported_xpath_path_message, unterminated_session_ini_python_string_message,
-    xpath_node_no_longer_exists_message, xpath_path_not_found_message,
-    xpath_segment_not_found_message,
+    session_local_file_failed_message, session_page_no_current_url_message,
+    session_page_no_loaded_document_message, session_request_failed_message,
+    session_response_body_read_failed_message, snapshot_fragment_root_not_found_message,
+    snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
+    unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
+    unterminated_session_ini_python_string_message, xpath_node_no_longer_exists_message,
+    xpath_path_not_found_message, xpath_segment_not_found_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -2969,16 +2969,26 @@ impl SessionPage {
     }
 
     fn load_local_file(&self, path: &Path) -> OpenPageResult<bool> {
-        let canonical = path
-            .canonicalize()
-            .map_err(|err| OpenPageError::Io(err.to_string()))?;
-        let raw_data =
-            std::fs::read(&canonical).map_err(|err| OpenPageError::Io(err.to_string()))?;
+        let canonical = path.canonicalize().map_err(|err| {
+            OpenPageError::Io(session_local_file_failed_message(
+                "resolve",
+                &path.display().to_string(),
+                &err.to_string(),
+            ))
+        })?;
+        let raw_data = std::fs::read(&canonical).map_err(|err| {
+            OpenPageError::Io(session_local_file_failed_message(
+                "read",
+                &canonical.display().to_string(),
+                &err.to_string(),
+            ))
+        })?;
         let file_url = Url::from_file_path(&canonical)
             .map_err(|_| {
-                OpenPageError::Io(format!(
-                    "failed to build file url for {}",
-                    canonical.display()
+                OpenPageError::Io(session_local_file_failed_message(
+                    "build file url for",
+                    &canonical.display().to_string(),
+                    "invalid file path",
                 ))
             })?
             .to_string();
@@ -7632,6 +7642,39 @@ mod tests {
         );
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn session_local_file_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let missing = env::temp_dir().join(format!(
+            "openpage-missing-local-{}.html",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system time")
+                .as_nanos()
+        ));
+        let file_url = Url::from_file_path(&missing)
+            .expect("build missing file url")
+            .to_string();
+
+        let english = page
+            .get(&file_url)
+            .expect_err("missing local file should fail")
+            .to_string();
+        assert!(english.contains("failed to resolve session local file"));
+        assert!(english.contains(&missing.display().to_string()));
+
+        Settings::set_language("cn");
+
+        let chinese = page
+            .get(&file_url)
+            .expect_err("missing local file should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains("session 本地文件 resolve 失败"));
+        assert!(chinese.contains(&missing.display().to_string()));
     }
 
     #[test]

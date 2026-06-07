@@ -963,6 +963,13 @@ pub(crate) fn session_response_body_read_failed_message(request_url: &str, err: 
     }
 }
 
+pub(crate) fn session_local_file_failed_message(action: &str, path: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("session 本地文件 {action} 失败 {path}: {err}"),
+        _ => format!("failed to {action} session local file {path}: {err}"),
+    }
+}
+
 pub(crate) fn select_element_required_message() -> String {
     localized_message(
         "select() is only available for <select> elements",
