@@ -42,9 +42,10 @@ use crate::settings::{
     invalid_auto_port_scope_message, invalid_download_file_exists_mode_message,
     invalid_launch_options_ini_boolean_message, invalid_launch_options_ini_field_expected_message,
     invalid_launch_options_ini_field_message, invalid_launch_options_ini_python_string_message,
-    invalid_load_mode_message, invalid_tab_index_message, no_free_port_in_auto_port_scope_message,
-    singleton_tab_obj_enabled, target_tab_not_found_message, timeout_duration_millis,
-    timeout_error, unterminated_launch_options_ini_python_string_message, wait_failed_should_raise,
+    invalid_load_mode_message, invalid_tab_index_message, invalid_url_message,
+    no_free_port_in_auto_port_scope_message, singleton_tab_obj_enabled,
+    target_tab_not_found_message, timeout_duration_millis, timeout_error,
+    unterminated_launch_options_ini_python_string_message, wait_failed_should_raise,
 };
 use crate::webpage::WebPage;
 
@@ -1747,8 +1748,7 @@ impl Browser {
     }
 
     pub fn set_cookie_header(&self, url: &str, cookie_header: &str) -> OpenPageResult<()> {
-        let url =
-            Url::parse(url).map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        let url = parse_browser_cookie_header_url(url)?;
         let cookies = browser_cookie_header_to_params(&url, cookie_header);
         if cookies.is_empty() {
             return Ok(());
@@ -2674,6 +2674,12 @@ impl Browser {
             suffix,
         })
     }
+}
+
+fn parse_browser_cookie_header_url(url: &str) -> OpenPageResult<Url> {
+    Url::parse(url).map_err(|err| {
+        OpenPageError::BrowserOperation(invalid_url_message(url, Some(&err.to_string())))
+    })
 }
 
 fn browser_pid(browser: &mut OxBrowser) -> Option<u32> {
@@ -4313,8 +4319,8 @@ mod tests {
         find_free_port, find_new_tab_id, is_tab_like_type, isolated_context_lock_poisoned_error,
         make_temp_download_dir, make_temp_user_data_dir,
         mission_download_settings_lock_poisoned_error, normalize_browser_tab_types,
-        page_download_settings_lock_poisoned_error, reset_browser_user_data_dir,
-        resolve_browser_tab_target_id, resolve_browser_tab_target_ids,
+        page_download_settings_lock_poisoned_error, parse_browser_cookie_header_url,
+        reset_browser_user_data_dir, resolve_browser_tab_target_id, resolve_browser_tab_target_ids,
         resolve_launch_options_ini_path, resolve_launch_user_data_dir, resolved_download_name,
         run_browser_future_with_cdp_timeout, select_browser_tab_info_by_selector,
         system_user_data_dir, unique_download_path, validate_auto_port_scope, write_chrome_flags,
@@ -5205,6 +5211,24 @@ mod tests {
         assert_eq!(cookies.len(), 2);
         assert_eq!(cookies[0].url.as_deref(), Some("https://example.com/"));
         assert_eq!(cookies[1].name, "baz");
+    }
+
+    #[test]
+    fn browser_cookie_header_url_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english = parse_browser_cookie_header_url("example.test")
+            .expect_err("relative url should fail")
+            .to_string();
+        assert!(english.contains("invalid url `example.test`, maybe add `http://`?"));
+
+        Settings::set_language("cn");
+
+        let chinese = parse_browser_cookie_header_url("example.test")
+            .expect_err("relative url should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains("无效的 url `example.test`，也许要加上 `http://`？"));
     }
 
     #[test]
