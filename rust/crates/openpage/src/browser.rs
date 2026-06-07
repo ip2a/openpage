@@ -33,8 +33,8 @@ use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::Page;
 use crate::settings::{
     browser_config_path_failed_message, browser_connect_timeout_duration,
-    browser_user_data_dir_reset_failed_message, cdp_timeout_duration,
-    component_state_lock_poisoned_message, download_canceled_message,
+    browser_temp_dir_create_failed_message, browser_user_data_dir_reset_failed_message,
+    cdp_timeout_duration, component_state_lock_poisoned_message, download_canceled_message,
     download_frame_not_mapped_to_tab_message, download_path_not_configured_message,
     download_skipped_without_final_path_message, invalid_auto_port_scope_message,
     invalid_download_file_exists_mode_message, invalid_launch_options_ini_boolean_message,
@@ -3833,7 +3833,14 @@ fn make_temp_user_data_dir(base: Option<&Path>) -> OpenPageResult<PathBuf> {
     let fallback = std::env::temp_dir();
     let base = base.unwrap_or_else(|| fallback.as_path());
     let path = base.join(format!("openpage-browser-{suffix}"));
-    std::fs::create_dir_all(&path).map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?;
+    std::fs::create_dir_all(&path).map_err(|err| {
+        OpenPageError::BrowserLaunch(browser_temp_dir_create_failed_message(
+            "user data",
+            "用户数据",
+            &path,
+            &err.to_string(),
+        ))
+    })?;
     Ok(path)
 }
 
@@ -3858,7 +3865,14 @@ fn make_temp_download_dir(base: Option<&Path>) -> OpenPageResult<PathBuf> {
     let fallback = std::env::temp_dir();
     let base = base.unwrap_or_else(|| fallback.as_path());
     let path = base.join(format!("openpage-downloads-{suffix}"));
-    std::fs::create_dir_all(&path).map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?;
+    std::fs::create_dir_all(&path).map_err(|err| {
+        OpenPageError::BrowserLaunch(browser_temp_dir_create_failed_message(
+            "download",
+            "下载",
+            &path,
+            &err.to_string(),
+        ))
+    })?;
     Ok(path)
 }
 
@@ -4259,10 +4273,10 @@ mod tests {
         browser_retry_interval_lock_poisoned_error, browser_retry_times_lock_poisoned_error,
         browser_tab_info_matches, browser_timeouts_lock_poisoned_error,
         default_launch_options_ini_path, finalize_download_path, find_free_port, find_new_tab_id,
-        is_tab_like_type, isolated_context_lock_poisoned_error,
-        mission_download_settings_lock_poisoned_error, normalize_browser_tab_types,
-        page_download_settings_lock_poisoned_error, reset_browser_user_data_dir,
-        resolve_browser_tab_target_id, resolve_browser_tab_target_ids,
+        is_tab_like_type, isolated_context_lock_poisoned_error, make_temp_download_dir,
+        make_temp_user_data_dir, mission_download_settings_lock_poisoned_error,
+        normalize_browser_tab_types, page_download_settings_lock_poisoned_error,
+        reset_browser_user_data_dir, resolve_browser_tab_target_id, resolve_browser_tab_target_ids,
         resolve_launch_options_ini_path, resolve_launch_user_data_dir, resolved_download_name,
         select_browser_tab_info_by_selector, system_user_data_dir, unique_download_path,
         validate_auto_port_scope, write_chrome_flags, write_chrome_prefs,
@@ -6104,6 +6118,44 @@ mod tests {
         assert!(chinese.contains(file_path.to_string_lossy().as_ref()));
 
         let _ = fs::remove_file(&file_path);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn browser_temp_dir_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let dir = make_temp_dir("browser-temp-dir-error");
+        let base_file = dir.join("base-file");
+        fs::write(&base_file, "content").expect("write base file");
+
+        let english_user_data = make_temp_user_data_dir(Some(&base_file))
+            .expect_err("file base should fail for user data temp dir")
+            .to_string();
+        assert!(english_user_data.contains("failed to create browser user data temp dir"));
+        assert!(english_user_data.contains("openpage-browser-"));
+
+        let english_download = make_temp_download_dir(Some(&base_file))
+            .expect_err("file base should fail for download temp dir")
+            .to_string();
+        assert!(english_download.contains("failed to create browser download temp dir"));
+        assert!(english_download.contains("openpage-downloads-"));
+
+        Settings::set_language("cn");
+
+        let chinese_user_data = make_temp_user_data_dir(Some(&base_file))
+            .expect_err("file base should fail for user data temp dir in Chinese")
+            .to_string();
+        assert!(chinese_user_data.contains("创建浏览器用户数据临时目录"));
+        assert!(chinese_user_data.contains("openpage-browser-"));
+
+        let chinese_download = make_temp_download_dir(Some(&base_file))
+            .expect_err("file base should fail for download temp dir in Chinese")
+            .to_string();
+        assert!(chinese_download.contains("创建浏览器下载临时目录"));
+        assert!(chinese_download.contains("openpage-downloads-"));
+
+        let _ = fs::remove_file(&base_file);
         let _ = fs::remove_dir_all(&dir);
     }
 

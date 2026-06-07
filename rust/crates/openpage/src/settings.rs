@@ -336,6 +336,24 @@ pub(crate) fn browser_config_path_failed_message(
     }
 }
 
+pub(crate) fn browser_temp_dir_create_failed_message(
+    kind_en: &str,
+    kind_zh_cn: &str,
+    path: &Path,
+    err: &str,
+) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!(
+            "创建浏览器{kind_zh_cn}临时目录 {} 失败: {err}",
+            path.display()
+        ),
+        _ => format!(
+            "failed to create browser {kind_en} temp dir {}: {err}",
+            path.display()
+        ),
+    }
+}
+
 pub(crate) fn no_free_port_in_auto_port_scope_message(start: u16, end: u16) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("未能在 auto_port 范围 [{start}, {end}) 内找到空闲端口"),
