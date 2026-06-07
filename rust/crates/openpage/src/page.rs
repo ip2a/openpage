@@ -11352,6 +11352,53 @@ mod tests {
     }
 
     #[test]
+    fn page_close_with_options_controls_current_and_other_tabs() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(true);
+
+        let (browser, temp_dir) =
+            launch_headless_test_browser("page-close-options").expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            let current_id = page.target_id();
+
+            let other = page.new_tab(Some("about:blank"), false, true, false)?;
+            assert!(other.wait_for_doc_loaded(5_000)?);
+            let other_id = other.target_id();
+            assert!(page.tab_ids()?.contains(&other_id));
+
+            page.close_with_options(true, false)?;
+            wait_until(Duration::from_millis(5_000), || match page.tab_ids() {
+                Ok(ids) if ids.contains(&current_id) && !ids.contains(&other_id) => Some(()),
+                _ => None,
+            })?;
+
+            let closing = page.new_tab(Some("about:blank"), false, true, false)?;
+            assert!(closing.wait_for_doc_loaded(5_000)?);
+            let closing_id = closing.target_id();
+            assert!(page.tab_ids()?.contains(&closing_id));
+
+            closing.close_with_options(false, true)?;
+            wait_until(Duration::from_millis(5_000), || match browser.tab_ids() {
+                Ok(ids) if !ids.contains(&closing_id) => Some(()),
+                _ => None,
+            })?;
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("page close_with_options runtime regression");
+    }
+
+    #[test]
     fn browser_page_and_frame_reconnect_rebuild_fresh_connections() {
         let (browser, temp_dir) = launch_headless_test_browser("browser-page-frame-reconnect")
             .expect("launch headless browser");
