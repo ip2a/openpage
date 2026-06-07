@@ -6,6 +6,7 @@ use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde_json::Value;
 
+use crate::browser::{Browser, BrowserTabReference};
 use crate::element::{Element, ElementResource};
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::Locator;
@@ -391,6 +392,19 @@ where
     }
 }
 
+pub fn from_debugger_address(debugger_url: &str) -> OpenPageResult<Page> {
+    let browser = Browser::connect(debugger_url)?;
+    page_from_latest_tab_or_new_page(&browser)
+}
+
+pub fn from_selenium_debugger_address(debugger_url: &str) -> OpenPageResult<Page> {
+    from_debugger_address(debugger_url)
+}
+
+pub fn from_playwright_debugger_address(debugger_url: &str) -> OpenPageResult<Page> {
+    from_debugger_address(debugger_url)
+}
+
 pub fn get_blob<'a, S>(source: S, url: &str, as_bytes: bool) -> OpenPageResult<ElementResource>
 where
     S: Into<BlobSource<'a>>,
@@ -551,6 +565,15 @@ fn load_default_configs_ini_contents() -> OpenPageResult<String> {
     match std::fs::read_to_string(default_path) {
         Ok(content) => Ok(content),
         Err(_) => Ok(include_str!("../configs.ini").to_string()),
+    }
+}
+
+fn page_from_latest_tab_or_new_page(browser: &Browser) -> OpenPageResult<Page> {
+    match browser.latest_tab()? {
+        Some(BrowserTabReference::Page(page)) => Ok(page),
+        Some(BrowserTabReference::WebPage(page)) => browser.get_page(&page.target_id()),
+        Some(BrowserTabReference::Id(target_id)) => browser.get_page(&target_id),
+        None => browser.new_page(None),
     }
 }
 
@@ -722,6 +745,7 @@ mod tests {
     use super::{
         By, DEFAULT_PROJECT_CONFIGS_NAME, Keys, MakeSessionEleResult, TreeTextInput,
         build_blob_fetch_script, configs_to_here, decode_blob_fetch_result, format_tree_label,
+        from_debugger_address, from_playwright_debugger_address, from_selenium_debugger_address,
         get_blob_bytes_with_runner, get_blob_text_with_runner, get_blob_with_runner,
         make_session_ele, make_session_ele_by, print_tree, resolve_configs_to_here_target, tree,
         tree_text_output, wait_until,
@@ -733,9 +757,17 @@ mod tests {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use crate::element::ElementResource;
+    use crate::page::Page;
     use crate::session::{snapshot_find, snapshot_root};
     use crate::settings::scoped_test_settings;
     use crate::{SessionOptions, SessionPage, Settings};
+
+    #[test]
+    fn debugger_address_docking_helper_signatures_return_page() {
+        let _ = from_debugger_address as fn(&str) -> crate::OpenPageResult<Page>;
+        let _ = from_selenium_debugger_address as fn(&str) -> crate::OpenPageResult<Page>;
+        let _ = from_playwright_debugger_address as fn(&str) -> crate::OpenPageResult<Page>;
+    }
 
     const HTML: &str = r#"
 <html>
