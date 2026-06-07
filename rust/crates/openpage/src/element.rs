@@ -54,10 +54,14 @@ use crate::settings::{
     element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
     element_no_visible_rect_message, element_resource_unavailable_message,
     element_tag_name_unavailable_message, element_top_frame_check_failed_message,
-    frame_index_must_start_message, frame_index_out_of_range_message, no_new_tab_message,
-    resolve_element_frame_id_failed_message, resolve_frame_viewport_offset_failed_message,
-    session_backed_element_driver_target_message, unsupported_key_message,
-    unsupported_mouse_button_message, wait_timeout_result,
+    frame_index_must_start_message, frame_index_out_of_range_message,
+    multi_select_action_required_message, no_new_tab_message,
+    parent_element_index_must_start_message, parent_element_level_must_start_message,
+    relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
+    resolve_frame_viewport_offset_failed_message, select_element_required_message,
+    session_backed_element_driver_target_message,
+    set_file_input_requires_at_least_one_file_message, shadow_root_object_id_unavailable_message,
+    unsupported_key_message, unsupported_mouse_button_message, wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -599,7 +603,7 @@ impl Element {
         let files = normalize_file_input_paths(files)?;
         if files.is_empty() {
             return Err(OpenPageError::PageOperation(
-                "set_file_input_files() requires at least one file".to_string(),
+                set_file_input_requires_at_least_one_file_message(),
             ));
         }
         let params = SetFileInputFilesParams::builder()
@@ -1054,7 +1058,7 @@ impl Element {
             )
             .await?;
             let remote_object_id = remote.object.object_id.ok_or_else(|| {
-                OpenPageError::PageOperation("shadow root object id is unavailable".to_string())
+                OpenPageError::PageOperation(shadow_root_object_id_unavailable_message())
             })?;
 
             Ok(Some(ShadowRoot::new(
@@ -1076,7 +1080,7 @@ impl Element {
     pub fn parent_level(&self, level: usize) -> OpenPageResult<Element> {
         if level == 0 {
             return Err(OpenPageError::ElementNotFound(
-                "parent element not found: level must be >= 1".to_string(),
+                parent_element_level_must_start_message(),
             ));
         }
         nth_element_from_start(
@@ -1092,7 +1096,7 @@ impl Element {
     {
         if index == 0 {
             return Err(OpenPageError::ElementNotFound(
-                "parent element not found: index must be >= 1".to_string(),
+                parent_element_index_must_start_message(),
             ));
         }
         let locator = Locator::from_input(locator)?;
@@ -2364,7 +2368,7 @@ impl Element {
             return Ok(());
         }
         Err(OpenPageError::UnsupportedOperation(
-            "select() is only available for <select> elements".to_string(),
+            select_element_required_message(),
         ))
     }
 
@@ -2372,9 +2376,9 @@ impl Element {
         if self.is_multi_select()? {
             return Ok(());
         }
-        Err(OpenPageError::UnsupportedOperation(format!(
-            "select.{action}() is only available for multi-select elements"
-        )))
+        Err(OpenPageError::UnsupportedOperation(
+            multi_select_action_required_message(action),
+        ))
     }
 
     fn wait_for_select_match<F>(&self, timeout_ms: Option<u64>, predicate: F) -> OpenPageResult<()>
@@ -3126,7 +3130,7 @@ impl Element {
     ) -> OpenPageResult<Element> {
         if index == 0 {
             return Err(OpenPageError::ElementNotFound(
-                "relative direction index must be >= 1".to_string(),
+                relative_direction_index_must_start_message(),
             ));
         }
 

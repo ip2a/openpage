@@ -553,6 +553,48 @@ pub(crate) fn action_element_missing_rect_location_message() -> String {
     )
 }
 
+pub(crate) fn set_file_input_requires_at_least_one_file_message() -> String {
+    localized_message(
+        "set_file_input_files() requires at least one file",
+        "set_file_input_files() 至少需要一个文件",
+    )
+}
+
+pub(crate) fn parent_element_level_must_start_message() -> String {
+    localized_message(
+        "parent element not found: level must be >= 1",
+        "没有找到父元素: level 必须 >= 1",
+    )
+}
+
+pub(crate) fn parent_element_index_must_start_message() -> String {
+    localized_message(
+        "parent element not found: index must be >= 1",
+        "没有找到父元素: index 必须 >= 1",
+    )
+}
+
+pub(crate) fn select_element_required_message() -> String {
+    localized_message(
+        "select() is only available for <select> elements",
+        "select() 仅适用于 <select> 元素",
+    )
+}
+
+pub(crate) fn multi_select_action_required_message(action: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("select.{action}() 仅适用于多选 select 元素"),
+        _ => format!("select.{action}() is only available for multi-select elements"),
+    }
+}
+
+pub(crate) fn relative_direction_index_must_start_message() -> String {
+    localized_message(
+        "relative direction index must be >= 1",
+        "相对方向序号必须 >= 1",
+    )
+}
+
 pub(crate) fn resolve_frame_viewport_offset_failed_message(detail: &str) -> String {
     localized_error_with_detail(
         "resolve frame viewport offset failed",
@@ -963,9 +1005,11 @@ mod tests {
         invalid_regex_message, invalid_screencast_data_url_message, invalid_tab_index_message,
         invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
         invalid_xpath_segment_index_message, javascript_execution_timed_out_message,
-        launched_browser_only_message, no_new_tab_message, page_connect_timed_out_message,
-        permission_origin_required_message, permission_origin_scheme_message,
-        permission_setting_invalid_message, resolve_element_frame_id_failed_message,
+        launched_browser_only_message, multi_select_action_required_message, no_new_tab_message,
+        page_connect_timed_out_message, parent_element_index_must_start_message,
+        parent_element_level_must_start_message, permission_origin_required_message,
+        permission_origin_scheme_message, permission_setting_invalid_message,
+        relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
         resolve_frame_viewport_offset_failed_message,
         resolved_frame_owner_missing_object_id_message, scoped_test_settings,
         screencast_already_running_message, screencast_capture_path_unavailable_message,
@@ -975,9 +1019,10 @@ mod tests {
         screencast_no_frames_message, screencast_output_path_unavailable_message,
         screencast_requires_save_path_message, screencast_save_path_must_be_directory_message,
         screenshot_clip_complete_message, screenshot_clip_order_message,
-        session_backed_element_driver_target_message,
+        select_element_required_message, session_backed_element_driver_target_message,
         session_backed_web_element_driver_actions_message, session_page_no_current_url_message,
-        session_page_no_loaded_document_message, shadow_root_object_id_unavailable_message,
+        session_page_no_loaded_document_message, set_file_input_requires_at_least_one_file_message,
+        shadow_root_object_id_unavailable_message,
         shadow_root_xpath_traversal_not_implemented_message, target_tab_not_found_message,
         timeout_error, timeout_must_be_non_negative_message, unsupported_key_message,
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
@@ -1236,6 +1281,30 @@ mod tests {
         assert_eq!(
             action_element_missing_rect_location_message(),
             "element has no rect location for actions"
+        );
+        assert_eq!(
+            set_file_input_requires_at_least_one_file_message(),
+            "set_file_input_files() requires at least one file"
+        );
+        assert_eq!(
+            parent_element_level_must_start_message(),
+            "parent element not found: level must be >= 1"
+        );
+        assert_eq!(
+            parent_element_index_must_start_message(),
+            "parent element not found: index must be >= 1"
+        );
+        assert_eq!(
+            select_element_required_message(),
+            "select() is only available for <select> elements"
+        );
+        assert_eq!(
+            multi_select_action_required_message("clear"),
+            "select.clear() is only available for multi-select elements"
+        );
+        assert_eq!(
+            relative_direction_index_must_start_message(),
+            "relative direction index must be >= 1"
         );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),
@@ -1556,6 +1625,30 @@ mod tests {
         assert_eq!(
             action_element_missing_rect_location_message(),
             "元素没有可用于 actions 的位置"
+        );
+        assert_eq!(
+            set_file_input_requires_at_least_one_file_message(),
+            "set_file_input_files() 至少需要一个文件"
+        );
+        assert_eq!(
+            parent_element_level_must_start_message(),
+            "没有找到父元素: level 必须 >= 1"
+        );
+        assert_eq!(
+            parent_element_index_must_start_message(),
+            "没有找到父元素: index 必须 >= 1"
+        );
+        assert_eq!(
+            select_element_required_message(),
+            "select() 仅适用于 <select> 元素"
+        );
+        assert_eq!(
+            multi_select_action_required_message("clear"),
+            "select.clear() 仅适用于多选 select 元素"
+        );
+        assert_eq!(
+            relative_direction_index_must_start_message(),
+            "相对方向序号必须 >= 1"
         );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),
