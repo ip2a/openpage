@@ -3546,6 +3546,14 @@ impl WebPage {
         }
     }
 
+    fn implicit_wait_timeout_ms(&self) -> OpenPageResult<u64> {
+        Ok(self
+            .timeouts()?
+            .get("base")
+            .map(|seconds| (seconds * 1000.0).round().max(0.0) as u64)
+            .unwrap_or(10_000))
+    }
+
     pub fn set_timeouts(
         &self,
         base_secs: Option<f64>,
@@ -4497,6 +4505,46 @@ impl WebPage {
             WebMode::Driver => self.driver.find(locator).map(WebElement::Browser),
             WebMode::Session => self.session.find(locator).map(WebElement::Session),
         }
+    }
+
+    pub fn wait_for<'a, L>(&self, locator: L, timeout_ms: u64) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        let timeout = Duration::from_millis(timeout_ms.max(1));
+        let deadline = Instant::now() + timeout;
+        loop {
+            match self.find(locator.raw()) {
+                Ok(element) => return Ok(element),
+                Err(err) => {
+                    if Instant::now() >= deadline {
+                        return Err(OpenPageError::Timeout(format!("{} ({err})", locator.raw())));
+                    }
+                    sleep(Duration::from_millis(100));
+                }
+            }
+        }
+    }
+
+    pub fn click(&self, locator: &str) -> OpenPageResult<()> {
+        self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
+            .click()
+    }
+
+    pub fn fill(&self, locator: &str, text: &str) -> OpenPageResult<()> {
+        self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
+            .input(text)
+    }
+
+    pub fn text(&self, locator: &str) -> OpenPageResult<Option<String>> {
+        self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
+            .text()
+    }
+
+    pub fn attr(&self, locator: &str, name: &str) -> OpenPageResult<Option<String>> {
+        self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
+            .attr(name)
     }
 
     pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<WebElement>>
@@ -8909,6 +8957,10 @@ mod tests {
             let session_web_element = WebElement::Session(session_element.clone());
 
             let _ = page.wait_for((By::ID, "root"), 1_000);
+            let _ = page.click("#root");
+            let _ = page.fill("#root", "demo");
+            let _ = page.text("#root");
+            let _ = page.attr("#root", "href");
             let _ = page.wait_for_elements_loaded((By::ID, "root"), false, 1_000);
             let _ = page.wait_for_elements_loaded(&locators, false, 1_000);
             let _ = page.wait_for_elements_loaded(&tuple_locators, false, 1_000);
@@ -8933,6 +8985,11 @@ mod tests {
             let _ = page.wait_for_ele_enabled(&session_web_element, 1_000);
             let _ = page.wait_for_ele_deleted(&session_web_element, 1_000);
             let _ = page.wait_for_ele_clickable(&session_web_element, 1_000);
+            let _ = web_page.wait_for((By::ID, "root"), 1_000);
+            let _ = web_page.click("#root");
+            let _ = web_page.fill("#root", "demo");
+            let _ = web_page.text("#root");
+            let _ = web_page.attr("#root", "href");
             let _ = web_page.wait_for_elements_loaded((By::ID, "root"), false, 1_000);
             let _ = web_page.wait_for_elements_loaded(&locators, false, 1_000);
             let _ = web_page.wait_for_elements_loaded(&tuple_locators, false, 1_000);
