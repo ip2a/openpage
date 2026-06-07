@@ -2824,7 +2824,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.wait_until_displayed(timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "wait_until_displayed() is only available in driver mode".to_string(),
+                driver_mode_only_message("wait_until_displayed()"),
             )),
         }
     }
@@ -2833,7 +2833,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.wait_until_hidden(timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "wait_until_hidden() is only available in driver mode".to_string(),
+                driver_mode_only_message("wait_until_hidden()"),
             )),
         }
     }
@@ -2842,7 +2842,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.wait_until_enabled(timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "wait_until_enabled() is only available in driver mode".to_string(),
+                driver_mode_only_message("wait_until_enabled()"),
             )),
         }
     }
@@ -2851,7 +2851,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.wait_until_disabled(timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "wait_until_disabled() is only available in driver mode".to_string(),
+                driver_mode_only_message("wait_until_disabled()"),
             )),
         }
     }
@@ -2860,7 +2860,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.wait_until_deleted(timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "wait_until_deleted() is only available in driver mode".to_string(),
+                driver_mode_only_message("wait_until_deleted()"),
             )),
         }
     }
@@ -2869,7 +2869,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.wait_until_clickable(timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "wait_until_clickable() is only available in driver mode".to_string(),
+                driver_mode_only_message("wait_until_clickable()"),
             )),
         }
     }
@@ -2878,7 +2878,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.wait_until_has_rect(timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "wait_until_has_rect() is only available in driver mode".to_string(),
+                driver_mode_only_message("wait_until_has_rect()"),
             )),
         }
     }
@@ -2887,7 +2887,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.wait_until_covered(timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "wait_until_covered() is only available in driver mode".to_string(),
+                driver_mode_only_message("wait_until_covered()"),
             )),
         }
     }
@@ -2896,7 +2896,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.wait_until_not_covered(timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "wait_until_not_covered() is only available in driver mode".to_string(),
+                driver_mode_only_message("wait_until_not_covered()"),
             )),
         }
     }
@@ -2905,7 +2905,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.wait_until_disabled_or_deleted(timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "wait_until_disabled_or_deleted() is only available in driver mode".to_string(),
+                driver_mode_only_message("wait_until_disabled_or_deleted()"),
             )),
         }
     }
@@ -2914,7 +2914,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.wait_until_stop_moving(timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "wait_until_stop_moving() is only available in driver mode".to_string(),
+                driver_mode_only_message("wait_until_stop_moving()"),
             )),
         }
     }
@@ -6225,6 +6225,44 @@ mod tests {
             chinese_size,
             OpenPageError::UnsupportedOperation(ref message)
                 if message.contains("rect_size() 仅在 driver 模式可用")
+        ));
+    }
+
+    #[test]
+    fn web_element_session_driver_only_wait_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let element = WebElement::Session(
+            snapshot_root("<html><body><button id='ok'>OK</button></body></html>")
+                .expect("session snapshot root should parse"),
+        );
+        let english = element
+            .wait_until_displayed(100)
+            .expect_err("session-backed WebElement wait_until_displayed should fail");
+        assert!(matches!(
+            english,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("wait_until_displayed() is only available in driver mode")
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese_clickable = element
+            .wait_until_clickable(100)
+            .expect_err("session-backed WebElement wait_until_clickable should fail");
+        assert!(matches!(
+            chinese_clickable,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("wait_until_clickable() 仅在 driver 模式可用")
+        ));
+        let chinese_stop_moving = element
+            .wait_until_stop_moving(100)
+            .expect_err("session-backed WebElement wait_until_stop_moving should fail");
+        assert!(matches!(
+            chinese_stop_moving,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("wait_until_stop_moving() 仅在 driver 模式可用")
         ));
     }
 
