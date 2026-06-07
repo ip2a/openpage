@@ -508,6 +508,12 @@ impl WebFrame {
         }
     }
 
+    pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<Self> {
+        match self {
+            Self::Browser(frame) => frame.reconnect(wait_ms).map(Self::Browser),
+        }
+    }
+
     pub fn remove_attr(&self, name: &str) -> OpenPageResult<()> {
         match self {
             Self::Browser(frame) => frame.remove_attr(name),
@@ -7211,6 +7217,11 @@ mod tests {
             assert_eq!(frames.len(), 1);
             assert_eq!(frames[0].attr("id")?, Some("demo-frame".to_string()));
             assert_eq!(frame_context.attr("id")?, Some("demo-frame".to_string()));
+            let reconnected_frame = frame.reconnect(0)?;
+            assert_eq!(
+                reconnected_frame.attr("id")?,
+                Some("demo-frame".to_string())
+            );
             frame.set_none_element_value(Some("missing"), true)?;
             assert_eq!(
                 frame_context.ele(".does-not-exist")?.text()?,
