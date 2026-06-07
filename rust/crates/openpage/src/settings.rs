@@ -147,7 +147,7 @@ pub(crate) fn singleton_tab_obj_enabled() -> bool {
     snapshot().singleton_tab_obj
 }
 
-pub(crate) fn wait_timeout_result(operation: &str, timeout_ms: u64) -> OpenPageResult<bool> {
+pub fn wait_timeout_result(operation: &str, timeout_ms: u64) -> OpenPageResult<bool> {
     if wait_failed_should_raise() {
         Err(timeout_error(operation, timeout_ms))
     } else {
@@ -271,6 +271,22 @@ pub(crate) fn invalid_tab_index_message() -> String {
         "tab index must start from 1 or use negative indices from -1",
         "标签页序号必须从 1 开始，或使用从 -1 开始的负序号",
     )
+}
+
+pub(crate) fn invalid_download_file_exists_mode_message(value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => {
+            format!("下载文件已存在策略必须是 rename/overwrite/skip 之一，当前为 {value}")
+        }
+        _ => format!("download file-exists mode must be one of rename/overwrite/skip, got {value}"),
+    }
+}
+
+pub(crate) fn invalid_load_mode_message(value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("加载模式必须是 normal/eager/none 之一，当前为 {value}"),
+        _ => format!("load mode must be one of normal/eager/none, got {value}"),
+    }
 }
 
 pub(crate) fn frame_index_must_start_message() -> String {
@@ -631,7 +647,8 @@ mod tests {
         frame_execution_context_unavailable_message, frame_html_unavailable_message,
         frame_index_must_start_message, frame_index_out_of_range_message,
         invalid_auto_port_scope_message, invalid_cookie_same_site_message,
-        invalid_file_url_message, invalid_regex_message, invalid_screencast_data_url_message,
+        invalid_download_file_exists_mode_message, invalid_file_url_message,
+        invalid_load_mode_message, invalid_regex_message, invalid_screencast_data_url_message,
         invalid_tab_index_message, invalid_url_message, javascript_execution_timed_out_message,
         no_new_tab_message, page_connect_timed_out_message, scoped_test_settings,
         screencast_already_running_message, screencast_capture_path_unavailable_message,
@@ -749,6 +766,14 @@ mod tests {
         assert_eq!(
             invalid_tab_index_message(),
             "tab index must start from 1 or use negative indices from -1"
+        );
+        assert_eq!(
+            invalid_download_file_exists_mode_message("bad"),
+            "download file-exists mode must be one of rename/overwrite/skip, got bad"
+        );
+        assert_eq!(
+            invalid_load_mode_message("fast"),
+            "load mode must be one of normal/eager/none, got fast"
         );
         assert_eq!(
             component_state_lock_poisoned_message("console state", "控制台状态"),
@@ -895,6 +920,14 @@ mod tests {
         assert_eq!(
             invalid_tab_index_message(),
             "标签页序号必须从 1 开始，或使用从 -1 开始的负序号"
+        );
+        assert_eq!(
+            invalid_download_file_exists_mode_message("bad"),
+            "下载文件已存在策略必须是 rename/overwrite/skip 之一，当前为 bad"
+        );
+        assert_eq!(
+            invalid_load_mode_message("fast"),
+            "加载模式必须是 normal/eager/none 之一，当前为 fast"
         );
         assert_eq!(
             component_state_lock_poisoned_message("console state", "控制台状态"),

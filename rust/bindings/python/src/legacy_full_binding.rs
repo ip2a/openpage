@@ -7,22 +7,22 @@ use pyo3::exceptions::{PyRuntimeError, PyTypeError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBytes, PyDict, PyString};
 
-use crate::browser::{Browser, DownloadFileExistsMode, LaunchOptions, LoadMode};
-use crate::console::{Console, ConsoleMessage};
-use crate::download::DownloadMission;
-use crate::element::{Element, ElementResource};
-use crate::error::OpenPageError;
-use crate::intercept::{InterceptedRequest, Interceptor};
-use crate::listener::{
+use openpage::browser::{Browser, DownloadFileExistsMode, LaunchOptions, LoadMode};
+use openpage::console::{Console, ConsoleMessage};
+use openpage::download::DownloadMission;
+use openpage::element::{Element, ElementResource};
+use openpage::error::OpenPageError;
+use openpage::intercept::{InterceptedRequest, Interceptor};
+use openpage::listener::{
     Listener, ListenerFailInfo, ListenerPacket, ListenerRequest, ListenerRequestExtraInfo,
     ListenerResponse, ListenerResponseExtraInfo,
 };
-use crate::locator::LocatorMatch;
-use crate::page::Page;
-use crate::session::{
+use openpage::locator::LocatorMatch;
+use openpage::page::Page;
+use openpage::session::{
     CookieEntry, SessionElement, SessionOptions, SessionPage, SessionXPathResult,
 };
-use crate::webpage::{WebElement, WebMode, WebPage};
+use openpage::webpage::{WebElement, WebMode, WebPage};
 
 impl From<OpenPageError> for PyErr {
     fn from(value: OpenPageError) -> Self {

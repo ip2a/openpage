@@ -4874,7 +4874,10 @@ mod tests {
         assert_eq!(payload["error"]["session"], "generic-busy");
         assert_eq!(payload["error"]["state"], "incomplete");
         assert_eq!(payload["error"]["reasons"], json!(["daemon_unresponsive"]));
-        assert_eq!(payload["error"]["fix"], "Inspect logs or restart the session.");
+        assert_eq!(
+            payload["error"]["fix"],
+            "Inspect logs or restart the session."
+        );
         assert!(
             payload["error"]["message"]
                 .as_str()

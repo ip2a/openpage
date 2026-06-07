@@ -1,0 +1,41 @@
+[package]
+name = "openpage"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rust browser automation library inspired by DrissionPage"
+readme = "README.md"
+keywords = ["browser", "automation", "cdp", "chrome"]
+categories = ["web-programming", "api-bindings"]
+
+[lib]
+name = "openpage"
+path = "src/lib.rs"
+
+[dependencies]
+base64 = { workspace = true }
+chromiumoxide = { workspace = true }
+cookie_store = { workspace = true }
+encoding_rs = { workspace = true }
+ego-tree = { workspace = true }
+futures = { workspace = true }
+image = { workspace = true }
+reqwest = { workspace = true }
+regex = { workspace = true }
+publicsuffix = { workspace = true }
+scraper = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+skyscraper = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+toml = { workspace = true }
+url = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { workspace = true }

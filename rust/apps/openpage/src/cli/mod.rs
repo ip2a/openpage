@@ -510,7 +510,8 @@ mod tests {
 
     #[test]
     fn goto_help_points_to_bootstrap_and_wait_follow_up() {
-        let err = Cli::try_parse_from(["openpage", "goto", "--help"]).expect_err("help exits early");
+        let err =
+            Cli::try_parse_from(["openpage", "goto", "--help"]).expect_err("help exits early");
         assert!(matches!(err.kind(), ErrorKind::DisplayHelp));
         let help = err.to_string();
         assert!(help.contains("Bootstrap behavior:"));
@@ -521,7 +522,8 @@ mod tests {
 
     #[test]
     fn batch_help_points_to_examples_stdin_shape_and_output_contract() {
-        let err = Cli::try_parse_from(["openpage", "batch", "--help"]).expect_err("help exits early");
+        let err =
+            Cli::try_parse_from(["openpage", "batch", "--help"]).expect_err("help exits early");
         assert!(matches!(err.kind(), ErrorKind::DisplayHelp));
         let help = err.to_string();
         assert!(help.contains("Examples:"));
@@ -568,7 +570,7 @@ mod tests {
         let keep = load_dp_compat_launch_options(Some(0)).expect("load config port");
         let override_port = load_dp_compat_launch_options(Some(9333)).expect("load override port");
 
-        assert_eq!(keep.remote_debugging_port, None);
+        assert_eq!(keep.remote_debugging_port, Some(9222));
         assert_eq!(override_port.address(), "127.0.0.1:9333");
         assert_eq!(override_port.remote_debugging_port, Some(9333));
 

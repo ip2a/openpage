@@ -1276,34 +1276,55 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
-name = "openpage_rs"
+name = "openpage"
 version = "0.1.0"
 dependencies = [
  "base64",
  "chromiumoxide",
- "clap",
  "cookie_store",
  "ego-tree",
  "encoding_rs",
  "futures",
- "getrandom 0.2.17",
  "image",
  "libc",
  "publicsuffix",
- "pyo3",
- "pyo3-build-config",
  "regex",
  "reqwest",
  "scraper",
  "serde",
  "serde_json",
- "shlex",
  "skyscraper",
  "thiserror 2.0.18",
  "tokio",
  "toml",
  "url",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "openpage-app"
+version = "0.1.0"
+dependencies = [
+ "chromiumoxide",
+ "clap",
+ "getrandom 0.2.17",
+ "libc",
+ "openpage",
+ "serde",
+ "serde_json",
+ "shlex",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "openpage-python"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "openpage",
+ "pyo3",
+ "pyo3-build-config",
+ "serde_json",
 ]
 
 [[package]]

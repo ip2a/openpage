@@ -6788,7 +6788,9 @@ mod tests {
     fn session_options_from_ini_loads_reference_drissionpage_configs_file() {
         let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
-            .expect("workspace root")
+            .and_then(|path| path.parent())
+            .and_then(|path| path.parent())
+            .expect("repository root")
             .to_path_buf();
         let config_path = repo_root
             .join("参考项目")
@@ -6952,7 +6954,9 @@ mod tests {
     fn session_options_save_preserves_browser_sections_from_template_ini() {
         let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
-            .expect("workspace root")
+            .and_then(|path| path.parent())
+            .and_then(|path| path.parent())
+            .expect("repository root")
             .to_path_buf();
         let source_path = repo_root
             .join("参考项目")
@@ -7347,7 +7351,15 @@ mod tests {
                 .starts_with("file://")
         );
         assert!(page.get(&file_url).expect("load file url"));
-        assert_eq!(page.url().expect("url").as_deref(), Some(file_url.as_str()));
+        let current_file_url = page.url().expect("url").expect("current url");
+        let current_path = Url::parse(&current_file_url)
+            .expect("parse current file url")
+            .to_file_path()
+            .expect("current file url path");
+        assert_eq!(
+            fs::canonicalize(current_path).expect("canonical current file path"),
+            fs::canonicalize(&path).expect("canonical expected file path")
+        );
 
         let _ = fs::remove_file(path);
     }

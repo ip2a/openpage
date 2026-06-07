@@ -33,9 +33,10 @@ use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::Page;
 use crate::settings::{
     browser_connect_timeout_duration, cdp_timeout_duration, component_state_lock_poisoned_message,
-    invalid_auto_port_scope_message, invalid_tab_index_message,
-    no_free_port_in_auto_port_scope_message, singleton_tab_obj_enabled,
-    target_tab_not_found_message, timeout_duration_millis, timeout_error, wait_failed_should_raise,
+    invalid_auto_port_scope_message, invalid_download_file_exists_mode_message,
+    invalid_load_mode_message, invalid_tab_index_message, no_free_port_in_auto_port_scope_message,
+    singleton_tab_obj_enabled, target_tab_not_found_message, timeout_duration_millis,
+    timeout_error, wait_failed_should_raise,
 };
 use crate::webpage::WebPage;
 
@@ -60,9 +61,9 @@ impl DownloadFileExistsMode {
             "rename" | "r" => Ok(Self::Rename),
             "overwrite" | "o" => Ok(Self::Overwrite),
             "skip" | "s" => Ok(Self::Skip),
-            _ => Err(OpenPageError::BrowserOperation(format!(
-                "download file-exists mode must be one of rename/overwrite/skip, got {value}"
-            ))),
+            _ => Err(OpenPageError::BrowserOperation(
+                invalid_download_file_exists_mode_message(value),
+            )),
         }
     }
 }
@@ -89,8 +90,8 @@ impl LoadMode {
             "normal" | "n" => Ok(Self::Normal),
             "eager" | "e" => Ok(Self::Eager),
             "none" => Ok(Self::None),
-            _ => Err(OpenPageError::BrowserOperation(format!(
-                "load mode must be one of normal/eager/none, got {value}"
+            _ => Err(OpenPageError::BrowserOperation(invalid_load_mode_message(
+                value,
             ))),
         }
     }
@@ -114,7 +115,7 @@ impl Default for TimeoutConfig {
 }
 
 const DEFAULT_AUTO_PORT_SCOPE: (u16, u16) = (9600, 59_600);
-pub(crate) const OPENPAGE_BROWSER_PATH_ENV: &str = "OPENPAGE_BROWSER_PATH";
+pub const OPENPAGE_BROWSER_PATH_ENV: &str = "OPENPAGE_BROWSER_PATH";
 
 #[derive(Debug, Clone)]
 pub struct LaunchOptions {
@@ -4791,6 +4792,38 @@ mod tests {
     }
 
     #[test]
+    fn browser_parse_errors_follow_settings_language() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let load_error = LoadMode::parse("fast").expect_err("invalid load mode should fail");
+        assert_eq!(
+            load_error.to_string(),
+            "browser operation failed: load mode must be one of normal/eager/none, got fast"
+        );
+        let download_error =
+            DownloadFileExistsMode::parse("bad").expect_err("invalid download mode should fail");
+        assert_eq!(
+            download_error.to_string(),
+            "browser operation failed: download file-exists mode must be one of rename/overwrite/skip, got bad"
+        );
+
+        Settings::set_language("cn");
+
+        let load_error = LoadMode::parse("fast").expect_err("invalid load mode should fail");
+        assert_eq!(
+            load_error.to_string(),
+            "浏览器操作失败: 加载模式必须是 normal/eager/none 之一，当前为 fast"
+        );
+        let download_error =
+            DownloadFileExistsMode::parse("bad").expect_err("invalid download mode should fail");
+        assert_eq!(
+            download_error.to_string(),
+            "浏览器操作失败: 下载文件已存在策略必须是 rename/overwrite/skip 之一，当前为 bad"
+        );
+    }
+
+    #[test]
     fn launch_options_set_browser_path_updates_executable_path() {
         let mut options = LaunchOptions::default();
         assert_eq!(options.browser_path(), "");
@@ -5456,7 +5489,9 @@ mod tests {
     fn launch_options_from_ini_loads_reference_drissionpage_configs_file() {
         let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
-            .expect("workspace root")
+            .and_then(|path| path.parent())
+            .and_then(|path| path.parent())
+            .expect("repository root")
             .to_path_buf();
         let config_path = repo_root
             .join("参考项目")
@@ -5495,7 +5530,9 @@ mod tests {
     fn launch_options_save_preserves_non_browser_sections_from_template_ini() {
         let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
-            .expect("workspace root")
+            .and_then(|path| path.parent())
+            .and_then(|path| path.parent())
+            .expect("repository root")
             .to_path_buf();
         let source_path = repo_root
             .join("参考项目")

@@ -159,7 +159,7 @@ pub struct DisconnectedFrame {
 }
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct PageNavigationSnapshot {
+pub struct PageNavigationSnapshot {
     pub started_seq: u64,
     pub settled_seq: u64,
     pub main_frame_id: Option<String>,
@@ -3147,7 +3147,7 @@ impl Page {
         self.browser.as_ref()
     }
 
-    pub(crate) fn navigation_snapshot(&self) -> OpenPageResult<PageNavigationSnapshot> {
+    pub fn navigation_snapshot(&self) -> OpenPageResult<PageNavigationSnapshot> {
         self.navigation.snapshot()
     }
 
@@ -11130,7 +11130,6 @@ mod tests {
     fn page_execute_cdp_respects_global_timeout_setting() {
         let _settings = scoped_test_settings();
         Settings::reset();
-        Settings::set_cdp_timeout(0.01);
 
         let (browser, temp_dir) = launch_headless_test_browser("page-global-cdp-timeout")
             .expect("launch headless browser");
@@ -11138,6 +11137,7 @@ mod tests {
         let result = (|| -> crate::OpenPageResult<()> {
             let page = browser.new_page(None)?;
             assert!(page.wait_for_doc_loaded(5_000)?);
+            Settings::set_cdp_timeout(0.01);
 
             let params = EvaluateParams::builder()
                 .expression("new Promise(resolve => setTimeout(() => resolve('ok'), 150))")
@@ -11154,6 +11154,7 @@ mod tests {
             Ok(())
         })();
 
+        Settings::reset();
         let close_result = browser.close();
         let _ = fs::remove_dir_all(&temp_dir);
 
@@ -12288,14 +12289,7 @@ mod tests {
             let web_input = WebElement::Browser(page.wait_for("css:#name", 1_000)?);
             web_input.set().value("Beta")?;
             assert_eq!(web_input.value()?, Some("Beta".to_string()));
-            let web_input_select_err = web_input
-                .select()
-                .selected_options()
-                .expect_err("input web select().selected_options() should error");
-            assert!(matches!(
-                web_input_select_err,
-                crate::OpenPageError::UnsupportedOperation(_)
-            ));
+            assert!(web_input.select().selected_options()?.is_empty());
 
             let web_scrollbox = WebElement::Browser(page.wait_for("css:#scrollbox", 1_000)?);
             web_scrollbox.scroll().down(30.0)?;

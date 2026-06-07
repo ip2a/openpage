@@ -12,12 +12,12 @@ ARTIFACT_BINARY="$3"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-SRC_BIN="${REPO_ROOT}/target/${TARGET_TRIPLE}/release/${ARTIFACT_BINARY}"
+SRC_BIN="${REPO_ROOT}/rust/target/${TARGET_TRIPLE}/release/${ARTIFACT_BINARY}"
 DST_DIR="${REPO_ROOT}/dist/${PLATFORM_ID}"
 DST_BIN="${DST_DIR}/${ARTIFACT_BINARY}"
 
 echo "[run] Building target=${TARGET_TRIPLE}"
-cargo build --release --target "${TARGET_TRIPLE}" --manifest-path "${REPO_ROOT}/rust/Cargo.toml" --bin openpage
+cargo build --release --target "${TARGET_TRIPLE}" --manifest-path "${REPO_ROOT}/rust/apps/openpage/Cargo.toml" --bin openpage
 
 if [ ! -f "${SRC_BIN}" ]; then
   echo "[error] Build artifact not found: ${SRC_BIN}"

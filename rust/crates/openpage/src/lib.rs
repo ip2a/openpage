@@ -1,6 +1,5 @@
 pub mod alert;
 pub mod browser;
-pub mod cli;
 pub mod config;
 pub mod console;
 pub mod download;
@@ -20,9 +19,6 @@ pub mod tools;
 pub mod upload;
 pub mod webpage;
 pub mod window;
-
-#[cfg(feature = "python-module")]
-pub mod python;
 
 pub use alert::AlertTracker;
 pub use browser::{
@@ -91,15 +87,6 @@ pub type ChromiumOptions = LaunchOptions;
 pub type ChromiumPage = Page;
 pub type ChromiumTab = Page;
 pub type MixTab = WebPage;
-
-#[cfg(feature = "python-module")]
-use pyo3::prelude::*;
-
-#[cfg(feature = "python-module")]
-#[pymodule]
-fn openpage_rs(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
-    python::register(m)
-}
 
 #[cfg(test)]
 mod tests {

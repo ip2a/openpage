@@ -3001,9 +3001,7 @@ impl WebPage {
         })
     }
 
-    pub(crate) fn navigation_snapshot(
-        &self,
-    ) -> OpenPageResult<crate::page::PageNavigationSnapshot> {
+    pub fn navigation_snapshot(&self) -> OpenPageResult<crate::page::PageNavigationSnapshot> {
         match self.mode()? {
             WebMode::Driver => self.driver.navigation_snapshot(),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(

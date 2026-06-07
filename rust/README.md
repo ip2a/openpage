@@ -1,5 +1,15 @@
-# openpage_rs
+# OpenPage Rust workspace
 
-Rust core and CLI for the `openpage` project.
+Rust workspace for OpenPage.
 
-This crate powers the Python package and ships the `openpage` command-line tool.
+- `crates/openpage`: pure Rust library crate published to crates.io as `openpage`.
+- `apps/openpage`: non-published CLI app package. It builds the `openpage` binary and depends on the library crate.
+- `bindings/python`: optional PyO3 bridge package with a minimal module scaffold.
+
+Default verification:
+
+```bash
+cargo check --manifest-path rust/Cargo.toml
+cargo test --manifest-path rust/Cargo.toml
+cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- --help
+```

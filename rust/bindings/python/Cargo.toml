@@ -1,0 +1,27 @@
+[package]
+name = "openpage-python"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "PyO3 bindings for the OpenPage Rust library"
+
+[lib]
+name = "openpage_rs"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[features]
+default = []
+python-module = ["pyo3/extension-module"]
+
+[dependencies]
+openpage = { path = "../../crates/openpage" }
+base64 = { workspace = true }
+pyo3 = { workspace = true }
+serde_json = { workspace = true }
+
+[build-dependencies]
+pyo3-build-config = { workspace = true }

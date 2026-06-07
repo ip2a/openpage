@@ -1626,7 +1626,10 @@ mod tests {
         assert_eq!(payload["error"]["session"], "review");
         assert_eq!(payload["error"]["state"], "incomplete");
         assert_eq!(payload["error"]["reasons"], json!(["daemon_unresponsive"]));
-        assert_eq!(payload["error"]["fix"], "Inspect session activity and retry.");
+        assert_eq!(
+            payload["error"]["fix"],
+            "Inspect session activity and retry."
+        );
         assert!(
             payload["error"]["message"]
                 .as_str()

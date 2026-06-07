@@ -331,7 +331,10 @@ pub fn update_user_browser_paths(
     browser_path: Option<&Path>,
     user_data_dir: Option<&Path>,
 ) -> OpenPageResult<PathBuf> {
-    let path = user_config_path()?;
+    let path = match env::var(OPENPAGE_CONFIG_ENV) {
+        Ok(custom_path) => resolve_config_path(&custom_path)?,
+        Err(_) => user_config_path()?,
+    };
     let mut root = load_toml_value(path.as_path())?;
     let browser = ensure_table_entry(&mut root, "browser")?;
     if let Some(value) = browser_path {

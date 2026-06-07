@@ -1,5 +1,5 @@
 fn main() {
-    let code = match openpage_rs::cli::run() {
+    let code = match openpage_app::cli::run() {
         Ok(code) => code,
         Err(err) => {
             eprintln!("{err}");

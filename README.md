@@ -4,7 +4,9 @@
 
 ## Layout
 
-- `rust/`: Rust core, direct examples, and optional PyO3 extension
+- `rust/crates/openpage`: pure Rust library crate published as `openpage`
+- `rust/apps/openpage`: non-published CLI app package that builds the `openpage` binary
+- `rust/bindings/python`: optional PyO3 bridge package; currently a minimal module scaffold
 - `python/`: Python wrappers, examples, and tests
 - `参考项目/`: reference code used for API and architecture study
 
@@ -31,8 +33,7 @@
   - object wrappers and JSON/result adaptation
   - examples and integration tests
 
-The crate now builds as a pure Rust library by default. PyO3 bindings are enabled only with the
-`python-module` feature.
+The crates.io surface is now the pure Rust `openpage` library crate. The agent-facing CLI is a separate app package that depends on that library. PyO3 bindings are kept under `rust/bindings/python` as a separate package, with the previous full binding source preserved as legacy code for later adaptation.
 
 ## Local development
 
@@ -45,14 +46,14 @@ The crate now builds as a pure Rust library by default. PyO3 bindings are enable
 
 ```bash
 cargo check --manifest-path rust/Cargo.toml
-cargo check --manifest-path rust/Cargo.toml --features python-module
-cargo run --manifest-path rust/Cargo.toml --example webpage_modes
+cargo test --manifest-path rust/Cargo.toml
+cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- --help
 ```
 
 ## Minimal Rust usage
 
 ```rust
-use openpage_rs::{LaunchOptions, SessionOptions, WebMode, WebPage};
+use openpage::{LaunchOptions, SessionOptions, WebMode, WebPage};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let page = WebPage::new(
@@ -146,12 +147,10 @@ page.quit()
 
 ## Rust CLI
 
-The CLI is implemented inside the Rust crate as `openpage_rs::cli`; it is not a separate package.
-Parent CLIs can embed it with `openpage_rs::cli::run_from_args(args)`. This repository also ships a
-thin debug binary:
+The CLI is implemented as a separate non-published app package under `rust/apps/openpage`. It depends on the pure `openpage` library crate and builds the `openpage` binary:
 
 ```bash
-cargo run --manifest-path rust/Cargo.toml --bin openpage -- --help
+cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- --help
 ```
 
 All user-facing CLI commands now route through the same TCP daemon execution path. There is no
@@ -164,21 +163,21 @@ it does not replace the TCP daemon CLI below.
 Long-lived agent control over the NDJSON TCP daemon:
 
 ```bash
-cargo run --manifest-path rust/Cargo.toml --bin openpage -- serve --session agent
+cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- serve --session agent
 ```
 
 Daemon-backed one-command-at-a-time browser control:
 
 ```bash
-OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser start --session agent --headless
-OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser list
-OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser status --session agent
-OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser logs --session agent --tail 20
-OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- goto https://example.com --session agent
-OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- title --session agent
-OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- js document.title --session agent
-OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser stop --session agent
-OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser stop --all
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- browser start --session agent --headless
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- browser list
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- browser status --session agent
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- browser logs --session agent --tail 20
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- goto https://example.com --session agent
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- title --session agent
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- js document.title --session agent
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- browser stop --session agent
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- browser stop --all
 ```
 
 `browser list` now returns:
@@ -259,7 +258,7 @@ Session bootstrap rule:
 Batch multiple commands in one invocation:
 
 ```bash
-OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- batch \
+OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- batch \
   "browser start https://example.com --headless" \
   "title" \
   "browser stop"
@@ -268,16 +267,16 @@ printf '%s' '[
   ["browser", "start", "https://example.com", "--headless", "--session", "agent2"],
   ["title", "--session", "agent2"],
   ["browser", "stop", "--session", "agent2"]
-]' | OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin openpage -- batch
+]' | OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- batch
 ```
 
 Diagnose the local CLI environment:
 
 ```bash
-cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick
-cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick --fix
-OPENPAGE_BROWSER_PATH="/absolute/path/to/browser" cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor --quick
-cargo run --manifest-path rust/Cargo.toml --bin openpage -- doctor
+cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- doctor --quick
+cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- doctor --quick --fix
+OPENPAGE_BROWSER_PATH="/absolute/path/to/browser" cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- doctor --quick
+cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- doctor
 ```
 
 The current CLI intentionally rejects the removed legacy surfaces:
@@ -425,7 +424,7 @@ Agent-friendly output shaping for large page payloads:
 ```bash
 OPENPAGE_CONTENT_BOUNDARIES=1 \
 OPENPAGE_MAX_OUTPUT_CHARS=2000 \
-cargo run --manifest-path rust/Cargo.toml --bin openpage -- html --session agent
+cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- html --session agent
 ```
 
 AI-first snapshot output now includes:

@@ -1171,7 +1171,8 @@ fn session_target_state_from_response(
         .error
         .as_ref()
         .map(|error| {
-            error.kind == "page_operation" && error.message == "send failed because receiver is gone"
+            error.kind == "page_operation"
+                && error.message == "send failed because receiver is gone"
         })
         .unwrap_or(false);
 
@@ -1407,12 +1408,12 @@ impl Drop for SidecarGuard {
 #[cfg(test)]
 mod tests {
     use super::{
-        ExistingDaemonAction, SidecarState, cleaned_reason, cleaned_reason_taxonomy, daemon_dir,
-        daemon_inventory_payload_json, daemon_inventory_summary_json, ensure_existing_daemon,
-        existing_daemon_action_with_retry, incomplete_daemon_reasons, log_path,
-        remap_existing_session_request_error, pid_path, port_path, read_pid,
-        send_request_with_retry, shutdown_daemon, startup_exit_error, startup_timeout_error,
-        version_path, PROBE_READ_TIMEOUT_MS,
+        ExistingDaemonAction, PROBE_READ_TIMEOUT_MS, SidecarState, cleaned_reason,
+        cleaned_reason_taxonomy, daemon_dir, daemon_inventory_payload_json,
+        daemon_inventory_summary_json, ensure_existing_daemon, existing_daemon_action_with_retry,
+        incomplete_daemon_reasons, log_path, pid_path, port_path, read_pid,
+        remap_existing_session_request_error, send_request_with_retry, shutdown_daemon,
+        startup_exit_error, startup_timeout_error, version_path,
     };
     use crate::cli::protocol::{Request, Response, simple_openpage_error};
     use crate::error::OpenPageError;
@@ -2021,9 +2022,13 @@ mod tests {
             runtime_issue: Some("broken_target"),
         };
 
-        assert_eq!(incomplete_daemon_reasons(&incomplete), vec!["broken_target"]);
+        assert_eq!(
+            incomplete_daemon_reasons(&incomplete),
+            vec!["broken_target"]
+        );
         assert!(
-            super::incomplete_daemon_fix(&incomplete).contains("browser start --session beta --replace")
+            super::incomplete_daemon_fix(&incomplete)
+                .contains("browser start --session beta --replace")
         );
     }
 
@@ -2260,7 +2265,10 @@ mod tests {
 
         let payload = daemon_inventory_payload_json(&inventory);
         assert_eq!(payload["incomplete"][0]["state"], "incomplete");
-        assert_eq!(payload["incomplete"][0]["reasons"], json!(["broken_target"]));
+        assert_eq!(
+            payload["incomplete"][0]["reasons"],
+            json!(["broken_target"])
+        );
         assert!(
             payload["incomplete"][0]["fix"]
                 .as_str()
@@ -2297,7 +2305,10 @@ mod tests {
 
         let payload = daemon_inventory_payload_json(&inventory);
         assert_eq!(payload["incomplete"][0]["state"], "incomplete");
-        assert_eq!(payload["incomplete"][0]["reasons"], json!(["daemon_unresponsive"]));
+        assert_eq!(
+            payload["incomplete"][0]["reasons"],
+            json!(["daemon_unresponsive"])
+        );
         assert!(
             payload["incomplete"][0]["fix"]
                 .as_str()

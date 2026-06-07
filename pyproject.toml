@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 [tool.maturin]
-manifest-path = "rust/Cargo.toml"
+manifest-path = "rust/bindings/python/Cargo.toml"
 module-name = "openpage_rs"
 python-source = "python"
 features = ["python-module"]

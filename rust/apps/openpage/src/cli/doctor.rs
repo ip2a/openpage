@@ -1147,7 +1147,10 @@ fn openpage_home_creation_blocker() -> Option<String> {
         return None;
     }
 
-    let parent = path.ancestors().skip(1).find(|ancestor| ancestor.exists())?;
+    let parent = path
+        .ancestors()
+        .skip(1)
+        .find(|ancestor| ancestor.exists())?;
     let metadata = fs::metadata(parent).ok()?;
     if metadata.permissions().readonly() {
         Some(format!(
@@ -1429,10 +1432,12 @@ mod tests {
     };
     use serde_json::json;
     use std::fs;
+    use std::io::{BufRead, BufReader, Write};
     use std::path::PathBuf;
     #[cfg(unix)]
     use std::process::Command;
     use std::sync::{Mutex, OnceLock};
+    use std::thread;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     struct EnvVarGuard {
@@ -1472,6 +1477,35 @@ mod tests {
             "openpage-doctor-test-home-{label}-{}-{unique}",
             std::process::id()
         ))
+    }
+
+    fn spawn_one_response_daemon() -> (u16, thread::JoinHandle<()>) {
+        let listener =
+            std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind test daemon listener");
+        let port = listener.local_addr().expect("listener addr").port();
+        let handle = thread::spawn(move || {
+            for _ in 0..3 {
+                let (mut stream, _) = listener.accept().expect("accept daemon probe");
+                let mut request = String::new();
+                {
+                    let mut reader = BufReader::new(&mut stream);
+                    reader
+                        .read_line(&mut request)
+                        .expect("read daemon probe request");
+                }
+                if request.trim().is_empty() {
+                    continue;
+                }
+                let response = json!({
+                    "ok": true,
+                    "result": "about:blank",
+                });
+                writeln!(stream, "{response}").expect("write daemon probe response");
+                return;
+            }
+            panic!("daemon probe request was not received");
+        });
+        (port, handle)
     }
 
     fn test_env_lock() -> &'static Mutex<()> {
@@ -2728,9 +2762,7 @@ mod tests {
         let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
         fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
 
-        let healthy_listener =
-            std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind healthy listener");
-        let healthy_port = healthy_listener.local_addr().expect("healthy addr").port();
+        let (healthy_port, healthy_handle) = spawn_one_response_daemon();
         fs::write(
             port_path("healthy").expect("healthy port path"),
             healthy_port.to_string(),
@@ -2925,7 +2957,7 @@ mod tests {
         assert!(pid_path("cleaned").expect("cleaned pid path").exists());
         assert!(port_path("cleaned").expect("cleaned port path").exists());
 
-        drop(healthy_listener);
+        healthy_handle.join().expect("healthy probe daemon thread");
         drop(incompatible_listener);
         let _ = fs::remove_dir_all(home);
     }
