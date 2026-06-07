@@ -1741,13 +1741,6 @@ pub(crate) fn shadow_root_object_id_unavailable_message() -> String {
     )
 }
 
-pub(crate) fn shadow_root_xpath_traversal_not_implemented_message() -> String {
-    localized_message(
-        "xpath shadow root traversal is not implemented yet",
-        "暂未实现 shadow root 的 xpath 遍历",
-    )
-}
-
 pub(crate) fn javascript_execution_timed_out_message() -> String {
     localized_message("javascript execution timed out", "JavaScript 执行超时")
 }
@@ -1891,11 +1884,10 @@ mod tests {
         session_download_retry_loop_exited_message, session_page_no_current_url_message,
         session_page_no_loaded_document_message, session_request_retry_loop_exited_message,
         set_file_input_requires_at_least_one_file_message,
-        shadow_root_object_id_unavailable_message,
-        shadow_root_xpath_traversal_not_implemented_message,
-        snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
-        snapshot_node_no_longer_exists_message, target_tab_not_found_message, timeout_error,
-        timeout_must_be_non_negative_message, top_window_device_pixel_ratio_not_numeric_message,
+        shadow_root_object_id_unavailable_message, snapshot_fragment_root_not_found_message,
+        snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
+        target_tab_not_found_message, timeout_error, timeout_must_be_non_negative_message,
+        top_window_device_pixel_ratio_not_numeric_message,
         top_window_viewport_size_lookup_failed_message, unsupported_key_message,
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
         unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
@@ -2539,10 +2531,6 @@ mod tests {
             "shadow root object id is unavailable"
         );
         assert_eq!(
-            shadow_root_xpath_traversal_not_implemented_message(),
-            "xpath shadow root traversal is not implemented yet"
-        );
-        assert_eq!(
             javascript_execution_timed_out_message(),
             "javascript execution timed out"
         );
@@ -3040,10 +3028,6 @@ mod tests {
         assert_eq!(
             shadow_root_object_id_unavailable_message(),
             "shadow root 的 object id 不可用"
-        );
-        assert_eq!(
-            shadow_root_xpath_traversal_not_implemented_message(),
-            "暂未实现 shadow root 的 xpath 遍历"
         );
         assert_eq!(
             javascript_execution_timed_out_message(),

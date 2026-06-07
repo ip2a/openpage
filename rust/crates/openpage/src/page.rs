@@ -11772,6 +11772,14 @@ mod tests {
                 inside_xpath_list[1].text()?,
                 Some("Shadow Extra".to_string())
             );
+            let direct_child = shadow_root
+                .child_with(Some("xpath:./span[@class='inside']"), 2)
+                .expect("shadow root xpath child");
+            assert_eq!(direct_child.text()?, Some("Shadow Extra".to_string()));
+            let direct_children = shadow_root
+                .children_with(Some("xpath:./span[@class='inside']"))
+                .expect("shadow root xpath children");
+            assert_eq!(direct_children.len(), 2);
             let shadow_root_alias = host.sr()?.expect("host sr alias");
             assert!(shadow_root_alias.inner_html()?.contains("Shadow Text"));
 

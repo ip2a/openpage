@@ -24,7 +24,6 @@ use crate::session::{
 };
 use crate::settings::{
     javascript_execution_timed_out_message, shadow_root_object_id_unavailable_message,
-    shadow_root_xpath_traversal_not_implemented_message,
 };
 
 const MARKER_ATTRIBUTE: &str = "data-openpage-marker";
@@ -620,13 +619,7 @@ fn direct_child_selector(locator: Option<&str>) -> OpenPageResult<String> {
     let Some(locator) = locator.map(str::trim).filter(|locator| !locator.is_empty()) else {
         return Ok(":scope > *".to_string());
     };
-    let locator = Locator::parse(locator)?;
-    match locator.kind() {
-        LocatorKind::Css => Ok(format!(":scope > {}", locator.query())),
-        LocatorKind::XPath => Err(OpenPageError::UnsupportedLocator(
-            shadow_root_xpath_traversal_not_implemented_message(),
-        )),
-    }
+    Ok(format!(":scope > {locator}"))
 }
 
 fn normalize_relative_xpath(xpath: &str) -> String {
@@ -755,7 +748,6 @@ mod tests {
         build_js_invocation, direct_child_selector, normalize_axis_xpath,
         resolve_javascript_timeout_ms,
     };
-    use crate::settings::{Settings, scoped_test_settings};
     use serde_json::json;
 
     #[test]
@@ -779,21 +771,6 @@ mod tests {
             direct_child_selector(Some(".item")).expect("selector should build"),
             ":scope > .item"
         );
-    }
-
-    #[test]
-    fn direct_child_selector_localizes_xpath_unsupported_error() {
-        let _guard = scoped_test_settings();
-        Settings::reset();
-
-        let error = direct_child_selector(Some("xpath://div"))
-            .expect_err("xpath child traversal should not be supported");
-        assert!(error.to_string().contains("not implemented yet"));
-
-        Settings::set_language("cn");
-        let error = direct_child_selector(Some("xpath://div"))
-            .expect_err("xpath child traversal should not be supported");
-        assert!(error.to_string().contains("暂未实现"));
     }
 
     #[test]
