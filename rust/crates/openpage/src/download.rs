@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex as StdMutex};
@@ -52,6 +53,12 @@ impl DownloadState {
             Self::Canceled => "canceled",
             Self::Skipped => "skipped",
         }
+    }
+}
+
+impl fmt::Display for DownloadState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -840,6 +847,14 @@ mod tests {
     #[test]
     fn download_mission_snapshot_signature_returns_info() {
         let _ = DownloadMission::snapshot as fn(&DownloadMission) -> OpenPageResult<DownloadInfo>;
+    }
+
+    #[test]
+    fn download_state_display_matches_reference_state_strings() {
+        assert_eq!(super::DownloadState::Running.to_string(), "running");
+        assert_eq!(super::DownloadState::Completed.to_string(), "done");
+        assert_eq!(super::DownloadState::Canceled.to_string(), "canceled");
+        assert_eq!(super::DownloadState::Skipped.to_string(), "skipped");
     }
 
     #[test]
