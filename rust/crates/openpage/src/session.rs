@@ -864,7 +864,7 @@ fn parse_session_headers(value: &str) -> OpenPageResult<Vec<(String, String)>> {
             .map(|(key, value)| Ok((key, json_scalar_to_string(&value, "headers")?)))
             .collect(),
         _ => Err(OpenPageError::Http(
-            "invalid headers in session options ini: expected object".to_string(),
+            invalid_session_ini_field_expected_message("headers", "object"),
         )),
     }
 }
@@ -884,13 +884,12 @@ fn parse_session_params(value: &str) -> OpenPageResult<Vec<(String, String)>> {
                     json_scalar_to_string(&pair[1], "params")?,
                 )),
                 _ => Err(OpenPageError::Http(
-                    "invalid params in session options ini: expected [key, value] pairs"
-                        .to_string(),
+                    invalid_session_ini_field_expected_message("params", "[key, value] pairs"),
                 )),
             })
             .collect(),
         _ => Err(OpenPageError::Http(
-            "invalid params in session options ini: expected object or pair list".to_string(),
+            invalid_session_ini_field_expected_message("params", "object or pair list"),
         )),
     }
 }
@@ -900,7 +899,7 @@ fn parse_session_cookies(value: &str) -> OpenPageResult<Vec<SessionCookieParam>>
         Value::Null => Ok(Vec::new()),
         Value::Array(items) => items.into_iter().map(parse_session_cookie_param).collect(),
         _ => Err(OpenPageError::Http(
-            "invalid cookies in session options ini: expected list".to_string(),
+            invalid_session_ini_field_expected_message("cookies", "list"),
         )),
     }
 }
@@ -908,7 +907,7 @@ fn parse_session_cookies(value: &str) -> OpenPageResult<Vec<SessionCookieParam>>
 fn parse_session_cookie_param(value: Value) -> OpenPageResult<SessionCookieParam> {
     let Value::Object(map) = value else {
         return Err(OpenPageError::Http(
-            "invalid cookie in session options ini: expected object".to_string(),
+            invalid_session_ini_field_expected_message("cookie", "object"),
         ));
     };
     Ok(SessionCookieParam {

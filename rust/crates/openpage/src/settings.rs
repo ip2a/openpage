@@ -1443,6 +1443,10 @@ mod tests {
             "invalid retry_times in session options ini: expected positive integer"
         );
         assert_eq!(
+            invalid_session_ini_field_expected_message("params", "object or pair list"),
+            "invalid params in session options ini: expected object or pair list"
+        );
+        assert_eq!(
             invalid_xpath_html_message("parse error"),
             "invalid xpath html: parse error"
         );
@@ -1933,6 +1937,10 @@ mod tests {
         assert_eq!(
             invalid_session_ini_field_expected_message("retry_times", "positive integer"),
             "session options ini 中的 retry_times 无效: 期望 positive integer"
+        );
+        assert_eq!(
+            invalid_session_ini_field_expected_message("params", "object or pair list"),
+            "session options ini 中的 params 无效: 期望 object or pair list"
         );
         assert_eq!(
             invalid_xpath_html_message("parse error"),
