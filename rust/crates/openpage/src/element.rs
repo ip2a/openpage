@@ -53,7 +53,7 @@ use crate::settings::{
     click_failed_should_raise, element_html_unavailable_message, element_no_visible_rect_message,
     element_resource_unavailable_message, element_tag_name_unavailable_message,
     frame_index_must_start_message, frame_index_out_of_range_message, no_new_tab_message,
-    wait_timeout_result,
+    unsupported_mouse_button_message, wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -390,9 +390,7 @@ impl Element {
                 "click_at() count must be >= 1".to_string(),
             ));
         }
-        let button = button.parse::<MouseButton>().map_err(|_| {
-            OpenPageError::PageOperation(format!("unsupported mouse button: {button}"))
-        })?;
+        let button = parse_mouse_button(button)?;
         match self.click_at_runtime(offset_x, offset_y, button, count) {
             Ok(()) => Ok(()),
             Err(err) => Self::click_failed_outcome(err, ()),
@@ -4848,6 +4846,12 @@ pub(crate) fn resolve_javascript_timeout_ms(
     requested.unwrap_or(default_timeout_ms).max(1)
 }
 
+fn parse_mouse_button(button: &str) -> OpenPageResult<MouseButton> {
+    button
+        .parse::<MouseButton>()
+        .map_err(|_| OpenPageError::PageOperation(unsupported_mouse_button_message(button)))
+}
+
 pub(crate) fn load_javascript_source(script: &str) -> OpenPageResult<Cow<'_, str>> {
     match fs::metadata(script) {
         Ok(metadata) if metadata.is_file() => match fs::read_to_string(script) {
@@ -5269,13 +5273,33 @@ fn mac_meta_commands(key: &str) -> Option<&'static [&'static str]> {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_javascript_timeout_ms;
+    use super::{parse_mouse_button, resolve_javascript_timeout_ms};
 
     #[test]
     fn resolve_javascript_timeout_ms_prefers_explicit_value() {
         assert_eq!(resolve_javascript_timeout_ms(Some(250), 30_000), 250);
         assert_eq!(resolve_javascript_timeout_ms(Some(0), 30_000), 1);
         assert_eq!(resolve_javascript_timeout_ms(None, 30_000), 30_000);
+    }
+
+    #[test]
+    fn parse_mouse_button_errors_follow_settings_language() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+
+        let error = parse_mouse_button("side").expect_err("invalid mouse button should fail");
+        assert!(
+            matches!(error, crate::OpenPageError::PageOperation(ref message) if message == "unsupported mouse button: side"),
+            "unexpected error: {error}"
+        );
+
+        crate::Settings::set_language("cn");
+
+        let error = parse_mouse_button("side").expect_err("invalid mouse button should fail");
+        assert!(
+            matches!(error, crate::OpenPageError::PageOperation(ref message) if message == "不支持的鼠标按钮: side"),
+            "unexpected error: {error}"
+        );
     }
 
     use std::time::Duration;

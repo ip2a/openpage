@@ -289,6 +289,13 @@ pub(crate) fn invalid_load_mode_message(value: &str) -> String {
     }
 }
 
+pub(crate) fn unsupported_mouse_button_message(button: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("不支持的鼠标按钮: {button}"),
+        _ => format!("unsupported mouse button: {button}"),
+    }
+}
+
 pub(crate) fn frame_index_must_start_message() -> String {
     localized_message(
         "frame index must start from 1 or use negative indices from -1",
@@ -659,7 +666,7 @@ mod tests {
         screencast_save_path_must_be_directory_message, session_page_no_current_url_message,
         session_page_no_loaded_document_message, shadow_root_object_id_unavailable_message,
         shadow_root_xpath_traversal_not_implemented_message, target_tab_not_found_message,
-        timeout_error, timeout_must_be_non_negative_message,
+        timeout_error, timeout_must_be_non_negative_message, unsupported_mouse_button_message,
         unsupported_screencast_output_suffix_message, upload_requires_at_least_one_file_message,
     };
     use crate::error::OpenPageError;
@@ -774,6 +781,10 @@ mod tests {
         assert_eq!(
             invalid_load_mode_message("fast"),
             "load mode must be one of normal/eager/none, got fast"
+        );
+        assert_eq!(
+            unsupported_mouse_button_message("side"),
+            "unsupported mouse button: side"
         );
         assert_eq!(
             component_state_lock_poisoned_message("console state", "控制台状态"),
@@ -928,6 +939,10 @@ mod tests {
         assert_eq!(
             invalid_load_mode_message("fast"),
             "加载模式必须是 normal/eager/none 之一，当前为 fast"
+        );
+        assert_eq!(
+            unsupported_mouse_button_message("side"),
+            "不支持的鼠标按钮: side"
         );
         assert_eq!(
             component_state_lock_poisoned_message("console state", "控制台状态"),
