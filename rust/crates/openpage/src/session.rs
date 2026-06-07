@@ -51,16 +51,17 @@ use crate::settings::{
     parent_element_index_must_start_message, parent_element_level_must_start_message,
     parent_element_not_found_message, preceding_element_not_found_message,
     preceding_node_not_found_message, previous_element_not_found_message,
-    previous_node_not_found_message, session_cert_read_failed_message,
-    session_cookie_requires_url_or_domain_message, session_download_file_failed_message,
-    session_download_status_message, session_identity_parse_failed_message,
-    session_local_file_failed_message, session_page_no_current_url_message,
-    session_page_no_loaded_document_message, session_request_failed_message,
-    session_response_body_read_failed_message, snapshot_fragment_root_not_found_message,
-    snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
-    unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
-    unterminated_session_ini_python_string_message, xpath_node_no_longer_exists_message,
-    xpath_path_not_found_message, xpath_segment_not_found_message,
+    previous_node_not_found_message, relative_index_must_start_message,
+    session_cert_read_failed_message, session_cookie_requires_url_or_domain_message,
+    session_download_file_failed_message, session_download_status_message,
+    session_identity_parse_failed_message, session_local_file_failed_message,
+    session_page_no_current_url_message, session_page_no_loaded_document_message,
+    session_request_failed_message, session_response_body_read_failed_message,
+    snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
+    snapshot_node_no_longer_exists_message, unsupported_snapshot_node_kind_message,
+    unsupported_xpath_path_message, unterminated_session_ini_python_string_message,
+    xpath_node_no_longer_exists_message, xpath_path_not_found_message,
+    xpath_segment_not_found_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -5185,9 +5186,9 @@ fn css_path_for_element(element: ElementRef<'_>) -> String {
 
 fn nth_from_start<T>(elements: Vec<T>, index: usize, error_message: &str) -> OpenPageResult<T> {
     if index == 0 {
-        return Err(OpenPageError::ElementNotFound(format!(
-            "{error_message}: index must be >= 1"
-        )));
+        return Err(OpenPageError::ElementNotFound(
+            relative_index_must_start_message(error_message),
+        ));
     }
     elements
         .into_iter()
@@ -5197,9 +5198,9 @@ fn nth_from_start<T>(elements: Vec<T>, index: usize, error_message: &str) -> Ope
 
 fn nth_from_end<T>(elements: Vec<T>, index: usize, error_message: &str) -> OpenPageResult<T> {
     if index == 0 {
-        return Err(OpenPageError::ElementNotFound(format!(
-            "{error_message}: index must be >= 1"
-        )));
+        return Err(OpenPageError::ElementNotFound(
+            relative_index_must_start_message(error_message),
+        ));
     }
     let len = elements.len();
     if index > len {
@@ -9042,6 +9043,12 @@ mod tests {
             .to_string();
         assert!(english_child.contains("child element not found"));
 
+        let english_child_index = root
+            .child_with(None::<&str>, 0)
+            .expect_err("zero child index should fail")
+            .to_string();
+        assert!(english_child_index.contains("child element not found: index must be >= 1"));
+
         let english_prev = only
             .prev_with(None::<&str>, 1)
             .expect_err("missing previous sibling should fail")
@@ -9073,6 +9080,12 @@ mod tests {
             .expect_err("missing child should localize")
             .to_string();
         assert!(chinese_child.contains("没有找到子元素"));
+
+        let chinese_child_index = root
+            .child_with(None::<&str>, 0)
+            .expect_err("zero child index should localize")
+            .to_string();
+        assert!(chinese_child_index.contains("没有找到子元素: index 必须 >= 1"));
 
         let chinese_prev = only
             .prev_with(None::<&str>, 1)
@@ -9114,6 +9127,12 @@ mod tests {
             .to_string();
         assert!(english_child.contains("child node not found"));
 
+        let english_child_index = only
+            .child_node_with(None, 0)
+            .expect_err("zero child node index should fail")
+            .to_string();
+        assert!(english_child_index.contains("child node not found: index must be >= 1"));
+
         let english_prev = only
             .prev_node_with(None::<&str>, 1)
             .expect_err("missing previous node should fail")
@@ -9145,6 +9164,12 @@ mod tests {
             .expect_err("missing child node should localize")
             .to_string();
         assert!(chinese_child.contains("没有找到子节点"));
+
+        let chinese_child_index = only
+            .child_node_with(None, 0)
+            .expect_err("zero child node index should localize")
+            .to_string();
+        assert!(chinese_child_index.contains("没有找到子节点: index 必须 >= 1"));
 
         let chinese_prev = only
             .prev_node_with(None::<&str>, 1)

@@ -893,6 +893,13 @@ pub(crate) fn following_node_not_found_message() -> String {
     localized_message("following node not found", "没有找到后方节点")
 }
 
+pub(crate) fn relative_index_must_start_message(message: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{message}: index 必须 >= 1"),
+        _ => format!("{message}: index must be >= 1"),
+    }
+}
+
 pub(crate) fn snapshot_fragment_wrapper_not_found_message() -> String {
     localized_message(
         "snapshot fragment wrapper not found",
