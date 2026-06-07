@@ -1010,6 +1010,44 @@ pub(crate) fn css_locator_unsupported_for_node_queries_message() -> String {
     )
 }
 
+pub(crate) fn invalid_launch_options_ini_field_message(field: &str, detail: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("launch options ini 中的 {field} 无效: {detail}"),
+        _ => format!("invalid {field} in launch options ini: {detail}"),
+    }
+}
+
+pub(crate) fn invalid_launch_options_ini_field_expected_message(
+    field: &str,
+    expected: &str,
+) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("launch options ini 中的 {field} 无效: 期望 {expected}"),
+        _ => format!("invalid {field} in launch options ini: expected {expected}"),
+    }
+}
+
+pub(crate) fn invalid_launch_options_ini_boolean_message(value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("launch options ini 中的 boolean 无效: {value}"),
+        _ => format!("invalid boolean in launch options ini: {value}"),
+    }
+}
+
+pub(crate) fn invalid_launch_options_ini_python_string_message() -> String {
+    localized_message(
+        "invalid Python-style string in launch options ini",
+        "launch options ini 中的 Python 风格字符串无效",
+    )
+}
+
+pub(crate) fn unterminated_launch_options_ini_python_string_message() -> String {
+    localized_message(
+        "unterminated Python-style string in launch options ini",
+        "launch options ini 中的 Python 风格字符串未闭合",
+    )
+}
+
 pub(crate) fn invalid_session_ini_field_message(field: &str, detail: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("session options ini 中的 {field} 无效: {detail}"),

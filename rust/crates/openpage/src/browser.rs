@@ -34,9 +34,11 @@ use crate::page::Page;
 use crate::settings::{
     browser_connect_timeout_duration, cdp_timeout_duration, component_state_lock_poisoned_message,
     invalid_auto_port_scope_message, invalid_download_file_exists_mode_message,
+    invalid_launch_options_ini_boolean_message, invalid_launch_options_ini_field_expected_message,
+    invalid_launch_options_ini_field_message, invalid_launch_options_ini_python_string_message,
     invalid_load_mode_message, invalid_tab_index_message, no_free_port_in_auto_port_scope_message,
     singleton_tab_obj_enabled, target_tab_not_found_message, timeout_duration_millis,
-    timeout_error, wait_failed_should_raise,
+    timeout_error, unterminated_launch_options_ini_python_string_message, wait_failed_should_raise,
 };
 use crate::webpage::WebPage;
 
@@ -2968,9 +2970,10 @@ fn parse_launch_options_ini(content: &str) -> OpenPageResult<LaunchOptions> {
     }
     if let Some(retry_times) = ini_non_empty(ini_section_value(&sections, "others", "retry_times"))
     {
-        options.retry_times = retry_times.parse().map_err(|err| {
-            OpenPageError::BrowserOperation(format!(
-                "invalid retry_times in launch options ini: {err}"
+        options.retry_times = retry_times.parse::<usize>().map_err(|err| {
+            OpenPageError::BrowserOperation(invalid_launch_options_ini_field_message(
+                "retry_times",
+                &err.to_string(),
             ))
         })?;
     }
@@ -2978,31 +2981,35 @@ fn parse_launch_options_ini(content: &str) -> OpenPageResult<LaunchOptions> {
         ini_non_empty(ini_section_value(&sections, "others", "retry_interval"))
     {
         let retry_interval = retry_interval.parse::<f64>().map_err(|err| {
-            OpenPageError::BrowserOperation(format!(
-                "invalid retry_interval in launch options ini: {err}"
+            OpenPageError::BrowserOperation(invalid_launch_options_ini_field_message(
+                "retry_interval",
+                &err.to_string(),
             ))
         })?;
         options.retry_interval_millis = seconds_to_millis(retry_interval);
     }
     if let Some(base) = ini_non_empty(ini_section_value(&sections, "timeouts", "base")) {
         options.timeouts.implicit_wait = seconds_to_millis(base.parse::<f64>().map_err(|err| {
-            OpenPageError::BrowserOperation(format!(
-                "invalid base timeout in launch options ini: {err}"
+            OpenPageError::BrowserOperation(invalid_launch_options_ini_field_message(
+                "base timeout",
+                &err.to_string(),
             ))
         })?);
     }
     if let Some(page_load) = ini_non_empty(ini_section_value(&sections, "timeouts", "page_load")) {
         options.timeouts.page_load =
             seconds_to_millis(page_load.parse::<f64>().map_err(|err| {
-                OpenPageError::BrowserOperation(format!(
-                    "invalid page_load timeout in launch options ini: {err}"
+                OpenPageError::BrowserOperation(invalid_launch_options_ini_field_message(
+                    "page_load timeout",
+                    &err.to_string(),
                 ))
             })?);
     }
     if let Some(script) = ini_non_empty(ini_section_value(&sections, "timeouts", "script")) {
         options.timeouts.script = seconds_to_millis(script.parse::<f64>().map_err(|err| {
-            OpenPageError::BrowserOperation(format!(
-                "invalid script timeout in launch options ini: {err}"
+            OpenPageError::BrowserOperation(invalid_launch_options_ini_field_message(
+                "script timeout",
+                &err.to_string(),
             ))
         })?);
     }
@@ -3056,25 +3063,27 @@ fn parse_ini_bool(value: &str) -> OpenPageResult<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
         "true" | "1" | "yes" | "on" => Ok(true),
         "false" | "0" | "no" | "off" => Ok(false),
-        _ => Err(OpenPageError::BrowserOperation(format!(
-            "invalid boolean in launch options ini: {value}"
-        ))),
+        _ => Err(OpenPageError::BrowserOperation(
+            invalid_launch_options_ini_boolean_message(value),
+        )),
     }
 }
 
 fn parse_ini_string_list(value: &str, field: &str) -> OpenPageResult<Vec<String>> {
     let parsed = parse_ini_json_like_value(value, field)?;
     let items = parsed.as_array().ok_or_else(|| {
-        OpenPageError::BrowserOperation(format!(
-            "invalid {field} list in launch options ini: expected list"
+        OpenPageError::BrowserOperation(invalid_launch_options_ini_field_expected_message(
+            &format!("{field} list"),
+            "list",
         ))
     })?;
     items
         .iter()
         .map(|item| {
             item.as_str().map(ToOwned::to_owned).ok_or_else(|| {
-                OpenPageError::BrowserOperation(format!(
-                    "invalid {field} list in launch options ini: expected string items"
+                OpenPageError::BrowserOperation(invalid_launch_options_ini_field_expected_message(
+                    &format!("{field} list"),
+                    "string items",
                 ))
             })
         })
@@ -3084,9 +3093,10 @@ fn parse_ini_string_list(value: &str, field: &str) -> OpenPageResult<Vec<String>
 fn parse_ini_preferences(value: &str) -> OpenPageResult<HashMap<String, serde_json::Value>> {
     let parsed = parse_ini_json_like_value(value, "prefs")?;
     let object = parsed.as_object().ok_or_else(|| {
-        OpenPageError::BrowserOperation(
-            "invalid prefs object in launch options ini: expected object".to_string(),
-        )
+        OpenPageError::BrowserOperation(invalid_launch_options_ini_field_expected_message(
+            "prefs object",
+            "object",
+        ))
     })?;
     Ok(object
         .iter()
@@ -3102,8 +3112,10 @@ fn parse_ini_flags(value: &str) -> OpenPageResult<Vec<String>> {
             .map(|item| {
                 item.as_str().map(ToOwned::to_owned).ok_or_else(|| {
                     OpenPageError::BrowserOperation(
-                        "invalid flags list in launch options ini: expected string items"
-                            .to_string(),
+                        invalid_launch_options_ini_field_expected_message(
+                            "flags list",
+                            "string items",
+                        ),
                     )
                 })
             })
@@ -3116,13 +3128,15 @@ fn parse_ini_flags(value: &str) -> OpenPageResult<Vec<String>> {
                 serde_json::Value::Number(value) => Ok(format!("{key}@{value}")),
                 serde_json::Value::Bool(value) => Ok(format!("{key}@{value}")),
                 _ => Err(OpenPageError::BrowserOperation(
-                    "invalid flags object in launch options ini: expected scalar values"
-                        .to_string(),
+                    invalid_launch_options_ini_field_expected_message(
+                        "flags object",
+                        "scalar values",
+                    ),
                 )),
             })
             .collect(),
         _ => Err(OpenPageError::BrowserOperation(
-            "invalid flags in launch options ini: expected list or object".to_string(),
+            invalid_launch_options_ini_field_expected_message("flags", "list or object"),
         )),
     }
 }
@@ -3133,8 +3147,9 @@ fn parse_ini_json_like_value(value: &str, field: &str) -> OpenPageResult<serde_j
     }
     let normalized = python_literal_to_json(value)?;
     serde_json::from_str(&normalized).map_err(|err| {
-        OpenPageError::BrowserOperation(format!(
-            "invalid {field} value in launch options ini: {err}"
+        OpenPageError::BrowserOperation(invalid_launch_options_ini_field_message(
+            &format!("{field} value"),
+            &err.to_string(),
         ))
     })
 }
@@ -3158,7 +3173,7 @@ fn python_literal_to_json(value: &str) -> OpenPageResult<String> {
                         index += 1;
                         if index >= chars.len() {
                             return Err(OpenPageError::BrowserOperation(
-                                "invalid Python-style string in launch options ini".to_string(),
+                                invalid_launch_options_ini_python_string_message(),
                             ));
                         }
                         let escaped = chars[index];
@@ -3185,7 +3200,7 @@ fn python_literal_to_json(value: &str) -> OpenPageResult<String> {
 
                 if !closed {
                     return Err(OpenPageError::BrowserOperation(
-                        "unterminated Python-style string in launch options ini".to_string(),
+                        unterminated_launch_options_ini_python_string_message(),
                     ));
                 }
 
@@ -3220,18 +3235,20 @@ fn python_literal_to_json(value: &str) -> OpenPageResult<String> {
 fn parse_ini_u16_tuple(value: &str) -> OpenPageResult<(u16, u16)> {
     let trimmed = value.trim().trim_start_matches('(').trim_end_matches(')');
     let Some((start, end)) = trimmed.split_once(',') else {
-        return Err(OpenPageError::BrowserOperation(format!(
-            "invalid auto_port scope in launch options ini: {value}"
-        )));
+        return Err(OpenPageError::BrowserOperation(
+            invalid_launch_options_ini_field_message("auto_port scope", value),
+        ));
     };
     let start = start.trim().parse::<u16>().map_err(|err| {
-        OpenPageError::BrowserOperation(format!(
-            "invalid auto_port scope start in launch options ini: {err}"
+        OpenPageError::BrowserOperation(invalid_launch_options_ini_field_message(
+            "auto_port scope start",
+            &err.to_string(),
         ))
     })?;
     let end = end.trim().parse::<u16>().map_err(|err| {
-        OpenPageError::BrowserOperation(format!(
-            "invalid auto_port scope end in launch options ini: {err}"
+        OpenPageError::BrowserOperation(invalid_launch_options_ini_field_message(
+            "auto_port scope end",
+            &err.to_string(),
         ))
     })?;
     Ok((start, end))
@@ -5050,6 +5067,37 @@ mod tests {
             download_error.to_string(),
             "浏览器操作失败: 下载文件已存在策略必须是 rename/overwrite/skip 之一，当前为 bad"
         );
+    }
+
+    #[test]
+    fn launch_options_from_ini_parse_errors_follow_settings_language() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let dir = make_temp_dir("launch-options-ini-parse-language");
+        let config_path = dir.join("configs.ini");
+        fs::write(&config_path, "[chromium_options]\nheadless = maybe\n")
+            .expect("write invalid launch options ini");
+
+        let english = LaunchOptions::from_ini(Some(config_path.as_path()))
+            .expect_err("invalid launch options ini should fail")
+            .to_string();
+        assert_eq!(
+            english,
+            "browser operation failed: invalid boolean in launch options ini: maybe"
+        );
+
+        Settings::set_language("cn");
+
+        let chinese = LaunchOptions::from_ini(Some(config_path.as_path()))
+            .expect_err("invalid launch options ini should fail in Chinese")
+            .to_string();
+        assert_eq!(
+            chinese,
+            "浏览器操作失败: launch options ini 中的 boolean 无效: maybe"
+        );
+
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
