@@ -1428,7 +1428,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.scroll_to_top(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_top() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_top()"),
             )),
         }
     }
@@ -1437,7 +1437,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.scroll_to_bottom(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_bottom() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_bottom()"),
             )),
         }
     }
@@ -1446,7 +1446,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.scroll_to_half(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_half() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_half()"),
             )),
         }
     }
@@ -1455,7 +1455,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.scroll_to_rightmost(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_rightmost() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_rightmost()"),
             )),
         }
     }
@@ -1464,7 +1464,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.scroll_to_leftmost(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_leftmost() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_leftmost()"),
             )),
         }
     }
@@ -1473,7 +1473,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.scroll_to_location(x, y),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_location() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_location()"),
             )),
         }
     }
@@ -1482,7 +1482,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.scroll_up(pixels),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "scroll_up() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_up()"),
             )),
         }
     }
@@ -1491,7 +1491,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.scroll_down(pixels),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "scroll_down() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_down()"),
             )),
         }
     }
@@ -1500,7 +1500,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.scroll_left(pixels),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "scroll_left() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_left()"),
             )),
         }
     }
@@ -1509,7 +1509,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.scroll_right(pixels),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "scroll_right() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_right()"),
             )),
         }
     }
@@ -1518,7 +1518,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.scroll_to_see(center),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_see() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_see()"),
             )),
         }
     }
@@ -1527,7 +1527,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.scroll_to_center(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_center() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_center()"),
             )),
         }
     }
@@ -1540,7 +1540,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.src(timeout_ms, base64_to_bytes),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "src() is only available in driver mode".to_string(),
+                driver_mode_only_message("src()"),
             )),
         }
     }
@@ -1555,7 +1555,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.save(path, name, timeout_ms, rename),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "save() is only available in driver mode".to_string(),
+                driver_mode_only_message("save()"),
             )),
         }
     }
@@ -1564,7 +1564,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.shadow_root(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "shadow_root() is only available in driver mode".to_string(),
+                driver_mode_only_message("shadow_root()"),
             )),
         }
     }
@@ -5948,6 +5948,44 @@ mod tests {
             chinese_style,
             OpenPageError::UnsupportedOperation(ref message)
                 if message.contains("style() 仅在 driver 模式可用")
+        ));
+    }
+
+    #[test]
+    fn web_element_session_driver_only_scroll_resource_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let element = WebElement::Session(
+            snapshot_root("<html><body><img id='logo' src='logo.png'></body></html>")
+                .expect("session snapshot root should parse"),
+        );
+        let english = element
+            .scroll_to_top()
+            .expect_err("session-backed WebElement scroll_to_top should fail");
+        assert!(matches!(
+            english,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("scroll_to_top() is only available in driver mode")
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese_src = element
+            .src(100, false)
+            .expect_err("session-backed WebElement src should fail");
+        assert!(matches!(
+            chinese_src,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("src() 仅在 driver 模式可用")
+        ));
+        let chinese_shadow = element
+            .shadow_root()
+            .expect_err("session-backed WebElement shadow_root should fail");
+        assert!(matches!(
+            chinese_shadow,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("shadow_root() 仅在 driver 模式可用")
         ));
     }
 
