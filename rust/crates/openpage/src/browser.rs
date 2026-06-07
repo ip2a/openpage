@@ -33,9 +33,9 @@ use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::Page;
 use crate::settings::{
     browser_command_failed_message, browser_config_path_failed_message,
-    browser_connect_timeout_duration, browser_temp_dir_create_failed_message,
-    browser_user_data_dir_reset_failed_message, cdp_timeout_duration,
-    component_state_lock_poisoned_message, download_canceled_message,
+    browser_connect_timeout_duration, browser_launch_operation_failed_message,
+    browser_temp_dir_create_failed_message, browser_user_data_dir_reset_failed_message,
+    cdp_timeout_duration, component_state_lock_poisoned_message, download_canceled_message,
     download_did_not_complete_in_time_message, download_directory_create_failed_message,
     download_file_operation_failed_message, download_frame_not_mapped_to_tab_message,
     download_path_not_configured_message, download_skipped_without_final_path_message,
@@ -1075,7 +1075,7 @@ fn move_newest_tab_info_to_front(infos: &mut Vec<TabInfo>, tracked_newest_tab_id
 impl Browser {
     pub fn launch(options: LaunchOptions) -> OpenPageResult<Self> {
         let runtime =
-            Arc::new(Runtime::new().map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?);
+            Arc::new(Runtime::new().map_err(|err| browser_launch_error("create runtime", err))?);
 
         let mut options = options;
         if let Some(path) = browser_path_env_override() {
@@ -1139,7 +1139,7 @@ impl Browser {
                 async move { tokio_timeout(connect_timeout, OxBrowser::launch(config)).await },
             )
             .map_err(|_| timeout_error("Browser::launch()", connect_timeout_ms))?
-            .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?;
+            .map_err(|err| browser_launch_error("launch browser", err))?;
 
         let handler_task = runtime.spawn(async move {
             while let Some(event) = handler.next().await {
@@ -1199,7 +1199,7 @@ impl Browser {
 
     pub fn connect(debugger_url: &str) -> OpenPageResult<Self> {
         let runtime =
-            Arc::new(Runtime::new().map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?);
+            Arc::new(Runtime::new().map_err(|err| browser_launch_error("create runtime", err))?);
         let download_spool_dir = make_temp_download_dir(None)?;
         let url = debugger_url.to_string();
         let debugger_address = normalize_debugger_address(debugger_url).0;
@@ -1208,7 +1208,7 @@ impl Browser {
         let (mut browser, mut handler) = runtime
             .block_on(async move { tokio_timeout(connect_timeout, OxBrowser::connect(url)).await })
             .map_err(|_| timeout_error("Browser::connect()", connect_timeout_ms))?
-            .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?;
+            .map_err(|err| browser_launch_error("connect browser", err))?;
 
         let handler_task = runtime.spawn(async move {
             while let Some(event) = handler.next().await {
@@ -2765,7 +2765,7 @@ fn build_browser_config(
 
     builder
         .build()
-        .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))
+        .map_err(|err| browser_launch_error("build browser config", err))
 }
 
 fn validate_auto_port_scope(scope: (u16, u16)) -> OpenPageResult<()> {
@@ -3833,7 +3833,7 @@ fn write_chrome_flags(
 fn make_temp_user_data_dir(base: Option<&Path>) -> OpenPageResult<PathBuf> {
     let suffix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?
+        .map_err(|err| browser_launch_error("create user data temp suffix", err))?
         .as_nanos();
     let fallback = std::env::temp_dir();
     let base = base.unwrap_or_else(|| fallback.as_path());
@@ -3865,7 +3865,7 @@ fn resolve_launch_user_data_dir(
 fn make_temp_download_dir(base: Option<&Path>) -> OpenPageResult<PathBuf> {
     let suffix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|err| OpenPageError::BrowserLaunch(err.to_string()))?
+        .map_err(|err| browser_launch_error("create download temp suffix", err))?
         .as_nanos();
     let fallback = std::env::temp_dir();
     let base = base.unwrap_or_else(|| fallback.as_path());
@@ -3911,6 +3911,13 @@ fn create_download_directory(path: &Path) -> OpenPageResult<()> {
             &err.to_string(),
         ))
     })
+}
+
+fn browser_launch_error(operation: &str, err: impl ToString) -> OpenPageError {
+    OpenPageError::BrowserLaunch(browser_launch_operation_failed_message(
+        operation,
+        &err.to_string(),
+    ))
 }
 
 async fn execute_browser_handle_command_async<T>(
@@ -4312,9 +4319,10 @@ mod tests {
         browser_cookie_param, browser_delete_cookie_params,
         browser_download_file_exists_lock_poisoned_error,
         browser_download_naming_lock_poisoned_error, browser_download_path_lock_poisoned_error,
-        browser_load_mode_lock_poisoned_error, browser_newest_tab_lock_poisoned_error,
-        browser_retry_interval_lock_poisoned_error, browser_retry_times_lock_poisoned_error,
-        browser_tab_info_matches, browser_timeouts_lock_poisoned_error, create_download_directory,
+        browser_launch_error, browser_load_mode_lock_poisoned_error,
+        browser_newest_tab_lock_poisoned_error, browser_retry_interval_lock_poisoned_error,
+        browser_retry_times_lock_poisoned_error, browser_tab_info_matches,
+        browser_timeouts_lock_poisoned_error, create_download_directory,
         default_launch_options_ini_path, download_source_path, finalize_download_path,
         find_free_port, find_new_tab_id, is_tab_like_type, isolated_context_lock_poisoned_error,
         make_temp_download_dir, make_temp_user_data_dir,
@@ -4610,6 +4618,20 @@ mod tests {
             .expect_err("future error should fail in Chinese")
             .to_string();
         assert!(chinese.contains("浏览器命令 Browser::unit_test() 执行失败: boom"));
+    }
+
+    #[test]
+    fn browser_launch_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english = browser_launch_error("unit test launch", "boom").to_string();
+        assert!(english.contains("browser launch operation unit test launch failed: boom"));
+
+        Settings::set_language("cn");
+
+        let chinese = browser_launch_error("unit test launch", "boom").to_string();
+        assert!(chinese.contains("浏览器启动操作 unit test launch 失败: boom"));
     }
 
     fn launch_headless_test_browser(

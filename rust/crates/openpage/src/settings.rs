@@ -476,6 +476,13 @@ pub(crate) fn browser_command_failed_message(operation: &str, err: &str) -> Stri
     }
 }
 
+pub(crate) fn browser_launch_operation_failed_message(operation: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("浏览器启动操作 {operation} 失败: {err}"),
+        _ => format!("browser launch operation {operation} failed: {err}"),
+    }
+}
+
 pub(crate) fn invalid_options_manager_ini_literal_message(detail: &str) -> String {
     localized_error_with_detail(
         "invalid options manager ini literal",
