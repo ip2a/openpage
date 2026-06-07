@@ -3755,7 +3755,7 @@ impl WebPage {
     pub fn scroll_to_top(&self) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_top() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_top()"),
             ));
         }
         self.driver.scroll_to_top()
@@ -3764,7 +3764,7 @@ impl WebPage {
     pub fn scroll_to_bottom(&self) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_bottom() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_bottom()"),
             ));
         }
         self.driver.scroll_to_bottom()
@@ -3773,7 +3773,7 @@ impl WebPage {
     pub fn scroll_to_half(&self) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_half() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_half()"),
             ));
         }
         self.driver.scroll_to_half()
@@ -3782,7 +3782,7 @@ impl WebPage {
     pub fn scroll_to_rightmost(&self) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_rightmost() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_rightmost()"),
             ));
         }
         self.driver.scroll_to_rightmost()
@@ -3791,7 +3791,7 @@ impl WebPage {
     pub fn scroll_to_leftmost(&self) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_leftmost() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_leftmost()"),
             ));
         }
         self.driver.scroll_to_leftmost()
@@ -3800,7 +3800,7 @@ impl WebPage {
     pub fn scroll_to_location(&self, x: f64, y: f64) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "scroll_to_location() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_to_location()"),
             ));
         }
         self.driver.scroll_to_location(x, y)
@@ -3809,7 +3809,7 @@ impl WebPage {
     pub fn scroll_up(&self, pixels: f64) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "scroll_up() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_up()"),
             ));
         }
         self.driver.scroll_up(pixels)
@@ -3818,7 +3818,7 @@ impl WebPage {
     pub fn scroll_down(&self, pixels: f64) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "scroll_down() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_down()"),
             ));
         }
         self.driver.scroll_down(pixels)
@@ -3827,7 +3827,7 @@ impl WebPage {
     pub fn scroll_left(&self, pixels: f64) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "scroll_left() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_left()"),
             ));
         }
         self.driver.scroll_left(pixels)
@@ -3836,7 +3836,7 @@ impl WebPage {
     pub fn scroll_right(&self, pixels: f64) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "scroll_right() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_right()"),
             ));
         }
         self.driver.scroll_right(pixels)
@@ -6456,6 +6456,50 @@ mod tests {
         let _ = page.quit();
         let _ = fs::remove_dir_all(&temp_dir);
         result.expect("webpage session viewport/navigation errors should localize");
+    }
+
+    #[test]
+    fn webpage_session_scroll_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-session-scroll-errors", WebMode::Session)
+                .expect("launch headless webpage");
+        let result = (|| -> crate::OpenPageResult<()> {
+            let english = page
+                .scroll_to_top()
+                .expect_err("session-mode WebPage scroll_to_top should fail");
+            assert!(matches!(
+                english,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("scroll_to_top() is only available in driver mode")
+            ));
+
+            Settings::set_language("cn");
+
+            let chinese_location = page
+                .scroll_to_location(10.0, 20.0)
+                .expect_err("session-mode WebPage scroll_to_location should fail");
+            assert!(matches!(
+                chinese_location,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("scroll_to_location() 仅在 driver 模式可用")
+            ));
+            let chinese_right = page
+                .scroll_right(100.0)
+                .expect_err("session-mode WebPage scroll_right should fail");
+            assert!(matches!(
+                chinese_right,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("scroll_right() 仅在 driver 模式可用")
+            ));
+            Ok(())
+        })();
+
+        let _ = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+        result.expect("webpage session scroll errors should localize");
     }
 
     #[test]
