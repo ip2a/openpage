@@ -1240,7 +1240,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.property(name),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "property() is only available in driver mode".to_string(),
+                driver_mode_only_message("property()"),
             )),
         }
     }
@@ -1311,7 +1311,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.is_displayed(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "is_displayed() is only available in driver mode".to_string(),
+                driver_mode_only_message("is_displayed()"),
             )),
         }
     }
@@ -1320,7 +1320,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.is_checked(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "is_checked() is only available in driver mode".to_string(),
+                driver_mode_only_message("is_checked()"),
             )),
         }
     }
@@ -1329,7 +1329,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.is_selected(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "is_selected() is only available in driver mode".to_string(),
+                driver_mode_only_message("is_selected()"),
             )),
         }
     }
@@ -1338,7 +1338,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.is_enabled(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "is_enabled() is only available in driver mode".to_string(),
+                driver_mode_only_message("is_enabled()"),
             )),
         }
     }
@@ -1347,7 +1347,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.is_alive(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "is_alive() is only available in driver mode".to_string(),
+                driver_mode_only_message("is_alive()"),
             )),
         }
     }
@@ -1356,7 +1356,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.is_in_viewport(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "is_in_viewport() is only available in driver mode".to_string(),
+                driver_mode_only_message("is_in_viewport()"),
             )),
         }
     }
@@ -1365,7 +1365,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.is_whole_in_viewport(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "is_whole_in_viewport() is only available in driver mode".to_string(),
+                driver_mode_only_message("is_whole_in_viewport()"),
             )),
         }
     }
@@ -1374,7 +1374,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.is_covered(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "is_covered() is only available in driver mode".to_string(),
+                driver_mode_only_message("is_covered()"),
             )),
         }
     }
@@ -1383,7 +1383,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.is_clickable(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "is_clickable() is only available in driver mode".to_string(),
+                driver_mode_only_message("is_clickable()"),
             )),
         }
     }
@@ -1392,7 +1392,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.has_rect(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "has_rect() is only available in driver mode".to_string(),
+                driver_mode_only_message("has_rect()"),
             )),
         }
     }
@@ -1401,7 +1401,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.style(name, pseudo),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "style() is only available in driver mode".to_string(),
+                driver_mode_only_message("style()"),
             )),
         }
     }
@@ -1410,7 +1410,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.pseudo_before(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "pseudo_before() is only available in driver mode".to_string(),
+                driver_mode_only_message("pseudo_before()"),
             )),
         }
     }
@@ -1419,7 +1419,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.pseudo_after(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "pseudo_after() is only available in driver mode".to_string(),
+                driver_mode_only_message("pseudo_after()"),
             )),
         }
     }
@@ -5910,6 +5910,44 @@ mod tests {
             chinese,
             OpenPageError::UnsupportedOperation(ref message)
                 if message.contains("get_frame_by_index() 仅在 driver 模式可用")
+        ));
+    }
+
+    #[test]
+    fn web_element_session_driver_only_info_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let element = WebElement::Session(
+            snapshot_root("<html><body><input id='q' value='rust'></body></html>")
+                .expect("session snapshot root should parse"),
+        );
+        let english = element
+            .property("value")
+            .expect_err("session-backed WebElement property should fail");
+        assert!(matches!(
+            english,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("property() is only available in driver mode")
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese_state = element
+            .is_clickable()
+            .expect_err("session-backed WebElement is_clickable should fail");
+        assert!(matches!(
+            chinese_state,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("is_clickable() 仅在 driver 模式可用")
+        ));
+        let chinese_style = element
+            .style("display", None)
+            .expect_err("session-backed WebElement style should fail");
+        assert!(matches!(
+            chinese_style,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("style() 仅在 driver 模式可用")
         ));
     }
 
