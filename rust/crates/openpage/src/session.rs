@@ -1748,8 +1748,16 @@ impl SessionHandle {
         self.page().session()
     }
 
+    pub fn session_snapshot(&self) -> OpenPageResult<SessionRuntimeInfo> {
+        self.snapshot()
+    }
+
     pub fn response(&self) -> OpenPageResult<Option<SessionResponseInfo>> {
         self.page().response()
+    }
+
+    pub fn response_snapshot(&self) -> OpenPageResult<Option<SessionResponseInfo>> {
+        self.response()
     }
 }
 
@@ -2111,6 +2119,10 @@ impl SessionPage {
         })
     }
 
+    pub fn session_snapshot(&self) -> OpenPageResult<SessionRuntimeInfo> {
+        self.session()
+    }
+
     pub fn response(&self) -> OpenPageResult<Option<SessionResponseInfo>> {
         let state = self.lock_state()?;
         if state.status_code.is_none()
@@ -2127,6 +2139,10 @@ impl SessionPage {
             content_type: state.response_content_type.clone(),
             encoding: state.encoding.clone(),
         }))
+    }
+
+    pub fn response_snapshot(&self) -> OpenPageResult<Option<SessionResponseInfo>> {
+        self.response()
     }
 
     pub fn add_adapter(
@@ -8005,6 +8021,10 @@ mod tests {
         assert!(page1.stream().expect("stream visible across pages"));
 
         let snapshot = handle.snapshot().expect("session snapshot");
+        let page_snapshot = page2.session_snapshot().expect("page session snapshot");
+        let handle_snapshot = handle.session_snapshot().expect("handle session snapshot");
+        assert_eq!(page_snapshot, snapshot);
+        assert_eq!(handle_snapshot, snapshot);
         assert!(
             snapshot
                 .headers
@@ -8026,7 +8046,20 @@ mod tests {
             .expect("shared response result")
             .expect("shared response");
         assert_eq!(response.status_code, Some(200));
-        assert_eq!(handle.response().expect("handle response"), Some(response));
+        assert_eq!(
+            handle.response().expect("handle response"),
+            Some(response.clone())
+        );
+        assert_eq!(
+            page1.response_snapshot().expect("page response snapshot"),
+            Some(response.clone())
+        );
+        assert_eq!(
+            handle
+                .response_snapshot()
+                .expect("handle response snapshot"),
+            Some(response)
+        );
 
         let _ = server.join().expect("server thread");
     }
