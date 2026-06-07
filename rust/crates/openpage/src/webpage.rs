@@ -2517,7 +2517,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.cancel_by_text(text),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "cancel_by_text() is only available in driver mode".to_string(),
+                driver_mode_only_message("cancel_by_text()"),
             )),
         }
     }
@@ -2533,7 +2533,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.cancel_by_text_with_timeout(text, timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "cancel_by_text_with_timeout() is only available in driver mode".to_string(),
+                driver_mode_only_message("cancel_by_text_with_timeout()"),
             )),
         }
     }
@@ -2545,7 +2545,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.cancel_by_value(value),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "cancel_by_value() is only available in driver mode".to_string(),
+                driver_mode_only_message("cancel_by_value()"),
             )),
         }
     }
@@ -2561,7 +2561,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.cancel_by_value_with_timeout(value, timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "cancel_by_value_with_timeout() is only available in driver mode".to_string(),
+                driver_mode_only_message("cancel_by_value_with_timeout()"),
             )),
         }
     }
@@ -2573,7 +2573,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.cancel_by_index(index),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "cancel_by_index() is only available in driver mode".to_string(),
+                driver_mode_only_message("cancel_by_index()"),
             )),
         }
     }
@@ -2589,7 +2589,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.cancel_by_index_with_timeout(index, timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "cancel_by_index_with_timeout() is only available in driver mode".to_string(),
+                driver_mode_only_message("cancel_by_index_with_timeout()"),
             )),
         }
     }
@@ -2598,7 +2598,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.cancel_by_indices(indices),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "cancel_by_indices() is only available in driver mode".to_string(),
+                driver_mode_only_message("cancel_by_indices()"),
             )),
         }
     }
@@ -2611,7 +2611,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.cancel_by_indices_with_timeout(indices, timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "cancel_by_indices_with_timeout() is only available in driver mode".to_string(),
+                driver_mode_only_message("cancel_by_indices_with_timeout()"),
             )),
         }
     }
@@ -2623,7 +2623,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.cancel_by_locator(locator),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "cancel_by_locator() is only available in driver mode".to_string(),
+                driver_mode_only_message("cancel_by_locator()"),
             )),
         }
     }
@@ -2639,7 +2639,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.cancel_by_locator_with_timeout(locator, timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "cancel_by_locator_with_timeout() is only available in driver mode".to_string(),
+                driver_mode_only_message("cancel_by_locator_with_timeout()"),
             )),
         }
     }
@@ -2663,7 +2663,7 @@ impl WebElement {
                 "cancel_by_option() requires a browser-backed option element".to_string(),
             )),
             (Self::Session(_), _) => Err(OpenPageError::UnsupportedOperation(
-                "cancel_by_option() is only available in driver mode".to_string(),
+                driver_mode_only_message("cancel_by_option()"),
             )),
         }
     }
@@ -6147,6 +6147,46 @@ mod tests {
             chinese_option,
             OpenPageError::UnsupportedOperation(ref message)
                 if message.contains("select_by_option() 仅在 driver 模式可用")
+        ));
+    }
+
+    #[test]
+    fn web_element_session_driver_only_cancel_select_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let element = WebElement::Session(
+            snapshot_root(
+                "<html><body><select multiple><option selected>A</option></select></body></html>",
+            )
+            .expect("session snapshot root should parse"),
+        );
+        let english = element
+            .cancel_by_text("A")
+            .expect_err("session-backed WebElement cancel_by_text should fail");
+        assert!(matches!(
+            english,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("cancel_by_text() is only available in driver mode")
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese_index = element
+            .cancel_by_index(1usize)
+            .expect_err("session-backed WebElement cancel_by_index should fail");
+        assert!(matches!(
+            chinese_index,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("cancel_by_index() 仅在 driver 模式可用")
+        ));
+        let chinese_option = element
+            .cancel_by_option(&element)
+            .expect_err("session-backed WebElement cancel_by_option should fail");
+        assert!(matches!(
+            chinese_option,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("cancel_by_option() 仅在 driver 模式可用")
         ));
     }
 
