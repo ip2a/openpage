@@ -16,7 +16,7 @@ use tokio::task::JoinHandle;
 
 use crate::browser::Browser;
 use crate::error::{OpenPageError, OpenPageResult};
-use crate::settings::component_state_lock_poisoned_message;
+use crate::settings::{component_state_lock_poisoned_message, download_not_found_message};
 
 fn download_state_lock_poisoned_error() -> OpenPageError {
     OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
@@ -248,9 +248,7 @@ impl DownloadStore {
             .missions
             .get(guid)
             .cloned()
-            .ok_or_else(|| {
-                OpenPageError::BrowserOperation(format!("download `{guid}` was not found"))
-            })
+            .ok_or_else(|| OpenPageError::BrowserOperation(download_not_found_message(guid)))
     }
 
     pub(crate) fn completed_len(&self) -> OpenPageResult<usize> {
@@ -362,9 +360,10 @@ impl DownloadStore {
             .state
             .lock()
             .map_err(|_| download_state_lock_poisoned_error())?;
-        let mission = store.missions.get_mut(guid).ok_or_else(|| {
-            OpenPageError::BrowserOperation(format!("download `{guid}` was not found"))
-        })?;
+        let mission = store
+            .missions
+            .get_mut(guid)
+            .ok_or_else(|| OpenPageError::BrowserOperation(download_not_found_message(guid)))?;
         mission.state = state;
         mission.final_path = Some(final_path);
         self.shared.condvar.notify_all();
@@ -845,5 +844,34 @@ mod tests {
             .to_string();
         assert!(chinese.contains("下载状态锁已损坏"));
         assert!(chinese.contains("浏览器操作失败"));
+    }
+
+    #[test]
+    fn download_not_found_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let store = DownloadStore::new();
+
+        let english = store
+            .info("missing-guid")
+            .expect_err("missing download should fail")
+            .to_string();
+        assert_eq!(
+            english,
+            "browser operation failed: download `missing-guid` was not found"
+        );
+
+        Settings::set_language("cn");
+
+        let chinese = store
+            .set_finalized(
+                "missing-guid",
+                super::DownloadState::Completed,
+                "/tmp/out".into(),
+            )
+            .expect_err("missing download should localize")
+            .to_string();
+        assert_eq!(chinese, "浏览器操作失败: 没有找到下载任务 `missing-guid`");
     }
 }

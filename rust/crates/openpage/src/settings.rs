@@ -303,6 +303,13 @@ pub(crate) fn click_at_count_must_be_positive_message() -> String {
     )
 }
 
+pub(crate) fn download_not_found_message(guid: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("没有找到下载任务 `{guid}`"),
+        _ => format!("download `{guid}` was not found"),
+    }
+}
+
 pub(crate) fn frame_index_must_start_message() -> String {
     localized_message(
         "frame index must start from 1 or use negative indices from -1",
@@ -656,7 +663,7 @@ mod tests {
         component_not_active_start_message, component_not_running_message,
         component_not_running_with_error_message, component_state_lock_poisoned_message,
         component_stopped_while_waiting_message, cookie_name_empty_message,
-        default_suffixes_list_path, element_html_unavailable_message,
+        default_suffixes_list_path, download_not_found_message, element_html_unavailable_message,
         element_no_visible_rect_message, element_resource_unavailable_message,
         element_tag_name_unavailable_message, file_chooser_backend_node_missing_message,
         frame_execution_context_unavailable_message, frame_html_unavailable_message,
@@ -797,6 +804,10 @@ mod tests {
         assert_eq!(
             click_at_count_must_be_positive_message(),
             "click_at() count must be >= 1"
+        );
+        assert_eq!(
+            download_not_found_message("abc"),
+            "download `abc` was not found"
         );
         assert_eq!(
             component_state_lock_poisoned_message("console state", "控制台状态"),
@@ -960,6 +971,7 @@ mod tests {
             click_at_count_must_be_positive_message(),
             "click_at() 次数必须大于等于 1"
         );
+        assert_eq!(download_not_found_message("abc"), "没有找到下载任务 `abc`");
         assert_eq!(
             component_state_lock_poisoned_message("console state", "控制台状态"),
             "控制台状态锁已损坏"
