@@ -23,7 +23,7 @@ use crate::settings::{
     component_not_running_message, component_not_running_with_error_message,
     component_state_lock_poisoned_message, invalid_regex_message,
     listener_response_body_decode_failed_message, listener_response_body_json_failed_message,
-    listener_response_body_utf8_failed_message,
+    listener_response_body_utf8_failed_message, listener_setup_operation_failed_message,
 };
 
 fn listener_packet_state_lock_poisoned_error() -> OpenPageError {
@@ -37,6 +37,13 @@ fn listener_state_lock_poisoned_error() -> OpenPageError {
     OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
         "listener state",
         "监听器状态",
+    ))
+}
+
+fn listener_setup_error(operation: &str, err: impl ToString) -> OpenPageError {
+    OpenPageError::BrowserOperation(listener_setup_operation_failed_message(
+        operation,
+        &err.to_string(),
     ))
 }
 
@@ -1009,27 +1016,27 @@ async fn run_listener(page: OxPage, shared: Arc<ListenerShared>) -> OpenPageResu
     let mut request_events = page
         .event_listener::<EventRequestWillBeSent>()
         .await
-        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        .map_err(|err| listener_setup_error("register request listener", err))?;
     let mut response_events = page
         .event_listener::<EventResponseReceived>()
         .await
-        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        .map_err(|err| listener_setup_error("register response listener", err))?;
     let mut request_extra_events = page
         .event_listener::<EventRequestWillBeSentExtraInfo>()
         .await
-        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        .map_err(|err| listener_setup_error("register request extra info listener", err))?;
     let mut response_extra_events = page
         .event_listener::<EventResponseReceivedExtraInfo>()
         .await
-        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        .map_err(|err| listener_setup_error("register response extra info listener", err))?;
     let mut finished_events = page
         .event_listener::<EventLoadingFinished>()
         .await
-        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        .map_err(|err| listener_setup_error("register loading finished listener", err))?;
     let mut failed_events = page
         .event_listener::<EventLoadingFailed>()
         .await
-        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        .map_err(|err| listener_setup_error("register loading failed listener", err))?;
 
     loop {
         tokio::select! {
@@ -1646,7 +1653,7 @@ mod tests {
         ListenerResponse, ListenerResponseExtraInfo, ListenerShared, ListenerState, PendingPacket,
         apply_response_extra_info, headers_to_map, listener_not_running_error,
         listener_packet_state_lock_poisoned_error, listener_request_extra_info_from_cdp,
-        listener_response_extra_info_from_cdp, listener_response_from_cdp,
+        listener_response_extra_info_from_cdp, listener_response_from_cdp, listener_setup_error,
         listener_state_lock_poisoned_error, on_loading_failed, on_request_will_be_sent,
         on_request_will_be_sent_extra_info, on_response_received_extra_info,
         preserve_existing_response_extra_info, update_listener_filters,
@@ -1760,6 +1767,11 @@ mod tests {
                 .to_string()
                 .contains("listener packet state lock poisoned")
         );
+        assert!(
+            listener_setup_error("unit test setup", "boom")
+                .to_string()
+                .contains("listener setup operation unit test setup failed: boom")
+        );
 
         Settings::set_language("cn");
 
@@ -1779,6 +1791,11 @@ mod tests {
             listener_packet_state_lock_poisoned_error()
                 .to_string()
                 .contains("监听包状态锁已损坏")
+        );
+        assert!(
+            listener_setup_error("unit test setup", "boom")
+                .to_string()
+                .contains("监听器初始化操作 unit test setup 失败: boom")
         );
     }
 

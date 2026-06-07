@@ -1420,6 +1420,13 @@ pub(crate) fn listener_response_body_json_failed_message(err: &str) -> String {
     }
 }
 
+pub(crate) fn listener_setup_operation_failed_message(operation: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("监听器初始化操作 {operation} 失败: {err}"),
+        _ => format!("listener setup operation {operation} failed: {err}"),
+    }
+}
+
 pub(crate) fn component_not_active_start_message(
     component_en: &str,
     component_zh_cn: &str,
