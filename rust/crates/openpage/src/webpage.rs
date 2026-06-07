@@ -122,6 +122,10 @@ pub struct WebPageSetter<'a> {
     page: &'a WebPage,
 }
 
+pub struct WebPageCookieSetter<'a> {
+    page: &'a WebPage,
+}
+
 pub struct WebPageWindowSetter<'a> {
     page: &'a WebPage,
 }
@@ -5964,6 +5968,10 @@ impl WebPageSetter<'_> {
         WebPageWindowSetter { page: self.page }
     }
 
+    pub fn cookie(&self) -> WebPageCookieSetter<'_> {
+        WebPageCookieSetter { page: self.page }
+    }
+
     pub fn load_mode(&self) -> WebPageLoadModeSetter<'_> {
         WebPageLoadModeSetter { page: self.page }
     }
@@ -6066,6 +6074,29 @@ impl WebPageSetter<'_> {
     ) -> OpenPageResult<()> {
         self.page
             .set_timeouts(base_secs, page_load_secs, script_secs)
+    }
+}
+
+impl WebPageCookieSetter<'_> {
+    pub fn set<'a, C>(&self, cookies: C) -> OpenPageResult<()>
+    where
+        C: Into<CookieInput<'a>>,
+    {
+        self.page.set_cookies(cookies)
+    }
+
+    pub fn clear(&self) -> OpenPageResult<()> {
+        self.page.clear_cookies()
+    }
+
+    pub fn remove(
+        &self,
+        name: &str,
+        url: Option<&str>,
+        domain: Option<&str>,
+        path: Option<&str>,
+    ) -> OpenPageResult<()> {
+        self.page.remove_cookie(name, url, domain, path)
     }
 }
 
@@ -7926,6 +7957,9 @@ mod tests {
             let _ = page.set().local_storage("foo", Some("bar"));
             let _ = page.set().auto_handle_alert(Some(true), Some("ok"));
             let _ = page.set().cookies(&cookies);
+            let _ = page.set().cookie().set(&cookies);
+            let _ = page.set().cookie().clear();
+            let _ = page.set().cookie().remove("sid", None, None, None);
             let _ = page.set().clear_cookies();
             let _ = page.set().remove_cookie("sid", None, None, None);
             let _ = page.set().download_path("/tmp");
@@ -7959,6 +7993,9 @@ mod tests {
             let _ = web_page.set().local_storage("foo", Some("bar"));
             let _ = web_page.set().auto_handle_alert(Some(true), Some("ok"));
             let _ = web_page.set().cookies(&cookies);
+            let _ = web_page.set().cookie().set(&cookies);
+            let _ = web_page.set().cookie().clear();
+            let _ = web_page.set().cookie().remove("sid", None, None, None);
             let _ = web_page.set().clear_cookies();
             let _ = web_page.set().remove_cookie("sid", None, None, None);
             let _ = web_page.set().download_path("/tmp");

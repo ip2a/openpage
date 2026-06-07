@@ -54,9 +54,9 @@ pub use locator::{Locator, LocatorInput, LocatorKind, LocatorMatch};
 pub use options_manager::OptionsManager;
 pub use page::{
     Actions, ActionsDragData, ActionsInput, ActionsTarget, DisconnectedFrame, DisconnectedPage,
-    Frame, FrameRect, FrameScroller, FrameSetter, FrameStates, FrameWait, Page, PageElementContent,
-    PageElementInfo, PageElementTarget, PageFrameTarget, PageLoadModeSetter, PageSaveContent,
-    PageScroller, PageSetter, PageWindowSetter,
+    Frame, FrameRect, FrameScroller, FrameSetter, FrameStates, FrameWait, Page, PageCookieSetter,
+    PageElementContent, PageElementInfo, PageElementTarget, PageFrameTarget, PageLoadModeSetter,
+    PageSaveContent, PageScroller, PageSetter, PageWindowSetter,
 };
 pub use screencast::{Screencast, ScreencastMode};
 pub use session::{
@@ -76,8 +76,8 @@ pub use tools::{
 pub use upload::UploadTracker;
 pub use webpage::{
     DisconnectedWebFrame, DisconnectedWebPage, WebElement, WebElementClicker, WebElementScroller,
-    WebElementSelector, WebElementSetter, WebFrame, WebMode, WebPage, WebPageLoadModeSetter,
-    WebPageScroller, WebPageSetter, WebPageWindowSetter,
+    WebElementSelector, WebElementSetter, WebFrame, WebMode, WebPage, WebPageCookieSetter,
+    WebPageLoadModeSetter, WebPageScroller, WebPageSetter, WebPageWindowSetter,
 };
 pub use window::{activate_app, set_app_visibility};
 

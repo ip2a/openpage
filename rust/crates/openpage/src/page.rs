@@ -497,6 +497,10 @@ pub struct PageSetter<'a> {
     page: &'a Page,
 }
 
+pub struct PageCookieSetter<'a> {
+    page: &'a Page,
+}
+
 pub struct PageWindowSetter<'a> {
     page: &'a Page,
 }
@@ -2224,6 +2228,10 @@ impl PageSetter<'_> {
         PageWindowSetter { page: self.page }
     }
 
+    pub fn cookie(&self) -> PageCookieSetter<'_> {
+        PageCookieSetter { page: self.page }
+    }
+
     pub fn load_mode(&self) -> PageLoadModeSetter<'_> {
         PageLoadModeSetter { page: self.page }
     }
@@ -2326,6 +2334,29 @@ impl PageSetter<'_> {
     ) -> OpenPageResult<()> {
         self.page
             .set_timeouts(base_secs, page_load_secs, script_secs)
+    }
+}
+
+impl PageCookieSetter<'_> {
+    pub fn set<'a, C>(&self, cookies: C) -> OpenPageResult<()>
+    where
+        C: Into<CookieInput<'a>>,
+    {
+        self.page.set_cookies(cookies)
+    }
+
+    pub fn clear(&self) -> OpenPageResult<()> {
+        self.page.clear_cookies()
+    }
+
+    pub fn remove(
+        &self,
+        name: &str,
+        url: Option<&str>,
+        domain: Option<&str>,
+        path: Option<&str>,
+    ) -> OpenPageResult<()> {
+        self.page.remove_cookie(name, url, domain, path)
     }
 }
 
