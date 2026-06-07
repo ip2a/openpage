@@ -1183,6 +1183,10 @@ impl Frame {
         &self.frame_id
     }
 
+    pub fn frame_id(&self) -> &str {
+        self.id()
+    }
+
     pub fn frame_element(&self) -> &Element {
         &self.frame_element
     }

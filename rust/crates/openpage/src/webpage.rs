@@ -312,6 +312,12 @@ impl WebFrame {
         }
     }
 
+    pub fn frame_id(&self) -> &str {
+        match self {
+            Self::Browser(frame) => frame.frame_id(),
+        }
+    }
+
     pub fn frame_element(&self) -> &Element {
         match self {
             Self::Browser(frame) => frame.frame_element(),
@@ -7820,6 +7826,7 @@ mod tests {
             let cookies = json!({"sid": "abc", "domain": ".example.test", "path": "/"});
 
             let _ = frame.set().cookie().set(&cookies);
+            let _ = frame.frame_id();
             let _ = frame.set_upload_files(&files);
             let _ = frame.set_upload_paths(&files);
             let _ = frame.set_download_path("/tmp");
@@ -7875,6 +7882,7 @@ mod tests {
             let _ = web_page.click_middle("css:#open", Some(1_000), true);
 
             let _ = web_frame.set().cookie().set(&cookies);
+            let _ = web_frame.frame_id();
             let _ = web_frame.set_upload_files(&files);
             let _ = web_frame.set_upload_paths(&files);
             let _ = web_frame.set_download_path("/tmp");
