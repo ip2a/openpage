@@ -296,6 +296,13 @@ pub(crate) fn unsupported_mouse_button_message(button: &str) -> String {
     }
 }
 
+pub(crate) fn click_at_count_must_be_positive_message() -> String {
+    localized_message(
+        "click_at() count must be >= 1",
+        "click_at() 次数必须大于等于 1",
+    )
+}
+
 pub(crate) fn frame_index_must_start_message() -> String {
     localized_message(
         "frame index must start from 1 or use negative indices from -1",
@@ -644,7 +651,8 @@ pub(crate) fn scoped_test_settings() -> SettingsTestGuard {
 #[cfg(test)]
 mod tests {
     use super::{
-        Settings, SettingsSnapshot, browser_connect_timeout_duration, click_failed_no_rect_message,
+        Settings, SettingsSnapshot, browser_connect_timeout_duration,
+        click_at_count_must_be_positive_message, click_failed_no_rect_message,
         component_not_active_start_message, component_not_running_message,
         component_not_running_with_error_message, component_state_lock_poisoned_message,
         component_stopped_while_waiting_message, cookie_name_empty_message,
@@ -785,6 +793,10 @@ mod tests {
         assert_eq!(
             unsupported_mouse_button_message("side"),
             "unsupported mouse button: side"
+        );
+        assert_eq!(
+            click_at_count_must_be_positive_message(),
+            "click_at() count must be >= 1"
         );
         assert_eq!(
             component_state_lock_poisoned_message("console state", "控制台状态"),
@@ -943,6 +955,10 @@ mod tests {
         assert_eq!(
             unsupported_mouse_button_message("side"),
             "不支持的鼠标按钮: side"
+        );
+        assert_eq!(
+            click_at_count_must_be_positive_message(),
+            "click_at() 次数必须大于等于 1"
         );
         assert_eq!(
             component_state_lock_poisoned_message("console state", "控制台状态"),

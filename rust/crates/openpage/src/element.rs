@@ -49,11 +49,12 @@ use crate::session::{
     snapshot_fragment_root_with_base_url,
 };
 use crate::settings::{
-    click_failed_hidden_or_disabled_message, click_failed_no_rect_message,
-    click_failed_should_raise, element_html_unavailable_message, element_no_visible_rect_message,
-    element_resource_unavailable_message, element_tag_name_unavailable_message,
-    frame_index_must_start_message, frame_index_out_of_range_message, no_new_tab_message,
-    unsupported_mouse_button_message, wait_timeout_result,
+    click_at_count_must_be_positive_message, click_failed_hidden_or_disabled_message,
+    click_failed_no_rect_message, click_failed_should_raise, element_html_unavailable_message,
+    element_no_visible_rect_message, element_resource_unavailable_message,
+    element_tag_name_unavailable_message, frame_index_must_start_message,
+    frame_index_out_of_range_message, no_new_tab_message, unsupported_mouse_button_message,
+    wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -385,11 +386,7 @@ impl Element {
         button: &str,
         count: u32,
     ) -> OpenPageResult<()> {
-        if count == 0 {
-            return Err(OpenPageError::PageOperation(
-                "click_at() count must be >= 1".to_string(),
-            ));
-        }
+        validate_click_at_count(count)?;
         let button = parse_mouse_button(button)?;
         match self.click_at_runtime(offset_x, offset_y, button, count) {
             Ok(()) => Ok(()),
@@ -4852,6 +4849,16 @@ fn parse_mouse_button(button: &str) -> OpenPageResult<MouseButton> {
         .map_err(|_| OpenPageError::PageOperation(unsupported_mouse_button_message(button)))
 }
 
+fn validate_click_at_count(count: u32) -> OpenPageResult<()> {
+    if count == 0 {
+        Err(OpenPageError::PageOperation(
+            click_at_count_must_be_positive_message(),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
 pub(crate) fn load_javascript_source(script: &str) -> OpenPageResult<Cow<'_, str>> {
     match fs::metadata(script) {
         Ok(metadata) if metadata.is_file() => match fs::read_to_string(script) {
@@ -5273,7 +5280,7 @@ fn mac_meta_commands(key: &str) -> Option<&'static [&'static str]> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_mouse_button, resolve_javascript_timeout_ms};
+    use super::{parse_mouse_button, resolve_javascript_timeout_ms, validate_click_at_count};
 
     #[test]
     fn resolve_javascript_timeout_ms_prefers_explicit_value() {
@@ -5298,6 +5305,27 @@ mod tests {
         let error = parse_mouse_button("side").expect_err("invalid mouse button should fail");
         assert!(
             matches!(error, crate::OpenPageError::PageOperation(ref message) if message == "不支持的鼠标按钮: side"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn validate_click_at_count_errors_follow_settings_language() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+
+        validate_click_at_count(1).expect("positive click count should pass");
+        let error = validate_click_at_count(0).expect_err("zero click count should fail");
+        assert!(
+            matches!(error, crate::OpenPageError::PageOperation(ref message) if message == "click_at() count must be >= 1"),
+            "unexpected error: {error}"
+        );
+
+        crate::Settings::set_language("cn");
+
+        let error = validate_click_at_count(0).expect_err("zero click count should fail");
+        assert!(
+            matches!(error, crate::OpenPageError::PageOperation(ref message) if message == "click_at() 次数必须大于等于 1"),
             "unexpected error: {error}"
         );
     }
