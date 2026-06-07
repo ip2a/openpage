@@ -308,6 +308,16 @@ pub(crate) fn invalid_auto_port_scope_message(start: u16, end: u16) -> String {
     }
 }
 
+pub(crate) fn browser_user_data_dir_reset_failed_message(path: &Path, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("重置浏览器用户数据目录 {} 失败: {err}", path.display()),
+        _ => format!(
+            "failed to reset browser user data dir {}: {err}",
+            path.display()
+        ),
+    }
+}
+
 pub(crate) fn no_free_port_in_auto_port_scope_message(start: u16, end: u16) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("未能在 auto_port 范围 [{start}, {end}) 内找到空闲端口"),

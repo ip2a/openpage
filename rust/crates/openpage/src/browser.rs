@@ -32,15 +32,16 @@ use crate::download::{
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::Page;
 use crate::settings::{
-    browser_connect_timeout_duration, cdp_timeout_duration, component_state_lock_poisoned_message,
-    download_canceled_message, download_frame_not_mapped_to_tab_message,
-    download_path_not_configured_message, download_skipped_without_final_path_message,
-    invalid_auto_port_scope_message, invalid_download_file_exists_mode_message,
-    invalid_launch_options_ini_boolean_message, invalid_launch_options_ini_field_expected_message,
-    invalid_launch_options_ini_field_message, invalid_launch_options_ini_python_string_message,
-    invalid_load_mode_message, invalid_tab_index_message, no_free_port_in_auto_port_scope_message,
-    singleton_tab_obj_enabled, target_tab_not_found_message, timeout_duration_millis,
-    timeout_error, unterminated_launch_options_ini_python_string_message, wait_failed_should_raise,
+    browser_connect_timeout_duration, browser_user_data_dir_reset_failed_message,
+    cdp_timeout_duration, component_state_lock_poisoned_message, download_canceled_message,
+    download_frame_not_mapped_to_tab_message, download_path_not_configured_message,
+    download_skipped_without_final_path_message, invalid_auto_port_scope_message,
+    invalid_download_file_exists_mode_message, invalid_launch_options_ini_boolean_message,
+    invalid_launch_options_ini_field_expected_message, invalid_launch_options_ini_field_message,
+    invalid_launch_options_ini_python_string_message, invalid_load_mode_message,
+    invalid_tab_index_message, no_free_port_in_auto_port_scope_message, singleton_tab_obj_enabled,
+    target_tab_not_found_message, timeout_duration_millis, timeout_error,
+    unterminated_launch_options_ini_python_string_message, wait_failed_should_raise,
 };
 use crate::webpage::WebPage;
 
@@ -3651,9 +3652,9 @@ fn reset_browser_user_data_dir(path: &Path) -> OpenPageResult<()> {
         return Ok(());
     }
     std::fs::remove_dir_all(path).map_err(|err| {
-        OpenPageError::BrowserLaunch(format!(
-            "failed to reset browser user data dir {}: {err}",
-            path.display()
+        OpenPageError::BrowserLaunch(browser_user_data_dir_reset_failed_message(
+            path,
+            &err.to_string(),
         ))
     })
 }
@@ -6044,6 +6045,33 @@ mod tests {
         reset_browser_user_data_dir(&dir).expect("reset user data dir");
 
         assert!(!dir.exists());
+    }
+
+    #[test]
+    fn reset_browser_user_data_dir_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let dir = make_temp_dir("new-env-reset-error");
+        let file_path = dir.join("not-a-dir");
+        fs::write(&file_path, "content").expect("write file");
+
+        let english = reset_browser_user_data_dir(&file_path)
+            .expect_err("resetting a file path should fail")
+            .to_string();
+        assert!(english.contains("failed to reset browser user data dir"));
+        assert!(english.contains(file_path.to_string_lossy().as_ref()));
+
+        Settings::set_language("cn");
+
+        let chinese = reset_browser_user_data_dir(&file_path)
+            .expect_err("resetting a file path should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains("重置浏览器用户数据目录"));
+        assert!(chinese.contains("失败"));
+        assert!(chinese.contains(file_path.to_string_lossy().as_ref()));
+
+        let _ = fs::remove_file(&file_path);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
