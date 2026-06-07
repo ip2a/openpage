@@ -6,6 +6,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::error::{OpenPageError, OpenPageResult};
+use crate::settings::invalid_options_manager_ini_literal_message;
 
 #[derive(Debug, Clone)]
 pub struct OptionsManager {
@@ -365,7 +366,9 @@ fn parse_ini_json_like_value(value: &str) -> OpenPageResult<Value> {
     }
     let normalized = python_literal_to_json(value)?;
     serde_json::from_str(&normalized).map_err(|err| {
-        OpenPageError::BrowserOperation(format!("invalid options manager ini literal: {err}"))
+        OpenPageError::BrowserOperation(invalid_options_manager_ini_literal_message(
+            &err.to_string(),
+        ))
     })
 }
 
@@ -524,7 +527,9 @@ mod tests {
 
     use serde_json::json;
 
-    use super::OptionsManager;
+    use super::{OptionsManager, parse_ini_json_like_value};
+    use crate::Settings;
+    use crate::settings::scoped_test_settings;
 
     static CURRENT_DIR_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -644,6 +649,26 @@ mod tests {
 
         manager.remove_item("custom", "mode");
         assert_eq!(manager.get_value("custom", "mode"), None);
+    }
+
+    #[test]
+    fn options_manager_invalid_literal_errors_follow_language_setting() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let english = parse_ini_json_like_value("{broken: }")
+            .expect_err("invalid literal should fail")
+            .to_string();
+        assert!(english.contains("browser operation failed"));
+        assert!(english.contains("invalid options manager ini literal"));
+
+        Settings::set_language("cn");
+
+        let chinese = parse_ini_json_like_value("{broken: }")
+            .expect_err("invalid literal should localize")
+            .to_string();
+        assert!(chinese.contains("浏览器操作失败"));
+        assert!(chinese.contains("无效的 OptionsManager ini 字面量"));
     }
 
     #[test]

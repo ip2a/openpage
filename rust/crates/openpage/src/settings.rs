@@ -310,6 +310,14 @@ pub(crate) fn download_not_found_message(guid: &str) -> String {
     }
 }
 
+pub(crate) fn invalid_options_manager_ini_literal_message(detail: &str) -> String {
+    localized_error_with_detail(
+        "invalid options manager ini literal",
+        "无效的 OptionsManager ini 字面量",
+        detail,
+    )
+}
+
 pub(crate) fn frame_index_must_start_message() -> String {
     localized_message(
         "frame index must start from 1 or use negative indices from -1",
@@ -678,17 +686,17 @@ mod tests {
         frame_index_must_start_message, frame_index_out_of_range_message,
         invalid_auto_port_scope_message, invalid_cookie_same_site_message,
         invalid_download_file_exists_mode_message, invalid_file_url_message,
-        invalid_load_mode_message, invalid_regex_message, invalid_screencast_data_url_message,
-        invalid_tab_index_message, invalid_url_message, javascript_execution_timed_out_message,
-        no_new_tab_message, page_connect_timed_out_message, scoped_test_settings,
-        screencast_already_running_message, screencast_capture_path_unavailable_message,
-        screencast_empty_mime_type_message, screencast_encode_output_failed_message,
-        screencast_ffmpeg_encode_failed_message, screencast_ffmpeg_spawn_failed_message,
-        screencast_mode_change_while_running_message, screencast_mode_output_suffix_message,
-        screencast_no_frames_message, screencast_output_path_unavailable_message,
-        screencast_requires_save_path_message, screencast_save_path_must_be_directory_message,
-        session_page_no_current_url_message, session_page_no_loaded_document_message,
-        shadow_root_object_id_unavailable_message,
+        invalid_load_mode_message, invalid_options_manager_ini_literal_message,
+        invalid_regex_message, invalid_screencast_data_url_message, invalid_tab_index_message,
+        invalid_url_message, javascript_execution_timed_out_message, no_new_tab_message,
+        page_connect_timed_out_message, scoped_test_settings, screencast_already_running_message,
+        screencast_capture_path_unavailable_message, screencast_empty_mime_type_message,
+        screencast_encode_output_failed_message, screencast_ffmpeg_encode_failed_message,
+        screencast_ffmpeg_spawn_failed_message, screencast_mode_change_while_running_message,
+        screencast_mode_output_suffix_message, screencast_no_frames_message,
+        screencast_output_path_unavailable_message, screencast_requires_save_path_message,
+        screencast_save_path_must_be_directory_message, session_page_no_current_url_message,
+        session_page_no_loaded_document_message, shadow_root_object_id_unavailable_message,
         shadow_root_xpath_traversal_not_implemented_message, target_tab_not_found_message,
         timeout_error, timeout_must_be_non_negative_message, unsupported_mouse_button_message,
         unsupported_screencast_output_suffix_message, upload_requires_at_least_one_file_message,
@@ -805,6 +813,10 @@ mod tests {
         assert_eq!(
             invalid_load_mode_message("fast"),
             "load mode must be one of normal/eager/none, got fast"
+        );
+        assert_eq!(
+            invalid_options_manager_ini_literal_message("parse error"),
+            "invalid options manager ini literal: parse error"
         );
         assert_eq!(
             unsupported_mouse_button_message("side"),
@@ -975,6 +987,10 @@ mod tests {
         assert_eq!(
             invalid_load_mode_message("fast"),
             "加载模式必须是 normal/eager/none 之一，当前为 fast"
+        );
+        assert_eq!(
+            invalid_options_manager_ini_literal_message("parse error"),
+            "无效的 OptionsManager ini 字面量: parse error"
         );
         assert_eq!(
             unsupported_mouse_button_message("side"),
