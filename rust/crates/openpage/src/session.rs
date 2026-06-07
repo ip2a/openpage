@@ -4040,7 +4040,8 @@ impl SessionElement {
 }
 
 pub fn cookies_from_header(url: &str, cookie_header: &str) -> OpenPageResult<Vec<CookieEntry>> {
-    let parsed = Url::parse(url).map_err(|err| OpenPageError::Http(err.to_string()))?;
+    let parsed = Url::parse(url)
+        .map_err(|err| OpenPageError::Http(invalid_url_message(url, Some(&err.to_string()))))?;
     let domain = parsed.domain().map(ToString::to_string);
     Ok(cookie_header
         .split(';')
@@ -5838,9 +5839,10 @@ mod tests {
         CookieInput, SessionAdapter, SessionAdapterMount, SessionCert, SessionCookieParam,
         SessionElement, SessionHandle, SessionHooks, SessionOptions, SessionPage,
         SessionRequestOptions, SessionXPathResult, append_query_params, cookie_assignment,
-        cookie_input_to_params, default_referer_header, nth_scraper_child_by_tag, parse_xpath_path,
-        remove_cookie_from_header, resolve_local_file_path, resolve_session_options_ini_path,
-        snapshot_find, snapshot_find_all, snapshot_fragment_find, snapshot_fragment_root,
+        cookie_input_to_params, cookies_from_header, default_referer_header,
+        nth_scraper_child_by_tag, parse_xpath_path, remove_cookie_from_header,
+        resolve_local_file_path, resolve_session_options_ini_path, snapshot_find,
+        snapshot_find_all, snapshot_fragment_find, snapshot_fragment_root,
         snapshot_fragment_root_with_base_url, snapshot_root,
     };
     use crate::settings::scoped_test_settings;
@@ -6887,6 +6889,11 @@ mod tests {
             .to_string();
         assert!(english_set_cookie.contains("invalid url `not a url`"));
 
+        let english_cookies_from_header = cookies_from_header("not a url", "sid=1")
+            .expect_err("cookies_from_header() should reject invalid url")
+            .to_string();
+        assert!(english_cookies_from_header.contains("invalid url `not a url`"));
+
         let english_referer = default_referer_header(None, "not a url")
             .expect_err("default_referer_header() should reject invalid url")
             .to_string();
@@ -6922,6 +6929,11 @@ mod tests {
             .expect_err("set_cookie() should reject invalid explicit url in Chinese")
             .to_string();
         assert!(chinese_set_cookie.contains("无效的 url `not a url`"));
+
+        let chinese_cookies_from_header = cookies_from_header("not a url", "sid=1")
+            .expect_err("cookies_from_header() should reject invalid url in Chinese")
+            .to_string();
+        assert!(chinese_cookies_from_header.contains("无效的 url `not a url`"));
 
         let chinese_referer = default_referer_header(None, "not a url")
             .expect_err("default_referer_header() should reject invalid url in Chinese")
