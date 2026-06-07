@@ -1450,6 +1450,13 @@ pub(crate) fn console_setup_operation_failed_message(operation: &str, err: &str)
     }
 }
 
+pub(crate) fn interceptor_setup_operation_failed_message(operation: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("拦截器初始化操作 {operation} 失败: {err}"),
+        _ => format!("interceptor setup operation {operation} failed: {err}"),
+    }
+}
+
 pub(crate) fn component_not_active_start_message(
     component_en: &str,
     component_zh_cn: &str,

@@ -21,7 +21,7 @@ use crate::settings::{
     component_not_active_start_message, component_not_running_message,
     component_not_running_with_error_message, component_state_lock_poisoned_message,
     component_stopped_while_waiting_message, intercepted_request_no_longer_pending_message,
-    invalid_regex_message,
+    interceptor_setup_operation_failed_message, invalid_regex_message,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -452,7 +452,7 @@ async fn run_interceptor(page: OxPage, shared: Arc<InterceptShared>) -> OpenPage
     let mut paused_events = page
         .event_listener::<EventRequestPaused>()
         .await
-        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        .map_err(|err| interceptor_setup_error("register request paused listener", err))?;
 
     while let Some(event) = paused_events.next().await {
         on_request_paused(&page, &shared, &event).await?;
@@ -655,6 +655,13 @@ fn intercept_state_lock_poisoned_error() -> OpenPageError {
     ))
 }
 
+fn interceptor_setup_error(operation: &str, err: impl ToString) -> OpenPageError {
+    OpenPageError::BrowserOperation(interceptor_setup_operation_failed_message(
+        operation,
+        &err.to_string(),
+    ))
+}
+
 fn interceptor_not_active_error() -> OpenPageError {
     OpenPageError::BrowserOperation(component_not_active_start_message("interceptor", "拦截器"))
 }
@@ -711,7 +718,7 @@ mod tests {
 
     use super::{
         InterceptFilters, InterceptShared, InterceptState, interceptor_not_running_error,
-        with_pending_request,
+        interceptor_setup_error, with_pending_request,
     };
 
     #[test]
@@ -734,6 +741,8 @@ mod tests {
             .expect_err("missing pending request should fail")
             .to_string();
         assert!(english_pending.contains("intercepted request `req-1` is no longer pending"));
+        let english_setup = interceptor_setup_error("unit test setup", "boom").to_string();
+        assert!(english_setup.contains("interceptor setup operation unit test setup failed: boom"));
 
         Settings::set_language("cn");
 
@@ -749,5 +758,7 @@ mod tests {
             .expect_err("missing pending request should fail in Chinese")
             .to_string();
         assert!(chinese_pending.contains("被拦截请求 `req-1` 已不再等待处理"));
+        let chinese_setup = interceptor_setup_error("unit test setup", "boom").to_string();
+        assert!(chinese_setup.contains("拦截器初始化操作 unit test setup 失败: boom"));
     }
 }
