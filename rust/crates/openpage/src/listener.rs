@@ -22,6 +22,8 @@ use crate::page::execute_page_command_async;
 use crate::settings::{
     component_not_running_message, component_not_running_with_error_message,
     component_state_lock_poisoned_message, invalid_regex_message,
+    listener_response_body_decode_failed_message, listener_response_body_json_failed_message,
+    listener_response_body_utf8_failed_message,
 };
 
 fn listener_packet_state_lock_poisoned_error() -> OpenPageError {
@@ -117,8 +119,8 @@ impl ListenerResponse {
             None => Ok(None),
             Some(body) if self.body_base64 => {
                 BASE64_STANDARD.decode(body).map(Some).map_err(|err| {
-                    OpenPageError::Serialization(format!(
-                        "failed to decode listener response body: {err}"
+                    OpenPageError::Serialization(listener_response_body_decode_failed_message(
+                        &err.to_string(),
                     ))
                 })
             }
@@ -130,8 +132,8 @@ impl ListenerResponse {
         match self.body_bytes()? {
             None => Ok(None),
             Some(bytes) => String::from_utf8(bytes).map(Some).map_err(|err| {
-                OpenPageError::Serialization(format!(
-                    "failed to decode listener response body as utf-8: {err}"
+                OpenPageError::Serialization(listener_response_body_utf8_failed_message(
+                    &err.to_string(),
                 ))
             }),
         }
@@ -141,8 +143,8 @@ impl ListenerResponse {
         match self.body_text()? {
             None => Ok(None),
             Some(body) => serde_json::from_str(&body).map(Some).map_err(|err| {
-                OpenPageError::Serialization(format!(
-                    "failed to parse listener response body as json: {err}"
+                OpenPageError::Serialization(listener_response_body_json_failed_message(
+                    &err.to_string(),
                 ))
             }),
         }
@@ -1875,6 +1877,60 @@ mod tests {
             response.body_bytes().expect("base64 body should decode"),
             Some(b"hello".to_vec())
         );
+    }
+
+    #[test]
+    fn response_body_parse_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let invalid_base64 = ListenerResponse {
+            all_info: json!({}),
+            url: "http://127.0.0.1/file".to_string(),
+            status: 200,
+            status_text: "OK".to_string(),
+            headers: HashMap::new(),
+            mime_type: "application/octet-stream".to_string(),
+            body: Some("@@".to_string()),
+            body_base64: true,
+            extra_info: None,
+        };
+        let english_base64 = invalid_base64
+            .body_bytes()
+            .expect_err("invalid base64 body should fail")
+            .to_string();
+        assert!(english_base64.contains("failed to decode listener response body"));
+
+        let invalid_json = ListenerResponse {
+            all_info: json!({}),
+            url: "http://127.0.0.1/api/data".to_string(),
+            status: 200,
+            status_text: "OK".to_string(),
+            headers: HashMap::new(),
+            mime_type: "application/json".to_string(),
+            body: Some("{".to_string()),
+            body_base64: false,
+            extra_info: None,
+        };
+        let english_json = invalid_json
+            .body_json()
+            .expect_err("invalid json body should fail")
+            .to_string();
+        assert!(english_json.contains("failed to parse listener response body as json"));
+
+        Settings::set_language("cn");
+
+        let chinese_base64 = invalid_base64
+            .body_bytes()
+            .expect_err("invalid base64 body should localize")
+            .to_string();
+        assert!(chinese_base64.contains("解码监听响应体失败"));
+
+        let chinese_json = invalid_json
+            .body_json()
+            .expect_err("invalid json body should localize")
+            .to_string();
+        assert!(chinese_json.contains("按 json 解析监听响应体失败"));
     }
 
     #[test]

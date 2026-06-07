@@ -1307,6 +1307,27 @@ pub(crate) fn component_not_running_with_error_message(
     }
 }
 
+pub(crate) fn listener_response_body_decode_failed_message(err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("解码监听响应体失败: {err}"),
+        _ => format!("failed to decode listener response body: {err}"),
+    }
+}
+
+pub(crate) fn listener_response_body_utf8_failed_message(err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("按 utf-8 解码监听响应体失败: {err}"),
+        _ => format!("failed to decode listener response body as utf-8: {err}"),
+    }
+}
+
+pub(crate) fn listener_response_body_json_failed_message(err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("按 json 解析监听响应体失败: {err}"),
+        _ => format!("failed to parse listener response body as json: {err}"),
+    }
+}
+
 pub(crate) fn component_not_active_start_message(
     component_en: &str,
     component_zh_cn: &str,
