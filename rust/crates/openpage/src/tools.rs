@@ -15,7 +15,7 @@ use crate::settings::{
     data_url_missing_comma_message, get_blob_data_url_required_message,
     get_blob_resolve_failed_message, get_blob_url_required_message,
     make_session_ele_index_out_of_range_message, make_session_ele_index_resolution_failed_message,
-    make_session_ele_index_zero_message,
+    make_session_ele_index_zero_message, timeout_error,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::webpage::{WebElement, WebFrame, WebPage};
@@ -383,10 +383,7 @@ where
 
         let elapsed = start.elapsed();
         if elapsed >= timeout {
-            return Err(OpenPageError::Timeout(format!(
-                "wait_until() timed out after {} ms",
-                timeout.as_millis()
-            )));
+            return Err(timeout_error("wait_until()", timeout.as_millis() as u64));
         }
 
         let remaining = timeout.saturating_sub(elapsed);
@@ -718,12 +715,27 @@ mod tests {
 
     #[test]
     fn wait_until_returns_timeout_error_when_value_never_arrives() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
         let error = wait_until::<(), _>(Duration::from_millis(30), || None)
             .expect_err("wait until should time out");
 
         match error {
             crate::OpenPageError::Timeout(message) => {
-                assert!(message.contains("wait_until() timed out"));
+                assert_eq!(message, "wait_until() timed out after 30 ms");
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        Settings::set_language("cn");
+
+        let error = wait_until::<(), _>(Duration::from_millis(30), || None)
+            .expect_err("wait until should localize timeout");
+
+        match error {
+            crate::OpenPageError::Timeout(message) => {
+                assert_eq!(message, "wait_until() 等待超时（30 ms）");
             }
             other => panic!("unexpected error: {other:?}"),
         }
