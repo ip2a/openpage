@@ -2020,7 +2020,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.run_js(script),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "run_js() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_js()"),
             )),
         }
     }
@@ -2034,7 +2034,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.run_js_with_args(script, args, as_expr),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "run_js_with_args() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_js_with_args()"),
             )),
         }
     }
@@ -2051,7 +2051,7 @@ impl WebElement {
                 element.run_js_with_options(script, args, as_expr, timeout_ms)
             }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "run_js_with_options() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_js_with_options()"),
             )),
         }
     }
@@ -2060,7 +2060,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.run_async_js(script),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "run_async_js() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_async_js()"),
             )),
         }
     }
@@ -2074,7 +2074,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.run_async_js_with_args(script, args, as_expr),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "run_async_js_with_args() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_async_js_with_args()"),
             )),
         }
     }
@@ -2091,7 +2091,7 @@ impl WebElement {
                 element.run_async_js_with_options(script, args, as_expr, timeout_ms)
             }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "run_async_js_with_options() is only available in driver mode".to_string(),
+                driver_mode_only_message("run_async_js_with_options()"),
             )),
         }
     }
@@ -2100,7 +2100,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.save_screenshot(path),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "save_screenshot() is only available in driver mode".to_string(),
+                driver_mode_only_message("save_screenshot()"),
             )),
         }
     }
@@ -2113,7 +2113,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.screenshot_bytes(scroll_to_center, timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "screenshot_bytes() is only available in driver mode".to_string(),
+                driver_mode_only_message("screenshot_bytes()"),
             )),
         }
     }
@@ -2126,7 +2126,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.screenshot_base64(scroll_to_center, timeout_ms),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "screenshot_base64() is only available in driver mode".to_string(),
+                driver_mode_only_message("screenshot_base64()"),
             )),
         }
     }
@@ -2143,7 +2143,7 @@ impl WebElement {
                 element.get_screenshot(path, name, scroll_to_center, timeout_ms)
             }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "get_screenshot() is only available in driver mode".to_string(),
+                driver_mode_only_message("get_screenshot()"),
             )),
         }
     }
@@ -2152,7 +2152,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.focus(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "focus() is only available in driver mode".to_string(),
+                driver_mode_only_message("focus()"),
             )),
         }
     }
@@ -2161,7 +2161,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.hover(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "hover() is only available in driver mode".to_string(),
+                driver_mode_only_message("hover()"),
             )),
         }
     }
@@ -6033,6 +6033,44 @@ mod tests {
             chinese_key,
             OpenPageError::UnsupportedOperation(ref message)
                 if message.contains("press_key() 仅在 driver 模式可用")
+        ));
+    }
+
+    #[test]
+    fn web_element_session_driver_only_script_capture_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let element = WebElement::Session(
+            snapshot_root("<html><body><div id='app'></div></body></html>")
+                .expect("session snapshot root should parse"),
+        );
+        let english = element
+            .run_js("return 1")
+            .expect_err("session-backed WebElement run_js should fail");
+        assert!(matches!(
+            english,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("run_js() is only available in driver mode")
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese_capture = element
+            .screenshot_bytes(false, 100)
+            .expect_err("session-backed WebElement screenshot_bytes should fail");
+        assert!(matches!(
+            chinese_capture,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("screenshot_bytes() 仅在 driver 模式可用")
+        ));
+        let chinese_focus = element
+            .focus()
+            .expect_err("session-backed WebElement focus should fail");
+        assert!(matches!(
+            chinese_focus,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("focus() 仅在 driver 模式可用")
         ));
     }
 
