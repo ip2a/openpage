@@ -88,10 +88,11 @@ use crate::settings::{
     frame_html_unavailable_message, frame_index_must_start_message,
     frame_index_out_of_range_message, invalid_cookie_same_site_message, invalid_file_url_message,
     invalid_url_message, launched_browser_only_message, no_new_tab_message,
-    page_connect_timed_out_message, permission_origin_required_message,
-    permission_origin_scheme_message, permission_setting_invalid_message,
-    resolved_frame_owner_missing_object_id_message, screenshot_clip_complete_message,
-    screenshot_clip_order_message, session_backed_element_driver_target_message,
+    page_connect_timed_out_message, page_operation_failed_message,
+    permission_origin_required_message, permission_origin_scheme_message,
+    permission_setting_invalid_message, resolved_frame_owner_missing_object_id_message,
+    screenshot_clip_complete_message, screenshot_clip_order_message,
+    session_backed_element_driver_target_message,
     session_backed_web_element_driver_actions_message, singleton_tab_obj_enabled,
     suffixes_list_path, timeout_duration_millis, timeout_error,
     timeout_must_be_non_negative_message, unsupported_key_message, value_did_not_return_message,
@@ -113,6 +114,10 @@ const ACTION_MODIFIER_META: i64 = 4;
 const ACTION_MODIFIER_SHIFT: i64 = 8;
 const PAGE_ZOOM_MANAGED_ATTRIBUTE: &str = "data-openpage-zoom-managed";
 const PAGE_ZOOM_ORIGINAL_ATTRIBUTE: &str = "data-openpage-zoom-original";
+
+fn page_operation_error(operation: &str, err: impl ToString) -> OpenPageError {
+    OpenPageError::PageOperation(page_operation_failed_message(operation, &err.to_string()))
+}
 
 #[derive(Clone, Debug)]
 pub struct Page {
@@ -3356,7 +3361,7 @@ impl Page {
                 .inner
                 .url()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?
+                .map_err(|err| page_operation_error("read url", err))?
                 .unwrap_or_default())
         })
     }
@@ -3367,7 +3372,7 @@ impl Page {
                 .inner
                 .get_title()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?
+                .map_err(|err| page_operation_error("read title", err))?
                 .unwrap_or_default())
         })
     }
@@ -3510,7 +3515,7 @@ impl Page {
             self.inner
                 .content()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                .map_err(|err| page_operation_error("read html", err))
         })
     }
 
@@ -7484,8 +7489,8 @@ mod tests {
         cookie_domain_candidates_for_url, cookie_param, default_frame_locator,
         delete_cookie_params, frame_locator, frame_locator_input, history_entry_index,
         is_explicit_locator, marker_xpath, optional_frame_locator_input,
-        page_element_info_properties_json, permission_origin_from_input, remaining_timeout_ms,
-        resolve_implicit_wait_timeout_ms, resolve_navigation_local_file_path,
+        page_element_info_properties_json, page_operation_error, permission_origin_from_input,
+        remaining_timeout_ms, resolve_implicit_wait_timeout_ms, resolve_navigation_local_file_path,
         resolve_page_save_target_path, resolve_page_screenshot_target_path,
         resolve_permission_origin, run_with_timeout, runtime_timeout_seconds_to_millis,
         screenshot_clip, storage_lookup_script, value_as_f64_pair, value_as_optional_string,
@@ -8184,6 +8189,23 @@ mod tests {
             child_handle,
             grandchild_handle,
         )
+    }
+
+    #[test]
+    fn page_operation_errors_follow_settings_language() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english = page_operation_error("read title", "boom").to_string();
+        assert_eq!(
+            english,
+            "page operation failed: page operation read title failed: boom"
+        );
+
+        Settings::set_language("cn");
+
+        let chinese = page_operation_error("read title", "boom").to_string();
+        assert_eq!(chinese, "页面操作失败: 页面操作 read title 失败: boom");
     }
 
     #[test]

@@ -631,6 +631,13 @@ pub(crate) fn browser_backed_page_only_message(operation: &str) -> String {
     }
 }
 
+pub(crate) fn page_operation_failed_message(operation: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("页面操作 {operation} 失败: {err}"),
+        _ => format!("page operation {operation} failed: {err}"),
+    }
+}
+
 pub(crate) fn browser_backed_element_only_message(operation: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("{operation} 仅适用于 browser-backed 元素"),
