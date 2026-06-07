@@ -482,6 +482,65 @@ impl WebFrame {
         }
     }
 
+    pub fn click_to_download(
+        &self,
+        locator: &str,
+        save_path: Option<&str>,
+        rename: Option<&str>,
+        suffix: Option<&str>,
+        suffix_specified: bool,
+        timeout_ms: Option<u64>,
+        by_js: bool,
+        new_tab: bool,
+    ) -> OpenPageResult<Option<DownloadMission>> {
+        match self {
+            Self::Browser(frame) => frame.click_to_download(
+                locator,
+                save_path,
+                rename,
+                suffix,
+                suffix_specified,
+                timeout_ms,
+                by_js,
+                new_tab,
+            ),
+        }
+    }
+
+    pub fn click_to_upload(
+        &self,
+        locator: &str,
+        files: &[String],
+        timeout_ms: Option<u64>,
+        by_js: bool,
+    ) -> OpenPageResult<bool> {
+        match self {
+            Self::Browser(frame) => frame.click_to_upload(locator, files, timeout_ms, by_js),
+        }
+    }
+
+    pub fn click_for_new_tab(
+        &self,
+        locator: &str,
+        timeout_ms: Option<u64>,
+        by_js: bool,
+    ) -> OpenPageResult<Option<Page>> {
+        match self {
+            Self::Browser(frame) => frame.click_for_new_tab(locator, timeout_ms, by_js),
+        }
+    }
+
+    pub fn click_middle(
+        &self,
+        locator: &str,
+        timeout_ms: Option<u64>,
+        get_tab: bool,
+    ) -> OpenPageResult<Option<Page>> {
+        match self {
+            Self::Browser(frame) => frame.click_middle(locator, timeout_ms, get_tab),
+        }
+    }
+
     pub fn html(&self) -> OpenPageResult<String> {
         match self {
             Self::Browser(frame) => frame.html(),
@@ -7477,6 +7536,19 @@ mod tests {
             let _ = frame.wait_for_upload_paths_inputted(1_000);
             let _ = frame.wait_for_download_begin(1_000, false);
             let _ = frame.wait_for_downloads_done(1_000, true);
+            let _ = frame.click_to_download(
+                "css:#download",
+                None,
+                Some("demo"),
+                Some(".txt"),
+                true,
+                Some(1_000),
+                false,
+                false,
+            );
+            let _ = frame.click_to_upload("css:#upload", &files, Some(1_000), false);
+            let _ = frame.click_for_new_tab("css:#open", Some(1_000), false);
+            let _ = frame.click_middle("css:#open", Some(1_000), true);
 
             let _ = web_page.set_upload_files(&files);
             let _ = web_page.set_upload_paths(&files);
@@ -7487,6 +7559,19 @@ mod tests {
             let _ = web_page.wait_for_upload_paths_inputted(1_000);
             let _ = web_page.wait_for_download_begin(1_000, false);
             let _ = web_page.wait_for_downloads_done(1_000, true);
+            let _ = web_page.click_to_download(
+                "css:#download",
+                None,
+                Some("demo"),
+                Some(".txt"),
+                true,
+                Some(1_000),
+                false,
+                false,
+            );
+            let _ = web_page.click_to_upload("css:#upload", &files, Some(1_000), false);
+            let _ = web_page.click_for_new_tab("css:#open", Some(1_000), false);
+            let _ = web_page.click_middle("css:#open", Some(1_000), true);
 
             let _ = web_frame.set_upload_files(&files);
             let _ = web_frame.set_upload_paths(&files);
@@ -7498,6 +7583,19 @@ mod tests {
             let _ = web_frame.wait_for_upload_paths_inputted(1_000);
             let _ = web_frame.wait_for_download_begin(1_000, false);
             let _ = web_frame.wait_for_downloads_done(1_000, true);
+            let _ = web_frame.click_to_download(
+                "css:#download",
+                None,
+                Some("demo"),
+                Some(".txt"),
+                true,
+                Some(1_000),
+                false,
+                false,
+            );
+            let _ = web_frame.click_to_upload("css:#upload", &files, Some(1_000), false);
+            let _ = web_frame.click_for_new_tab("css:#open", Some(1_000), false);
+            let _ = web_frame.click_middle("css:#open", Some(1_000), true);
         }
 
         let _ = assert_calls as fn(&Frame, &WebPage, &WebFrame);
