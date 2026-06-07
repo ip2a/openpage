@@ -3464,6 +3464,15 @@ impl Page {
             .close_tabs(targets, others)
     }
 
+    pub fn close_with_options(&self, others: bool, _session: bool) -> OpenPageResult<()> {
+        if others {
+            self.close_tabs(self, true)?;
+        } else {
+            self.close_tabs(self, false)?;
+        }
+        Ok(())
+    }
+
     pub fn download_path(&self) -> OpenPageResult<Option<String>> {
         match &self.browser {
             Some(browser) => browser.page_download_path(&self.target_id()),
@@ -11222,6 +11231,9 @@ mod tests {
             let _ = page.close_tabs(&indices, false);
             let _ = page.close_tabs(&pages, false);
             let _ = page.close_tabs(&selectors[..], false);
+            let _ = page.close_with_options(false, false);
+            let _ = page.close_with_options(true, false);
+            let _ = page.close_with_options(false, true);
             let _ = page.quit();
         }
 
