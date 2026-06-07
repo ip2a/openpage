@@ -1568,6 +1568,13 @@ pub(crate) fn page_connect_timed_out_message(url: &str) -> String {
     }
 }
 
+pub(crate) fn wait_for_locator_timed_out_message(locator: &str, detail: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("等待元素超时: {locator}（{detail}）"),
+        _ => format!("wait for element timed out: {locator} ({detail})"),
+    }
+}
+
 pub(crate) fn frame_html_unavailable_message() -> String {
     localized_message("frame html is unavailable", "frame html 不可用")
 }
@@ -1899,11 +1906,12 @@ mod tests {
         value_returned_non_string_entry_message, value_state_bool_required_message,
         value_string_compatible_required_message, value_string_required_message,
         value_string_vec_array_required_message, value_string_vec_entry_required_message,
-        value_unavailable_message, web_browser_backed_option_required_message,
-        web_driver_element_required_message, web_element_list_driver_filter_message,
-        web_mode_invalid_message, web_timeout_base_non_negative_message,
-        xpath_node_no_longer_exists_message, xpath_path_not_found_message,
-        xpath_segment_not_found_message, zoom_factor_must_be_positive_message,
+        value_unavailable_message, wait_for_locator_timed_out_message,
+        web_browser_backed_option_required_message, web_driver_element_required_message,
+        web_element_list_driver_filter_message, web_mode_invalid_message,
+        web_timeout_base_non_negative_message, xpath_node_no_longer_exists_message,
+        xpath_path_not_found_message, xpath_segment_not_found_message,
+        zoom_factor_must_be_positive_message,
     };
     use crate::error::OpenPageError;
     use std::path::Path;
@@ -2459,6 +2467,10 @@ mod tests {
             "page connect timed out: https://example.test/"
         );
         assert_eq!(
+            wait_for_locator_timed_out_message("css:#missing", "not found"),
+            "wait for element timed out: css:#missing (not found)"
+        );
+        assert_eq!(
             timeout_must_be_non_negative_message(-0.5),
             "timeout must be a finite non-negative number, got -0.5"
         );
@@ -2965,6 +2977,10 @@ mod tests {
         assert_eq!(
             page_connect_timed_out_message("https://example.test/"),
             "页面连接超时: https://example.test/"
+        );
+        assert_eq!(
+            wait_for_locator_timed_out_message("css:#missing", "not found"),
+            "等待元素超时: css:#missing（not found）"
         );
         assert_eq!(
             timeout_must_be_non_negative_message(-0.5),

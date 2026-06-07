@@ -97,7 +97,7 @@ use crate::settings::{
     suffixes_list_path, timeout_duration_millis, timeout_error,
     timeout_must_be_non_negative_message, unsupported_key_message, value_did_not_return_message,
     value_pair_entry_not_number_message, value_returned_non_string_entry_message,
-    wait_timeout_result, zoom_factor_must_be_positive_message,
+    wait_for_locator_timed_out_message, wait_timeout_result, zoom_factor_must_be_positive_message,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -3700,7 +3700,10 @@ impl Page {
                 Ok(element) => return Ok(element),
                 Err(err) => {
                     if start.elapsed() >= Duration::from_millis(timeout_ms) {
-                        return Err(OpenPageError::Timeout(format!("{locator} ({err})")));
+                        return Err(OpenPageError::Timeout(wait_for_locator_timed_out_message(
+                            locator,
+                            &err.to_string(),
+                        )));
                     }
                     sleep(Duration::from_millis(100));
                 }

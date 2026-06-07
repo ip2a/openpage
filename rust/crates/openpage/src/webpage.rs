@@ -33,7 +33,7 @@ use crate::session::{
 };
 use crate::settings::{
     component_state_lock_poisoned_message, driver_mode_only_message,
-    timeout_must_be_non_negative_message, wait_timeout_result,
+    timeout_must_be_non_negative_message, wait_for_locator_timed_out_message, wait_timeout_result,
     web_browser_backed_option_required_message, web_driver_element_required_message,
     web_mode_invalid_message, web_timeout_base_non_negative_message,
 };
@@ -4569,7 +4569,10 @@ impl WebPage {
                 Ok(element) => return Ok(element),
                 Err(err) => {
                     if Instant::now() >= deadline {
-                        return Err(OpenPageError::Timeout(format!("{} ({err})", locator.raw())));
+                        return Err(OpenPageError::Timeout(wait_for_locator_timed_out_message(
+                            locator.raw(),
+                            &err.to_string(),
+                        )));
                     }
                     sleep(Duration::from_millis(100));
                 }
