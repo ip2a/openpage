@@ -804,6 +804,25 @@ pub(crate) fn parent_element_not_found_message() -> String {
     localized_message("parent element not found", "没有找到父元素")
 }
 
+pub(crate) fn snapshot_fragment_wrapper_not_found_message() -> String {
+    localized_message(
+        "snapshot fragment wrapper not found",
+        "未找到快照片段 wrapper",
+    )
+}
+
+pub(crate) fn snapshot_fragment_root_not_found_message() -> String {
+    localized_message("snapshot fragment root not found", "未找到快照片段 root")
+}
+
+pub(crate) fn snapshot_node_no_longer_exists_message() -> String {
+    localized_message("snapshot node no longer exists", "快照节点已不存在")
+}
+
+pub(crate) fn unsupported_snapshot_node_kind_message() -> String {
+    localized_message("unsupported snapshot node kind", "不支持的快照节点类型")
+}
+
 pub(crate) fn select_element_required_message() -> String {
     localized_message(
         "select() is only available for <select> elements",
@@ -1262,24 +1281,26 @@ mod tests {
         session_backed_web_element_driver_actions_message, session_page_no_current_url_message,
         session_page_no_loaded_document_message, set_file_input_requires_at_least_one_file_message,
         shadow_root_object_id_unavailable_message,
-        shadow_root_xpath_traversal_not_implemented_message, target_tab_not_found_message,
-        timeout_error, timeout_must_be_non_negative_message,
-        top_window_device_pixel_ratio_not_numeric_message,
+        shadow_root_xpath_traversal_not_implemented_message,
+        snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
+        snapshot_node_no_longer_exists_message, target_tab_not_found_message, timeout_error,
+        timeout_must_be_non_negative_message, top_window_device_pixel_ratio_not_numeric_message,
         top_window_viewport_size_lookup_failed_message, unsupported_key_message,
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
-        unsupported_xpath_path_message, upload_requires_at_least_one_file_message,
-        value_coordinate_not_numeric_message, value_coordinate_pair_exactly_two_message,
-        value_coordinate_pair_parse_failed_message, value_coordinate_pair_required_message,
-        value_did_not_return_message, value_non_negative_integer_required_message,
-        value_number_required_message, value_pair_entry_not_number_message,
-        value_returned_non_string_entry_message, value_state_bool_required_message,
-        value_string_compatible_required_message, value_string_required_message,
-        value_string_vec_array_required_message, value_string_vec_entry_required_message,
-        value_unavailable_message, web_browser_backed_option_required_message,
-        web_driver_element_required_message, web_element_list_driver_filter_message,
-        web_mode_invalid_message, web_timeout_base_non_negative_message,
-        xpath_node_no_longer_exists_message, xpath_path_not_found_message,
-        xpath_segment_not_found_message, zoom_factor_must_be_positive_message,
+        unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
+        upload_requires_at_least_one_file_message, value_coordinate_not_numeric_message,
+        value_coordinate_pair_exactly_two_message, value_coordinate_pair_parse_failed_message,
+        value_coordinate_pair_required_message, value_did_not_return_message,
+        value_non_negative_integer_required_message, value_number_required_message,
+        value_pair_entry_not_number_message, value_returned_non_string_entry_message,
+        value_state_bool_required_message, value_string_compatible_required_message,
+        value_string_required_message, value_string_vec_array_required_message,
+        value_string_vec_entry_required_message, value_unavailable_message,
+        web_browser_backed_option_required_message, web_driver_element_required_message,
+        web_element_list_driver_filter_message, web_mode_invalid_message,
+        web_timeout_base_non_negative_message, xpath_node_no_longer_exists_message,
+        xpath_path_not_found_message, xpath_segment_not_found_message,
+        zoom_factor_must_be_positive_message,
     };
     use crate::error::OpenPageError;
     use std::path::Path;
@@ -1663,6 +1684,22 @@ mod tests {
         assert_eq!(
             parent_element_not_found_message(),
             "parent element not found"
+        );
+        assert_eq!(
+            snapshot_fragment_wrapper_not_found_message(),
+            "snapshot fragment wrapper not found"
+        );
+        assert_eq!(
+            snapshot_fragment_root_not_found_message(),
+            "snapshot fragment root not found"
+        );
+        assert_eq!(
+            snapshot_node_no_longer_exists_message(),
+            "snapshot node no longer exists"
+        );
+        assert_eq!(
+            unsupported_snapshot_node_kind_message(),
+            "unsupported snapshot node kind"
         );
         assert_eq!(
             select_element_required_message(),
@@ -2126,6 +2163,19 @@ mod tests {
             "没有找到父元素: index 必须 >= 1"
         );
         assert_eq!(parent_element_not_found_message(), "没有找到父元素");
+        assert_eq!(
+            snapshot_fragment_wrapper_not_found_message(),
+            "未找到快照片段 wrapper"
+        );
+        assert_eq!(
+            snapshot_fragment_root_not_found_message(),
+            "未找到快照片段 root"
+        );
+        assert_eq!(snapshot_node_no_longer_exists_message(), "快照节点已不存在");
+        assert_eq!(
+            unsupported_snapshot_node_kind_message(),
+            "不支持的快照节点类型"
+        );
         assert_eq!(
             select_element_required_message(),
             "select() 仅适用于 <select> 元素"

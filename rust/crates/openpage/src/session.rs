@@ -41,7 +41,9 @@ use crate::settings::{
     invalid_xpath_segment_index_message, parent_element_index_must_start_message,
     parent_element_level_must_start_message, parent_element_not_found_message,
     session_cookie_requires_url_or_domain_message, session_page_no_current_url_message,
-    session_page_no_loaded_document_message, unsupported_xpath_path_message,
+    session_page_no_loaded_document_message, snapshot_fragment_root_not_found_message,
+    snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
+    unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
     xpath_node_no_longer_exists_message, xpath_path_not_found_message,
     xpath_segment_not_found_message,
 };
@@ -4607,11 +4609,11 @@ fn snapshot_fragment_root_arc(
     let wrapper_selector = Selector::parse(&format!("[{FRAGMENT_WRAPPER_ATTR}='1']"))
         .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
     let mut element = parsed.select(&wrapper_selector).next().ok_or_else(|| {
-        OpenPageError::ElementNotFound("snapshot fragment wrapper not found".to_string())
+        OpenPageError::ElementNotFound(snapshot_fragment_wrapper_not_found_message())
     })?;
     while element.attr(FRAGMENT_WRAPPER_ATTR).is_some() {
         element = element.child_elements().next().ok_or_else(|| {
-            OpenPageError::ElementNotFound("snapshot fragment root not found".to_string())
+            OpenPageError::ElementNotFound(snapshot_fragment_root_not_found_message())
         })?;
     }
     Ok(session_element_from_ref(
@@ -4640,9 +4642,7 @@ fn snapshot_fragment_find_arc(
                 .select(&wrapper_selector)
                 .next()
                 .ok_or_else(|| {
-                    OpenPageError::ElementNotFound(
-                        "snapshot fragment wrapper not found".to_string(),
-                    )
+                    OpenPageError::ElementNotFound(snapshot_fragment_wrapper_not_found_message())
                 })?
                 .select(&selector)
                 .next()
@@ -4685,7 +4685,7 @@ fn snapshot_fragment_find_all_arc(
             let wrapper_selector = Selector::parse(&format!("[{FRAGMENT_WRAPPER_ATTR}='1']"))
                 .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
             let wrapper = parsed.select(&wrapper_selector).next().ok_or_else(|| {
-                OpenPageError::ElementNotFound("snapshot fragment wrapper not found".to_string())
+                OpenPageError::ElementNotFound(snapshot_fragment_wrapper_not_found_message())
             })?;
             Ok(wrapper
                 .select(&selector)
@@ -4824,7 +4824,7 @@ fn element_from_document<'a>(
         .tree
         .get(node_id)
         .and_then(ElementRef::wrap)
-        .ok_or_else(|| OpenPageError::ElementNotFound("snapshot node no longer exists".to_string()))
+        .ok_or_else(|| OpenPageError::ElementNotFound(snapshot_node_no_longer_exists_message()))
 }
 
 #[derive(Clone, Copy)]
@@ -4870,9 +4870,7 @@ fn document_relatives(
     let current_index = elements
         .iter()
         .position(|candidate| candidate.id() == current_id)
-        .ok_or_else(|| {
-            OpenPageError::ElementNotFound("snapshot node no longer exists".to_string())
-        })?;
+        .ok_or_else(|| OpenPageError::ElementNotFound(snapshot_node_no_longer_exists_message()))?;
 
     let ancestor_ids: HashSet<_> = element.ancestors().map(|node| node.id()).collect();
     let descendant_ids: HashSet<_> = element
@@ -4974,7 +4972,7 @@ fn scraper_node_to_session_xpath_result(
             html,
             base_url,
             ElementRef::wrap(node).ok_or_else(|| {
-                OpenPageError::ElementNotFound("snapshot node no longer exists".to_string())
+                OpenPageError::ElementNotFound(snapshot_node_no_longer_exists_message())
             })?,
             none_element_config,
         ))),
@@ -4986,7 +4984,7 @@ fn scraper_node_to_session_xpath_result(
             system_id: (!doctype.system_id.is_empty()).then(|| doctype.system_id.to_string()),
         }),
         _ => Err(OpenPageError::ElementNotFound(
-            "unsupported snapshot node kind".to_string(),
+            unsupported_snapshot_node_kind_message(),
         )),
     }
 }
@@ -5482,7 +5480,7 @@ fn fragment_wrapper_from_document(document: &Html) -> OpenPageResult<ElementRef<
     let selector = Selector::parse(&format!("[{FRAGMENT_WRAPPER_ATTR}='1']"))
         .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
     document.select(&selector).next().ok_or_else(|| {
-        OpenPageError::ElementNotFound("snapshot fragment wrapper not found".to_string())
+        OpenPageError::ElementNotFound(snapshot_fragment_wrapper_not_found_message())
     })
 }
 
@@ -5490,9 +5488,9 @@ fn fragment_wrapper_from_xpath_tree(tree: &XpathItemTree) -> OpenPageResult<&Xpa
     tree.iter()
         .filter_map(|node| node.as_element_node().ok())
         .find(|element| element.get_attribute(tree, FRAGMENT_WRAPPER_ATTR).is_some())
-        .ok_or_else(|| {
-            OpenPageError::ElementNotFound("snapshot fragment wrapper not found".to_string())
-        })
+        .ok_or_else(
+            || OpenPageError::ElementNotFound(snapshot_fragment_wrapper_not_found_message()),
+        )
 }
 
 fn nearest_fragment_wrapper(element: ElementRef<'_>) -> Option<ElementRef<'_>> {
