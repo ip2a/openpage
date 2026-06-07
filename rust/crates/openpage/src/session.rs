@@ -1820,6 +1820,7 @@ pub struct SessionRuntimeInfo {
 }
 
 struct PendingSessionResponse {
+    requested_url: String,
     response: reqwest::blocking::Response,
 }
 
@@ -2984,7 +2985,10 @@ impl SessionPage {
         state.raw_data = None;
         state.body = None;
         state.json = None;
-        state.pending_response = Some(PendingSessionResponse { response });
+        state.pending_response = Some(PendingSessionResponse {
+            requested_url: requested_url.to_string(),
+            response,
+        });
         refresh_state_body_encoding(&mut state);
         Ok((200..400).contains(&status))
     }
@@ -4474,7 +4478,12 @@ fn ensure_response_body_loaded(state: &mut SessionState) -> OpenPageResult<()> {
         pending
             .response
             .bytes()
-            .map_err(|err| OpenPageError::Http(format!("{err:?}")))?
+            .map_err(|err| {
+                OpenPageError::Http(session_response_body_read_failed_message(
+                    &pending.requested_url,
+                    &format!("{err:?}"),
+                ))
+            })?
             .to_vec(),
     );
     state.raw_data = Some(raw_data);
@@ -8398,6 +8407,27 @@ mod tests {
         )));
         let _ = english_handle.join();
 
+        let stream_page = SessionPage::new(SessionOptions {
+            retry_times: 0,
+            stream: true,
+            ..SessionOptions::default()
+        })
+        .expect("stream session page");
+        let (english_stream_url, english_stream_handle) = spawn_truncated_body_server();
+        assert!(
+            stream_page
+                .get(&english_stream_url)
+                .expect("stream get should store pending response")
+        );
+        let english_stream = stream_page
+            .html()
+            .expect_err("streamed truncated response body should fail")
+            .to_string();
+        assert!(english_stream.contains(&format!(
+            "failed to read session response body for {english_stream_url}"
+        )));
+        let _ = english_stream_handle.join();
+
         Settings::set_language("cn");
 
         let (chinese_url, chinese_handle) = spawn_truncated_body_server();
@@ -8408,6 +8438,26 @@ mod tests {
         assert!(chinese.contains(&format!("读取 session 响应体 {chinese_url} 失败")));
         assert!(chinese.contains("HTTP 操作失败"));
         let _ = chinese_handle.join();
+
+        let chinese_stream_page = SessionPage::new(SessionOptions {
+            retry_times: 0,
+            stream: true,
+            ..SessionOptions::default()
+        })
+        .expect("Chinese stream session page");
+        let (chinese_stream_url, chinese_stream_handle) = spawn_truncated_body_server();
+        assert!(
+            chinese_stream_page
+                .get(&chinese_stream_url)
+                .expect("stream get should store pending response in Chinese")
+        );
+        let chinese_stream = chinese_stream_page
+            .html()
+            .expect_err("streamed truncated response body should fail in Chinese")
+            .to_string();
+        assert!(chinese_stream.contains(&format!("读取 session 响应体 {chinese_stream_url} 失败")));
+        assert!(chinese_stream.contains("HTTP 操作失败"));
+        let _ = chinese_stream_handle.join();
     }
 
     #[test]
