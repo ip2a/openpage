@@ -65,7 +65,7 @@ pub use session::{
     SessionHooks, SessionOptions, SessionPage, SessionRequestOptions, SessionResponseHook,
     SessionResponseInfo, SessionRuntimeInfo, SessionXPathResult,
 };
-pub use settings::{Settings, SettingsSnapshot};
+pub use settings::{Settings, SettingsChain, SettingsSnapshot};
 pub use shadow_root::ShadowRoot;
 pub use tools::{
     BlobSource, By, Keys, MakeSessionEleLocator, MakeSessionEleResult, MakeSessionEleSource,

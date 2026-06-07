@@ -36,6 +36,18 @@ impl Default for SettingsSnapshot {
 
 pub struct Settings;
 
+pub trait SettingsChain {
+    fn set_raise_when_ele_not_found(self, on_off: bool) -> Settings;
+    fn set_raise_when_click_failed(self, on_off: bool) -> Settings;
+    fn set_raise_when_wait_failed(self, on_off: bool) -> Settings;
+    fn set_singleton_tab_obj(self, on_off: bool) -> Settings;
+    fn set_cdp_timeout(self, second: f64) -> Settings;
+    fn set_browser_connect_timeout(self, second: f64) -> Settings;
+    fn set_auto_handle_alert(self, accept: Option<bool>) -> Settings;
+    fn set_language(self, code: impl Into<String>) -> Settings;
+    fn set_suffixes_list(self, path: impl AsRef<Path>) -> Settings;
+}
+
 impl Settings {
     pub fn snapshot() -> SettingsSnapshot {
         snapshot()
@@ -96,6 +108,44 @@ impl Settings {
     pub fn set_suffixes_list(path: impl AsRef<Path>) -> Self {
         with_settings_write(|settings| settings.suffixes_list = Some(path.as_ref().to_path_buf()));
         Self
+    }
+}
+
+impl SettingsChain for Settings {
+    fn set_raise_when_ele_not_found(self, on_off: bool) -> Settings {
+        Settings::set_raise_when_ele_not_found(on_off)
+    }
+
+    fn set_raise_when_click_failed(self, on_off: bool) -> Settings {
+        Settings::set_raise_when_click_failed(on_off)
+    }
+
+    fn set_raise_when_wait_failed(self, on_off: bool) -> Settings {
+        Settings::set_raise_when_wait_failed(on_off)
+    }
+
+    fn set_singleton_tab_obj(self, on_off: bool) -> Settings {
+        Settings::set_singleton_tab_obj(on_off)
+    }
+
+    fn set_cdp_timeout(self, second: f64) -> Settings {
+        Settings::set_cdp_timeout(second)
+    }
+
+    fn set_browser_connect_timeout(self, second: f64) -> Settings {
+        Settings::set_browser_connect_timeout(second)
+    }
+
+    fn set_auto_handle_alert(self, accept: Option<bool>) -> Settings {
+        Settings::set_auto_handle_alert(accept)
+    }
+
+    fn set_language(self, code: impl Into<String>) -> Settings {
+        Settings::set_language(code)
+    }
+
+    fn set_suffixes_list(self, path: impl AsRef<Path>) -> Settings {
+        Settings::set_suffixes_list(path)
     }
 }
 
@@ -1837,7 +1887,7 @@ pub(crate) fn scoped_test_settings() -> SettingsTestGuard {
 #[cfg(test)]
 mod tests {
     use super::{
-        Settings, SettingsSnapshot, action_click_times_positive_message,
+        Settings, SettingsChain, SettingsSnapshot, action_click_times_positive_message,
         action_element_missing_clickable_rect_message,
         action_element_missing_rect_location_message, action_type_interval_non_negative_message,
         action_wait_seconds_non_negative_message, blob_src_data_url_required_message,
@@ -1967,6 +2017,36 @@ mod tests {
         assert_eq!(snapshot.browser_connect_timeout, 2.5);
         assert_eq!(snapshot.auto_handle_alert, Some(false));
         assert_eq!(snapshot.language.as_deref(), Some("en"));
+        assert_eq!(
+            snapshot.suffixes_list.as_deref(),
+            Some(Path::new("/tmp/suffixes.dat"))
+        );
+    }
+
+    #[test]
+    fn settings_setters_can_chain_from_returned_settings_value() {
+        let _guard = scoped_test_settings();
+
+        Settings::reset()
+            .set_raise_when_ele_not_found(true)
+            .set_raise_when_click_failed(true)
+            .set_raise_when_wait_failed(true)
+            .set_singleton_tab_obj(false)
+            .set_cdp_timeout(1.5)
+            .set_browser_connect_timeout(2.5)
+            .set_auto_handle_alert(Some(false))
+            .set_language("cn")
+            .set_suffixes_list("/tmp/suffixes.dat");
+
+        let snapshot = Settings::snapshot();
+        assert!(snapshot.raise_when_ele_not_found);
+        assert!(snapshot.raise_when_click_failed);
+        assert!(snapshot.raise_when_wait_failed);
+        assert!(!snapshot.singleton_tab_obj);
+        assert_eq!(snapshot.cdp_timeout, 1.5);
+        assert_eq!(snapshot.browser_connect_timeout, 2.5);
+        assert_eq!(snapshot.auto_handle_alert, Some(false));
+        assert_eq!(snapshot.language.as_deref(), Some("zh_cn"));
         assert_eq!(
             snapshot.suffixes_list.as_deref(),
             Some(Path::new("/tmp/suffixes.dat"))
