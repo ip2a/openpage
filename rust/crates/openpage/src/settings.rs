@@ -67,12 +67,16 @@ impl Settings {
     }
 
     pub fn set_cdp_timeout(second: f64) -> Self {
-        with_settings_write(|settings| settings.cdp_timeout = second);
+        if valid_timeout_seconds(second) {
+            with_settings_write(|settings| settings.cdp_timeout = second);
+        }
         Self
     }
 
     pub fn set_browser_connect_timeout(second: f64) -> Self {
-        with_settings_write(|settings| settings.browser_connect_timeout = second);
+        if valid_timeout_seconds(second) {
+            with_settings_write(|settings| settings.browser_connect_timeout = second);
+        }
         Self
     }
 
@@ -1796,6 +1800,10 @@ fn seconds_to_duration(seconds: f64) -> Duration {
     }
 }
 
+fn valid_timeout_seconds(seconds: f64) -> bool {
+    seconds.is_finite() && !seconds.is_sign_negative()
+}
+
 #[cfg(test)]
 pub(crate) struct SettingsTestGuard {
     snapshot: SettingsSnapshot,
@@ -1961,6 +1969,23 @@ mod tests {
             snapshot.suffixes_list.as_deref(),
             Some(Path::new("/tmp/suffixes.dat"))
         );
+    }
+
+    #[test]
+    fn settings_timeout_setters_ignore_invalid_values() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        Settings::set_cdp_timeout(1.5);
+        Settings::set_browser_connect_timeout(2.5);
+        Settings::set_cdp_timeout(f64::NAN);
+        Settings::set_browser_connect_timeout(f64::NEG_INFINITY);
+        Settings::set_cdp_timeout(-1.0);
+        Settings::set_browser_connect_timeout(-2.0);
+
+        let snapshot = Settings::snapshot();
+        assert_eq!(snapshot.cdp_timeout, 1.5);
+        assert_eq!(snapshot.browser_connect_timeout, 2.5);
     }
 
     #[test]
