@@ -1018,7 +1018,7 @@ fn parse_ini_json_like_value(value: &str, field: &str) -> OpenPageResult<Value> 
     }
     let normalized = python_literal_to_json(value)?;
     serde_json::from_str(&normalized).map_err(|err| {
-        OpenPageError::Http(format!("invalid {field} in session options ini: {err}"))
+        OpenPageError::Http(invalid_session_ini_field_message(field, &err.to_string()))
     })
 }
 
@@ -7042,6 +7042,32 @@ mod tests {
                 .and_then(|path| fs::canonicalize(path).ok()),
             Some(fs::canonicalize(&project_ini).expect("canonicalize source project session ini"))
         );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn session_options_from_ini_parse_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let dir = make_temp_dir("session-options-parse-error");
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let config_path = dir.join("session.ini");
+        fs::write(&config_path, "[session_options]\nheaders = {bad}\n")
+            .expect("write invalid session ini");
+
+        let english = SessionOptions::from_ini(Some(config_path.as_path()))
+            .expect_err("invalid session ini should fail")
+            .to_string();
+        assert!(english.contains("invalid headers in session options ini:"));
+
+        Settings::set_language("cn");
+
+        let chinese = SessionOptions::from_ini(Some(config_path.as_path()))
+            .expect_err("invalid session ini should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains("session options ini 中的 headers 无效"));
+        assert!(chinese.contains("HTTP 操作失败"));
 
         let _ = fs::remove_dir_all(&dir);
     }
