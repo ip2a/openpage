@@ -229,6 +229,61 @@ impl WebFrame {
         }
     }
 
+    pub fn set_upload_files(&self, files: &[String]) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.set_upload_files(files),
+        }
+    }
+
+    pub fn set_upload_paths(&self, files: &[String]) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.set_upload_paths(files),
+        }
+    }
+
+    pub fn set_download_path(&self, path: &str) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.set_download_path(path),
+        }
+    }
+
+    pub fn set_download_file_exists_mode(
+        &self,
+        mode: DownloadFileExistsMode,
+    ) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.set_download_file_exists_mode(mode),
+        }
+    }
+
+    pub fn set_when_download_file_exists(&self, mode: &str) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.set_when_download_file_exists(mode),
+        }
+    }
+
+    pub fn set_download_filename(
+        &self,
+        rename: Option<&str>,
+        suffix: Option<&str>,
+        suffix_specified: bool,
+    ) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.set_download_filename(rename, suffix, suffix_specified),
+        }
+    }
+
+    pub fn set_download_file_name(
+        &self,
+        rename: Option<&str>,
+        suffix: Option<&str>,
+        suffix_specified: bool,
+    ) -> OpenPageResult<()> {
+        match self {
+            Self::Browser(frame) => frame.set_download_file_name(rename, suffix, suffix_specified),
+        }
+    }
+
     pub fn states(&self) -> FrameStates<'_> {
         match self {
             Self::Browser(frame) => frame.states(),
@@ -398,6 +453,32 @@ impl WebFrame {
     pub fn download_to(&self, url: &str, path: impl AsRef<Path>) -> OpenPageResult<String> {
         match self {
             Self::Browser(frame) => frame.download_to(url, path),
+        }
+    }
+
+    pub fn wait_for_upload_paths_inputted(&self, timeout_ms: u64) -> OpenPageResult<bool> {
+        match self {
+            Self::Browser(frame) => frame.wait_for_upload_paths_inputted(timeout_ms),
+        }
+    }
+
+    pub fn wait_for_download_begin(
+        &self,
+        timeout_ms: u64,
+        cancel_it: bool,
+    ) -> OpenPageResult<Option<DownloadMission>> {
+        match self {
+            Self::Browser(frame) => frame.wait_for_download_begin(timeout_ms, cancel_it),
+        }
+    }
+
+    pub fn wait_for_downloads_done(
+        &self,
+        timeout_ms: u64,
+        cancel_if_timeout: bool,
+    ) -> OpenPageResult<bool> {
+        match self {
+            Self::Browser(frame) => frame.wait_for_downloads_done(timeout_ms, cancel_if_timeout),
         }
     }
 
@@ -7379,6 +7460,47 @@ mod tests {
         }
 
         let _ = assert_calls as fn(&Page, &Frame, &WebPage, &WebFrame);
+    }
+
+    #[test]
+    fn webframe_transfer_helper_signatures_accept_common_inputs() {
+        fn assert_calls(frame: &Frame, web_page: &WebPage, web_frame: &WebFrame) {
+            let files = vec!["/tmp/demo.txt".to_string()];
+
+            let _ = frame.set_upload_files(&files);
+            let _ = frame.set_upload_paths(&files);
+            let _ = frame.set_download_path("/tmp");
+            let _ = frame.set_download_file_exists_mode(DownloadFileExistsMode::Overwrite);
+            let _ = frame.set_when_download_file_exists("overwrite");
+            let _ = frame.set_download_filename(Some("demo"), Some(".txt"), true);
+            let _ = frame.set_download_file_name(Some("demo"), Some(".txt"), true);
+            let _ = frame.wait_for_upload_paths_inputted(1_000);
+            let _ = frame.wait_for_download_begin(1_000, false);
+            let _ = frame.wait_for_downloads_done(1_000, true);
+
+            let _ = web_page.set_upload_files(&files);
+            let _ = web_page.set_upload_paths(&files);
+            let _ = web_page.set_download_path("/tmp");
+            let _ = web_page.set_download_file_exists_mode(DownloadFileExistsMode::Overwrite);
+            let _ = web_page.when_download_file_exists("overwrite");
+            let _ = web_page.set_current_tab_download_file_name(Some("demo"), Some(".txt"), true);
+            let _ = web_page.wait_for_upload_paths_inputted(1_000);
+            let _ = web_page.wait_for_download_begin(1_000, false);
+            let _ = web_page.wait_for_downloads_done(1_000, true);
+
+            let _ = web_frame.set_upload_files(&files);
+            let _ = web_frame.set_upload_paths(&files);
+            let _ = web_frame.set_download_path("/tmp");
+            let _ = web_frame.set_download_file_exists_mode(DownloadFileExistsMode::Overwrite);
+            let _ = web_frame.set_when_download_file_exists("overwrite");
+            let _ = web_frame.set_download_filename(Some("demo"), Some(".txt"), true);
+            let _ = web_frame.set_download_file_name(Some("demo"), Some(".txt"), true);
+            let _ = web_frame.wait_for_upload_paths_inputted(1_000);
+            let _ = web_frame.wait_for_download_begin(1_000, false);
+            let _ = web_frame.wait_for_downloads_done(1_000, true);
+        }
+
+        let _ = assert_calls as fn(&Frame, &WebPage, &WebFrame);
     }
 
     #[test]
