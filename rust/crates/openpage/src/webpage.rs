@@ -4475,7 +4475,7 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.driver.get_frame(target).map(WebFrame::Browser),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "get_frame() is only available in driver mode".to_string(),
+                driver_mode_only_message("get_frame()"),
             )),
         }
     }
@@ -4484,7 +4484,7 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.driver.get_frame_by_index(index).map(WebFrame::Browser),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "get_frame_by_index() is only available in driver mode".to_string(),
+                driver_mode_only_message("get_frame_by_index()"),
             )),
         }
     }
@@ -4496,7 +4496,7 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.driver.get_frame_ele(target).map(WebElement::Browser),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "get_frame_ele() is only available in driver mode".to_string(),
+                driver_mode_only_message("get_frame_ele()"),
             )),
         }
     }
@@ -4508,7 +4508,7 @@ impl WebPage {
                 .get_frame_ele_by_index(index)
                 .map(WebElement::Browser),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "get_frame_ele_by_index() is only available in driver mode".to_string(),
+                driver_mode_only_message("get_frame_ele_by_index()"),
             )),
         }
     }
@@ -4523,7 +4523,7 @@ impl WebPage {
                 .get_frames(locator)
                 .map(|frames| frames.into_iter().map(WebFrame::Browser).collect()),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "get_frames() is only available in driver mode".to_string(),
+                driver_mode_only_message("get_frames()"),
             )),
         }
     }
@@ -4538,7 +4538,7 @@ impl WebPage {
                 .get_frame_eles(locator)
                 .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "get_frame_eles() is only available in driver mode".to_string(),
+                driver_mode_only_message("get_frame_eles()"),
             )),
         }
     }
@@ -4550,7 +4550,7 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.get_frame(target),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "get_frame_context() is only available in driver mode".to_string(),
+                driver_mode_only_message("get_frame_context()"),
             )),
         }
     }
@@ -4559,7 +4559,7 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.get_frame_by_index(index),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "get_frame_context_by_index() is only available in driver mode".to_string(),
+                driver_mode_only_message("get_frame_context_by_index()"),
             )),
         }
     }
@@ -4571,7 +4571,7 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.get_frames(locator),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "get_frame_contexts() is only available in driver mode".to_string(),
+                driver_mode_only_message("get_frame_contexts()"),
             )),
         }
     }
@@ -5911,6 +5911,53 @@ mod tests {
             OpenPageError::UnsupportedOperation(ref message)
                 if message.contains("get_frame_by_index() 仅在 driver 模式可用")
         ));
+    }
+
+    #[test]
+    fn webpage_session_frame_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-session-frame-errors", WebMode::Session)
+                .expect("launch headless webpage");
+        let result = (|| -> crate::OpenPageResult<()> {
+            let english = match page.get_frame("tag:iframe") {
+                Err(error) => error,
+                Ok(_) => panic!("session-mode WebPage get_frame should fail"),
+            };
+            assert!(matches!(
+                english,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("get_frame() is only available in driver mode")
+            ));
+
+            Settings::set_language("cn");
+
+            let chinese_index = match page.get_frame_by_index(1) {
+                Err(error) => error,
+                Ok(_) => panic!("session-mode WebPage get_frame_by_index should fail"),
+            };
+            assert!(matches!(
+                chinese_index,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("get_frame_by_index() 仅在 driver 模式可用")
+            ));
+            let chinese_contexts = match page.get_frame_contexts(None::<&str>) {
+                Err(error) => error,
+                Ok(_) => panic!("session-mode WebPage get_frame_contexts should fail"),
+            };
+            assert!(matches!(
+                chinese_contexts,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("get_frame_contexts() 仅在 driver 模式可用")
+            ));
+            Ok(())
+        })();
+
+        let _ = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+        result.expect("webpage session frame errors should localize");
     }
 
     #[test]
