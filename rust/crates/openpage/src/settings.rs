@@ -872,6 +872,13 @@ pub(crate) fn unsupported_snapshot_node_kind_message() -> String {
     localized_message("unsupported snapshot node kind", "不支持的快照节点类型")
 }
 
+pub(crate) fn invalid_css_selector_message(query: &str, detail: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("无效的 css selector `{query}`: {detail}"),
+        _ => format!("invalid css selector `{query}`: {detail}"),
+    }
+}
+
 pub(crate) fn invalid_session_ini_field_message(field: &str, detail: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("session options ini 中的 {field} 无效: {detail}"),

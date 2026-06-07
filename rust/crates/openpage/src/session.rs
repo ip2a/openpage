@@ -40,7 +40,7 @@ use crate::settings::{
     cookie_text_requires_assignment_message, cookie_text_separator_conflict_message,
     cookie_value_empty_message, default_none_element_runtime_config,
     invalid_cookie_field_boolean_message, invalid_cookie_text_missing_value_message,
-    invalid_file_url_message, invalid_session_ini_boolean_message,
+    invalid_css_selector_message, invalid_file_url_message, invalid_session_ini_boolean_message,
     invalid_session_ini_field_expected_message, invalid_session_ini_field_message,
     invalid_session_ini_python_string_message, invalid_session_proxy_message, invalid_url_message,
     invalid_xpath_html_message, invalid_xpath_query_message, invalid_xpath_segment_index_message,
@@ -4893,7 +4893,9 @@ fn find_all_in_scope(
 }
 
 fn parse_selector_query(query: &str) -> OpenPageResult<Selector> {
-    Selector::parse(query).map_err(|err| OpenPageError::ElementNotFound(err.to_string()))
+    Selector::parse(query).map_err(|err| {
+        OpenPageError::ElementNotFound(invalid_css_selector_message(query, &err.to_string()))
+    })
 }
 
 fn session_element_from_ref(
@@ -8731,6 +8733,26 @@ mod tests {
             .to_string();
         assert!(chinese.contains("定位符语法不受支持"));
         assert!(chinese.contains("无效的 xpath `//[`"));
+    }
+
+    #[test]
+    fn snapshot_css_selector_errors_follow_language_setting() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let english = snapshot_find(HTML, "css:[")
+            .expect_err("invalid css selector should fail")
+            .to_string();
+        assert!(english.contains("element not found"));
+        assert!(english.contains("invalid css selector `[`"));
+
+        Settings::set_language("cn");
+
+        let chinese = snapshot_find(HTML, "css:[")
+            .expect_err("invalid css selector should localize")
+            .to_string();
+        assert!(chinese.contains("没有找到元素"));
+        assert!(chinese.contains("无效的 css selector `[`"));
     }
 
     #[test]
