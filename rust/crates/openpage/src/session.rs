@@ -38,10 +38,12 @@ use crate::settings::{
     cookie_requires_url_or_domain_message, cookie_text_separator_conflict_message,
     cookie_value_empty_message, default_none_element_runtime_config, invalid_file_url_message,
     invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
-    invalid_xpath_segment_index_message, session_cookie_requires_url_or_domain_message,
-    session_page_no_current_url_message, session_page_no_loaded_document_message,
-    unsupported_xpath_path_message, xpath_node_no_longer_exists_message,
-    xpath_path_not_found_message, xpath_segment_not_found_message,
+    invalid_xpath_segment_index_message, parent_element_index_must_start_message,
+    parent_element_level_must_start_message, parent_element_not_found_message,
+    session_cookie_requires_url_or_domain_message, session_page_no_current_url_message,
+    session_page_no_loaded_document_message, unsupported_xpath_path_message,
+    xpath_node_no_longer_exists_message, xpath_path_not_found_message,
+    xpath_segment_not_found_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -3401,7 +3403,7 @@ impl SessionElement {
     pub fn parent_level(&self, level: usize) -> OpenPageResult<SessionElement> {
         if level == 0 {
             return Err(OpenPageError::ElementNotFound(
-                "parent element not found: level must be >= 1".to_string(),
+                parent_element_level_must_start_message(),
             ));
         }
         self.with_element(|element| {
@@ -3418,9 +3420,7 @@ impl SessionElement {
                         self.none_element_config.as_ref(),
                     )
                 })
-                .ok_or_else(|| {
-                    OpenPageError::ElementNotFound("parent element not found".to_string())
-                })
+                .ok_or_else(|| OpenPageError::ElementNotFound(parent_element_not_found_message()))
         })
     }
 
@@ -3430,7 +3430,7 @@ impl SessionElement {
     {
         if index == 0 {
             return Err(OpenPageError::ElementNotFound(
-                "parent element not found: index must be >= 1".to_string(),
+                parent_element_index_must_start_message(),
             ));
         }
         let locator = Locator::from_input(locator)?;
@@ -3453,7 +3453,7 @@ impl SessionElement {
                         })
                         .collect(),
                     index,
-                    "parent element not found",
+                    &parent_element_not_found_message(),
                 )
             }),
             LocatorKind::XPath => self.with_element(|element| {
@@ -3469,7 +3469,7 @@ impl SessionElement {
                         self.none_element_config.as_ref(),
                     )?,
                     1,
-                    "parent element not found",
+                    &parent_element_not_found_message(),
                 )
             }),
         }

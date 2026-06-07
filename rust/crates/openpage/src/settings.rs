@@ -800,6 +800,10 @@ pub(crate) fn parent_element_index_must_start_message() -> String {
     )
 }
 
+pub(crate) fn parent_element_not_found_message() -> String {
+    localized_message("parent element not found", "没有找到父元素")
+}
+
 pub(crate) fn select_element_required_message() -> String {
     localized_message(
         "select() is only available for <select> elements",
@@ -1236,9 +1240,10 @@ mod tests {
         invalid_xpath_segment_index_message, javascript_execution_timed_out_message,
         launched_browser_only_message, multi_select_action_required_message, no_new_tab_message,
         page_connect_timed_out_message, parent_element_index_must_start_message,
-        parent_element_level_must_start_message, permission_origin_required_message,
-        permission_origin_scheme_message, permission_setting_invalid_message,
-        relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
+        parent_element_level_must_start_message, parent_element_not_found_message,
+        permission_origin_required_message, permission_origin_scheme_message,
+        permission_setting_invalid_message, relative_direction_index_must_start_message,
+        resolve_element_frame_id_failed_message,
         resolve_frame_owner_viewport_location_failed_message,
         resolve_frame_viewport_offset_failed_message,
         resolve_top_viewport_screen_origin_failed_message,
@@ -1654,6 +1659,10 @@ mod tests {
         assert_eq!(
             parent_element_index_must_start_message(),
             "parent element not found: index must be >= 1"
+        );
+        assert_eq!(
+            parent_element_not_found_message(),
+            "parent element not found"
         );
         assert_eq!(
             select_element_required_message(),
@@ -2116,6 +2125,7 @@ mod tests {
             parent_element_index_must_start_message(),
             "没有找到父元素: index 必须 >= 1"
         );
+        assert_eq!(parent_element_not_found_message(), "没有找到父元素");
         assert_eq!(
             select_element_required_message(),
             "select() 仅适用于 <select> 元素"
