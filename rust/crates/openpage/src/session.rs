@@ -42,17 +42,18 @@ use crate::settings::{
     invalid_cookie_field_boolean_message, invalid_cookie_text_missing_value_message,
     invalid_file_url_message, invalid_session_ini_boolean_message,
     invalid_session_ini_field_expected_message, invalid_session_ini_field_message,
-    invalid_session_ini_python_string_message, invalid_url_message, invalid_xpath_html_message,
-    invalid_xpath_query_message, invalid_xpath_segment_index_message,
+    invalid_session_ini_python_string_message, invalid_session_proxy_message, invalid_url_message,
+    invalid_xpath_html_message, invalid_xpath_query_message, invalid_xpath_segment_index_message,
     missing_session_ini_field_message, parent_element_index_must_start_message,
     parent_element_level_must_start_message, parent_element_not_found_message,
     session_cert_read_failed_message, session_cookie_requires_url_or_domain_message,
-    session_download_status_message, session_page_no_current_url_message,
-    session_page_no_loaded_document_message, snapshot_fragment_root_not_found_message,
-    snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
-    unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
-    unterminated_session_ini_python_string_message, xpath_node_no_longer_exists_message,
-    xpath_path_not_found_message, xpath_segment_not_found_message,
+    session_download_status_message, session_identity_parse_failed_message,
+    session_page_no_current_url_message, session_page_no_loaded_document_message,
+    snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
+    snapshot_node_no_longer_exists_message, unsupported_snapshot_node_kind_message,
+    unsupported_xpath_path_message, unterminated_session_ini_python_string_message,
+    xpath_node_no_longer_exists_message, xpath_path_not_found_message,
+    xpath_segment_not_found_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -4044,13 +4045,22 @@ fn build_session_client(
         builder = builder.no_proxy();
     }
     if let Some(http_proxy) = options.http_proxy.as_deref() {
-        builder = builder
-            .proxy(Proxy::http(http_proxy).map_err(|err| OpenPageError::Http(format!("{err:?}")))?);
+        builder = builder.proxy(Proxy::http(http_proxy).map_err(|err| {
+            OpenPageError::Http(invalid_session_proxy_message(
+                "http",
+                http_proxy,
+                &format!("{err:?}"),
+            ))
+        })?);
     }
     if let Some(https_proxy) = options.https_proxy.as_deref() {
-        builder = builder.proxy(
-            Proxy::https(https_proxy).map_err(|err| OpenPageError::Http(format!("{err:?}")))?,
-        );
+        builder = builder.proxy(Proxy::https(https_proxy).map_err(|err| {
+            OpenPageError::Http(invalid_session_proxy_message(
+                "https",
+                https_proxy,
+                &format!("{err:?}"),
+            ))
+        })?);
     }
     if !options.verify {
         builder = builder.danger_accept_invalid_certs(true);
@@ -4102,7 +4112,9 @@ fn load_session_identity(cert: &SessionCert) -> OpenPageResult<Identity> {
         }
     };
 
-    Identity::from_pem(&pem).map_err(|err| OpenPageError::Http(format!("{err:?}")))
+    Identity::from_pem(&pem).map_err(|err| {
+        OpenPageError::Http(session_identity_parse_failed_message(&format!("{err:?}")))
+    })
 }
 
 fn apply_request_options(
@@ -8305,6 +8317,62 @@ mod tests {
             }
             other => panic!("unexpected error: {other:?}"),
         }
+    }
+
+    #[test]
+    fn session_new_proxy_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english_error = SessionPage::new(SessionOptions {
+            http_proxy: Some("://bad-proxy".to_string()),
+            ..SessionOptions::default()
+        })
+        .expect_err("invalid proxy should fail")
+        .to_string();
+        assert!(english_error.contains("invalid session http proxy `://bad-proxy`"));
+
+        Settings::set_language("cn");
+
+        let chinese_error = SessionPage::new(SessionOptions {
+            https_proxy: Some("://bad-proxy".to_string()),
+            ..SessionOptions::default()
+        })
+        .expect_err("invalid proxy should fail in Chinese")
+        .to_string();
+        assert!(chinese_error.contains("session https 代理 `://bad-proxy` 无效"));
+        assert!(chinese_error.contains("HTTP 操作失败"));
+    }
+
+    #[test]
+    fn session_new_identity_parse_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let dir = make_temp_dir("session-invalid-cert");
+        fs::create_dir_all(&dir).expect("create invalid cert dir");
+        let cert_path = dir.join("client.pem");
+        fs::write(&cert_path, "not a pem").expect("write invalid cert");
+
+        let english_error = SessionPage::new(SessionOptions {
+            cert: Some(SessionCert::Pem(cert_path.clone())),
+            ..SessionOptions::default()
+        })
+        .expect_err("invalid cert should fail")
+        .to_string();
+        assert!(english_error.contains("failed to parse session identity"));
+
+        Settings::set_language("cn");
+
+        let chinese_error = SessionPage::new(SessionOptions {
+            cert: Some(SessionCert::Pem(cert_path.clone())),
+            ..SessionOptions::default()
+        })
+        .expect_err("invalid cert should fail in Chinese")
+        .to_string();
+        assert!(chinese_error.contains("解析 session identity 失败"));
+        assert!(chinese_error.contains("HTTP 操作失败"));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

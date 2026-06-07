@@ -935,6 +935,20 @@ pub(crate) fn session_download_status_message(status_code: u16, request_url: &st
     }
 }
 
+pub(crate) fn invalid_session_proxy_message(kind: &str, proxy: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("session {kind} 代理 `{proxy}` 无效: {err}"),
+        _ => format!("invalid session {kind} proxy `{proxy}`: {err}"),
+    }
+}
+
+pub(crate) fn session_identity_parse_failed_message(err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("解析 session identity 失败: {err}"),
+        _ => format!("failed to parse session identity: {err}"),
+    }
+}
+
 pub(crate) fn select_element_required_message() -> String {
     localized_message(
         "select() is only available for <select> elements",
