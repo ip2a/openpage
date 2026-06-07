@@ -2370,6 +2370,20 @@ impl WebElement {
         }
     }
 
+    pub fn drag_to(&self, target: &WebElement, duration_secs: f64) -> OpenPageResult<()> {
+        match (self, target) {
+            (Self::Browser(element), Self::Browser(target)) => {
+                element.drag_to(target, duration_secs)
+            }
+            (Self::Browser(_), Self::Session(_)) => Err(OpenPageError::UnsupportedOperation(
+                web_driver_element_required_message("drag_to() target"),
+            )),
+            (Self::Session(_), _) => Err(OpenPageError::UnsupportedOperation(
+                driver_mode_only_message("drag_to()"),
+            )),
+        }
+    }
+
     pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<()> {
         match self {
             Self::Browser(element) => element.drag_to_point(x, y, duration_secs),
@@ -6641,6 +6655,14 @@ mod tests {
             OpenPageError::UnsupportedOperation(ref message)
                 if message.contains("drag() is only available in driver mode")
         ));
+        let english_drag_to = element
+            .drag_to(&element, 0.1)
+            .expect_err("session-backed WebElement drag_to should fail");
+        assert!(matches!(
+            english_drag_to,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("drag_to() is only available in driver mode")
+        ));
 
         Settings::set_language("cn");
 
@@ -8022,6 +8044,10 @@ mod tests {
     #[test]
     fn element_and_webelement_object_wrappers_expose_scroll_set_and_select_signatures() {
         fn assert_calls(element: &Element, web_element: &WebElement) {
+            let _ = element.drag_to(element, 0.1);
+            let _ = web_element.drag_to(web_element, 0.1);
+            let _ = web_element.drag_to_element(web_element, 0.1);
+
             let _ = element.states().is_in_viewport();
             let _ = element.states().is_whole_in_viewport();
             let _ = element.states().is_alive();
