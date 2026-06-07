@@ -2174,7 +2174,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.hover_with_offset(offset_x, offset_y),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "hover_with_offset() is only available in driver mode".to_string(),
+                driver_mode_only_message("hover_with_offset()"),
             )),
         }
     }
@@ -2183,7 +2183,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.drag(offset_x, offset_y, duration_secs),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "drag() is only available in driver mode".to_string(),
+                driver_mode_only_message("drag()"),
             )),
         }
     }
@@ -2197,7 +2197,7 @@ impl WebElement {
                 "drag_to_element() target must be a driver element".to_string(),
             )),
             (Self::Session(_), _) => Err(OpenPageError::UnsupportedOperation(
-                "drag_to_element() is only available in driver mode".to_string(),
+                driver_mode_only_message("drag_to_element()"),
             )),
         }
     }
@@ -2206,7 +2206,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.drag_to_point(x, y, duration_secs),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "drag_to_point() is only available in driver mode".to_string(),
+                driver_mode_only_message("drag_to_point()"),
             )),
         }
     }
@@ -2215,7 +2215,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.remove_attr(name),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "remove_attr() is only available in driver mode".to_string(),
+                driver_mode_only_message("remove_attr()"),
             )),
         }
     }
@@ -2224,7 +2224,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.set_attr(name, value),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "set_attr() is only available in driver mode".to_string(),
+                driver_mode_only_message("set_attr()"),
             )),
         }
     }
@@ -2233,7 +2233,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.set_property(name, value),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "set_property() is only available in driver mode".to_string(),
+                driver_mode_only_message("set_property()"),
             )),
         }
     }
@@ -2242,7 +2242,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.set_style(name, value),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "set_style() is only available in driver mode".to_string(),
+                driver_mode_only_message("set_style()"),
             )),
         }
     }
@@ -2251,7 +2251,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.set_checked(checked),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "set_checked() is only available in driver mode".to_string(),
+                driver_mode_only_message("set_checked()"),
             )),
         }
     }
@@ -2260,7 +2260,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.check(uncheck, by_js),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "check() is only available in driver mode".to_string(),
+                driver_mode_only_message("check()"),
             )),
         }
     }
@@ -2269,7 +2269,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.uncheck(by_js),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "uncheck() is only available in driver mode".to_string(),
+                driver_mode_only_message("uncheck()"),
             )),
         }
     }
@@ -6071,6 +6071,44 @@ mod tests {
             chinese_focus,
             OpenPageError::UnsupportedOperation(ref message)
                 if message.contains("focus() 仅在 driver 模式可用")
+        ));
+    }
+
+    #[test]
+    fn web_element_session_driver_only_drag_set_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let element = WebElement::Session(
+            snapshot_root("<html><body><input id='agree' type='checkbox'></body></html>")
+                .expect("session snapshot root should parse"),
+        );
+        let english = element
+            .drag(10.0, 5.0, 0.1)
+            .expect_err("session-backed WebElement drag should fail");
+        assert!(matches!(
+            english,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("drag() is only available in driver mode")
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese_set = element
+            .set_attr("data-x", "1")
+            .expect_err("session-backed WebElement set_attr should fail");
+        assert!(matches!(
+            chinese_set,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("set_attr() 仅在 driver 模式可用")
+        ));
+        let chinese_check = element
+            .check(false, false)
+            .expect_err("session-backed WebElement check should fail");
+        assert!(matches!(
+            chinese_check,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("check() 仅在 driver 模式可用")
         ));
     }
 
