@@ -1,6 +1,11 @@
+#[cfg(target_os = "macos")]
 use std::process::Command;
 
 use crate::error::{OpenPageError, OpenPageResult};
+#[cfg(not(target_os = "macos"))]
+use crate::settings::window_platform_unsupported_message;
+#[cfg(target_os = "macos")]
+use crate::settings::window_script_operation_failed_message;
 
 pub fn set_app_visibility(pid: u32, visible: bool) -> OpenPageResult<()> {
     #[cfg(target_os = "macos")]
@@ -17,7 +22,7 @@ pub fn set_app_visibility(pid: u32, visible: bool) -> OpenPageResult<()> {
         let _ = pid;
         let _ = visible;
         Err(OpenPageError::UnsupportedOperation(
-            "window hide/show is only supported on macOS in this build".to_string(),
+            window_platform_unsupported_message("hide/show", "隐藏/显示"),
         ))
     }
 }
@@ -35,7 +40,7 @@ pub fn activate_app(pid: u32) -> OpenPageResult<()> {
     {
         let _ = pid;
         Err(OpenPageError::UnsupportedOperation(
-            "window activation is only supported on macOS in this build".to_string(),
+            window_platform_unsupported_message("activation", "激活"),
         ))
     }
 }
@@ -46,7 +51,7 @@ fn run_osascript(script: &str) -> OpenPageResult<()> {
         .arg("-e")
         .arg(script)
         .output()
-        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+        .map_err(|err| window_script_error("run osascript", err))?;
     if output.status.success() {
         return Ok(());
     }
@@ -59,5 +64,36 @@ fn run_osascript(script: &str) -> OpenPageResult<()> {
     } else {
         format!("osascript exited with status {}", output.status)
     };
-    Err(OpenPageError::BrowserOperation(detail))
+    Err(window_script_error("run osascript", detail))
+}
+
+#[cfg(target_os = "macos")]
+fn window_script_error(operation: &str, err: impl ToString) -> OpenPageError {
+    OpenPageError::BrowserOperation(window_script_operation_failed_message(
+        operation,
+        &err.to_string(),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::settings::{Settings, scoped_test_settings, window_platform_unsupported_message};
+
+    #[test]
+    fn window_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        assert_eq!(
+            window_platform_unsupported_message("hide/show", "隐藏/显示"),
+            "window hide/show is only supported on macOS in this build"
+        );
+
+        Settings::set_language("cn");
+
+        assert_eq!(
+            window_platform_unsupported_message("hide/show", "隐藏/显示"),
+            "窗口隐藏/显示在此构建中仅支持 macOS"
+        );
+    }
 }

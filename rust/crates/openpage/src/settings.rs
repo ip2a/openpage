@@ -483,6 +483,22 @@ pub(crate) fn browser_setup_operation_failed_message(operation: &str, err: &str)
     }
 }
 
+#[cfg_attr(target_os = "macos", allow(dead_code))]
+pub(crate) fn window_platform_unsupported_message(action_en: &str, action_zh_cn: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("窗口{action_zh_cn}在此构建中仅支持 macOS"),
+        _ => format!("window {action_en} is only supported on macOS in this build"),
+    }
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn window_script_operation_failed_message(operation: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("窗口脚本操作 {operation} 失败: {err}"),
+        _ => format!("window script operation {operation} failed: {err}"),
+    }
+}
+
 pub(crate) fn browser_launch_operation_failed_message(operation: &str, err: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("浏览器启动操作 {operation} 失败: {err}"),
