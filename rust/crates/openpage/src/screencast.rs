@@ -27,12 +27,13 @@ use crate::page::execute_page_command_async;
 use crate::settings::{
     component_not_running_message, component_state_lock_poisoned_message,
     invalid_screencast_data_url_message, screencast_already_running_message,
-    screencast_capture_path_unavailable_message, screencast_empty_mime_type_message,
-    screencast_encode_output_failed_message, screencast_ffmpeg_encode_failed_message,
-    screencast_ffmpeg_spawn_failed_message, screencast_mode_change_while_running_message,
-    screencast_mode_output_suffix_message, screencast_no_frames_message,
-    screencast_output_path_unavailable_message, screencast_requires_save_path_message,
-    screencast_save_path_must_be_directory_message, unsupported_screencast_output_suffix_message,
+    screencast_capture_operation_failed_message, screencast_capture_path_unavailable_message,
+    screencast_empty_mime_type_message, screencast_encode_output_failed_message,
+    screencast_ffmpeg_encode_failed_message, screencast_ffmpeg_spawn_failed_message,
+    screencast_mode_change_while_running_message, screencast_mode_output_suffix_message,
+    screencast_no_frames_message, screencast_output_path_unavailable_message,
+    screencast_requires_save_path_message, screencast_save_path_must_be_directory_message,
+    screencast_setup_operation_failed_message, unsupported_screencast_output_suffix_message,
 };
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -398,6 +399,20 @@ async fn evaluate_with_user_gesture(page: &OxPage, expression: &str) -> OpenPage
         .map_err(|err| OpenPageError::JavaScript(err.to_string()))
 }
 
+fn screencast_capture_error(operation: &str, err: impl ToString) -> OpenPageError {
+    OpenPageError::PageOperation(screencast_capture_operation_failed_message(
+        operation,
+        &err.to_string(),
+    ))
+}
+
+fn screencast_setup_error(operation: &str, err: impl ToString) -> OpenPageError {
+    OpenPageError::PageOperation(screencast_setup_operation_failed_message(
+        operation,
+        &err.to_string(),
+    ))
+}
+
 async fn run_imgs_screencast(
     page: OxPage,
     shared: Arc<ScreencastShared>,
@@ -412,7 +427,7 @@ async fn run_imgs_screencast(
         let bytes = page
             .screenshot(params)
             .await
-            .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            .map_err(|err| screencast_capture_error("capture screenshot frame", err))?;
         fs::write(frame_output_path(&capture_dir, index), bytes)?;
         index += 1;
         tokio::time::sleep(Duration::from_millis(40)).await;
@@ -429,7 +444,7 @@ async fn run_frugal_imgs_screencast(
     let mut events = page
         .event_listener::<EventScreencastFrame>()
         .await
-        .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+        .map_err(|err| screencast_setup_error("register screencast frame listener", err))?;
 
     execute_page_command_async(
         &page,
@@ -714,7 +729,8 @@ mod tests {
 
     use super::{
         ScreencastMode, build_video_output_path, decode_data_url, encode_frames_output,
-        frame_output_path, image_error, prepare_output_dir,
+        frame_output_path, image_error, prepare_output_dir, screencast_capture_error,
+        screencast_setup_error,
     };
     use crate::settings::{Settings, scoped_test_settings};
 
@@ -772,6 +788,24 @@ mod tests {
 
         let chinese = image_error("png failed").to_string();
         assert_eq!(chinese, "浏览器操作失败: 编码录屏输出失败: png failed");
+    }
+
+    #[test]
+    fn screencast_operation_errors_follow_language_setting() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let english_capture = screencast_capture_error("unit capture", "boom").to_string();
+        assert!(english_capture.contains("screencast capture operation unit capture failed: boom"));
+        let english_setup = screencast_setup_error("unit setup", "boom").to_string();
+        assert!(english_setup.contains("screencast setup operation unit setup failed: boom"));
+
+        Settings::set_language("cn");
+
+        let chinese_capture = screencast_capture_error("unit capture", "boom").to_string();
+        assert!(chinese_capture.contains("录屏捕获操作 unit capture 失败: boom"));
+        let chinese_setup = screencast_setup_error("unit setup", "boom").to_string();
+        assert!(chinese_setup.contains("录屏初始化操作 unit setup 失败: boom"));
     }
 
     #[test]

@@ -1679,6 +1679,20 @@ pub(crate) fn screencast_save_path_must_be_directory_message() -> String {
     )
 }
 
+pub(crate) fn screencast_capture_operation_failed_message(operation: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("录屏捕获操作 {operation} 失败: {err}"),
+        _ => format!("screencast capture operation {operation} failed: {err}"),
+    }
+}
+
+pub(crate) fn screencast_setup_operation_failed_message(operation: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("录屏初始化操作 {operation} 失败: {err}"),
+        _ => format!("screencast setup operation {operation} failed: {err}"),
+    }
+}
+
 pub(crate) fn shadow_root_object_id_unavailable_message() -> String {
     localized_message(
         "shadow root object id is unavailable",
