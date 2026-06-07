@@ -53,15 +53,15 @@ use crate::settings::{
     click_at_count_must_be_positive_message, click_failed_hidden_or_disabled_message,
     click_failed_no_rect_message, click_failed_should_raise, data_url_missing_comma_message,
     element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
-    element_no_visible_rect_message, element_rect_corner_coordinate_count_message,
-    element_rect_corners_parse_failed_message, element_rect_corners_unexpected_value_message,
-    element_resource_unavailable_message, element_tag_name_unavailable_message,
-    element_top_frame_check_failed_message, frame_index_must_start_message,
-    frame_index_out_of_range_message, javascript_execution_timed_out_message,
-    multi_select_action_required_message, no_new_tab_message,
-    parent_element_index_must_start_message, parent_element_level_must_start_message,
-    relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
-    resolve_frame_owner_viewport_location_failed_message,
+    element_no_visible_rect_message, element_operation_failed_message,
+    element_rect_corner_coordinate_count_message, element_rect_corners_parse_failed_message,
+    element_rect_corners_unexpected_value_message, element_resource_unavailable_message,
+    element_tag_name_unavailable_message, element_top_frame_check_failed_message,
+    frame_index_must_start_message, frame_index_out_of_range_message,
+    javascript_execution_timed_out_message, multi_select_action_required_message,
+    no_new_tab_message, parent_element_index_must_start_message,
+    parent_element_level_must_start_message, relative_direction_index_must_start_message,
+    resolve_element_frame_id_failed_message, resolve_frame_owner_viewport_location_failed_message,
     resolve_frame_viewport_offset_failed_message,
     resolve_top_viewport_screen_origin_failed_message,
     resolve_top_window_device_pixel_ratio_failed_message, resolved_node_missing_object_id_message,
@@ -88,6 +88,13 @@ const MODIFIER_ALT: i64 = 1;
 const MODIFIER_CTRL: i64 = 2;
 const MODIFIER_META: i64 = 4;
 const MODIFIER_SHIFT: i64 = 8;
+
+fn element_operation_error(operation: &str, err: impl ToString) -> OpenPageError {
+    OpenPageError::PageOperation(element_operation_failed_message(
+        operation,
+        &err.to_string(),
+    ))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RelativeDirection {
@@ -427,7 +434,7 @@ impl Element {
             self.inner
                 .scroll_into_view()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| element_operation_error("scroll into view", err))?;
             Ok::<(), OpenPageError>(())
         })?;
         let (x, y) = self.offset_click_point(offset_x, offset_y)?;
@@ -625,7 +632,7 @@ impl Element {
             .files(files)
             .backend_node_id(self.inner.backend_node_id)
             .build()
-            .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+            .map_err(|err| element_operation_error("build file input params", err))?;
         execute_page_command_blocking(
             self.runtime.as_ref(),
             &self.page,
@@ -640,7 +647,7 @@ impl Element {
             self.inner
                 .press_key(key)
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| element_operation_error("press key", err))?;
             Ok(())
         })
     }
@@ -650,7 +657,7 @@ impl Element {
             self.inner
                 .inner_text()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                .map_err(|err| element_operation_error("read inner text", err))
         })
     }
 
@@ -671,7 +678,7 @@ impl Element {
             self.inner
                 .outer_html()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                .map_err(|err| element_operation_error("read outer html", err))
         })
     }
 
@@ -680,7 +687,7 @@ impl Element {
             self.inner
                 .inner_html()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                .map_err(|err| element_operation_error("read inner html", err))
         })
     }
 
@@ -754,7 +761,7 @@ impl Element {
                 .inner
                 .attributes()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| element_operation_error("read attributes", err))?;
             Ok(attrs
                 .chunks(2)
                 .filter_map(|chunk| match chunk {
@@ -772,7 +779,7 @@ impl Element {
                     self.inner
                         .attribute("href")
                         .await
-                        .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                        .map_err(|err| element_operation_error("read href attribute", err))
                 })?;
                 let Some(value) = raw else {
                     return Ok(None);
@@ -789,7 +796,7 @@ impl Element {
                     self.inner
                         .attribute("src")
                         .await
-                        .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                        .map_err(|err| element_operation_error("read src attribute", err))
                 })?;
                 if raw.is_none() {
                     return Ok(None);
@@ -805,7 +812,7 @@ impl Element {
                 self.inner
                     .attribute(name)
                     .await
-                    .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                    .map_err(|err| element_operation_error("read attribute", err))
             }),
         }
     }
@@ -815,7 +822,7 @@ impl Element {
             self.inner
                 .property(name)
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                .map_err(|err| element_operation_error("read property", err))
         })
     }
 
@@ -5314,7 +5321,10 @@ fn mac_meta_commands(key: &str) -> Option<&'static [&'static str]> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_mouse_button, resolve_javascript_timeout_ms, validate_click_at_count};
+    use super::{
+        element_operation_error, parse_mouse_button, resolve_javascript_timeout_ms,
+        validate_click_at_count,
+    };
 
     #[test]
     fn resolve_javascript_timeout_ms_prefers_explicit_value() {
@@ -5339,6 +5349,26 @@ mod tests {
         let error = parse_mouse_button("side").expect_err("invalid mouse button should fail");
         assert!(
             matches!(error, crate::OpenPageError::PageOperation(ref message) if message == "不支持的鼠标按钮: side"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn element_operation_errors_follow_settings_language() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+
+        let error = element_operation_error("read attribute", "boom");
+        assert!(
+            matches!(error, crate::OpenPageError::PageOperation(ref message) if message == "element operation read attribute failed: boom"),
+            "unexpected error: {error}"
+        );
+
+        crate::Settings::set_language("cn");
+
+        let error = element_operation_error("read attribute", "boom");
+        assert!(
+            matches!(error, crate::OpenPageError::PageOperation(ref message) if message == "元素操作 read attribute 失败: boom"),
             "unexpected error: {error}"
         );
     }

@@ -638,6 +638,13 @@ pub(crate) fn browser_backed_element_only_message(operation: &str) -> String {
     }
 }
 
+pub(crate) fn element_operation_failed_message(operation: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("元素操作 {operation} 失败: {err}"),
+        _ => format!("element operation {operation} failed: {err}"),
+    }
+}
+
 pub(crate) fn zoom_factor_must_be_positive_message(factor: f64) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("zoom factor 必须是有限正数，当前为 {factor}"),
