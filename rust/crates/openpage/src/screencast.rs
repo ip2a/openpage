@@ -28,11 +28,11 @@ use crate::settings::{
     component_not_running_message, component_state_lock_poisoned_message,
     invalid_screencast_data_url_message, screencast_already_running_message,
     screencast_capture_path_unavailable_message, screencast_empty_mime_type_message,
-    screencast_ffmpeg_encode_failed_message, screencast_ffmpeg_spawn_failed_message,
-    screencast_mode_change_while_running_message, screencast_mode_output_suffix_message,
-    screencast_no_frames_message, screencast_output_path_unavailable_message,
-    screencast_requires_save_path_message, screencast_save_path_must_be_directory_message,
-    unsupported_screencast_output_suffix_message,
+    screencast_encode_output_failed_message, screencast_ffmpeg_encode_failed_message,
+    screencast_ffmpeg_spawn_failed_message, screencast_mode_change_while_running_message,
+    screencast_mode_output_suffix_message, screencast_no_frames_message,
+    screencast_output_path_unavailable_message, screencast_requires_save_path_message,
+    screencast_save_path_must_be_directory_message, unsupported_screencast_output_suffix_message,
 };
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -651,7 +651,7 @@ fn value_as_string(value: Value, label: &str) -> OpenPageResult<String> {
 }
 
 fn image_error(err: impl std::fmt::Display) -> OpenPageError {
-    OpenPageError::BrowserOperation(format!("failed to encode screencast output: {err}"))
+    OpenPageError::BrowserOperation(screencast_encode_output_failed_message(&err.to_string()))
 }
 
 fn timestamp_nanos() -> u128 {
@@ -714,7 +714,7 @@ mod tests {
 
     use super::{
         ScreencastMode, build_video_output_path, decode_data_url, encode_frames_output,
-        frame_output_path, prepare_output_dir,
+        frame_output_path, image_error, prepare_output_dir,
     };
     use crate::settings::{Settings, scoped_test_settings};
 
@@ -755,6 +755,23 @@ mod tests {
         assert!(error.to_string().contains("目录"));
 
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn image_error_follows_language_setting() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let english = image_error("png failed").to_string();
+        assert_eq!(
+            english,
+            "browser operation failed: failed to encode screencast output: png failed"
+        );
+
+        Settings::set_language("cn");
+
+        let chinese = image_error("png failed").to_string();
+        assert_eq!(chinese, "浏览器操作失败: 编码录屏输出失败: png failed");
     }
 
     #[test]
