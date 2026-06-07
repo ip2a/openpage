@@ -442,6 +442,32 @@ pub(crate) fn screenshot_clip_complete_message() -> String {
     )
 }
 
+pub(crate) fn value_did_not_return_message(
+    name: &str,
+    expected_en: &str,
+    expected_zh_cn: &str,
+    value: &str,
+) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} 未返回{expected_zh_cn}: {value}"),
+        _ => format!("{name} did not return {expected_en}: {value}"),
+    }
+}
+
+pub(crate) fn value_returned_non_string_entry_message(name: &str, value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} 返回了非字符串条目: {value}"),
+        _ => format!("{name} returned a non-string entry: {value}"),
+    }
+}
+
+pub(crate) fn value_pair_entry_not_number_message(name: &str, entry: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} {entry} 条目不是数字"),
+        _ => format!("{name} {entry} entry is not a number"),
+    }
+}
+
 pub(crate) fn resolve_frame_viewport_offset_failed_message(detail: &str) -> String {
     localized_error_with_detail(
         "resolve frame viewport offset failed",
@@ -864,9 +890,10 @@ mod tests {
         timeout_error, timeout_must_be_non_negative_message, unsupported_key_message,
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
         unsupported_xpath_path_message, upload_requires_at_least_one_file_message,
-        web_element_list_driver_filter_message, xpath_node_no_longer_exists_message,
-        xpath_path_not_found_message, xpath_segment_not_found_message,
-        zoom_factor_must_be_positive_message,
+        value_did_not_return_message, value_pair_entry_not_number_message,
+        value_returned_non_string_entry_message, web_element_list_driver_filter_message,
+        xpath_node_no_longer_exists_message, xpath_path_not_found_message,
+        xpath_segment_not_found_message, zoom_factor_must_be_positive_message,
     };
     use crate::error::OpenPageError;
     use std::path::Path;
@@ -1053,6 +1080,18 @@ mod tests {
         assert_eq!(
             screenshot_clip_complete_message(),
             "screenshot clip requires both left_top and right_bottom"
+        );
+        assert_eq!(
+            value_did_not_return_message("demo", "a string", "字符串", "null"),
+            "demo did not return a string: null"
+        );
+        assert_eq!(
+            value_returned_non_string_entry_message("demo", "1"),
+            "demo returned a non-string entry: 1"
+        );
+        assert_eq!(
+            value_pair_entry_not_number_message("demo", "first"),
+            "demo first entry is not a number"
         );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),
@@ -1309,6 +1348,18 @@ mod tests {
         assert_eq!(
             screenshot_clip_complete_message(),
             "截图裁剪需要同时提供 left_top 和 right_bottom"
+        );
+        assert_eq!(
+            value_did_not_return_message("demo", "a string", "字符串", "null"),
+            "demo 未返回字符串: null"
+        );
+        assert_eq!(
+            value_returned_non_string_entry_message("demo", "1"),
+            "demo 返回了非字符串条目: 1"
+        );
+        assert_eq!(
+            value_pair_entry_not_number_message("demo", "first"),
+            "demo first 条目不是数字"
         );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),

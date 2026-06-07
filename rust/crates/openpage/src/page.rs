@@ -87,8 +87,9 @@ use crate::settings::{
     permission_origin_scheme_message, permission_setting_invalid_message,
     screenshot_clip_complete_message, screenshot_clip_order_message, singleton_tab_obj_enabled,
     suffixes_list_path, timeout_duration_millis, timeout_error,
-    timeout_must_be_non_negative_message, unsupported_key_message, wait_timeout_result,
-    zoom_factor_must_be_positive_message,
+    timeout_must_be_non_negative_message, unsupported_key_message, value_did_not_return_message,
+    value_pair_entry_not_number_message, value_returned_non_string_entry_message,
+    wait_timeout_result, zoom_factor_must_be_positive_message,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -5082,13 +5083,19 @@ impl Page {
             Value::Number(value) => value
                 .as_f64()
                 .ok_or_else(|| {
-                    OpenPageError::JavaScript(
-                        "managed page zoom did not return a numeric value".to_string(),
-                    )
+                    OpenPageError::JavaScript(value_did_not_return_message(
+                        "managed page zoom",
+                        "a numeric value",
+                        "数值",
+                        &value.to_string(),
+                    ))
                 })
                 .map(Some),
-            other => Err(OpenPageError::JavaScript(format!(
-                "managed page zoom did not return a number or null: {other}"
+            other => Err(OpenPageError::JavaScript(value_did_not_return_message(
+                "managed page zoom",
+                "a number or null",
+                "数字或 null",
+                &other.to_string(),
             ))),
         }
     }
@@ -5247,8 +5254,11 @@ impl Page {
     pub fn user_agent(&self) -> OpenPageResult<String> {
         match self.evaluate("navigator.userAgent")? {
             Value::String(value) => Ok(value),
-            value => Err(OpenPageError::JavaScript(format!(
-                "navigator.userAgent did not return a string: {value}"
+            value => Err(OpenPageError::JavaScript(value_did_not_return_message(
+                "navigator.userAgent",
+                "a string",
+                "字符串",
+                &value.to_string(),
             ))),
         }
     }
@@ -5432,8 +5442,11 @@ impl Page {
     pub fn ready_state(&self) -> OpenPageResult<String> {
         match self.evaluate("document.readyState")? {
             Value::String(value) => Ok(value),
-            value => Err(OpenPageError::JavaScript(format!(
-                "document.readyState did not return a string: {value}"
+            value => Err(OpenPageError::JavaScript(value_did_not_return_message(
+                "document.readyState",
+                "a string",
+                "字符串",
+                &value.to_string(),
             ))),
         }
     }
@@ -5676,8 +5689,11 @@ impl Page {
         self.ensure_clipboard_api_available("clipboard_read_text")?;
         match self.run_js_with_options("navigator.clipboard.readText()", &[], true, None)? {
             Value::String(value) => Ok(value),
-            other => Err(OpenPageError::JavaScript(format!(
-                "clipboard read did not return text: {other}"
+            other => Err(OpenPageError::JavaScript(value_did_not_return_message(
+                "clipboard read",
+                "text",
+                "文本",
+                &other.to_string(),
             ))),
         }
     }
@@ -6831,8 +6847,11 @@ fn storage_lookup_script(storage: &str, item: Option<&str>) -> OpenPageResult<St
 fn value_as_string(value: Value, name: &str) -> OpenPageResult<String> {
     match value {
         Value::String(value) => Ok(value),
-        other => Err(OpenPageError::JavaScript(format!(
-            "{name} did not return a string: {other}"
+        other => Err(OpenPageError::JavaScript(value_did_not_return_message(
+            name,
+            "a string",
+            "字符串",
+            &other.to_string(),
         ))),
     }
 }
@@ -6841,8 +6860,11 @@ fn value_as_optional_string(value: Value, name: &str) -> OpenPageResult<Option<S
     match value {
         Value::Null => Ok(None),
         Value::String(value) => Ok(Some(value)),
-        other => Err(OpenPageError::JavaScript(format!(
-            "{name} did not return a string or null: {other}"
+        other => Err(OpenPageError::JavaScript(value_did_not_return_message(
+            name,
+            "a string or null",
+            "字符串或 null",
+            &other.to_string(),
         ))),
     }
 }
@@ -6853,13 +6875,16 @@ fn value_as_string_vec(value: Value, name: &str) -> OpenPageResult<Vec<String>> 
             .into_iter()
             .map(|value| match value {
                 Value::String(value) => Ok(value),
-                other => Err(OpenPageError::JavaScript(format!(
-                    "{name} returned a non-string entry: {other}"
-                ))),
+                other => Err(OpenPageError::JavaScript(
+                    value_returned_non_string_entry_message(name, &other.to_string()),
+                )),
             })
             .collect(),
-        other => Err(OpenPageError::JavaScript(format!(
-            "{name} did not return an array: {other}"
+        other => Err(OpenPageError::JavaScript(value_did_not_return_message(
+            name,
+            "an array",
+            "数组",
+            &other.to_string(),
         ))),
     }
 }
@@ -6868,14 +6893,17 @@ fn value_as_f64_pair(value: Value, name: &str) -> OpenPageResult<(f64, f64)> {
     match value {
         Value::Array(values) if values.len() == 2 => Ok((
             values[0].as_f64().ok_or_else(|| {
-                OpenPageError::JavaScript(format!("{name} first entry is not a number"))
+                OpenPageError::JavaScript(value_pair_entry_not_number_message(name, "first"))
             })?,
             values[1].as_f64().ok_or_else(|| {
-                OpenPageError::JavaScript(format!("{name} second entry is not a number"))
+                OpenPageError::JavaScript(value_pair_entry_not_number_message(name, "second"))
             })?,
         )),
-        other => Err(OpenPageError::JavaScript(format!(
-            "{name} did not return a number pair: {other}"
+        other => Err(OpenPageError::JavaScript(value_did_not_return_message(
+            name,
+            "a number pair",
+            "数字对",
+            &other.to_string(),
         ))),
     }
 }
@@ -7447,6 +7475,7 @@ mod tests {
         resolve_implicit_wait_timeout_ms, resolve_navigation_local_file_path,
         resolve_page_save_target_path, resolve_page_screenshot_target_path, run_with_timeout,
         runtime_timeout_seconds_to_millis, screenshot_clip, storage_lookup_script,
+        value_as_f64_pair, value_as_optional_string, value_as_string, value_as_string_vec,
     };
     use crate::element_list::ElementsListExt;
     use crate::error::OpenPageError;
@@ -8582,6 +8611,46 @@ mod tests {
             chinese_origin,
             OpenPageError::BrowserOperation(ref message)
                 if message.contains("permission origin 必须使用 http 或 https")
+        ));
+    }
+
+    #[test]
+    fn page_value_type_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english_string =
+            value_as_string(Value::Null, "demo").expect_err("string value conversion should fail");
+        assert!(matches!(
+            english_string,
+            OpenPageError::JavaScript(ref message)
+                if message.contains("demo did not return a string: null")
+        ));
+
+        let english_entry = value_as_string_vec(json!(["ok", 1]), "demo")
+            .expect_err("string vector entry conversion should fail");
+        assert!(matches!(
+            english_entry,
+            OpenPageError::JavaScript(ref message)
+                if message.contains("demo returned a non-string entry: 1")
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese_optional = value_as_optional_string(json!(1), "demo")
+            .expect_err("optional string value conversion should localize");
+        assert!(matches!(
+            chinese_optional,
+            OpenPageError::JavaScript(ref message)
+                if message.contains("demo 未返回字符串或 null: 1")
+        ));
+
+        let chinese_pair =
+            value_as_f64_pair(json!([1, "x"]), "demo").expect_err("pair conversion should fail");
+        assert!(matches!(
+            chinese_pair,
+            OpenPageError::JavaScript(ref message)
+                if message.contains("demo second 条目不是数字")
         ));
     }
 
