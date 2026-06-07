@@ -11,7 +11,14 @@ use tokio::task::JoinHandle;
 
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::execute_page_command_async;
-use crate::settings::{component_state_lock_poisoned_message, default_auto_handle_alert};
+use crate::settings::{
+    alert_operation_failed_message, component_state_lock_poisoned_message,
+    default_auto_handle_alert,
+};
+
+fn alert_operation_error(operation: &str, err: impl ToString) -> OpenPageError {
+    OpenPageError::PageOperation(alert_operation_failed_message(operation, &err.to_string()))
+}
 
 #[derive(Clone, Debug)]
 struct PendingAlertAction {
@@ -194,7 +201,7 @@ impl AlertTracker {
                 self.runtime.block_on(async {
                     handle_dialog(&self.page, accept, prompt_text)
                         .await
-                        .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                        .map_err(|err| alert_operation_error("handle dialog", err))
                 })?;
                 return Ok(Some(message));
             }
@@ -320,5 +327,29 @@ fn set_last_error(shared: &AlertShared, error: String) {
     if let Ok(mut state) = shared.state.lock() {
         state.last_error = Some(error);
         shared.condvar.notify_all();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::alert_operation_error;
+    use crate::Settings;
+    use crate::settings::scoped_test_settings;
+
+    #[test]
+    fn alert_operation_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english = alert_operation_error("handle dialog", "boom").to_string();
+        assert_eq!(
+            english,
+            "page operation failed: alert operation handle dialog failed: boom"
+        );
+
+        Settings::set_language("cn");
+
+        let chinese = alert_operation_error("handle dialog", "boom").to_string();
+        assert_eq!(chinese, "页面操作失败: 弹窗操作 handle dialog 失败: boom");
     }
 }

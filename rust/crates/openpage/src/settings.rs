@@ -513,6 +513,13 @@ pub(crate) fn browser_launch_operation_failed_message(operation: &str, err: &str
     }
 }
 
+pub(crate) fn alert_operation_failed_message(operation: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("弹窗操作 {operation} 失败: {err}"),
+        _ => format!("alert operation {operation} failed: {err}"),
+    }
+}
+
 pub(crate) fn invalid_options_manager_ini_literal_message(detail: &str) -> String {
     localized_error_with_detail(
         "invalid options manager ini literal",
