@@ -848,17 +848,21 @@ impl ServeRuntime {
             }));
         }
         let resolved = load_resolved_config()?;
+        let debugger_source = resolved.debugger_source;
+        let session_options = resolved.session;
         let mut launch = resolved.launch;
+        let local_port = optional_u64(params, "port").map(|value| value as u16);
         apply_session_default_user_data_dir(
             &mut launch,
             resolved.user_data_dir_source,
             optional_str(params, "session").unwrap_or(&target),
             optional_string(params, "user_data_dir").is_some(),
         )?;
+        apply_runtime_default_debugger_port(&mut launch, debugger_source, local_port);
         let overrides = RuntimeOverrides {
             browser_path: optional_string(params, "browser_path").map(Into::into),
             user_data_dir: optional_string(params, "user_data_dir").map(Into::into),
-            local_port: optional_u64(params, "port").map(|value| value as u16),
+            local_port,
             headless: optional_bool(params, "headless"),
             width: optional_u64(params, "width").map(|value| value as u32),
             height: optional_u64(params, "height").map(|value| value as u32),
@@ -878,7 +882,7 @@ impl ServeRuntime {
             launch.download_file_exists = DownloadFileExistsMode::parse(mode)?;
         }
 
-        let session = session_options_from_request(params, resolved.session)?;
+        let session = session_options_from_request(params, session_options)?;
 
         let page = WebPage::new(mode, launch, session)?;
         self.webpages
@@ -904,6 +908,16 @@ fn apply_session_default_user_data_dir(
 
     launch.user_data_dir = Some(openpage_home()?.join("profiles").join(session));
     Ok(())
+}
+
+fn apply_runtime_default_debugger_port(
+    launch: &mut crate::browser::LaunchOptions,
+    debugger_source: ConfigValueSource,
+    explicit_local_port: Option<u16>,
+) {
+    if debugger_source == ConfigValueSource::BuiltInDefault && explicit_local_port.is_none() {
+        launch.set_local_port(0);
+    }
 }
 
 fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenPageResult<Value> {
@@ -3361,6 +3375,46 @@ mod tests {
             launch.user_data_dir.as_deref(),
             Some(PathBuf::from("/tmp/explicit-profile").as_path())
         );
+    }
+
+    #[test]
+    fn apply_runtime_default_debugger_port_uses_dynamic_port_for_builtin_default() {
+        let mut launch = crate::browser::LaunchOptions::default();
+        launch.set_address("127.0.0.1:9222");
+        launch.user_data_dir = Some(PathBuf::from("/tmp/session-profile"));
+
+        apply_runtime_default_debugger_port(&mut launch, ConfigValueSource::BuiltInDefault, None);
+
+        assert_eq!(launch.remote_debugging_port, Some(0));
+        assert_eq!(launch.address.as_deref(), Some("127.0.0.1:0"));
+        assert_eq!(
+            launch.user_data_dir.as_deref(),
+            Some(PathBuf::from("/tmp/session-profile").as_path())
+        );
+        assert!(!launch.auto_port);
+    }
+
+    #[test]
+    fn apply_runtime_default_debugger_port_preserves_explicit_port_and_configured_source() {
+        let mut explicit_port = crate::browser::LaunchOptions::default();
+        explicit_port.set_address("127.0.0.1:9222");
+
+        apply_runtime_default_debugger_port(
+            &mut explicit_port,
+            ConfigValueSource::BuiltInDefault,
+            Some(9555),
+        );
+
+        assert_eq!(explicit_port.remote_debugging_port, Some(9222));
+        assert_eq!(explicit_port.address.as_deref(), Some("127.0.0.1:9222"));
+
+        let mut configured = crate::browser::LaunchOptions::default();
+        configured.set_address("127.0.0.1:9444");
+
+        apply_runtime_default_debugger_port(&mut configured, ConfigValueSource::UserConfig, None);
+
+        assert_eq!(configured.remote_debugging_port, Some(9444));
+        assert_eq!(configured.address.as_deref(), Some("127.0.0.1:9444"));
     }
 
     #[test]

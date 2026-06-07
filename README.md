@@ -185,19 +185,24 @@ OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin open
 
 - `summary` — machine-friendly counts for `healthy`, `incompatible`, `incomplete`, `cleaned`, and `total`
 - `sessions` — ready daemon-backed sessions, each with:
+  - `kind="daemon_session"`
   - `state="healthy"` when its daemon version matches the current CLI
   - `state="incompatible"` plus `reasons=["version_mismatch"]` when the session is still alive but was started by a different CLI version
+  - daemon log diagnostics via `log_path` / `log_exists`
   - `fix` when the session needs an explicit stop/restart action
-- `incomplete` — alive daemons with incomplete sidecars, each with `state="incomplete"` and stable `reasons`
-- `cleaned` — stale sidecars cleaned during the scan, each with `state="cleaned"`
+- `incomplete` — alive daemons with incomplete sidecars, each with `kind="daemon_session"`, `state="incomplete"`, stable `reasons`, and daemon log diagnostics via `log_path` / `log_exists`
+- `cleaned` — stale sidecars cleaned during the scan, each with `kind="daemon_session"`, `state="cleaned"`, stable `reasons`, stale-log diagnostics via `log_path` / `log_exists`, and a machine-readable `fix`
 
 `browser logs --session ... [--tail N]` returns:
 
 - sidecar-backed daemon metadata for that session, including the same shell-level `state`
+- `kind="daemon_session"`
+- the same daemon log diagnostics as `browser status` via `log_path` / `log_exists`
 - the same machine-readable `fix` guidance as `browser status` when a stop/restart action is recommended
 - `exists=true` plus tailed log content when a persisted daemon stderr log is present
 - `exists=false` and `content=null` when the session has no persisted log file yet
 - when the session is incomplete, the same stable `reasons` from `browser status` are preserved here too
+- `exists` remains as a compatibility alias for `log_exists`
 - when `OPENPAGE_CONTENT_BOUNDARIES=1` or `OPENPAGE_MAX_OUTPUT_CHARS` is set, the log `content`
   field also goes through the same boundary / truncate filters as page text payloads
 
@@ -207,6 +212,8 @@ OPENPAGE_HOME=/tmp/openpage cargo run --manifest-path rust/Cargo.toml --bin open
 - `incompatible` — the daemon is still live, but its recorded daemon version does not match the current CLI version
 - `incomplete` — the daemon looks alive but its sidecars are incomplete or the daemon is not ready
 - `inactive` — no live daemon is currently associated with that session name
+
+`browser status` payloads also preserve `kind="daemon_session"` plus daemon log diagnostics via `log_path` / `log_exists`, and when the state is `incomplete` the nested `incomplete` object carries the same fields too.
 
 When the session needs an explicit next step, these payloads now also include a machine-readable
 `fix` string. This keeps `browser status`, `browser logs`, and `browser list` aligned with the
@@ -240,6 +247,13 @@ Session bootstrap rule:
 - for known session-control failures, the same top-level JSON error now also carries `error.state`
   and stable `error.reasons` when applicable, so callers can branch on the same control-plane
   truth they already get from `browser status` / `browser logs` / `browser list`
+- for known transient daemon failures, the same top-level JSON error now also carries
+  `error.retryable=true` and a stable `error.suggested_action` such as `retry_same_command`
+- direct CLI daemon errors now preserve those structured fields more directly during the
+  daemon-response round trip instead of depending only on free-form message reconstruction
+- daemon startup failures that still surface as `error.kind="io"` now also carry
+  `error.session` and a recovery `error.fix`, so callers can jump straight to
+  `browser logs --session ...` without scraping the message
 - when there is no such recovery hint, `error.fix` is omitted instead of emitted as `null`
 
 Batch multiple commands in one invocation:
@@ -277,6 +291,36 @@ The current CLI intentionally rejects the removed legacy surfaces:
 Those removed surfaces and other top-level CLI input failures now return
 machine-friendly JSON with `error.kind="invalid_input"`.
 
+For the specifically removed legacy surfaces, the same parse-error payload now also carries
+`error.fix`:
+
+- removed `page ...` commands now point callers at the active top-level TCP CLI equivalents
+- removed `serve --stdio` now points callers at `openpage serve --session <name>`
+
+Malformed `batch` input now follows the same contract:
+
+- nested parse failures such as `openpage batch "page url"` return `error.kind="invalid_input"`
+- when that nested parse failure is specifically a removed legacy surface such as `page ...` or
+  `serve --stdio`, the same payload now also carries `error.fix` with migration guidance
+- invalid stdin JSON for `batch` also returns `error.kind="invalid_input"`
+- direct invalid value checks such as `zoom in --step 0` also return `error.kind="invalid_input"`
+- direct missing-payload validation such as `drag-in` without `--text` or `--files` also returns
+  `error.kind="invalid_input"` and now carries `error.fix`
+- daemon-side parameter validation such as `history go 0` also returns `error.kind="invalid_input"`
+- daemon-side range / empty / missing-param validation such as `history go 999999`,
+  `find-in-page ""`, a missing required request param, a bad navigation token, or daemon-side
+  `drag-in` payload validation also returns `error.kind="invalid_input"`
+- enum-style daemon-side validation such as unsupported snapshot mode/format or `select` without
+  one of `text/value/index` now also carries `error.fix`
+- missing-param and shape-validation failures such as `missing string param: ...`,
+  `missing headers param: ...`, or `headers must be an object` now also carry `error.fix`
+- semantic restrictions such as `batch cannot execute serve` stay `error.kind="unsupported_operation"`
+- for known workflow restrictions inside `batch`, the same payload now also carries `error.fix`
+  with the top-level command the caller should run instead
+- for the known session-scoped restriction `tab reopen` without a recorded recently closed tab,
+  the same `unsupported_operation` payload now also carries `error.fix` with the required
+  prerequisite or direct fallback workflow
+
 Help and version output still stay in plain clap text.
 
 The compiled help text is now part of the protocol guardrail too:
@@ -297,6 +341,14 @@ transport failures, the runtime now emits stable `error.kind` values such as:
 - `io`
 - `serialization`
 
+For a fuller classification guide, see `错误语义地图-v1.md`.
+For the current shell/control-plane module map, see `控制面地图-v1.md`.
+For the current control-plane contract overview across doctor and browser daemon surfaces, see `控制面总览-契约关系-v1.md`.
+For the executable borrow checklist, see `借鉴迁移清单-v1.md`.
+For the current `doctor` JSON shell contract, see `doctor-契约盘点-v1.md`.
+For the current stabilized-vs-unpromised doctor contract conclusion, see `doctor-契约收口结论-v1.md`.
+For the browser daemon control-plane JSON contract, see `browser-daemon-契约盘点-v1.md`.
+
 `doctor` reports:
 
 - environment and daemon sidecar locations
@@ -306,12 +358,21 @@ transport failures, the runtime now emits stable `error.kind` values such as:
 - optional `OPENPAGE_BROWSER_PATH` process-local override for machine-specific browser locations
 - active healthy daemon sessions
 - incomplete daemon sidecars that still point to a live daemon
-- stale daemon sidecars cleaned during the audit
+- stale daemon sidecars detected during the audit
 - daemon log paths that can be inspected with `openpage browser logs --session ...`
 - daemon-related `checks[]` entries that now also carry the same machine-readable `state` /
   `reasons` fields when the check is about a concrete daemon session or incomplete sidecar set
 - when a daemon-related check is about a concrete session, it now also carries `session`
   directly instead of forcing callers to parse `id` or `message`
+- daemon-related `checks[]` entries now also carry daemon log diagnostics such as `log_path` / `log_exists`
+- concrete daemon-session `checks[]` entries now also carry `kind="daemon_session"` so callers do not need to infer that shape from `category + id`
+- `env.legacy_sessions` now also carries `kind="legacy_sessions"`
+- `env.openpage_home` now also carries `kind="openpage_home"`
+- `env.daemon_dir` and `daemon.dir` now also carry `kind="daemon_dir"`
+- `daemon.sessions` now also carries `kind="daemon_sessions"`
+- `browser.config` now also carries `kind="browser_config"`
+- `browser.executable` and `browser.executable.hint` now also carry `kind="browser_executable"`
+- `browser.launch` now also carries `kind="browser_launch"`
 - browser-related `checks[]` entries now also carry machine-readable browser-path fields:
   - `browser.config` and `browser.executable` carry `browser_path`
   - `browser.executable` carries `resolved_path` when the configured executable resolves
@@ -321,19 +382,22 @@ transport failures, the runtime now emits stable `error.kind` values such as:
   - even when no daemon directory exists yet, `inventory` now stays present as an empty object
     with zero counts instead of falling back to `null`
   - `summary { healthy, incompatible, incomplete, cleaned, total }`
-  - `sessions[]` with `state="healthy"` or `state="incompatible"`
-  - `incomplete[]` with `state="incomplete"` and stable `reasons[]`
+  - `sessions[]` with `state="healthy"` or `state="incompatible"` plus `log_path` / `log_exists`
+  - `incomplete[]` with `state="incomplete"`, stable `reasons[]`, and `log_path` / `log_exists`
   - `fix` whenever a listed session needs a stop/restart or cleanup action
-  - `cleaned[]` with `state="cleaned"`
+  - `cleaned[]` with `state="cleaned"`, stable `reasons[]`, `log_path` / `log_exists`, and `fix`
   - those `reasons[]` now use the same shell-level taxonomy as `browser status` and `browser logs`
 
 `doctor --quick --fix` is intentionally narrow:
 
 - it removes legacy session JSON residue from the removed one-shot CLI path
-- it records stale sidecars cleaned during the daemon inventory walk
+- it records and removes stale sidecars during the daemon inventory walk
 - it stops incompatible daemon sessions whose sidecar version does not match the current CLI version
 - it stops and removes incomplete daemon sessions only when they are alive but not ready
 - it does not touch healthy ready daemon sessions whose version already matches the current CLI
+
+Plain `doctor` / `doctor --quick` stays read-only with respect to daemon sidecars. Use `--fix`
+when you want the cleanup pass.
 
 Runtime launch now uses the same launch-config chain as `doctor`:
 
@@ -345,6 +409,16 @@ Runtime launch now uses the same launch-config chain as `doctor`:
 - explicit CLI / daemon request parameters still win over config defaults
 - browser executable/config and optional live launch smoke
 - machine-readable summary counts plus actionable `warn_ids` / `fail_ids` / `info_ids` / `fixable_ids`
+  - `fixable_ids` is intentionally narrower than `checks[].fix`: it only lists checks that
+    `doctor --quick --fix` can handle automatically
+  - checks can still carry `fix` text for manual guidance even when they are not auto-fixable
+- `fixed[]` when `--fix` is used
+  - each entry is now structured with `check_id`, `message`, `auto_fixable`, `source`, and `reason`
+  - `session` and `path` are included when the fix applies to a concrete daemon session or legacy file
+  - `source="direct_fix"` means the action came from the explicit `--fix` cleanup path
+  - `source="inventory_scan"` means the action was opportunistic cleanup discovered during daemon inventory walk
+  - stable `reason` values currently include `legacy_session_json`, `incompatible_daemon`, `incomplete_unready_daemon`, and `stale_sidecars`
+  - the returned `summary`, `checks`, and `inventory` reflect the post-fix view after those cleanup actions have already been applied
 
 Agent-friendly output shaping for large page payloads:
 

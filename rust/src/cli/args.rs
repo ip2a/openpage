@@ -348,6 +348,9 @@ pub enum BrowserCommand {
 }
 
 #[derive(Debug, Args)]
+#[command(
+    after_help = "Examples:\n  openpage browser start --session review --headless https://example.com\n  openpage browser start --session review --headless\n\nFollow-up:\n  If you start with a URL, run `openpage wait-for-ready --session review` and then `openpage snapshot --session review`.\n  If you start without a URL, navigate next with `openpage goto --session review https://example.com`.\n\nReplace semantics:\n  `--replace` restarts an existing named session before launching again.\n  It keeps that session's profile directory unless you explicitly change profile paths.\n\nBootstrap rule:\n  `browser start` may create a missing session. Most other `--session` commands require an already active session."
+)]
 pub struct BrowserStartArgs {
     /// Optional initial URL to open
     pub url: Option<String>,
@@ -375,7 +378,7 @@ pub struct BrowserStartArgs {
     pub incognito: bool,
     #[arg(long)]
     pub mute: bool,
-    /// Replace existing session if it exists
+    /// Restart an existing named session before launching again; preserves its profile directory
     #[arg(long)]
     pub replace: bool,
 }
@@ -458,6 +461,9 @@ pub struct BrowserLogsArgs {
 }
 
 #[derive(Debug, Args)]
+#[command(
+    after_help = "Bootstrap behavior:\n  `goto` may create a missing session before navigating.\n\nExamples:\n  openpage goto --session review https://example.com\n  openpage goto --session review --wait https://example.com\n\nFollow-up:\n  If you omit `--wait`, use the returned `wait_for_navigation.command` or run `openpage wait-for-ready --session review` before `snapshot`, `title`, or `click`."
+)]
 pub struct GotoArgs {
     /// If the session is missing, this command creates it with daemon-backed defaults before navigating.
     pub url: String,
@@ -1326,6 +1332,9 @@ pub struct ServeArgs {
 }
 
 #[derive(Debug, Args)]
+#[command(
+    after_help = "Examples:\n  openpage batch --bail \"browser start --session review --headless https://example.com\" \"wait-for-ready --session review\" \"snapshot --session review\" \"browser stop --session review\"\n\n  printf '%s\\n' '[ [\"browser\",\"start\",\"--session\",\"review\",\"--headless\",\"https://example.com\"], [\"title\",\"--session\",\"review\"], [\"browser\",\"stop\",\"--session\",\"review\"] ]' | openpage batch\n\nOutput:\n  Each command writes its own JSON result as a separate line. `--bail` stops after the first failing command."
+)]
 pub struct BatchArgs {
     /// Stop on the first failing command
     #[arg(long)]

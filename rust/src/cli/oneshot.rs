@@ -304,14 +304,17 @@ fn run_browser_logs(args: BrowserLogsArgs) -> OpenPageResult<()> {
             .and_then(Value::as_str)
             .unwrap_or_default(),
     );
-    let exists = path.exists();
-    let content = if exists {
+    let log_exists = status
+        .get("log_exists")
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| path.exists());
+    let content = if log_exists {
         Some(read_browser_log(&path, args.tail)?)
     } else {
         None
     };
     print_json(simple_ok(browser_logs_payload(
-        status, exists, args.tail, content,
+        status, log_exists, args.tail, content,
     )))
 }
 
@@ -325,18 +328,36 @@ fn read_browser_log(path: &Path, tail: Option<usize>) -> OpenPageResult<String> 
 
 fn browser_logs_payload(
     mut status: Value,
-    exists: bool,
+    log_exists: bool,
     tail: Option<usize>,
     content: Option<String>,
 ) -> Value {
+    if status.get("kind").is_none() {
+        status["kind"] = Value::from("daemon_session");
+    }
+    let log_empty = log_exists
+        && content
+            .as_deref()
+            .map(|value| value.is_empty())
+            .unwrap_or(false);
     let path = status
         .get("log_path")
         .cloned()
         .unwrap_or_else(|| Value::String(String::new()));
     status["path"] = path;
-    status["exists"] = Value::Bool(exists);
+    status["log_exists"] = Value::Bool(log_exists);
+    status["exists"] = Value::Bool(log_exists);
+    status["log_empty"] = Value::Bool(log_empty);
     status["tail"] = json!(tail);
     status["content"] = json!(content);
+    if log_empty {
+        let hint = if status.get("state").and_then(Value::as_str) == Some("inactive") {
+            "Log file exists but is empty. The previous startup may have failed before anything was written to stderr; rely on the original browser_launch error or rerun `openpage doctor` for a live launch smoke test."
+        } else {
+            "Log file exists but is empty. The process may have exited before writing anything to stderr."
+        };
+        status["log_hint"] = Value::from(hint);
+    }
     status
 }
 
@@ -369,11 +390,14 @@ fn run_goto(args: GotoArgs) -> OpenPageResult<()> {
         )?;
     }
     let url = rpc_webpage(&args.session, "webpage.url", Value::Null)?;
-    print_json(simple_ok(json!({
-        "loaded": true,
-        "url": url.get("url").cloned(),
-        "navigation_token": result.get("navigation_token").cloned(),
-    })))
+    print_webpage_json(
+        &args.session,
+        json!({
+            "loaded": true,
+            "url": url.get("url").cloned(),
+            "navigation_token": result.get("navigation_token").cloned(),
+        }),
+    )
 }
 
 fn run_back(args: SessionArgs) -> OpenPageResult<()> {
@@ -387,11 +411,14 @@ fn run_back(args: SessionArgs) -> OpenPageResult<()> {
         )?;
     }
     let url = rpc_webpage(&args.session, "webpage.url", Value::Null)?;
-    print_json(simple_ok(json!({
-        "back": navigated,
-        "url": url.get("url").cloned(),
-        "navigation_token": result.get("navigation_token").cloned(),
-    })))
+    print_webpage_json(
+        &args.session,
+        json!({
+            "back": navigated,
+            "url": url.get("url").cloned(),
+            "navigation_token": result.get("navigation_token").cloned(),
+        }),
+    )
 }
 
 fn run_forward(args: SessionArgs) -> OpenPageResult<()> {
@@ -408,11 +435,14 @@ fn run_forward(args: SessionArgs) -> OpenPageResult<()> {
         )?;
     }
     let url = rpc_webpage(&args.session, "webpage.url", Value::Null)?;
-    print_json(simple_ok(json!({
-        "forward": navigated,
-        "url": url.get("url").cloned(),
-        "navigation_token": result.get("navigation_token").cloned(),
-    })))
+    print_webpage_json(
+        &args.session,
+        json!({
+            "forward": navigated,
+            "url": url.get("url").cloned(),
+            "navigation_token": result.get("navigation_token").cloned(),
+        }),
+    )
 }
 
 fn run_reload(args: ReloadArgs) -> OpenPageResult<()> {
@@ -425,12 +455,15 @@ fn run_reload(args: ReloadArgs) -> OpenPageResult<()> {
         }),
     )?;
     let url = rpc_webpage(&args.session, "webpage.url", Value::Null)?;
-    print_json(simple_ok(json!({
-        "reloaded": true,
-        "ignore_cache": args.ignore_cache,
-        "url": url.get("url").cloned(),
-        "navigation_token": result.get("navigation_token").cloned(),
-    })))
+    print_webpage_json(
+        &args.session,
+        json!({
+            "reloaded": true,
+            "ignore_cache": args.ignore_cache,
+            "url": url.get("url").cloned(),
+            "navigation_token": result.get("navigation_token").cloned(),
+        }),
+    )
 }
 
 fn run_stop_loading(args: SessionArgs) -> OpenPageResult<()> {
@@ -541,11 +574,14 @@ fn run_screenshot_element(args: ScreenshotElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_click(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_webpage_result(
         &args.session,
-        "element.click",
-        json!({"locator": args.locator}),
-    )?))
+        rpc_webpage(
+            &args.session,
+            "element.click",
+            json!({"locator": args.locator}),
+        )?,
+    )
 }
 
 fn run_fill(args: FillArgs) -> OpenPageResult<()> {
@@ -573,11 +609,14 @@ fn run_clear(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_submit(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_webpage_result(
         &args.session,
-        "element.submit",
-        json!({"locator": args.locator}),
-    )?))
+        rpc_webpage(
+            &args.session,
+            "element.submit",
+            json!({"locator": args.locator}),
+        )?,
+    )
 }
 
 fn run_check(args: ElementArgs) -> OpenPageResult<()> {
@@ -605,20 +644,30 @@ fn run_right_click(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_middle_click(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_webpage_result(
         &args.session,
-        "element.click_middle",
-        json!({"locator": args.locator}),
-    )?))
+        rpc_webpage(
+            &args.session,
+            "element.click_middle",
+            json!({"locator": args.locator}),
+        )?,
+    )
 }
 
 fn run_double_click(args: ElementArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let result = rpc_webpage(
         &args.session,
         "element.click_multi",
         json!({"locator": args.locator, "count": 2}),
     )?;
-    print_json(simple_ok(json!({"clicked": true, "count": 2})))
+    print_webpage_json(
+        &args.session,
+        json!({
+            "clicked": true,
+            "count": 2,
+            "navigation_token": result.get("navigation_token").cloned(),
+        }),
+    )
 }
 
 fn run_click_at(args: ClickAtArgs) -> OpenPageResult<()> {
@@ -630,7 +679,7 @@ fn run_click_at(args: ClickAtArgs) -> OpenPageResult<()> {
         count,
         session,
     } = args;
-    let _ = rpc_webpage(
+    let result = rpc_webpage(
         &session,
         "element.click_at",
         json!({
@@ -641,11 +690,15 @@ fn run_click_at(args: ClickAtArgs) -> OpenPageResult<()> {
             "count": count,
         }),
     )?;
-    print_json(simple_ok(json!({
-        "clicked": true,
-        "button": button,
-        "count": count,
-    })))
+    print_webpage_json(
+        &session,
+        json!({
+            "clicked": true,
+            "button": button,
+            "count": count,
+            "navigation_token": result.get("navigation_token").cloned(),
+        }),
+    )
 }
 
 fn run_key_down(args: KeyArgs) -> OpenPageResult<()> {
@@ -1477,6 +1530,10 @@ fn run_alert(command: AlertCommand) -> OpenPageResult<()> {
 }
 
 fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
+    if args.replace {
+        stop_browser_session(&args.session, true)?;
+    }
+
     let headless = if args.head {
         Some(false)
     } else if args.headless {
@@ -1484,7 +1541,7 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
     } else {
         None
     };
-    let create = rpc_request(
+    let create = match rpc_request(
         &args.session,
         Some(args.session.clone()),
         "webpage.create",
@@ -1500,7 +1557,13 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
             "incognito": args.incognito,
             "mute": args.mute,
         }),
-    )?;
+    ) {
+        Ok(create) => create,
+        Err(err) => {
+            cleanup_after_browser_launch_failure(&args.session, &err);
+            return Err(err);
+        }
+    };
 
     if let Some(url) = &args.url {
         let _ = rpc_webpage(
@@ -1518,8 +1581,8 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
         .unwrap_or(false);
     let port = read_port(&args.session)?;
 
-    if !existing {
-        print_json(simple_ok(json!({
+    let payload = if !existing {
+        json!({
             "session": args.session,
             "target": create.get("target").cloned(),
             "port": port,
@@ -1527,9 +1590,9 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
             "incognito": args.incognito,
             "mute": args.mute,
             "url": args.url,
-        })))
+        })
     } else {
-        print_json(simple_ok(json!({
+        json!({
             "session": args.session,
             "already_running": true,
             "target": create.get("target").cloned(),
@@ -1538,8 +1601,14 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
             "incognito": args.incognito,
             "mute": args.mute,
             "url": args.url,
-        })))
-    }
+        })
+    };
+
+    print_json(simple_ok(with_browser_start_followup(
+        &args.session,
+        args.url.as_deref(),
+        payload,
+    )))
 }
 
 fn stop_browser_session(session: &str, quiet: bool) -> OpenPageResult<()> {
@@ -1596,7 +1665,13 @@ fn stop_browser(args: BrowserStopArgs, quiet: bool) -> OpenPageResult<()> {
 }
 
 fn run_batch(args: BatchArgs) -> OpenPageResult<i32> {
-    let commands = batch_commands(&args)?;
+    let commands = match batch_commands(&args) {
+        Ok(commands) => commands,
+        Err(err) => {
+            print_json(batch_error_payload(&err))?;
+            return Ok(1);
+        }
+    };
     let mut had_error = false;
 
     for command_args in commands {
@@ -1607,7 +1682,7 @@ fn run_batch(args: BatchArgs) -> OpenPageResult<i32> {
         let command = match parse_batch_command(&command_args) {
             Ok(command) => command,
             Err(err) => {
-                print_json(crate::cli::protocol::simple_openpage_error(&err))?;
+                print_json(batch_error_payload(&err))?;
                 had_error = true;
                 if args.bail {
                     break;
@@ -1626,6 +1701,25 @@ fn run_batch(args: BatchArgs) -> OpenPageResult<i32> {
     }
 
     Ok(if had_error { 1 } else { 0 })
+}
+
+fn batch_error_payload(error: &OpenPageError) -> Value {
+    match error {
+        OpenPageError::UnsupportedOperation(detail)
+            if detail.starts_with("invalid batch command `")
+                || detail.starts_with("invalid batch command quoting:") =>
+        {
+            crate::cli::protocol::simple_error_with_fix(
+                "invalid_input",
+                detail,
+                crate::cli::protocol::known_invalid_input_fix(detail).map(str::to_string),
+            )
+        }
+        OpenPageError::Serialization(detail) if detail.starts_with("invalid batch stdin JSON:") => {
+            crate::cli::protocol::simple_error("invalid_input", detail)
+        }
+        _ => crate::cli::protocol::simple_openpage_error(error),
+    }
 }
 
 fn batch_commands(args: &BatchArgs) -> OpenPageResult<Vec<Vec<String>>> {
@@ -1716,7 +1810,7 @@ fn rpc_request_existing(
 }
 
 fn ensure_webpage_session(session: &str) -> OpenPageResult<()> {
-    let _ = rpc_request(
+    let _ = match rpc_request(
         session,
         Some(session.to_string()),
         "webpage.create",
@@ -1724,12 +1818,23 @@ fn ensure_webpage_session(session: &str) -> OpenPageResult<()> {
             "session": session,
             "port": 0,
         }),
-    )?;
+    ) {
+        Ok(result) => result,
+        Err(err) => {
+            cleanup_after_browser_launch_failure(session, &err);
+            return Err(err);
+        }
+    };
     Ok(())
 }
 
+fn cleanup_after_browser_launch_failure(session: &str, error: &OpenPageError) {
+    if matches!(error, OpenPageError::BrowserLaunch(_)) {
+        let _ = stop_browser_session(session, true);
+    }
+}
+
 fn rpc_webpage(session: &str, op: &str, params: Value) -> OpenPageResult<Value> {
-    ensure_webpage_session(session)?;
     rpc_request_existing(session, Some(session.to_string()), op, params)
 }
 
@@ -1936,10 +2041,8 @@ fn response_result(response: Response) -> OpenPageResult<Value> {
         let error = response
             .error
             .ok_or_else(|| OpenPageError::BrowserOperation("daemon request failed".to_string()))?;
-        Err(crate::cli::protocol::openpage_error_from_structured(
-            &error.kind,
-            error.message,
-            error.fix.as_deref(),
+        Err(crate::cli::protocol::openpage_error_from_response_error(
+            error,
         ))
     }
 }
@@ -1947,6 +2050,88 @@ fn response_result(response: Response) -> OpenPageResult<Value> {
 fn print_json(value: Value) -> OpenPageResult<()> {
     print_output_json(&value);
     Ok(())
+}
+
+fn print_webpage_result(session: &str, result: Value) -> OpenPageResult<()> {
+    print_webpage_json(session, result)
+}
+
+fn print_webpage_json(session: &str, result: Value) -> OpenPageResult<()> {
+    print_json(simple_ok(with_navigation_followup(session, result)))
+}
+
+fn with_browser_start_followup(session: &str, url: Option<&str>, mut result: Value) -> Value {
+    let Some(object) = result.as_object_mut() else {
+        return result;
+    };
+
+    let next_steps = if url.is_some() {
+        json!({
+            "wait_for_ready": format!(
+                "openpage wait-for-ready --session {}",
+                shell_quote(session),
+            ),
+            "snapshot": format!("openpage snapshot --session {}", shell_quote(session)),
+            "stop": format!(
+                "openpage browser stop --session {}",
+                shell_quote(session),
+            ),
+        })
+    } else {
+        json!({
+            "goto": format!(
+                "openpage goto --session {} https://example.com",
+                shell_quote(session),
+            ),
+            "stop": format!(
+                "openpage browser stop --session {}",
+                shell_quote(session),
+            ),
+        })
+    };
+
+    object.insert("next_steps".to_string(), next_steps);
+    result
+}
+
+fn with_navigation_followup(session: &str, mut result: Value) -> Value {
+    let Some(object) = result.as_object_mut() else {
+        return result;
+    };
+    let Some(token) = object
+        .get("navigation_token")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+    else {
+        return result;
+    };
+
+    object.insert(
+        "wait_for_navigation".to_string(),
+        json!({
+            "session": session,
+            "token": token.clone(),
+            "command": format!(
+                "openpage wait-for-navigation --session {} --token {}",
+                shell_quote(session),
+                shell_quote(&token),
+            ),
+        }),
+    );
+    result
+}
+
+fn shell_quote(value: &str) -> String {
+    if !value.is_empty()
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.' | b'/' | b':' | b'@')
+        })
+    {
+        return value.to_string();
+    }
+
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 fn run_scroll_into_view(args: ScrollIntoViewArgs) -> OpenPageResult<()> {
@@ -1979,11 +2164,14 @@ fn run_hover_at(args: HoverAtArgs) -> OpenPageResult<()> {
 }
 
 fn run_press(args: PressArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_webpage_result(
         &args.session,
-        "element.press_key",
-        json!({"locator": args.locator, "key": args.key.clone()}),
-    )?))
+        rpc_webpage(
+            &args.session,
+            "element.press_key",
+            json!({"locator": args.locator, "key": args.key.clone()}),
+        )?,
+    )
 }
 
 fn run_select(args: SelectArgs) -> OpenPageResult<()> {
@@ -3072,6 +3260,7 @@ mod tests {
                 alive: true,
                 ready: true,
                 log_path: "/tmp/alpha.log".to_string(),
+                log_exists: true,
             }],
             incomplete: vec![
                 crate::cli::connection::IncompleteDaemonSession {
@@ -3084,6 +3273,8 @@ mod tests {
                     alive: true,
                     ready: false,
                     log_path: "/tmp/beta.log".to_string(),
+                    log_exists: false,
+                    runtime_issue: None,
                 },
                 crate::cli::connection::IncompleteDaemonSession {
                     session: "alpha".to_string(),
@@ -3095,6 +3286,8 @@ mod tests {
                     alive: true,
                     ready: false,
                     log_path: "/tmp/alpha.log".to_string(),
+                    log_exists: true,
+                    runtime_issue: None,
                 },
                 crate::cli::connection::IncompleteDaemonSession {
                     session: "gamma".to_string(),
@@ -3106,6 +3299,8 @@ mod tests {
                     alive: false,
                     ready: false,
                     log_path: "/tmp/gamma.log".to_string(),
+                    log_exists: false,
+                    runtime_issue: None,
                 },
             ],
             cleaned: Vec::new(),
@@ -3128,6 +3323,7 @@ mod tests {
                 alive: true,
                 ready: true,
                 log_path: "/tmp/alpha.log".to_string(),
+                log_exists: true,
             }],
             incomplete: vec![crate::cli::connection::IncompleteDaemonSession {
                 session: "beta".to_string(),
@@ -3139,10 +3335,15 @@ mod tests {
                 alive: true,
                 ready: false,
                 log_path: "/tmp/beta.log".to_string(),
+                log_exists: false,
+                runtime_issue: None,
             }],
             cleaned: vec![crate::cli::connection::CleanedDaemonSession {
                 session: "gamma".to_string(),
                 reason: "missing version".to_string(),
+                reasons: vec!["missing_version"],
+                log_path: "/tmp/gamma.log".to_string(),
+                log_exists: true,
             }],
         };
 
@@ -3165,6 +3366,7 @@ mod tests {
                 alive: true,
                 ready: true,
                 log_path: "/tmp/alpha.log".to_string(),
+                log_exists: true,
             }],
             incomplete: vec![crate::cli::connection::IncompleteDaemonSession {
                 session: "beta".to_string(),
@@ -3176,23 +3378,32 @@ mod tests {
                 alive: true,
                 ready: false,
                 log_path: "/tmp/beta.log".to_string(),
+                log_exists: false,
+                runtime_issue: None,
             }],
             cleaned: vec![crate::cli::connection::CleanedDaemonSession {
                 session: "gamma".to_string(),
                 reason: "missing version".to_string(),
+                reasons: vec!["missing_version"],
+                log_path: "/tmp/gamma.log".to_string(),
+                log_exists: true,
             }],
         };
 
         let payload = super::browser_inventory_payload(&inventory);
+        assert_eq!(payload["sessions"][0]["kind"], "daemon_session");
         assert_eq!(payload["sessions"][0]["state"], "healthy");
         assert_eq!(payload["sessions"][0]["version_matches_current_cli"], true);
+        assert_eq!(payload["sessions"][0]["log_exists"], true);
         assert!(payload["sessions"][0].get("fix").is_none());
         assert_eq!(payload["incomplete"][0]["state"], "incomplete");
+        assert_eq!(payload["incomplete"][0]["kind"], "daemon_session");
         assert_eq!(
             payload["incomplete"][0]["reasons"],
             json!(["missing_version", "daemon_not_ready"])
         );
         assert_eq!(payload["incomplete"][0]["log_path"], "/tmp/beta.log");
+        assert_eq!(payload["incomplete"][0]["log_exists"], false);
         assert!(
             payload["incomplete"][0]["fix"]
                 .as_str()
@@ -3200,6 +3411,17 @@ mod tests {
                 .contains("doctor --quick --fix")
         );
         assert_eq!(payload["cleaned"][0]["state"], "cleaned");
+        assert_eq!(payload["cleaned"][0]["kind"], "daemon_session");
+        assert_eq!(payload["cleaned"][0]["reason"], "missing version");
+        assert_eq!(payload["cleaned"][0]["reasons"], json!(["missing_version"]));
+        assert_eq!(payload["cleaned"][0]["log_path"], "/tmp/gamma.log");
+        assert_eq!(payload["cleaned"][0]["log_exists"], true);
+        assert!(
+            payload["cleaned"][0]["fix"]
+                .as_str()
+                .expect("cleaned fix should be present")
+                .contains("browser logs --session gamma --tail 20")
+        );
     }
 
     #[test]
@@ -3214,6 +3436,8 @@ mod tests {
             alive: true,
             ready: false,
             log_path: "/tmp/beta.log".to_string(),
+            log_exists: false,
+            runtime_issue: None,
         };
 
         assert_eq!(
@@ -3249,6 +3473,7 @@ mod tests {
                 "port": 456,
                 "version": "0.1.0",
                 "log_path": "/tmp/beta.log",
+                "log_exists": false,
                 "state": "incomplete",
                 "reasons": ["missing_version", "daemon_not_ready"],
                 "fix": "Run `openpage doctor --quick --fix` ...",
@@ -3259,6 +3484,7 @@ mod tests {
         );
 
         assert_eq!(payload["state"], "incomplete");
+        assert_eq!(payload["kind"], "daemon_session");
         assert_eq!(
             payload["reasons"],
             json!(["missing_version", "daemon_not_ready"])
@@ -3270,6 +3496,8 @@ mod tests {
                 .contains("doctor --quick --fix")
         );
         assert_eq!(payload["path"], "/tmp/beta.log");
+        assert_eq!(payload["kind"], "daemon_session");
+        assert_eq!(payload["log_exists"], true);
         assert_eq!(payload["exists"], true);
         assert_eq!(payload["tail"], 20);
         assert_eq!(payload["content"], "tail");
@@ -3287,6 +3515,7 @@ mod tests {
                 "version": "0.0.1",
                 "version_matches_current_cli": false,
                 "log_path": "/tmp/beta.log",
+                "log_exists": false,
                 "state": "incompatible",
                 "reasons": ["version_mismatch"],
                 "fix": "Run `openpage browser stop --session beta` ...",
@@ -3297,6 +3526,7 @@ mod tests {
         );
 
         assert_eq!(payload["state"], "incompatible");
+        assert_eq!(payload["kind"], "daemon_session");
         assert_eq!(payload["version_matches_current_cli"], false);
         assert_eq!(payload["reasons"], json!(["version_mismatch"]));
         assert!(
@@ -3306,9 +3536,84 @@ mod tests {
                 .contains("browser stop --session beta")
         );
         assert_eq!(payload["path"], "/tmp/beta.log");
+        assert_eq!(payload["kind"], "daemon_session");
+        assert_eq!(payload["log_exists"], true);
         assert_eq!(payload["exists"], true);
         assert_eq!(payload["tail"], 5);
         assert_eq!(payload["content"], "tail");
+    }
+
+    #[test]
+    fn browser_logs_payload_preserves_false_log_exists() {
+        let payload = super::browser_logs_payload(
+            json!({
+                "session": "missing",
+                "alive": false,
+                "ready": false,
+                "log_path": "/tmp/missing.log",
+                "log_exists": false,
+                "state": "inactive",
+            }),
+            false,
+            Some(20),
+            None,
+        );
+
+        assert_eq!(payload["path"], "/tmp/missing.log");
+        assert_eq!(payload["kind"], "daemon_session");
+        assert_eq!(payload["log_exists"], false);
+        assert_eq!(payload["exists"], false);
+        assert_eq!(payload["log_empty"], false);
+        assert_eq!(payload["content"], Value::Null);
+        assert!(payload.get("log_hint").is_none());
+    }
+
+    #[test]
+    fn browser_logs_payload_marks_empty_inactive_logs_with_hint() {
+        let payload = super::browser_logs_payload(
+            json!({
+                "session": "failed-start",
+                "alive": false,
+                "ready": false,
+                "log_path": "/tmp/failed-start.log",
+                "log_exists": true,
+                "state": "inactive",
+            }),
+            true,
+            Some(20),
+            Some(String::new()),
+        );
+
+        assert_eq!(payload["log_exists"], true);
+        assert_eq!(payload["exists"], true);
+        assert_eq!(payload["log_empty"], true);
+        assert_eq!(payload["content"], "");
+        assert!(
+            payload["log_hint"]
+                .as_str()
+                .expect("log hint should be present")
+                .contains("original browser_launch error")
+        );
+    }
+
+    #[test]
+    fn browser_logs_payload_backfills_daemon_session_kind_when_missing() {
+        let payload = super::browser_logs_payload(
+            json!({
+                "session": "legacy-shape",
+                "alive": false,
+                "ready": false,
+                "log_path": "/tmp/legacy.log",
+                "state": "inactive",
+            }),
+            false,
+            None,
+            None,
+        );
+
+        assert_eq!(payload["kind"], "daemon_session");
+        assert_eq!(payload["log_exists"], false);
+        assert_eq!(payload["exists"], false);
     }
 
     #[test]
@@ -4450,8 +4755,434 @@ mod tests {
     }
 
     #[test]
+    fn response_result_uses_structured_session_state_when_message_is_generic() {
+        let response = super::Response::error_with_context(
+            None,
+            "browser_operation",
+            "daemon reported inactive session",
+            Some(
+                "Start it with `openpage browser start --session generic-inactive` before retrying."
+                    .to_string(),
+            ),
+            Some("generic-inactive".to_string()),
+            Some("inactive".to_string()),
+            None,
+            None,
+            None,
+        );
+
+        let error =
+            super::response_result(response).expect_err("daemon error should not look successful");
+        let payload = crate::cli::protocol::simple_openpage_error(&error);
+
+        assert_eq!(payload["error"]["kind"], "browser_operation");
+        assert_eq!(payload["error"]["session"], "generic-inactive");
+        assert_eq!(payload["error"]["state"], "inactive");
+        assert_eq!(
+            payload["error"]["fix"],
+            "Start it with `openpage browser start --session generic-inactive` before retrying."
+        );
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .expect("message should be a string")
+                .contains("session `generic-inactive` is not active")
+        );
+    }
+
+    #[test]
+    fn response_result_uses_structured_transient_fields_when_message_is_generic() {
+        let response = super::Response::error_with_context(
+            None,
+            "daemon_transient",
+            "io error: connection reset by peer",
+            Some("Retry the same command.".to_string()),
+            Some("retry-review".to_string()),
+            None,
+            None,
+            Some(true),
+            Some("retry_same_command".to_string()),
+        );
+
+        let error =
+            super::response_result(response).expect_err("daemon error should not look successful");
+        let payload = crate::cli::protocol::simple_openpage_error(&error);
+
+        assert_eq!(payload["error"]["kind"], "daemon_transient");
+        assert_eq!(payload["error"]["session"], "retry-review");
+        assert_eq!(payload["error"]["retryable"], true);
+        assert_eq!(payload["error"]["suggested_action"], "retry_same_command");
+        assert_eq!(payload["error"]["fix"], "Retry the same command.");
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .expect("message should be a string")
+                .contains("daemon transient for session `retry-review`")
+        );
+    }
+
+    #[test]
+    fn response_result_uses_structured_incompatible_state_when_message_is_generic() {
+        let response = super::Response::error_with_context(
+            None,
+            "browser_operation",
+            "daemon reported version mismatch",
+            Some("Stop and restart the session.".to_string()),
+            Some("generic-mismatch".to_string()),
+            Some("incompatible".to_string()),
+            Some(vec!["version_mismatch".to_string()]),
+            None,
+            None,
+        );
+
+        let error =
+            super::response_result(response).expect_err("daemon error should not look successful");
+        let payload = crate::cli::protocol::simple_openpage_error(&error);
+
+        assert_eq!(payload["error"]["kind"], "browser_operation");
+        assert_eq!(payload["error"]["session"], "generic-mismatch");
+        assert_eq!(payload["error"]["state"], "incompatible");
+        assert_eq!(payload["error"]["reasons"], json!(["version_mismatch"]));
+        assert_eq!(payload["error"]["fix"], "Stop and restart the session.");
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .expect("message should be a string")
+                .contains("session `generic-mismatch` has a daemon version mismatch")
+        );
+    }
+
+    #[test]
+    fn response_result_uses_structured_busy_state_when_message_is_generic() {
+        let response = super::Response::error_with_context(
+            None,
+            "browser_operation",
+            "daemon reported busy session",
+            Some("Inspect logs or restart the session.".to_string()),
+            Some("generic-busy".to_string()),
+            Some("incomplete".to_string()),
+            Some(vec!["daemon_unresponsive".to_string()]),
+            None,
+            None,
+        );
+
+        let error =
+            super::response_result(response).expect_err("daemon error should not look successful");
+        let payload = crate::cli::protocol::simple_openpage_error(&error);
+
+        assert_eq!(payload["error"]["kind"], "browser_operation");
+        assert_eq!(payload["error"]["session"], "generic-busy");
+        assert_eq!(payload["error"]["state"], "incomplete");
+        assert_eq!(payload["error"]["reasons"], json!(["daemon_unresponsive"]));
+        assert_eq!(payload["error"]["fix"], "Inspect logs or restart the session.");
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .expect("message should be a string")
+                .contains("session `generic-busy` is currently busy or unresponsive")
+        );
+    }
+
+    #[test]
+    fn response_result_uses_structured_session_and_fix_for_generic_startup_failure_io() {
+        let response = super::Response::error_with_context(
+            None,
+            "io",
+            "daemon startup timed out",
+            Some(
+                "Run `openpage browser logs --session startup-review --tail 20` to inspect the persisted daemon log, then retry the start command."
+                    .to_string(),
+            ),
+            Some("startup-review".to_string()),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        let error =
+            super::response_result(response).expect_err("daemon error should not look successful");
+        let payload = crate::cli::protocol::simple_openpage_error(&error);
+
+        assert_eq!(payload["error"]["kind"], "io");
+        assert_eq!(payload["error"]["session"], "startup-review");
+        assert_eq!(
+            payload["error"]["fix"],
+            "Run `openpage browser logs --session startup-review --tail 20` to inspect the persisted daemon log, then retry the start command."
+        );
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .expect("message should be a string")
+                .contains("daemon for session 'startup-review' startup failure")
+        );
+    }
+
+    #[test]
+    fn response_result_uses_structured_session_for_generic_io_without_fix() {
+        let response = super::Response::error_with_context(
+            None,
+            "io",
+            "permission denied",
+            None,
+            Some("io-review".to_string()),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        let error =
+            super::response_result(response).expect_err("daemon error should not look successful");
+        let payload = crate::cli::protocol::simple_openpage_error(&error);
+
+        assert_eq!(payload["error"]["kind"], "io");
+        assert_eq!(payload["error"]["session"], "io-review");
+        assert!(payload["error"].get("fix").is_none());
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .expect("message should be a string")
+                .contains("daemon for session 'io-review': permission denied")
+        );
+    }
+
+    #[test]
+    fn response_result_preserves_invalid_input_kind_from_daemon_response() {
+        let error = super::response_result(super::Response::error(
+            None,
+            "invalid_input",
+            "unsupported snapshot format: xml",
+        ))
+        .expect_err("daemon error should not look successful");
+
+        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        assert_eq!(payload["error"]["kind"], "invalid_input");
+        assert_eq!(
+            payload["error"]["message"],
+            "unsupported snapshot format: xml"
+        );
+    }
+
+    #[test]
+    fn response_result_preserves_invalid_input_kind_for_param_validation_detail() {
+        let error = super::response_result(super::Response::error(
+            None,
+            "invalid_input",
+            "history index must be >= 1",
+        ))
+        .expect_err("daemon error should not look successful");
+
+        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        assert_eq!(payload["error"]["kind"], "invalid_input");
+        assert_eq!(payload["error"]["message"], "history index must be >= 1");
+        assert_eq!(
+            payload["error"]["fix"],
+            "Use a history index of 1 or greater before retrying."
+        );
+    }
+
+    #[test]
+    fn response_result_preserves_invalid_input_kind_for_missing_string_param_detail() {
+        let error = super::response_result(super::Response::error(
+            None,
+            "invalid_input",
+            "missing string param: locator",
+        ))
+        .expect_err("daemon error should not look successful");
+
+        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        assert_eq!(payload["error"]["kind"], "invalid_input");
+        assert_eq!(payload["error"]["message"], "missing string param: locator");
+    }
+
+    #[test]
+    fn response_result_preserves_invalid_input_kind_for_unknown_navigation_token() {
+        let error = super::response_result(super::Response::error(
+            None,
+            "invalid_input",
+            "unknown navigation token: definitely-bad",
+        ))
+        .expect_err("daemon error should not look successful");
+
+        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        assert_eq!(payload["error"]["kind"], "invalid_input");
+        assert_eq!(
+            payload["error"]["message"],
+            "unknown navigation token: definitely-bad"
+        );
+    }
+
+    #[test]
+    fn navigation_followup_adds_wait_command_for_navigation_token() {
+        let payload = super::with_navigation_followup(
+            "review session",
+            json!({
+                "clicked": true,
+                "navigation_token": "nav-42",
+            }),
+        );
+
+        assert_eq!(payload["clicked"], true);
+        assert_eq!(payload["navigation_token"], "nav-42");
+        assert_eq!(payload["wait_for_navigation"]["session"], "review session");
+        assert_eq!(payload["wait_for_navigation"]["token"], "nav-42");
+        assert_eq!(
+            payload["wait_for_navigation"]["command"],
+            "openpage wait-for-navigation --session 'review session' --token nav-42"
+        );
+    }
+
+    #[test]
+    fn navigation_followup_skips_results_without_navigation_token() {
+        let payload = super::with_navigation_followup(
+            "review",
+            json!({
+                "clicked": true,
+                "button": "right",
+            }),
+        );
+
+        assert_eq!(payload["clicked"], true);
+        assert_eq!(payload["button"], "right");
+        assert!(payload.get("wait_for_navigation").is_none());
+    }
+
+    #[test]
+    fn browser_start_followup_without_url_points_to_goto_and_stop() {
+        let payload = super::with_browser_start_followup(
+            "review session",
+            None,
+            json!({
+                "session": "review session",
+                "port": 9222,
+            }),
+        );
+
+        assert_eq!(payload["session"], "review session");
+        assert_eq!(
+            payload["next_steps"]["goto"],
+            "openpage goto --session 'review session' https://example.com"
+        );
+        assert_eq!(
+            payload["next_steps"]["stop"],
+            "openpage browser stop --session 'review session'"
+        );
+    }
+
+    #[test]
+    fn browser_start_followup_with_url_points_to_wait_snapshot_and_stop() {
+        let payload = super::with_browser_start_followup(
+            "review session",
+            Some("https://example.com"),
+            json!({
+                "session": "review session",
+                "port": 9222,
+                "url": "https://example.com",
+            }),
+        );
+
+        assert_eq!(
+            payload["next_steps"]["wait_for_ready"],
+            "openpage wait-for-ready --session 'review session'"
+        );
+        assert_eq!(
+            payload["next_steps"]["snapshot"],
+            "openpage snapshot --session 'review session'"
+        );
+        assert_eq!(
+            payload["next_steps"]["stop"],
+            "openpage browser stop --session 'review session'"
+        );
+    }
+
+    #[test]
+    fn cleanup_after_browser_launch_failure_removes_stale_sidecars() {
+        let home = unique_openpage_home("launch-cleanup");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        std::fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let session = "launch-cleanup";
+        std::fs::write(port_path(session).expect("port path"), "12345").expect("write port");
+        std::fs::write(pid_path(session).expect("pid path"), "999999").expect("write pid");
+        std::fs::write(
+            version_path(session).expect("version path"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("write version");
+
+        super::cleanup_after_browser_launch_failure(
+            session,
+            &OpenPageError::BrowserLaunch("synthetic launch failure".to_string()),
+        );
+
+        assert!(!port_path(session).expect("port path").exists());
+        assert!(!pid_path(session).expect("pid path").exists());
+        assert!(!version_path(session).expect("version path").exists());
+    }
+
+    #[test]
+    fn cleanup_after_browser_launch_failure_ignores_non_launch_errors() {
+        let home = unique_openpage_home("launch-cleanup-ignore");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        std::fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let session = "launch-cleanup-ignore";
+        std::fs::write(port_path(session).expect("port path"), "12345").expect("write port");
+        std::fs::write(pid_path(session).expect("pid path"), "999999").expect("write pid");
+        std::fs::write(
+            version_path(session).expect("version path"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("write version");
+
+        super::cleanup_after_browser_launch_failure(
+            session,
+            &OpenPageError::BrowserOperation("synthetic non-launch failure".to_string()),
+        );
+
+        assert!(port_path(session).expect("port path").exists());
+        assert!(pid_path(session).expect("pid path").exists());
+        assert!(version_path(session).expect("version path").exists());
+    }
+
+    #[test]
     fn rpc_webpage_rejects_inactive_session_without_creating_sidecars() {
         let home = unique_openpage_home("inactive-session");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        let daemon = daemon_dir().expect("daemon dir path");
+        assert!(!daemon.exists(), "test should start without daemon dir");
+
+        let error = super::rpc_webpage("inactive-review", "webpage.title", Value::Null)
+            .expect_err("inactive session should fail instead of starting a fresh daemon/browser");
+
+        match error {
+            OpenPageError::BrowserOperation(message) => {
+                assert!(message.contains("is not active"));
+                assert!(message.contains("browser start --session inactive-review"));
+            }
+            other => panic!("expected BrowserOperation, got {other:?}"),
+        }
+
+        assert!(
+            !port_path("inactive-review").expect("port path").exists(),
+            "inactive read command should not create port sidecar"
+        );
+        assert!(
+            !pid_path("inactive-review").expect("pid path").exists(),
+            "inactive read command should not create pid sidecar"
+        );
+        assert!(
+            !version_path("inactive-review")
+                .expect("version path")
+                .exists(),
+            "inactive read command should not create version sidecar"
+        );
+    }
+
+    #[test]
+    fn rpc_webpage_existing_rejects_inactive_session_without_creating_sidecars() {
+        let home = unique_openpage_home("inactive-existing");
         let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
         let daemon = daemon_dir().expect("daemon dir path");
         assert!(!daemon.exists(), "test should start without daemon dir");
@@ -4499,6 +5230,92 @@ mod tests {
     #[test]
     fn parses_batch_without_commands() {
         Cli::try_parse_from(["openpage", "batch", "--bail"]).unwrap();
+    }
+
+    #[test]
+    fn batch_error_payload_uses_invalid_input_for_nested_parse_errors() {
+        let payload = super::batch_error_payload(&OpenPageError::UnsupportedOperation(
+            "invalid batch command `page url`: error: unrecognized subcommand 'page'".to_string(),
+        ));
+
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["error"]["kind"], "invalid_input");
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .expect("message should be string")
+                .contains("invalid batch command `page url`")
+        );
+        assert!(
+            payload["error"]["fix"]
+                .as_str()
+                .expect("fix should be string")
+                .contains("old `page ...` surface was removed")
+        );
+    }
+
+    #[test]
+    fn batch_error_payload_exposes_fix_for_removed_stdio_surface() {
+        let payload = super::batch_error_payload(&OpenPageError::UnsupportedOperation(
+            "invalid batch command `serve --stdio`: error: unexpected argument '--stdio' found"
+                .to_string(),
+        ));
+
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["error"]["kind"], "invalid_input");
+        assert_eq!(
+            payload["error"]["fix"],
+            "Use `openpage serve --session <name>` for the TCP daemon workflow. The removed `serve --stdio` surface is intentionally rejected."
+        );
+    }
+
+    #[test]
+    fn batch_error_payload_uses_invalid_input_for_invalid_stdin_json() {
+        let payload = super::batch_error_payload(&OpenPageError::Serialization(
+            "invalid batch stdin JSON: expected value at line 1 column 1; expected an array of argv arrays"
+                .to_string(),
+        ));
+
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["error"]["kind"], "invalid_input");
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .expect("message should be string")
+                .contains("invalid batch stdin JSON:")
+        );
+    }
+
+    #[test]
+    fn batch_error_payload_keeps_unsupported_operation_for_batch_restrictions() {
+        let payload = super::batch_error_payload(&OpenPageError::UnsupportedOperation(
+            "batch cannot execute `serve`; use top-level `serve` separately".to_string(),
+        ));
+
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["error"]["kind"], "unsupported_operation");
+        assert_eq!(
+            payload["error"]["message"],
+            "unsupported operation: batch cannot execute `serve`; use top-level `serve` separately"
+        );
+        assert_eq!(
+            payload["error"]["fix"],
+            "Run `openpage serve --session <name>` as a separate top-level command, then invoke follow-up commands outside `batch`."
+        );
+    }
+
+    #[test]
+    fn batch_error_payload_exposes_fix_for_nested_batch_restriction() {
+        let payload = super::batch_error_payload(&OpenPageError::UnsupportedOperation(
+            "batch cannot execute nested batch commands".to_string(),
+        ));
+
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["error"]["kind"], "unsupported_operation");
+        assert_eq!(
+            payload["error"]["fix"],
+            "Flatten the command list into a single top-level `openpage batch ...` invocation instead of nesting `batch` inside `batch`."
+        );
     }
 
     #[test]

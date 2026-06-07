@@ -1,0 +1,88 @@
+name: release-publish-pypi
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build-wheels:
+    name: build-wheel-${{ matrix.platform_id }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform_id: linux-x64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - platform_id: linux-arm64
+            runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+          - platform_id: windows-x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - platform_id: macos-x64
+            runner: macos-13
+            target: x86_64-apple-darwin
+          - platform_id: macos-arm64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          target: ${{ matrix.target }}
+          args: --release --out dist --find-interpreter
+          manylinux: auto
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.platform_id }}
+          path: dist/*
+          if-no-files-found: error
+
+  build-sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+
+      - name: Upload sdist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs:
+      - build-wheels
+      - build-sdist
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - name: Download built distributions
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

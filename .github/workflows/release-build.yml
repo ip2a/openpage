@@ -1,0 +1,124 @@
+name: release-build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: build-${{ matrix.platform_id }}
+    runs-on: ${{ matrix.runner }}
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform_id: darwin
+            runner: macos-latest
+            artifact_binary: openpage
+          - platform_id: linux-x64-gnu
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            artifact_binary: openpage
+          - platform_id: linux-arm64-gnu
+            runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact_binary: openpage
+          - platform_id: win32-x64-msvc
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_binary: openpage.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install musl toolchain
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Build target artifact
+        if: matrix.platform_id != 'darwin'
+        shell: bash
+        run: ./scripts/build_target.sh "${{ matrix.target }}" "${{ matrix.platform_id }}" "${{ matrix.artifact_binary }}"
+
+      - name: Build macOS artifacts
+        if: matrix.platform_id == 'darwin'
+        shell: bash
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          ./scripts/build_target.sh aarch64-apple-darwin darwin-arm64 openpage
+          ./scripts/build_target.sh x86_64-apple-darwin darwin-x64 openpage
+
+      - name: Run smoke test
+        if: matrix.platform_id != 'darwin'
+        shell: bash
+        run: ./scripts/smoke_test.sh "dist/${{ matrix.platform_id }}/${{ matrix.artifact_binary }}"
+
+      - name: Verify Linux x64 binary is not glibc-linked
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        shell: bash
+        run: |
+          BIN="dist/${{ matrix.platform_id }}/${{ matrix.artifact_binary }}"
+          file "${BIN}"
+          if readelf -l "${BIN}" | grep -q 'Requesting program interpreter'; then
+            echo "[error] Linux x64 artifact is dynamically linked"
+            exit 1
+          fi
+          echo "[ok] Linux x64 artifact is statically linked"
+
+      - name: Run smoke tests (macOS)
+        if: matrix.platform_id == 'darwin'
+        shell: bash
+        run: |
+          ./scripts/smoke_test.sh "dist/darwin-arm64/openpage"
+          ./scripts/smoke_test.sh "dist/darwin-x64/openpage"
+
+      - name: Generate checksums
+        if: matrix.platform_id != 'darwin'
+        shell: bash
+        run: |
+          cd "dist/${{ matrix.platform_id }}"
+          sha256sum "${{ matrix.artifact_binary }}" > SHA256SUMS
+
+      - name: Generate checksums (macOS)
+        if: matrix.platform_id == 'darwin'
+        shell: bash
+        run: |
+          (cd dist/darwin-arm64 && sha256sum openpage > SHA256SUMS)
+          (cd dist/darwin-x64 && sha256sum openpage > SHA256SUMS)
+
+      - name: Upload build artifacts
+        if: matrix.platform_id != 'darwin'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openpage-${{ matrix.platform_id }}
+          path: dist/${{ matrix.platform_id }}/*
+          if-no-files-found: error
+
+      - name: Upload build artifacts (macOS arm64)
+        if: matrix.platform_id == 'darwin'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openpage-darwin-arm64
+          path: dist/darwin-arm64/*
+          if-no-files-found: error
+
+      - name: Upload build artifacts (macOS x64)
+        if: matrix.platform_id == 'darwin'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openpage-darwin-x64
+          path: dist/darwin-x64/*
+          if-no-files-found: error

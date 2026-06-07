@@ -1,5 +1,900 @@
 # Notes: Unified config.toml refactor (2026-06-01)
 
+## CLI dogfooding roadmap notes (2026-06-06)
+
+### Objective
+- Use the locally installed `openpage` binary for real workflows.
+- Find optimization projects that matter over time, not just single-command paper cuts.
+
+### Installed binary
+- Path: `/tmp/openpage-cli-eval/bin/openpage`
+- Reinstall command:
+  - `cargo install --path rust --bin openpage --root /tmp/openpage-cli-eval --force`
+
+### Confirmed high-friction areas so far
+- Startup / diagnostics / recovery consistency remains the top shell-level issue family.
+- `doctor --quick` previously looked too optimistic when a configured browser path merely resolved but had not been launch-validated.
+- `batch` output is functional but still light on execution context for humans reading failure streams.
+
+### Latest fix landed this session
+- `doctor --quick` no longer marks `browser.executable` as `pass` when it only verified path resolution.
+- Instead it reports `info` and points users to rerun full `openpage doctor` for a real launch smoke test.
+- `browser status` no longer reports a session as healthy when the daemon-side page receiver is already gone; it now marks the session `incomplete` with `reasons=["broken_target"]` and an explicit recreate/recover fix.
+
+### Next evidence to collect
+- Clean first-run experience with a fresh `OPENPAGE_HOME`
+- Multi-step happy path (`browser start` -> `wait-for-ready` -> `snapshot` / `title` -> `browser stop`)
+- `batch` failure readability and composition ergonomics
+
+### New runtime findings from installed-binary dogfooding
+- Fresh-home first-run flow is now reasonably legible:
+  - `--help`
+  - `doctor --quick`
+  - fail-fast `title --session ...`
+  - `browser start --session ... --headless https://example.com`
+  - `wait-for-ready`
+  - `title`
+  - `snapshot`
+  - `browser stop`
+- `batch` is usable, but still forces humans to infer which line belongs to which command because output is pure NDJSON with no command index/echo.
+- More importantly, the current CLI launch model still leaves a structural risk around browser debug-port policy:
+  - active CLI config can still show `auto_port=false`
+  - a second session launch while another default-config session is active can create a broken runtime
+  - this is not just a bad error message; it is a launch-model mismatch for a multi-session CLI
+- Concrete reproduced bad state:
+  - one session (`reuse-b`) was left active
+  - another session (`loop-1`) launched under the same default debug-port semantics
+  - `title --session loop-1` then failed with `page operation failed: send failed because receiver is gone`
+  - before this pass, `browser status --session loop-1` still said `state=healthy`
+  - after this pass, `browser status --session loop-1` says `state=incomplete`, `reasons=["broken_target"]`
+- Broader consistency gap still open:
+  - `browser list` still reports the same broken session as healthy
+  - `doctor --quick` still reports the same broken session as healthy
+  - so the long-term project is larger than the `browser status` patch
+
+### Current ranking of optimization projects
+1. Failure semantics / runtime health truthfulness across `browser status`, `browser list`, and `doctor`
+2. Startup robustness and browser debug-port allocation policy for a multi-session CLI
+3. Batch composition readability for humans consuming NDJSON failure streams
+
+### This session's deeper evidence (2026-06-06, later pass)
+- I broadened the inventory path so that a session proven to have:
+  - `missing_target`
+  - `broken_target`
+  is now classified as `incomplete` instead of being treated as a healthy daemon session.
+- Verified at code/test level:
+  - `browser status` fix from the prior pass remains valid
+  - new targeted tests now pin:
+    - runtime issue -> incomplete reasons
+    - inventory payload -> incomplete state + recovery fix for `broken_target`
+- Real installed-binary retest exposed a second failure class that is not the same as `broken_target`:
+  - normal `keeper` session started fine
+  - second `broken-inventory` session got into a bad state where:
+    - `browser start` eventually surfaced `daemon_transient` / `os error 35`
+    - `browser list` still showed the session as healthy
+    - `doctor --quick` still showed the session as healthy
+    - direct probes like `title` / `browser status` could hang for a long time
+- Interpretation:
+  - the earlier `broken_target` patch was correct but not sufficient
+  - there is another runtime-health bucket where the daemon is TCP-ready yet not responsive enough for command truthfulness
+  - this strengthens the case that the real long-term project is not one bugfix, but a broader runtime health model
+
+### Revised project framing
+1. **Runtime health truthfulness**
+   - unify what counts as healthy across:
+     - `browser status`
+     - `browser list`
+     - `doctor`
+   - include not only `missing_target` / `broken_target`, but also daemon-transient / partially-responsive runtime states
+2. **Startup and port policy**
+   - multi-session startup with default fixed debug-port semantics still produces unstable states
+   - this is likely upstream of part of the runtime-health confusion
+3. **Batch human readability**
+   - still real, but clearly below the two system-level issues above
+
+### New verified progress on runtime health truthfulness
+- Added a short-timeout runtime probe for health classification, separate from the normal command timeout budget.
+- New runtime issue bucket:
+  - `daemon_unresponsive`
+- Verified with focused tests:
+  - `incomplete_daemon_fix_for_unresponsive_session_points_to_logs_and_restart`
+  - `daemon_status_payload_json_marks_unresponsive_target_as_incomplete`
+  - `daemon_inventory_payload_marks_runtime_unresponsive_as_incomplete`
+- Verified with the installed binary in a real multi-session scenario:
+  1. start `keeper`
+  2. start second session `probe-bad`
+  3. second start falls into the problematic transient state
+  4. now:
+     - `browser status --session probe-bad` returns `state="incomplete"` and `reasons=["daemon_unresponsive"]`
+     - `browser list` puts `probe-bad` under `incomplete[]`, not `sessions[]`
+     - `doctor --quick` reports `daemon.incomplete.probe-bad` with the same reason
+- This is the strongest evidence so far that the top project is correct:
+  - the CLI needed a richer runtime health model more than it needed more commands
+
+### New paired launch-policy experiment (2026-06-06, latest pass)
+- Current code facts:
+  - default runtime launch still seeds `address = 127.0.0.1:9222`
+  - default config path leaves `auto_port=false` unless the config chain overrides it
+- Real installed-binary paired experiment:
+
+#### A. Default policy
+- Environment:
+  - fresh `OPENPAGE_HOME`
+  - `OPENPAGE_BROWSER_PATH=/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+- Steps:
+  1. `browser start --session default-a --headless https://example.com`
+  2. `browser start --session default-b --headless https://example.com`
+- Result:
+  - `default-a` healthy
+  - `default-b` quickly classified as `daemon_unresponsive`
+  - `browser list` showed:
+    - `healthy=1`
+    - `incomplete=1`
+  - `browser status --session default-b` returned `state="incomplete"`, `reasons=["daemon_unresponsive"]`
+  - `browser stop --session default-b` needed `forced=true`
+
+#### B. auto_port policy
+- Config used:
+  - `/tmp/openpage-auto-port-config.toml`
+  - `[browser]`
+  - `executable_path = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`
+  - `auto_port = true`
+- Environment:
+  - fresh `OPENPAGE_HOME`
+  - `OPENPAGE_CONFIG=/tmp/openpage-auto-port-config.toml`
+- Steps:
+  1. `browser start --session auto-a --headless https://example.com`
+  2. `browser start --session auto-b --headless https://example.com`
+  3. `title --session auto-a`
+  4. `title --session auto-b`
+  5. `browser list`
+  6. `doctor --quick`
+- Result:
+  - both starts succeeded
+  - both `title` commands returned `Example Domain`
+  - `browser list` showed:
+    - `healthy=2`
+    - `incomplete=0`
+  - `doctor --quick` showed both daemon sessions as healthy
+  - both `browser stop` calls completed without force
+
+### Stronger prioritization from this evidence
+1. **Startup / port-allocation policy is now very likely the highest-leverage upstream project**
+   - because a one-line policy change (`auto_port=true`) materially changed the real multi-session outcome
+   - this is not just nicer ergonomics; it removes a runtime corruption path
+2. **Runtime health truthfulness remains critical**
+   - because without it, the default-policy failure would still look healthy
+   - but it is now clearly downstream protection around a launch-policy flaw
+3. **Batch readability stays third**
+   - useful, but much less structural than the first two
+
+### Follow-up experiment: `--port 0` looks like the safer implementation direction
+- Why test this:
+  - `auto_port=true` fixed the multi-session instability
+  - but it also switched browser profiles to temp directories and destroyed stop/start persistence
+- Real installed-binary test with `--port 0` under otherwise default policy:
+
+#### Multi-session health
+- fresh `OPENPAGE_HOME`
+- commands:
+  - `browser start --session zero-a --port 0 --headless https://example.com`
+  - `browser start --session zero-b --port 0 --headless https://example.com`
+  - `title --session zero-a`
+  - `title --session zero-b`
+  - `browser list`
+- result:
+  - both starts succeeded
+  - both `title` commands succeeded
+  - `browser list` showed both sessions as healthy
+  - on-disk profiles existed at:
+    - `profiles/zero-a`
+    - `profiles/zero-b`
+
+#### Same-session persistence
+- fresh `OPENPAGE_HOME`
+- commands:
+  1. `browser start --session zero-persist --port 0 --headless https://example.com`
+  2. `js "localStorage.setItem(...); localStorage.getItem(...)" --session zero-persist`
+  3. `browser stop --session zero-persist`
+  4. `browser start --session zero-persist --port 0 --headless https://example.com`
+  5. `js "localStorage.getItem(...)" --session zero-persist`
+- result:
+  - stored value survived stop/start
+  - profile directory remained at `profiles/zero-persist`
+
+### Refined project statement
+- The highest-value upstream optimization project is no longer best phrased as:
+  - "default auto_port=true"
+- The better statement is:
+  - **make daemon-backed session launches use dynamically assigned debugging ports by default while preserving session-scoped persistent user-data directories**
+- In this codebase, that likely means:
+  - decouple "dynamic debug port" from the current `auto_port=true` semantics
+  - or internally prefer the effective equivalent of `--port 0` for daemon-backed session launches when the debugger port/address came from built-in defaults
+- Important implementation constraint:
+  - current config resolution tracks source for browser path and user-data-dir, but not for debugger address/port
+  - so a safe implementation likely needs source-aware handling for debugger port/address before changing built-in behavior
+
+### New recovery-path evidence from continued installed-binary dogfooding (2026-06-06, later pass)
+- I extended the local runs beyond startup and status into actual recovery workflows.
+- Installed binary remained `/tmp/openpage-cli-eval/bin/openpage`.
+
+#### A. Normal asynchronous navigation contract is mostly sound
+- In a fresh `OPENPAGE_HOME`, the following workflow behaved as designed:
+  1. `browser start --session recoverdog --headless about:blank`
+  2. `goto --session recoverdog http://127.0.0.1:8878`
+  3. `wait-for-navigation --session recoverdog --token nav-2`
+  4. `wait-for-ready --session recoverdog`
+  5. `title --session recoverdog`
+- Result:
+  - `goto` returned a `navigation_token`
+  - `wait-for-navigation` and `wait-for-ready` both eventually succeeded
+  - `title` eventually returned `slow2`
+- Interpretation:
+  - the navigation token / wait follow-up contract itself is valid
+  - the real UX break remains the in-flight busy window, not the eventual completion path
+
+#### B. `doctor --quick --fix` does not recover busy sessions
+- During an in-flight slow navigation, I ran:
+  - `doctor --quick --fix`
+- Result:
+  - the session was reported as `daemon.incomplete.recoverdog`
+  - `reasons=["daemon_unresponsive"]`
+  - `fixed=[]`
+  - the session remained incomplete
+- Interpretation:
+  - current `doctor --fix` only cleans incomplete unready sessions or incompatible versions
+  - it does not act on the busy/unresponsive class that real users are now likely to hit
+
+#### C. Recovery advice points users to logs that may be empty
+- During the same busy session, I ran:
+  - `browser logs --session recoverdog --tail 20`
+- Result:
+  - the command returned `log_exists=true`
+  - but `content=""`
+  - and `log_hint="Log file exists but is empty..."`
+- Interpretation:
+  - current fix text frequently says "inspect the daemon log"
+  - but in the busy/unresponsive case the log can provide no actionable information at all
+  - this is a real recovery UX mismatch, not just a missing sentence
+
+#### D. `browser start --replace` is currently promised but not implemented
+- This is the strongest new finding from this pass.
+- Code audit:
+  - `rust/src/cli/args.rs` exposes `BrowserStartArgs.replace`
+  - `openpage help browser start` documents `--replace` as "Replace existing session if it exists"
+  - `rust/src/cli/oneshot.rs::start_browser(...)` never reads `args.replace`
+  - `rust/src/cli/serve.rs::create_webpage(...)` has no replace behavior; if a target already exists it simply returns `{"existing": true}`
+- Command evidence:
+  1. `browser start --session repdog --headless about:blank`
+  2. `goto --session repdog http://127.0.0.1:8878`
+  3. while the session was incomplete/busy, run:
+     - `browser start --session repdog --replace --headless https://example.com`
+- Result:
+  - the command took about 21 seconds
+  - it returned `{"already_running": true, ...}`
+  - same daemon pid / port remained in place
+  - session eventually became healthy and navigated, but no actual replace path was exercised
+- Interpretation:
+  - `--replace` is currently a contract bug, not merely a suboptimal implementation
+  - the CLI advertises a recovery primitive that does not exist end-to-end
+
+### Revised ranking after the recovery pass
+1. **Busy-session control plane / activity semantics**
+   - still the biggest optimization project
+   - because in-flight navigation can still monopolize command handling and degrade ordinary commands into `daemon_transient`
+2. **Recovery contract truthfulness**
+   - now clearly a project of its own, not just part of diagnostics polish
+   - includes:
+     - `doctor --quick --fix` no-op on busy sessions
+     - empty-log recovery dead ends
+     - `browser start --replace` being documented but non-functional
+     - forced stop orphaning Chrome children
+3. **Batch output readability**
+   - still real, but now further behind the system-level recovery issues above
+
+### Concrete project framing from this pass
+1. **Busy-session state + command error contract**
+   - establish an explicit busy/unresponsive state instead of surfacing generic `daemon_transient`
+   - make ordinary `rpc_webpage(...)` callers converge on the same user-facing recovery story
+2. **Real recovery primitives**
+   - either implement actual replace semantics end-to-end, or remove the flag/help/fixes until it exists
+   - teach `doctor --fix` what it may safely do for busy sessions
+   - make forced cleanup capable of terminating the browser child, not only the daemon sidecar pid
+3. **Evidence-quality diagnostics**
+   - avoid recommending logs as a first-line fix when the busy path usually yields empty logs
+   - prefer recovery advice grounded in what the CLI can actually do automatically
+
+### New scope quantification pass (2026-06-06, latest pass)
+- I used the current worktree to estimate how broad the highest-friction issues really are.
+
+#### A. Busy-session error semantics affect almost the whole session command surface
+- `rust/src/cli/oneshot.rs` currently contains **202** `rpc_webpage(...)` call sites.
+- `rpc_webpage(...)` is only a tiny wrapper around `rpc_request_existing(...)`:
+  - `rpc_webpage(...)` -> `rpc_request_existing(...)` -> `send_request_existing(...)`
+- Meaning:
+  - most session-backed commands share the same transport/error entry point
+  - the current busy-session pain is not command-specific UX debt
+  - it is a central contract problem with unusually high leverage
+
+#### B. There is already a central structured-error shell for a project-level fix
+- `rust/src/cli/protocol.rs` already centralizes:
+  - stable `error.kind`
+  - `fix`
+  - `session`
+  - `state`
+  - `reasons`
+  - `retryable`
+  - `suggested_action`
+- Current busy/unresponsive transport failures still collapse into:
+  - kind: `daemon_transient`
+  - fix: `Retry the same command.`
+- Interpretation:
+  - the CLI already has enough structured error machinery to carry a richer busy-state contract
+  - the missing piece is not serialization shape, but the classification and mapping policy
+
+#### C. `--replace` contract pollution is now larger than the flag itself
+- The problem is no longer just:
+  - args define `replace`
+  - implementation ignores it
+- The current tree actively spreads that promise through multiple layers:
+  - `openpage help browser start`
+  - `rust/src/cli/connection.rs` fix text for:
+    - `missing_target`
+    - `broken_target`
+    - `daemon_unresponsive`
+  - `rust/src/cli/protocol.rs` fix text for startup/browser-path recovery
+  - `skills/openpage-test/references/session-management.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Interpretation:
+  - this is a recovery-contract project, not a local parameter plumbing bug
+  - even if implementation is fixed, docs/tests/fix text need a coordinated sweep
+
+### Stronger project boundary after the quantification pass
+1. **Busy-state / control-plane project**
+   - main value:
+     - one central change can improve roughly the whole session command surface
+   - likely loci:
+     - `rust/src/cli/connection.rs`
+     - `rust/src/cli/protocol.rs`
+     - maybe `rust/src/cli/serve.rs`
+2. **Recovery-contract project**
+   - main value:
+     - stop the CLI from recommending recovery moves that are not real
+   - includes:
+     - `--replace`
+     - `doctor --fix` busy-session policy
+     - forced stop browser-child cleanup
+     - empty-log recovery dead ends
+3. **Batch output project**
+   - still clearly separate and lower risk
+   - mostly isolated to `run_batch(...)` output shaping
+
+### New implementation-feasibility narrowing (2026-06-06, latest pass)
+
+#### A. Busy/error remapping likely has a real central hook
+- Current shared chain:
+  - `rpc_webpage(...)`
+  - `rpc_request_existing(...)`
+  - `send_request_existing(...)`
+  - `send_request_with_retry(...)`
+- `send_request_existing(...)` already sits immediately beside:
+  - `session_target_state(...)`
+  - short-timeout probe logic that can classify:
+    - `Missing`
+    - `Broken`
+    - `Unresponsive`
+- Interpretation:
+  - the busy/unresponsive project likely does **not** need per-command edits
+  - the most credible implementation direction is:
+    - let request retry exhaust as it does now
+    - then probe session runtime state
+    - remap the final generic transient into a richer busy/unresponsive session error before it reaches the 202 `rpc_webpage(...)` callers
+
+#### B. Forced cleanup does not need browser pid discovery from scratch
+- Current code facts:
+  - `BrowserState` already stores `browser_pid`
+  - `Browser::browser_pid()` exposes it
+  - `WebPage::browser_pid()` exposes it too
+- But current daemon sidecars only persist:
+  - daemon pid
+  - daemon port
+  - version
+- Interpretation:
+  - the force-stop project is probably not blocked on "can we know the browser child pid?"
+  - the real gap is:
+    - exporting that runtime truth to a cleanup layer that survives daemon unresponsiveness
+  - plausible directions:
+    - persist browser pid in a sidecar alongside daemon pid
+    - or add a dedicated persisted runtime metadata file written when the page/browser is created
+
+#### C. `--replace` is likely medium scope, not trivial plumbing
+- Why:
+  - `start_browser(...)` ignores `args.replace`
+  - `create_webpage(...)` returns `existing=true` before any launch/recreate logic
+  - multiple fix texts and docs already depend on replace semantics
+- Interpretation:
+  - implementing replace means choosing one real behavior contract:
+    - stop daemon session, wait for teardown, recreate browser/page target, then optionally navigate
+    - or a lighter in-daemon target recreation flow
+  - either way, this is larger than "pass one bool into the request"
+
+### Important nuance from the public-contract audit
+- `doctor --quick --fix` and `--replace` are not the same class of problem.
+
+#### A. `doctor --quick --fix` is currently narrow by design, and the docs say so
+- Public help and docs explicitly say:
+  - it fixes legacy session JSON residue
+  - stale sidecars discovered during inventory
+  - incompatible daemon sessions
+  - incomplete daemon sessions only when they are unready
+- Interpretation:
+  - busy-session recovery is currently a **product gap**, not a broken `doctor --fix` contract
+  - if expanded, that should be a deliberate new capability with safety rules, not a stealth behavior tweak
+
+#### B. `browser start --replace` is a broken public contract today
+- Public help says:
+  - "Replace existing session if it exists"
+- Skill/reference docs also teach it as the clean-restart path for a known session name.
+- Runtime implementation does not honor that promise.
+- Interpretation:
+  - `--replace` is a true contract bug
+  - it is the sharpest example inside the broader recovery-contract project
+
+### Project briefs
+
+#### Project 1: Busy-session control plane and error semantics
+- User problem:
+  - while a long navigation is in flight, control commands and ordinary page commands degrade into mixed signals:
+    - `browser status` / `browser list` / `doctor` say `daemon_unresponsive`
+    - ordinary commands still end as generic `daemon_transient`
+    - stop can take tens of seconds and may force-kill only the daemon
+- Why this is a project:
+  - the issue is structural in the daemon execution model and shared error path
+  - a central fix can improve roughly the entire session command surface
+- Likely files:
+  - `rust/src/cli/serve.rs`
+  - `rust/src/cli/connection.rs`
+  - `rust/src/cli/protocol.rs`
+  - `rust/src/cli/doctor.rs`
+- Verification criteria:
+  - reproduce with a real slow local HTTP server
+  - during in-flight navigation:
+    - `status` / `list` / `doctor` / ordinary commands emit one coherent busy-state story
+    - ordinary commands no longer collapse to a bare "Retry the same command."
+    - `stop` / `logs` remain predictably usable
+
+##### Practical phase split
+- Phase 1: **semantic correction**
+  - likely centered in `connection.rs` + `protocol.rs`
+  - goal:
+    - after request retry exhaustion, probe runtime state and remap generic transient failures into a richer busy/unresponsive session error
+  - value:
+    - improves most user-facing commands quickly
+  - limitation:
+    - does **not** remove the daemon serial-control bottleneck
+    - `stop` can still block for a long time if the daemon cannot accept control requests promptly
+- Phase 2: **control-plane availability**
+  - likely requires `serve.rs` work
+  - goal:
+    - stop long page operations from monopolizing the daemon’s only request lane
+  - value:
+    - addresses the actual responsiveness root cause
+  - implication:
+    - this is the part that turns the project from "better truthfulness" into "actually less annoying to use"
+
+#### Project 2: Recovery-contract truthfulness
+- User problem:
+  - the CLI recommends recovery actions that are not equally real or equally useful
+- Confirmed sub-issues:
+  - `browser start --replace` is documented but non-functional
+  - forced stop can orphan Chrome children
+  - busy recovery advice can send users to empty logs
+  - `doctor --fix` intentionally does not repair busy sessions today
+- Why this is a project:
+  - this spans help text, fix text, runtime behavior, docs, and tests
+  - solving only one layer leaves the contract inconsistent
+- Likely files:
+  - `rust/src/cli/args.rs`
+  - `rust/src/cli/oneshot.rs`
+  - `rust/src/cli/serve.rs`
+  - `rust/src/cli/connection.rs`
+  - `rust/src/cli/protocol.rs`
+  - `skills/openpage-test/references/*`
+  - `README.md`
+- Verification criteria:
+  - every suggested recovery action is either:
+    - implemented and works in a real local session
+    - or removed from help/fix/docs
+  - forced stop leaves no orphan Chrome for the stopped session profile
+  - real recovery runs match the shell guidance users are shown
+
+##### Practical phase split
+- Phase 1: **contract cleanup**
+  - shortest path options:
+    - implement `--replace` at the oneshot layer as an explicit stop-then-start flow
+    - or remove `--replace` from public guidance until deeper cleanup exists
+  - likely files:
+    - `rust/src/cli/args.rs`
+    - `rust/src/cli/oneshot.rs`
+    - `README.md`
+    - `skills/openpage-test/references/*`
+- Phase 2: **real cleanup foundation**
+  - needed if `--replace` or forced stop is meant to be trustworthy under daemon-busy failure modes
+  - likely direction:
+    - persist browser child pid or equivalent runtime metadata outside daemon memory
+    - extend forced cleanup beyond daemon pid only
+  - likely files:
+    - `rust/src/cli/connection.rs`
+    - `rust/src/cli/serve.rs`
+    - maybe a new sidecar path/helper set
+- Important dependency:
+  - a oneshot-level `--replace` implementation is plausible without protocol changes
+  - but it still inherits today’s forced-stop orphan-Chrome risk unless the cleanup foundation is fixed too
+
+### New semantic result for `--replace`
+- I tested the simplest plausible implementation strategy:
+  - stop the existing named session
+  - start the same named session again
+- Real local result:
+  - session: `semdog`
+  - set `localStorage['replace_probe']='v1'`
+  - stop the session
+  - restart the same named session
+  - read `localStorage['replace_probe']`
+  - value was still `v1`
+- Code context matches the runtime result:
+  - built-in defaults map named sessions to persistent profile dirs under `OPENPAGE_HOME/profiles/<session>`
+  - stop/start of the same session name naturally reuses that profile
+- Interpretation:
+  - a minimal oneshot stop-then-start implementation of `--replace` would be:
+    - a process/page restart
+    - **not** a fresh browser-state reset
+  - so the public meaning of `--replace` still needs an explicit decision
+
+### `--replace` semantic options now look like this
+1. **Restart same session process, preserve profile**
+   - shortest implementation
+   - aligns with current named-session persistence model
+   - does not clear cookies/localStorage
+2. **Restart with fresh profile for the same session name**
+   - closer to many users' "clean restart" intuition
+   - conflicts with the current model where session name implies profile continuity
+   - likely needs explicit profile cleanup semantics
+3. **Recreate only the page target inside the same browser/profile**
+   - matches some current fix text around broken/missing target
+   - does not guarantee a true browser-process restart
+
+### New protocol constraint for Busy Phase 1
+- A central busy-state remap still looks viable, but current round-trip helpers impose one extra requirement.
+- Current `protocol.rs` structured-error reconstruction only reliably preserves:
+  - `inactive`
+  - `incompatible` / `version_mismatch`
+  - `incomplete` + `daemon_not_ready`
+  - `daemon_transient` retry metadata
+- It does **not** currently reconstruct `state="incomplete"` with `reasons=["daemon_unresponsive"]` from a generic `BrowserOperation` message.
+- Interpretation:
+  - Busy Phase 1 likely needs coordinated work in:
+    - `connection.rs` to classify/remap after retry exhaustion
+    - `protocol.rs` to preserve the busy/unresponsive state across local and daemon error round-trips
+- Most plausible minimal strategy:
+  - in `send_request_existing(...)`, when request retries exhaust into a transient failure:
+    - probe `session_target_state(...)`
+    - if it is `Unresponsive`, return a structured browser/session error instead of generic `daemon_transient`
+  - extend protocol reconstruction so that this new canonical busy message round-trips back to:
+    - `error.kind`
+    - `error.session`
+    - `error.state="incomplete"`
+    - `error.reasons=["daemon_unresponsive"]`
+    - appropriate `error.fix`
+
+### Recommendation matrix
+
+#### Busy Phase 1: candidate approaches
+
+##### Option A: keep public `error.kind` conservative, enrich structured state
+- Shape:
+  - keep `error.kind="browser_operation"` for busy-session ordinary commands
+  - add/round-trip:
+    - `error.session`
+    - `error.state="incomplete"`
+    - `error.reasons=["daemon_unresponsive"]`
+    - a fix that points to `status/logs/stop/restart`
+- Pros:
+  - smallest protocol churn
+  - fits the current structured-error model
+  - avoids introducing a brand-new public error kind immediately
+- Cons:
+  - less explicit than a dedicated busy-specific kind
+  - callers must inspect `state/reasons`, not only `kind`
+- Recommendation:
+  - **best first move**
+  - it gives users and shell callers a much truer story without widening the public error taxonomy yet
+
+##### Option B: introduce a new public busy-specific kind
+- Shape:
+  - e.g. `error.kind="session_unresponsive"` or similar
+  - still carry `session/state/reasons/fix`
+- Pros:
+  - semantically clearer for machine callers
+  - easier to branch on without inspecting `state/reasons`
+- Cons:
+  - broader churn:
+    - protocol tests
+    - docs
+    - compatibility expectations
+  - easier to get wrong before the semantics settle
+- Recommendation:
+  - defer until after Option A proves the taxonomy and recovery guidance are right
+
+#### Replace Phase 1: candidate approaches
+
+##### Option A: implement `--replace` as stop + start same named session, preserving profile
+- Shape:
+  - if session exists:
+    - `browser stop --session <name>`
+    - `browser start --session <name> ...`
+  - continue using the same `OPENPAGE_HOME/profiles/<session>` mapping
+- Pros:
+  - shortest path to make the flag truthful
+  - matches the current runtime/session design and persistence tests
+  - no daemon protocol change required
+- Cons:
+  - does not clear cookies/localStorage
+  - current doc wording like "clean restart" becomes misleading unless rewritten
+  - still inherits forced-stop cleanup weaknesses
+- Recommendation:
+  - **best Phase 1 implementation path**
+  - but only if docs/help/fix text are rewritten to mean "restart this named session runtime", not "fresh state"
+
+##### Option B: define `--replace` as fresh-state reset for the same session name
+- Shape:
+  - stop session
+  - remove or rotate the session profile dir
+  - start session again
+- Pros:
+  - matches many users' intuitive reading of "replace" / "clean restart"
+- Cons:
+  - conflicts with the current named-session persistence model
+  - higher data-loss risk
+  - larger implementation and documentation burden
+- Recommendation:
+  - too heavy as the first truthful fix unless product intent explicitly prefers stateless replace
+
+##### Option C: remove public `--replace` guidance until a stronger implementation exists
+- Shape:
+  - remove flag/help/fix/doc references for now
+- Pros:
+  - fastest way to stop lying to users
+  - avoids prematurely locking in semantics
+- Cons:
+  - gives up a useful recovery shorthand
+  - pushes more recovery burden onto manual `stop` + `start`
+- Recommendation:
+  - viable fallback if runtime implementation is deferred, but weaker than Option A
+
+### New doc/runtime inconsistency worth tracking
+- Current runtime and tests intentionally give named sessions persistent profile dirs by default.
+- But `skills/openpage-test/references/session-management.md` still says:
+  - start with explicit `--user-data-dir` only when you explicitly want profile reuse
+- That statement is no longer the full truth for current daemon-backed named sessions.
+- Interpretation:
+  - this is not a new top-level optimization project
+  - but it should be cleaned up as part of:
+    - replace semantics clarification
+    - overall session-state discoverability/documentation
+
+### First test additions that would de-risk implementation
+
+#### Busy Phase 1
+- Existing coverage is strong on:
+  - inventory/status classification for `SessionTargetState::Unresponsive`
+  - generic `daemon_transient` shaping
+- Missing coverage is the actual bridge between those two worlds:
+  - when an ordinary session command hits retry exhaustion
+  - and a short runtime probe says `Unresponsive`
+  - the top-level shell payload should preserve the richer busy session state instead of generic retry-only transient text
+- Best first tests:
+  1. `connection.rs`
+     - a targeted unit test around the new remap path after retry exhaustion
+     - verify the remap uses `session_target_state == Unresponsive`
+  2. `protocol.rs`
+     - a round-trip reconstruction test for:
+       - `kind="browser_operation"`
+       - `session=<name>`
+       - `state="incomplete"`
+       - `reasons=["daemon_unresponsive"]`
+       - busy-session fix text
+  3. `oneshot.rs`
+     - a response-result test proving that a structured busy daemon error becomes the expected shell payload
+
+#### Replace Phase 1
+- Current tree has:
+  - args/help for `replace`
+  - fix-text assertions that recommend `replace`
+- Current tree does **not** have:
+  - a behavior test proving `replace` actually changes runtime behavior
+- Best first tests if Option A is chosen:
+  1. `oneshot.rs`
+     - when `args.replace == true` and the session is active, `start_browser(...)` takes the stop+start path instead of returning `already_running=true`
+  2. installed-binary smoke
+     - active session + `browser start --replace`
+     - verify a new daemon start actually occurs
+     - verify the resulting runtime is healthy
+  3. doc/help assertions
+     - update wording so tests no longer imply "clean state reset" unless that behavior is truly implemented
+
+### Recommended first implementation slices
+
+#### Slice A: Busy truthfulness only
+- Files:
+  - `rust/src/cli/connection.rs`
+  - `rust/src/cli/protocol.rs`
+  - minimal `oneshot.rs` tests if needed
+- Outcome:
+  - ordinary commands on busy sessions stop surfacing bare `daemon_transient`
+  - shell callers get `session/state/reasons/fix`
+- Why this slice is good:
+  - high leverage
+  - bounded surface
+  - no daemon concurrency rewrite yet
+
+#### Slice B: Replace contract truthfulness only
+- Files:
+  - `rust/src/cli/oneshot.rs`
+  - `rust/src/cli/args.rs`
+  - `README.md`
+  - `skills/openpage-test/references/session-management.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Outcome:
+  - either:
+    - `--replace` works as "restart same named session runtime, preserve profile"
+    - or it stops being suggested publicly
+- Why this slice is good:
+  - removes the sharpest contract lie quickly
+  - does not require waiting for full browser-child cleanup work
+
+### First-pass implementation proposals
+
+#### Proposal A: Busy Slice A
+
+##### Exact code targets
+1. `rust/src/cli/connection.rs`
+   - `send_request_existing(...)`
+   - `send_request_with_retry(...)` or a thin wrapper around it
+   - `session_target_state(...)`
+2. `rust/src/cli/protocol.rs`
+   - `openpage_error_from_structured_context(...)`
+   - `openpage_error_context(...)`
+   - associated round-trip tests
+3. `rust/src/cli/oneshot.rs`
+   - response-result tests only if needed
+
+##### Recommended minimal design
+- Keep transport retry behavior as-is.
+- After retry exhaustion for an existing session request:
+  - probe `daemon_status(session)?`
+  - probe `session_target_state(&status)?`
+  - if `SessionTargetState::Unresponsive`, return a structured browser/session error instead of `daemon_transient`
+- Recommended public shape for that first version:
+  - `error.kind = "browser_operation"`
+  - `error.session = <session>`
+  - `error.state = "incomplete"`
+  - `error.reasons = ["daemon_unresponsive"]`
+  - `error.fix = daemon_unresponsive_fix(...)`
+- Recommendation is to build that error with structured context, not by handcrafting a special free-form message.
+
+##### Why this is the best first cut
+- touches the highest-leverage shared request path
+- avoids a brand-new public error kind for now
+- reuses the state taxonomy already present in:
+  - `browser status`
+  - `browser list`
+  - `doctor`
+
+##### Tests to add first
+1. `connection.rs`
+   - a targeted test for "retry exhaustion + runtime probe says Unresponsive -> structured busy browser error"
+2. `protocol.rs`
+   - round-trip reconstruction of:
+     - kind `browser_operation`
+     - state `incomplete`
+     - reasons `["daemon_unresponsive"]`
+3. `oneshot.rs`
+   - a response-result/shell-payload test that asserts busy commands no longer only expose generic retry guidance
+
+##### What this proposal intentionally does not solve
+- it does not make the daemon more concurrent
+- it does not make `stop` fast under a monopolized daemon
+- it is truthfulness and UX correctness, not root-cause daemon scheduling repair
+
+#### Proposal B: Replace Slice B
+
+##### Exact code targets
+1. `rust/src/cli/oneshot.rs`
+   - `start_browser(args: BrowserStartArgs)`
+   - maybe a small helper such as `prepare_replace_session(session, replace)`
+2. `rust/src/cli/args.rs`
+   - keep the flag, but update wording if semantics change
+3. Docs/fix text:
+   - `README.md`
+   - `skills/openpage-test/references/session-management.md`
+   - `skills/openpage-test/references/cli-smoke.md`
+   - `rust/src/cli/protocol.rs`
+   - `rust/src/cli/connection.rs`
+
+##### Recommended minimal design
+- If `args.replace`:
+  - call `stop_browser_session(&args.session, true)?` before `webpage.create`
+  - continue through the existing start path
+- Keep profile continuity:
+  - same named session
+  - same `OPENPAGE_HOME/profiles/<session>`
+- Reword public contract to mean:
+  - "restart this named session runtime before continuing"
+  - not "clear browser state for this session"
+
+##### Why this is the best first cut
+- smallest real implementation that makes the flag truthful
+- no daemon protocol change required
+- consistent with current persistent-profile session design
+
+##### Tests to add first
+1. `oneshot.rs`
+   - a new test around the replace path that proves active-session `--replace` does not fall through to plain `already_running=true`
+2. runtime smoke
+   - active session -> `browser start --replace`
+   - verify the command re-establishes a healthy runtime
+3. wording tests/docs
+   - remove "clean restart" style language unless fresh-state behavior is truly implemented
+
+##### Known limitation of this proposal
+- it still inherits current forced-stop cleanup weaknesses
+- so it makes `--replace` truthful at the CLI contract level, but not yet maximally reliable under daemon-busy/orphan-Chrome edge cases
+
+### Busy Slice A feasibility spike (2026-06-06, latest pass)
+
+- Intent:
+  - verify that the top-ranked project really can land as a narrow truthfulness slice before any larger daemon refactor
+- Code changes in the spike:
+  - `rust/src/cli/connection.rs`
+    - `send_request_existing(...)` now remaps exhausted transient existing-session failures through a narrow helper
+    - when the daemon still looks alive/ready but `session_target_state(...)` probes as `Unresponsive`, the helper returns a structured busy browser/session error instead of generic `daemon_transient`
+  - `rust/src/cli/protocol.rs`
+    - structured reconstruction now recognizes the canonical busy message:
+      - `session \`...\` is currently busy or unresponsive`
+    - `openpage_error_fix(...)` now preserves fix text for that canonical busy-session state too
+- New focused tests:
+  - `cli::connection::tests::remap_existing_session_request_error_uses_busy_state_for_unresponsive_session`
+  - `cli::protocol::tests::reconstructs_openpage_error_from_structured_context_for_busy_incomplete_state`
+- Verification:
+  - targeted test:
+    - `cargo test --manifest-path rust/Cargo.toml remap_existing_session_request_error_uses_busy_state_for_unresponsive_session -- --nocapture`
+  - targeted test:
+    - `cargo test --manifest-path rust/Cargo.toml reconstructs_openpage_error_from_structured_context_for_busy_incomplete_state -- --nocapture`
+  - compile:
+    - `cargo check --manifest-path rust/Cargo.toml`
+- What this spike confirms
+  - the top-ranked project really does have a small, shared entry point
+  - preserving `session/state/reasons/fix` for busy ordinary commands is possible without first rewriting daemon concurrency
+  - protocol round-trip support was indeed the hidden dependency; once patched, the slice holds together cleanly at test level
+- What this spike does not prove yet
+  - end-to-end installed-binary user behavior has not been re-dogfooded after the code change
+  - stop latency is unchanged
+  - daemon monopolization/root-cause scheduling is unchanged
+
+#### Project 3: Batch readability and composition UX
+- User problem:
+  - NDJSON is machine-friendly but hard for humans to correlate with commands in mixed success/failure runs
+- Why this is a project:
+  - this is a contained CLI UX surface with low architectural coupling
+- Likely files:
+  - `rust/src/cli/oneshot.rs`
+  - `rust/src/cli/args.rs`
+  - `README.md`
+- Verification criteria:
+  - each output line carries enough context to map result -> command without guesswork
+  - `--bail` makes it obvious which command stopped the run
+
 ## User requirements (this run)
 - Use exactly one stable config system: `config.toml`.
 - Do not keep ini fallback, including dp-style fallback.
@@ -238,6 +1133,128 @@
   - `load_session()`
   - `Browser::connect()`
   - `do_start_browser()`
+
+## Control-plane contract consistency sweep (2026-06-05)
+
+- This pass intentionally did not add new shell fields. It was a closure audit.
+- Cross-checked these files against each other:
+  - `README.md`
+  - `doctor-契约盘点-v1.md`
+  - `doctor-契约收口结论-v1.md`
+  - `browser-daemon-契约盘点-v1.md`
+  - `控制面总览-契约关系-v1.md`
+  - `竞品文档-考虑借鉴的部分v1.md`
+- No implementation/doc contradiction found on the current stable shell contract points:
+  - `kind="daemon_session"`
+  - `fixable_ids` semantics
+  - `fixed[] source / reason`
+  - post-fix view semantics
+  - `log_path / log_exists` vs `path / exists` compatibility alias wording
+- Refreshed `竞品文档-考虑借鉴的部分v1.md` so it now explicitly states which competitor ideas have already been absorbed into OpenPage.
+- Re-ran focused regression checks:
+  - `production_check_kinds_match_documented_stable_set`
+  - `browser_logs_payload_backfills_daemon_session_kind_when_missing`
+  - `doctor_payload_with_fix_reports_post_fix_inventory_and_structured_fixed_actions`
+- Result:
+  - current remaining work should stay in “small shell/control-plane tightening” mode
+  - there is no evidence from this pass that we need a broader contract rewrite
+
+## Removed-surface parse-error migration fixes (2026-06-05)
+
+- This pass tightened a real shell-contract gap rather than adding new control-plane fields.
+- Before this change:
+  - removed `page ...` and removed `serve --stdio` already returned `error.kind=\"invalid_input\"`
+  - but the payload still depended on free-form clap text for migration guidance
+- Now:
+  - direct parse failures for removed `page ...` carry `error.fix`
+  - direct parse failures for removed `serve --stdio` carry `error.fix`
+  - nested batch parse failures for the same removed surfaces carry the same `error.fix`
+- Implementation shape:
+  - `cli/protocol.rs::known_invalid_input_fix(...)` is the single helper
+  - `cli/mod.rs::clap_error_payload(...)` and `cli/oneshot.rs::batch_error_payload(...)` both reuse it
+- Verified with:
+  - focused unit tests for direct parse errors
+  - focused unit tests for batch nested parse errors
+  - real CLI smoke for:
+    - `openpage page url`
+    - `openpage serve --stdio`
+- Result:
+  - direct CLI parse errors and batch nested parse errors are now more aligned with the broader “structured fix guidance” discipline already used by daemon/state failures
+
+## Batch workflow-restriction fixes (2026-06-05)
+
+- This pass extended the same structured-fix discipline to one narrow `unsupported_operation` family.
+- Covered only known batch workflow restrictions with a clear top-level recovery path:
+  - `batch cannot execute serve`
+  - `batch cannot execute doctor`
+  - `batch cannot execute nested batch commands`
+- Important non-goal:
+  - do not auto-attach `fix` to every `unsupported_operation`
+  - platform-specific cases like `downloads open is unsupported on this platform` still omit `fix`
+- Implementation shape:
+  - `cli/protocol.rs::known_unsupported_operation_fix(...)`
+  - `UnsupportedOperation` now participates in `openpage_error_context(...)`
+- Verified with:
+  - focused protocol tests
+  - focused batch payload tests
+  - real CLI smoke for restricted batch commands
+- Result:
+  - `unsupported_operation` still means “not supported in this workflow/platform”
+  - but known workflow restrictions no longer force callers to scrape the message to learn the correct top-level recovery path
+
+## Session-local unsupported-operation fix: tab reopen prereq (2026-06-05)
+
+- This pass extended the same pattern to one session-local prerequisite failure:
+  - `no recently closed tab recorded for this session`
+- Reason this is a good fit:
+  - it is still `unsupported_operation`, not `invalid_input`
+  - but there is a clear next step:
+    - close a tab first, then use `tab reopen`
+    - or fall back to `tab new <url>`
+- Important boundary:
+  - I did not broaden the rule to arbitrary session-local restrictions
+  - this remains an explicit allowlist inside `known_unsupported_operation_fix(...)`
+- Verification stayed at protocol level plus `cargo check`
+  - reproducing the exact CLI/runtime failure deterministically would require live browser/session setup and recent-tab stack manipulation
+- Result:
+  - the known `tab reopen` prerequisite failure now participates in the same machine-readable `error.fix` discipline as the batch workflow restrictions
+
+## drag-in missing-payload fix alignment (2026-06-05)
+
+- This pass targeted a dual-surface validation case:
+  - direct CLI emits `drag-in requires --text or --files`
+  - daemon-side validation emits `drag-in requires text or files`
+- Reason this was worth closing:
+  - both are really the same user mistake
+  - before this pass, they already converged to `invalid_input`, but not to the same structured `fix`
+- Implementation shape:
+  - `known_invalid_input_fix(...)` now recognizes both string variants
+  - `UnsupportedOperation` fix lookup now also falls back to the invalid-input fix allowlist
+- Verification:
+  - focused protocol tests for both direct-shell and daemon-response paths
+  - `cargo check`
+  - real CLI smoke for the direct-shell path:
+    - `openpage drag-in '#dropzone' --session smoke-drag-fix`
+- Result:
+  - this is a better example of shell/control-plane alignment than just adding one more isolated fix, because it explicitly keeps a direct CLI validation string and a daemon-side validation string in sync
+
+## Enum-style invalid-input fixes: snapshot/select (2026-06-05)
+
+- This pass covered a small family of “finite allowed choices” errors:
+  - `select requires one of: text, value, index`
+  - `unsupported snapshot mode: ...`
+  - `unsupported snapshot format: ...`
+- Important implementation detail:
+  - `known_invalid_input_fix(...)` already existed
+  - but `BrowserOperation` was not yet consulting it unless the error happened to be a session-state sentence
+  - that gap is now closed with a fallback lookup inside `openpage_error_context(...)`
+- Why this matters:
+  - previously, `UnsupportedOperation -> invalid_input` cases could get fix hints while some `BrowserOperation -> invalid_input` cases could not
+  - now the fix lookup follows the invalid-input semantics more consistently, not just the original enum variant
+- Verification stayed at protocol tests plus `cargo check`
+  - no live runtime smoke here because these are daemon/session-backed validation cases rather than parse-only shell failures
+- Result:
+  - `error.fix` is now more aligned to the *meaning* of the error bucket (`invalid_input`) than to the historical Rust enum variant that carried the detail string
 - Verified by grep:
   - `rg -n "open_page\\(|load_session\\(|Browser::connect\\(|do_start_browser\\(" rust/src/cli`
   - returns no matches
@@ -2834,3 +3851,1548 @@
 - Interpretation:
   - this is a valid non-CDP borrow from the competitor's doctor/control-plane shape
   - the next worthwhile borrow point is still direct-error context preservation in `protocol.rs` / `oneshot.rs`, once the local interactive staging risk is gone
+
+## Direct CLI daemon error context preservation (2026-06-04)
+
+- Intent:
+  - continue the shell/control-plane borrow line in `protocol.rs` / `oneshot.rs`
+  - reduce direct CLI dependence on daemon message-text heuristics when the daemon already returned structured fields
+- Code change:
+  - added `openpage_error_from_response_error(...)`
+  - added `openpage_error_from_structured_context(...)`
+  - `rust/src/cli/oneshot.rs::response_result(...)` now reconstructs from the full `ResponseError`
+  - canonical session-state reconstruction now covers:
+    - `inactive`
+    - `incomplete + daemon_not_ready`
+    - `incompatible + version_mismatch`
+  - canonical transient reconstruction now covers:
+    - `daemon_transient`
+    - `retryable=true`
+    - `suggested_action=retry_same_command`
+  - `openpage_error_fix(...)` now also recognizes canonical session-state messages so synthetic structured reconstructions do not lose `fix`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml response_result_uses_structured_session_state_when_message_is_generic -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml response_result_uses_structured_transient_fields_when_message_is_generic -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml response_result_uses_structured_incompatible_state_when_message_is_generic -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml reconstructs_openpage_error_from_structured_context_for_transient_retry -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml reconstructs_openpage_error_from_structured_context_for_generic_incompatible_state -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `rust/target/debug/openpage serve --stdio`
+  - `rust/target/debug/openpage page url`
+- Observed truth:
+  - all five targeted tests passed after one mid-pass fix to avoid polluting synthetic `fix` extraction with generic daemon message text
+  - `cargo check` passes
+  - removed protocol surfaces still return `error.kind="invalid_input"`
+- Interpretation:
+  - this is the next real step toward making direct CLI errors share the same machine-readable control-plane truth as `browser status` / `browser logs` / `browser list` / `doctor`
+  - still no competitor runtime internals were borrowed
+
+## Competitor-doc resync (2026-06-04, machine-truth refresh only)
+
+- Intent:
+  - finish the competitor-borrow document as a durable reference, without touching runtime code
+  - replace stale 2026-05-31 machine snapshots with current 2026-06-04 runtime truth
+- Verification:
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `rust/target/debug/openpage serve --stdio`
+  - `rust/target/debug/openpage page url`
+  - `rust/target/debug/openpage doctor --quick`
+  - `rust/target/debug/openpage browser list`
+- Observed truth:
+  - TCP daemon remains the only active protocol
+  - `serve --stdio` still fails with top-level `error.kind="invalid_input"`
+  - `page` is no longer an active top-level subcommand; `page url` now fails at command parsing with `error.kind="invalid_input"`
+  - `browser list` currently reports `healthy=0 / incompatible=0 / incomplete=0 / cleaned=18 / total=18`
+  - `doctor --quick` currently reports `pass=5 / warn=18 / fail=0 / info=2 / total=25`
+  - current browser config resolves to `browser_path=<default>` and `browser.executable` is now informational, not failing
+- Files synced:
+  - `竞品文档-考虑借鉴的部分v1.md`
+  - `task_plan.md`
+  - `notes.md`
+  - `claude-progress.txt`
+- Interpretation:
+  - the borrow boundary is unchanged: borrow shell/control-plane patterns, do not borrow competitor runtime internals
+  - the document is now aligned to current local truth instead of the older `/tmp/dp-browser` machine snapshot
+
+## Competitor-doc deepening (2026-06-04, function-level migration matrix)
+
+- Intent:
+  - turn the competitor-borrow document from a file-level recommendation into a function-level migration checklist
+  - make future copy/micro-tuning work executable instead of interpretive
+- Evidence inspected:
+  - `参考项目/agent-browser-main/cli/src/connection.rs`
+  - `参考项目/agent-browser-main/cli/src/doctor/mod.rs`
+  - `参考项目/agent-browser-main/cli/src/doctor/launch.rs`
+  - `参考项目/agent-browser-main/cli/src/output.rs`
+  - `rust/src/cli/connection.rs`
+  - `rust/src/cli/doctor.rs`
+  - `rust/src/cli/protocol.rs`
+  - `rust/src/cli/mod.rs`
+  - `rust/src/cli/oneshot.rs`
+- Main conclusions:
+  - `connection.rs` is still the highest-value borrow point, but OpenPage must not regress from its richer `sessions/incomplete/cleaned` inventory model
+  - `doctor.rs` is no longer the main gap; OpenPage already exceeds the competitor in machine-readable payload richness
+  - `output.rs` and top-level error shell are already being systemically absorbed via `protocol.rs`
+  - one worthwhile future tightening point is converting `cleaned.reason: String` toward a more stable taxonomy without reintroducing competitor runtime internals
+- Files synced:
+  - `竞品文档-考虑借鉴的部分v1.md`
+  - `task_plan.md`
+  - `notes.md`
+  - `claude-progress.txt`
+
+## Cleaned sidecar reason taxonomy (2026-06-04)
+
+- Intent:
+  - turn cleaned stale-sidecar reporting into a stable machine-readable taxonomy without breaking existing human-readable summaries
+  - keep the change strictly in the TCP daemon control plane
+- Code changes:
+  - `rust/src/cli/connection.rs`
+    - `CleanedDaemonSession` now carries both:
+      - `reason` — human-readable summary such as `invalid pid, missing version`
+      - `reasons` — stable taxonomy such as `["invalid_pid", "missing_version"]`
+    - inventory payload `cleaned[]` now emits `reasons[]`
+    - added `CleanedReason` internal enum plus summary/taxonomy helpers
+  - `rust/src/cli/doctor.rs`
+    - `daemon.cleaned.*` checks now also carry machine-readable `reasons[]`
+  - docs synced:
+    - `README.md`
+    - `skills/openpage-test/references/cli-smoke.md`
+    - `竞品文档-考虑借鉴的部分v1.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml cleaned_reason_taxonomy_is_stable_and_keeps_human_summary -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_inventory_payload_json_includes_states_and_summary -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml doctor_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_checks_include_machine_readable_state_and_reasons -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - `cargo build --manifest-path rust/Cargo.toml`
+  - synthetic runtime audit with fresh `OPENPAGE_HOME`:
+    - `openpage browser list`
+    - `openpage doctor --quick`
+- Observed truth:
+  - `browser list` cleaned entries now expose both `reason` and stable `reasons[]`
+  - `doctor --quick` cleaned checks now expose `state="cleaned"` plus stable `reasons[]`
+  - no runtime/kernel surfaces were touched; the change stays in shell/control-plane only
+
+## Batch invalid-input shell alignment (2026-06-04)
+
+- Intent:
+  - align malformed `batch` input with the same machine-readable JSON shell used by top-level CLI parse failures
+  - keep semantic workflow restrictions under `unsupported_operation`
+- Code changes:
+  - `rust/src/cli/oneshot.rs`
+    - added `batch_error_payload(...)`
+    - malformed nested batch parse errors now return `error.kind="invalid_input"`
+    - invalid stdin JSON for `batch` now also returns `error.kind="invalid_input"`
+    - batch workflow restrictions such as `batch cannot execute serve` still return `error.kind="unsupported_operation"`
+  - docs synced:
+    - `README.md`
+    - `skills/openpage-test/references/cli-smoke.md`
+    - `竞品文档-考虑借鉴的部分v1.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml batch_error_payload_uses_invalid_input_for_nested_parse_errors -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml batch_error_payload_uses_invalid_input_for_invalid_stdin_json -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml batch_error_payload_keeps_unsupported_operation_for_batch_restrictions -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime:
+    - `rust/target/debug/openpage batch "page url"`
+    - `printf 'not-json' | rust/target/debug/openpage batch`
+- Observed truth:
+  - malformed batch parse errors now return `error.kind="invalid_input"`
+  - invalid batch stdin JSON now returns `error.kind="invalid_input"`
+  - semantic batch restrictions still return `error.kind="unsupported_operation"`
+
+## Invalid-value shell alignment (2026-06-04)
+
+- Intent:
+  - keep shrinking places where obvious user-input validation errors accidentally surfaced as `unsupported_operation`
+  - preserve `unsupported_operation` only for real workflow/platform restrictions
+- Code changes:
+  - `rust/src/cli/protocol.rs`
+    - a narrow subset of `UnsupportedOperation` details now maps to `error.kind="invalid_input"`
+    - top-level JSON shell now uses raw detail text for those `invalid_input` cases instead of the `unsupported operation: ...` prefix
+    - `openpage_error_from_kind("invalid_input", ...)` now reconstructs through `UnsupportedOperation` without losing the shell kind on re-serialization
+  - `rust/src/cli/oneshot.rs`
+    - added round-trip test coverage for daemon `invalid_input` responses
+  - docs synced:
+    - `README.md`
+    - `skills/openpage-test/references/cli-smoke.md`
+    - `竞品文档-考虑借鉴的部分v1.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml simple_openpage_error_maps_invalid_value_unsupported_operation_to_invalid_input -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml response_openpage_error_uses_invalid_input_kind_for_invalid_snapshot_mode -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml response_result_preserves_invalid_input_kind_from_daemon_response -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime:
+    - `rust/target/debug/openpage zoom in --step 0 --session doc-agent`
+- Observed truth:
+  - direct invalid value checks such as `zoom in --step 0` now return `error.kind="invalid_input"`
+  - daemon-side invalid-input-like `UnsupportedOperation` can now round-trip through the JSON shell without degrading back to `unsupported_operation`
+  - real semantic restrictions such as `batch cannot execute serve` still stay `error.kind="unsupported_operation"`
+
+## Daemon-side param validation shell alignment (2026-06-04)
+
+- Intent:
+  - continue shrinking obvious input-validation cases that still surfaced as `browser_operation` or `unsupported_operation`
+  - keep the scope narrow to clearly-invalid schema/value checks
+- Code changes:
+  - `rust/src/cli/protocol.rs`
+    - `error.kind="invalid_input"` now also covers a narrow set of daemon-side parameter validation details, including:
+      - `history index must be >= 1`
+      - `select requires one of: ...`
+      - `select-range/select-text requires end >= start`
+      - `missing param:` / `missing numeric param:` / `missing headers param:`
+      - `... must be ...` schema-shape errors from request parsing helpers
+    - the JSON shell now emits raw detail text for those `invalid_input` cases rather than `browser operation failed: ...`
+  - `rust/src/cli/oneshot.rs`
+    - added round-trip coverage for daemon `invalid_input` response preservation
+  - docs synced:
+    - `README.md`
+    - `skills/openpage-test/references/cli-smoke.md`
+    - `竞品文档-考虑借鉴的部分v1.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml simple_openpage_error_maps_browser_operation_schema_validation_to_invalid_input -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml response_openpage_error_uses_invalid_input_kind_for_browser_operation_param_validation -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml response_result_preserves_invalid_input_kind_for_param_validation_detail -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime:
+    - `rust/target/debug/openpage history go 0 --session doc-agent`
+- Observed truth:
+  - daemon-side parameter validation such as `history go 0` now returns `error.kind="invalid_input"`
+  - these invalid-input-like daemon errors now round-trip through the shell without degrading back to `browser_operation`
+  - true workflow restrictions still stay under their existing kinds
+
+## Range/empty/missing-param invalid-input alignment (2026-06-04)
+
+- Intent:
+  - continue shrinking daemon-side validation cases that still looked like runtime failures even though the user input itself was invalid
+- Code changes:
+  - `rust/src/cli/protocol.rs`
+    - `error.kind="invalid_input"` now also covers a slightly broader but still narrow set of daemon-side validation details, including:
+      - `history index out of range: ...`
+      - `find-in-page text must not be empty`
+      - `missing target`
+      - `missing string/number/array param: ...`
+    - these errors now render as raw invalid-input messages instead of `browser operation failed: ...`
+  - `rust/src/cli/oneshot.rs`
+    - added round-trip coverage for `invalid_input` details such as missing required string params
+  - docs synced:
+    - `README.md`
+    - `skills/openpage-test/references/cli-smoke.md`
+    - `竞品文档-考虑借鉴的部分v1.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml simple_openpage_error_maps_find_in_page_empty_text_to_invalid_input -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml simple_openpage_error_maps_missing_string_param_to_invalid_input -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml response_result_preserves_invalid_input_kind_for_missing_string_param_detail -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime:
+    - `rust/target/debug/openpage history go 999999 --session doc-agent`
+    - `rust/target/debug/openpage find-in-page "" --session doc-agent`
+- Observed truth:
+  - out-of-range history selection now returns `error.kind="invalid_input"`
+  - empty find-in-page text now returns `error.kind="invalid_input"`
+  - missing-param-like daemon validation can now round-trip through the shell without degrading back to `browser_operation`
+
+## Navigation token invalid-input alignment (2026-06-04)
+
+- Intent:
+  - continue shrinking stateful-but-user-supplied invalid token cases that still surfaced as `browser_operation`
+- Code changes:
+  - `rust/src/cli/protocol.rs`
+    - bad navigation token details such as `unknown navigation token: ...` now map to `error.kind="invalid_input"`
+    - token/frame mismatch details are now grouped into the same invalid-input bucket
+  - `rust/src/cli/oneshot.rs`
+    - added round-trip coverage for daemon `invalid_input` preservation on bad navigation tokens
+  - docs synced:
+    - `README.md`
+    - `skills/openpage-test/references/cli-smoke.md`
+    - `竞品文档-考虑借鉴的部分v1.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml simple_openpage_error_maps_unknown_navigation_token_to_invalid_input -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml response_result_preserves_invalid_input_kind_for_unknown_navigation_token -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+  - runtime:
+    - `rust/target/debug/openpage wait-for-navigation --token definitely-bad --timeout 1 --session doc-agent`
+- Observed truth:
+  - bad navigation tokens now return `error.kind="invalid_input"`
+  - these token-validation errors no longer degrade into `browser_operation` in the JSON shell
+
+## Invalid-input contract hardening (2026-06-04)
+
+- Intent:
+  - harden the current invalid-input shell boundary so later edits do not silently drift kinds back toward `browser_operation` or `unsupported_operation`
+- Code changes:
+  - `rust/src/cli/protocol.rs`
+    - added table-driven contract coverage for the known invalid-input detail taxonomy
+    - added explicit negative coverage proving that runtime/state cases such as `unknown target: ...` and real restrictions such as `downloads open is unsupported on this platform` stay out of the invalid-input bucket
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml invalid_input_contract_covers_known_detail_taxonomy -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml invalid_input_contract_keeps_runtime_and_restriction_cases_outside_bucket -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - the current invalid-input bucket is now protected by a contract test instead of only one-off case tests
+  - negative cases still prove the bucket is not swallowing genuine runtime or platform-restriction errors
+
+## Error semantics map artifact (2026-06-04)
+
+- Intent:
+  - stop relying on scattered memory of the recent shell/control-plane error-kind tightening work
+  - publish a durable map of the current classification boundary
+- Artifact created:
+  - `错误语义地图-v1.md`
+- What it captures:
+  - current meaning of `invalid_input`, `unsupported_operation`, `browser_operation`, `daemon_transient`, `invalid_json`, `tcp_error`
+  - positive examples already verified at runtime
+  - negative examples that should stay outside the invalid-input bucket
+  - current contract tests that protect the boundary from drift
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Interpretation:
+  - the shell/control-plane error tightening line now has both implementation/tests and a stable human-readable map
+
+## Control-plane map artifact (2026-06-04)
+
+- Intent:
+  - complement the error-kind map with a durable module/ownership map for the active TCP CLI shell
+  - make later borrow work stay constrained to control-plane files instead of drifting back into runtime internals
+- Artifact created:
+  - `控制面地图-v1.md`
+- What it captures:
+  - current roles of `connection.rs`, `doctor.rs`, `protocol.rs`, `oneshot.rs`, and `mod.rs`
+  - current control-plane data flow and ownership boundaries
+  - which parts are good borrow targets from `agent-browser`, and which parts should stay out of scope
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `ls -l 控制面地图-v1.md`
+  - `rg -n "控制面地图-v1.md" README.md skills/openpage-test/references/cli-smoke.md`
+- Interpretation:
+  - the shell/control-plane line now has both an error-semantics map and a module-ownership map
+
+## Borrow migration checklist artifact (2026-06-05)
+
+- Intent:
+  - turn the competitor-borrow guidance into an executable migration checklist instead of a narrative recommendation
+  - keep future borrowing constrained to `rust/src/cli/*` and out of runtime internals
+- Artifact created:
+  - `借鉴迁移清单-v1.md`
+- What it captures:
+  - priority order for borrow targets
+  - per-file/per-function migration suggestions
+  - what can be copied directly vs only referenced
+  - mandatory edits after copy
+  - minimal verification expectations for each borrow step
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `ls -l 借鉴迁移清单-v1.md`
+  - `rg -n "借鉴迁移清单-v1.md" README.md skills/openpage-test/references/cli-smoke.md`
+- Interpretation:
+  - the competitor-borrow line now has a concrete execution checklist, not just a direction memo
+
+## Daemon transient retry classifier tightening (2026-06-05)
+
+- Intent:
+  - borrow one small but high-value control-plane behavior from the competitor without touching runtime internals
+  - make daemon retry classification tolerate more startup/restart-adjacent malformed-response cases
+- Code changes:
+  - `rust/src/cli/connection.rs`
+    - `is_transient_error(...)` now also treats these as transient:
+      - `EOF while parsing a value`
+      - `expected value at line 1 column 0`
+      - `line 1 column 0`
+      - `Connection aborted`
+      - `os error 2`
+    - added retry coverage for EOF-like and empty-JSON-like serialization failures
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml send_request_with_retry_retries_after_eof_like_serialization_error -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml send_request_with_retry_retries_after_empty_json_like_serialization_error -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - retry classification is now closer to the competitor's mature shell behavior
+  - the change stays fully inside `rust/src/cli/connection.rs`
+  - no TCP/runtime/protocol boundary changed
+
+## Existing daemon reuse stability recheck (2026-06-05)
+
+- Intent:
+  - borrow the competitor's ready-recheck discipline before reusing an existing daemon
+  - reduce the chance of reusing a daemon that is already in the middle of shutting down
+- Code changes:
+  - `rust/src/cli/connection.rs`
+    - `existing_daemon_action_with_retry(...)` now waits briefly and re-checks readiness before returning `Reuse`
+    - added `READY_RECHECK_DELAY_MS`
+    - if the daemon disappears during that short window, the flow falls back to the normal alive/unready handling path instead of reusing it
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml existing_daemon_action_does_not_reuse_daemon_that_drops_during_recheck_window -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml existing_daemon_action_reuses_ready_matching_daemon -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - stable ready daemons are still reused
+  - daemons that vanish during the short recheck window are no longer eagerly reused
+  - the change stays inside the TCP control plane and does not touch runtime internals
+
+## Failed startup sidecar cleanup tightening (2026-06-05)
+
+- Intent:
+  - tighten the daemon startup failure path so an early child exit does not leave stale sidecars behind until a later inventory sweep
+  - keep persisted daemon logs readable while immediately cleaning `.port/.pid/.version`
+- Code changes:
+  - `rust/src/cli/connection.rs`
+    - extracted `startup_exit_error(...)`
+    - early daemon startup exits now route through that helper
+    - the helper immediately cleans sidecars before building the returned IO error
+    - if the daemon exits right after the polling loop ends, the final `try_wait()` now still takes the same cleanup path
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml startup_exit_error_cleans_sidecars_and_surfaces_log_content -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml startup_exit_error_cleans_sidecars_without_log_content -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - failed startup now eagerly removes stale `.port/.pid/.version` sidecars
+  - startup error messages still preserve log content when available
+  - `.log` files are intentionally left intact for later `browser logs` inspection
+
+## Startup-timeout cleanup tightening (2026-06-05)
+
+- Intent:
+  - make the startup-timeout path behave more like a failed bootstrap cleanup path instead of leaving a detached startup daemon around after timeout
+  - keep the persisted log file as the surviving diagnostic artifact
+- Code changes:
+  - `rust/src/cli/connection.rs`
+    - on startup timeout, `ensure_daemon(...)` now best-effort kills the still-running child handle and waits for it
+    - extracted `startup_timeout_error(...)`
+    - timeout errors now also clean `.port/.pid/.version` immediately before returning
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml startup_timeout_error_cleans_sidecars_and_preserves_log_path_in_message -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml startup_exit_error_cleans_sidecars_and_surfaces_log_content -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - timeout failures now stop behaving like sidecar-leaking startup attempts
+  - the `.log` path is still preserved in the returned error message
+  - the surviving diagnostic artifact after timeout is the log file, not stale sidecars
+
+## Startup failure direct-error context preservation (2026-06-05)
+
+- Intent:
+  - close a shell-level gap where startup failures kept `error.kind="io"` but lost machine-readable recovery fields
+  - keep the kind stable while surfacing `session` and `fix`
+- Code changes:
+  - `rust/src/cli/protocol.rs`
+    - `openpage_error_context(...)` now recognizes startup failure IO details of the form:
+      - `daemon for session '...' exited during startup`
+      - `daemon for session '...' failed to become ready during startup`
+    - those payloads now surface:
+      - `error.session`
+      - `error.fix`
+    - fix points callers at `openpage browser logs --session ... --tail 20`
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml simple_openpage_error_exposes_session_and_fix_for_startup_timeout_io -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml response_openpage_error_exposes_session_and_fix_for_startup_exit_io -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - startup failures still keep `error.kind="io"`
+  - callers now also get machine-readable recovery context instead of only a free-form message
+
+## Generic startup-io round-trip preservation (2026-06-05)
+
+- Intent:
+  - close the remaining round-trip gap where a daemon could send a generic startup `io` message plus structured `session/fix`, and `response_result(...)` would otherwise degrade that back to a plain free-form IO string
+- Code changes:
+  - `rust/src/cli/protocol.rs`
+    - `openpage_error_from_structured_context(...)` now canonicalizes generic startup `io` errors into a session-tagged startup-failure form when the structured fix matches the startup-log recovery action
+    - `startup_failure_session_from_detail(...)` now also recognizes the canonical `startup failure:` form
+  - `rust/src/cli/oneshot.rs`
+    - added round-trip coverage for generic startup `io` daemon responses carrying structured `session/fix`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml reconstructs_openpage_error_from_structured_context_for_generic_startup_failure_io -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml response_result_uses_structured_session_and_fix_for_generic_startup_failure_io -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - generic startup `io` daemon responses no longer lose `session/fix` when reconstructed through `response_result(...)`
+  - the shell kind still remains `io`
+
+## Generic session-io round-trip preservation (2026-06-05)
+
+- Intent:
+  - extend the same round-trip discipline beyond startup-specific IO failures
+  - ensure a daemon response carrying `kind="io"` plus structured `session` does not degrade back into an unstructured plain IO string
+- Code changes:
+  - `rust/src/cli/protocol.rs`
+    - `openpage_error_from_structured_context(...)` now canonicalizes generic structured session-scoped IO into `daemon for session '...': ...`
+    - `openpage_error_context(...)` now extracts `session` from that generic canonical IO form as well
+  - `rust/src/cli/oneshot.rs`
+    - added round-trip coverage for generic `io` daemon responses carrying `session` and no `fix`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml reconstructs_openpage_error_from_structured_context_for_generic_session_io -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml response_result_uses_structured_session_for_generic_io_without_fix -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - generic `io` daemon responses now preserve `error.session` across reconstruction
+  - this stays a shell/control-plane change only; `error.kind` remains `io`
+
+## Cleaned inventory log diagnostics (2026-06-05)
+
+- Intent:
+  - make stale-sidecar cleanup more diagnosable without turning cleaned residue back into active state
+  - surface whether a cleaned session still has a persisted daemon log worth inspecting
+- Code changes:
+  - `rust/src/cli/connection.rs`
+    - `CleanedDaemonSession` now also carries:
+      - `log_path`
+      - `log_exists`
+    - `daemon_inventory_payload_json(...)` now emits those fields under `cleaned[]`
+  - `rust/src/cli/doctor.rs`
+    - cleaned daemon checks now also retain `log_path`
+  - `rust/src/cli/oneshot.rs`
+    - browser inventory payload tests updated to assert the new cleaned log diagnostics
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml daemon_inventory_payload_json_includes_states_and_summary -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml doctor_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - `cleaned[]` now tells callers whether a stale cleaned session still has a persisted log
+  - the session remains `state="cleaned"`; this is extra diagnostics, not a state reclassification
+
+## Cleaned inventory machine-readable fix (2026-06-05)
+
+- Intent:
+  - make cleaned residue actionable for automation instead of only descriptive
+  - align cleaned entries with the rest of the control plane, where payloads usually carry a next-step hint
+- Code changes:
+  - `rust/src/cli/connection.rs`
+    - added `cleaned_daemon_fix(...)`
+    - `cleaned[]` payload entries now include `fix`
+    - when a cleaned log still exists, the fix points to `browser logs --session ... --tail 20`
+    - when no log exists, the fix falls back to restarting the session if needed
+  - `rust/src/cli/doctor.rs`
+    - cleaned daemon checks now also carry `fix`
+  - `rust/src/cli/oneshot.rs`
+    - browser inventory payload tests updated to assert cleaned fixes
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml daemon_inventory_payload_json_includes_states_and_summary -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml doctor_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - cleaned residue is now both diagnosable and actionable
+  - this stays a control-plane guidance change; cleaned sessions are still not treated as active
+
+## Doctor cleaned-check log contract alignment (2026-06-05)
+
+- Intent:
+  - finish aligning doctor cleaned checks with the cleaned inventory payload shape
+  - make stale-log existence machine-readable in doctor output, not just in inventory
+- Code changes:
+  - `rust/src/cli/doctor.rs`
+    - `Check` now also supports `log_exists`
+    - cleaned daemon checks now emit both `log_path` and `log_exists`
+    - daemon-check shape test now includes a real cleaned fixture and asserts the cleaned fix/log fields
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml doctor_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_checks_include_machine_readable_state_and_reasons -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - doctor cleaned checks now expose the same stale-log existence signal as inventory
+  - this improves automation/debuggability without changing any session state classification
+
+## Active/incomplete daemon log contract alignment (2026-06-05)
+
+- Intent:
+  - finish the daemon log diagnostics alignment across `browser list`, `browser status`, and `doctor`
+  - stop treating `log_exists` as a cleaned-only signal when active/incomplete sessions also have a persisted log truth
+- Code changes:
+  - `rust/src/cli/connection.rs`
+    - added `log_exists` to `DaemonSessionInfo` and `IncompleteDaemonSession`
+    - `daemon_status(...)` and `daemon_inventory(...)` now capture log presence for active/incomplete sessions
+    - `daemon_inventory_payload_json(...)` now emits `log_exists` for `sessions[]` and `incomplete[]`
+  - `rust/src/cli/doctor.rs`
+    - daemon-session and incomplete-session checks now emit `log_exists`
+  - `rust/src/cli/oneshot.rs`
+    - browser inventory tests updated to assert the aligned payload shape
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml daemon_inventory_payload_json_includes_states_and_summary -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_status_payload_json_marks_incomplete_with_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml doctor_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_checks_include_machine_readable_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml check_serializes_daemon_runtime_fields_when_present -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - active, incomplete, and cleaned daemon surfaces now all expose log availability explicitly
+  - this is a control-plane shape alignment only; it does not change daemon lifecycle behavior
+
+## Browser logs log-existence contract alignment (2026-06-05)
+
+- Intent:
+  - finish the daemon log-shape alignment by making `browser logs` expose the same `log_exists` signal as `browser status` / `browser list` / `doctor`
+  - keep backward compatibility for existing callers that still read `exists`
+- Code changes:
+  - `rust/src/cli/oneshot.rs`
+    - `run_browser_logs(...)` now prefers structured `log_exists` from the status payload and only falls back to `Path::exists()` when needed
+    - `browser_logs_payload(...)` now emits `log_exists` and keeps `exists` as a compatibility alias
+    - added a false-case test so the inactive/no-log shape stays explicit and machine-readable
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml browser_logs_payload_preserves_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_logs_payload_preserves_incompatible_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_logs_payload_preserves_false_log_exists -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - `browser logs` now speaks the same log-availability contract as the rest of the daemon control plane
+  - the legacy `exists` field still works, but it is now clearly just an alias for `log_exists`
+
+## Doctor auto-fix contract tightening (2026-06-05)
+
+- Intent:
+  - make `summary.fixable_ids` reflect the real scope of `doctor --quick --fix` instead of every check that merely carries manual guidance
+  - separate machine-readable auto-fixability from human-readable `fix` text
+- Code changes:
+  - `rust/src/cli/doctor.rs`
+    - added `auto_fixable=true` for checks that `apply_fixes()` can actually repair automatically
+    - `summary.fixable` / `summary.fixable_ids` now count only those checks
+    - legacy-session residue, incompatible daemon sessions, and incomplete unready daemon sessions are now the explicit auto-fix bucket
+    - manual guidance checks such as browser executable / browser launch keep `fix` text but are no longer misclassified as auto-fixable
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml summarize_counts_info_fixable_and_total -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml check_serializes_auto_fixable_only_when_present -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_checks_include_machine_readable_state_and_reasons -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - `checks[].fix` now clearly means “guidance exists”, while `fixable_ids` means “doctor can do it for you”
+  - this removes a shell-level ambiguity that would otherwise mislead automation
+
+## Doctor fixed[] structure alignment (2026-06-05)
+
+- Intent:
+  - make `doctor --quick --fix` results machine-readable end-to-end instead of leaving `fixed[]` as free-form strings
+  - align applied-fix reporting with `checks[].id` and `summary.fixable_ids`
+- Code changes:
+  - `rust/src/cli/doctor.rs`
+    - added structured `FixedAction` entries with `check_id`, `message`, `auto_fixable`, and optional `session` / `path`
+    - `apply_fixes()` now returns structured entries for legacy JSON cleanup, incompatible daemon cleanup, incomplete unready daemon cleanup, and opportunistic stale-sidecar cleanup
+    - stale-sidecar cleanup is explicitly represented as `auto_fixable=false` because it happens during inventory scan, not through a directly fixable check
+  - tests now assert the new structure instead of only string containment
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml remove_legacy_session_files_deletes_only_json_entries -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml apply_fixes_reports_stale_daemon_sidecar_cleanup -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml apply_fixes_stops_incomplete_unready_daemon_session -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml apply_fixes_stops_incompatible_daemon_session -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml fixed_action_serializes_machine_fields -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - `fixed[]` can now be consumed by scripts without scraping human text
+  - `check_id` now closes the loop between checks, fixable summary, and applied-fix reporting
+
+## Doctor --fix post-fix view contract (2026-06-05)
+
+- Intent:
+  - remove ambiguity around whether `doctor --quick --fix` returns a pre-fix snapshot or a post-fix snapshot
+  - verify that applied-fix reporting and current-state reporting can be consumed together safely
+- Code changes:
+  - `rust/src/cli/doctor.rs`
+    - extracted `doctor_payload(&DoctorArgs)` so the JSON report can be tested directly
+    - added a regression test that sets up legacy residue, stale sidecars, an incomplete unready daemon, and an incompatible daemon, then verifies:
+      - `fixed[]` reports all applied actions
+      - `summary.fixable_ids` is empty after cleanup
+      - `inventory.summary` is the post-fix zero-residue view
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml doctor_payload_with_fix_reports_post_fix_inventory_and_structured_fixed_actions -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - `doctor --quick --fix` now has an explicit tested contract: applied fixes are listed in `fixed[]`, while `summary` / `checks` / `inventory` describe the resulting post-fix state
+
+## Doctor fixed[] source/reason taxonomy (2026-06-05)
+
+- Intent:
+  - remove the last ambiguity in structured `fixed[]` output so callers no longer infer cleanup provenance from `auto_fixable` plus free-form text
+  - make opportunistic inventory cleanup and direct `--fix` actions distinguishable by stable fields
+- Code changes:
+  - `rust/src/cli/doctor.rs`
+    - `FixedAction` now also carries stable `source` and `reason`
+    - `source` currently distinguishes `direct_fix` vs `inventory_scan`
+    - `reason` currently distinguishes `legacy_session_json`, `incompatible_daemon`, `incomplete_unready_daemon`, and `stale_sidecars`
+    - tests updated so the structured applied-fix contract is asserted directly
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml fixed_action_serializes_machine_fields -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml remove_legacy_session_files_deletes_only_json_entries -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml apply_fixes_reports_stale_daemon_sidecar_cleanup -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml doctor_payload_with_fix_reports_post_fix_inventory_and_structured_fixed_actions -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - callers can now tell whether a `fixed[]` entry came from explicit `--fix` work or opportunistic daemon inventory cleanup without scraping `message`
+
+## Doctor checks[] kind field for daemon sessions (2026-06-05)
+
+- Intent:
+  - remove one more place where callers had to infer semantics from `category + id`
+  - give concrete daemon-session checks a stable, directly filterable shape marker
+- Code changes:
+  - `rust/src/cli/doctor.rs`
+    - `Check` now supports optional `kind`
+    - concrete daemon-session checks now emit `kind="daemon_session"` for healthy/incompatible, incomplete, and cleaned daemon session entries
+  - tests updated to assert the new field on serialized checks and daemon-check output
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml check_serializes_state_and_reasons_when_present -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_checks_include_machine_readable_state_and_reasons -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - consumers can now filter concrete daemon-session checks directly by `kind` instead of recovering that meaning from string prefixes
+
+## Doctor check kinds for core non-daemon checks (2026-06-05)
+
+- Intent:
+  - keep pushing `doctor checks[]` away from string-prefix parsing
+  - cover the highest-value non-daemon checks with stable kinds before broadening further
+- Code changes:
+  - `rust/src/cli/doctor.rs`
+    - `env.legacy_sessions` now emits `kind="legacy_sessions"`
+    - `browser.config` now emits `kind="browser_config"`
+    - `browser.executable` and `browser.executable.hint` now emit `kind="browser_executable"`
+    - `browser.launch` now emits `kind="browser_launch"`
+  - added focused tests for `environment_checks(...)` and `browser_checks(...)` to assert the new kinds on real generated checks
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml environment_checks_include_legacy_sessions_kind -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_checks_include_stable_kinds_for_core_browser_checks -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml check_serializes_auto_fixable_only_when_present -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - callers can now filter the most important non-daemon checks directly by `kind` instead of depending on `id` naming conventions
+
+## Doctor kind coverage for foundational env/daemon checks (2026-06-05)
+
+- Intent:
+  - finish the highest-value baseline kinds so automation can classify the doctor control-plane entry points without parsing `id`
+  - keep the change scoped to foundational env/daemon checks only
+- Code changes:
+  - `rust/src/cli/doctor.rs`
+    - `env.openpage_home` now emits `kind="openpage_home"`
+    - `env.daemon_dir` and `daemon.dir` now emit `kind="daemon_dir"`
+    - `daemon.sessions` now emits `kind="daemon_sessions"`
+  - focused tests now assert these kinds on real generated checks
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml environment_checks_include_legacy_sessions_kind -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_checks_return_empty_inventory_when_daemon_dir_is_missing -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - the doctor shell contract now covers the main env/daemon/browser entry checks with explicit stable `kind` values instead of relying on `id` naming patterns
+
+## Doctor contract inventory doc (2026-06-05)
+
+- Intent:
+  - freeze the current doctor JSON shell contract into one place so later tightening work has a stable baseline
+  - reduce future context rebuilding when iterating on `doctor` machine fields
+- Docs added:
+  - `doctor-契约盘点-v1.md`
+    - top-level shape
+    - `summary` semantics
+    - `checks[]` fields and stable `kind` taxonomy
+    - `fixed[]` fields plus `source` / `reason`
+    - `inventory` shape
+    - post-fix view semantics
+    - recommended parse order for automation
+  - `README.md` now links to the contract inventory doc
+- Verification:
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - the current doctor shell contract is now documented as an explicit artifact instead of being spread across code, tests, and changelog notes
+
+## Doctor kind coverage source-level guard (2026-06-05)
+
+- Intent:
+  - turn the current manual kind-coverage audit into an enforceable regression guard
+  - prevent future production `doctor` checks from silently landing without `kind`
+- Code changes:
+  - `rust/src/cli/doctor.rs`
+    - added a source-level test that scans the production segment of `doctor.rs` and asserts every `Check::new(...)` block includes `.with_kind(...)`
+- Docs synced:
+  - `doctor-契约盘点-v1.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml production_check_builders_all_include_kind -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - doctor kind coverage is no longer just convention; it is now guarded by a regression test
+
+## Doctor contract closure conclusion + documented kind baseline (2026-06-05)
+
+- Intent:
+  - finish the current doctor-contract tightening stage with an explicit stabilized-vs-unpromised conclusion
+  - guard not only that production checks have `kind`, but that the current stable kind baseline matches documentation
+- Code changes:
+  - `rust/src/cli/doctor.rs`
+    - added `production_check_kinds_match_documented_stable_set`
+    - this test now guards the current production kind baseline:
+      - `openpage_home`
+      - `daemon_dir`
+      - `legacy_sessions`
+      - `daemon_sessions`
+      - `daemon_session`
+      - `browser_config`
+      - `browser_executable`
+      - `browser_launch`
+- Docs added/updated:
+  - `doctor-契约收口结论-v1.md`
+    - stable fields
+    - stable kind baseline
+    - stable fixed/source/reason semantics
+    - post-fix view semantics
+    - explicitly unpromised areas
+  - `doctor-契约盘点-v1.md`
+    - now notes that production `Check::new(...)` coverage and kind baseline are source-level guarded
+  - `README.md`
+    - now links to the closure/conclusion doc
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml production_check_kinds_match_documented_stable_set -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - the current doctor shell contract stage now has both a baseline contract inventory and a closure document stating what is stable vs explicitly unpromised
+
+## Browser daemon payload kind alignment (2026-06-05)
+
+- Intent:
+  - align `browser status`, `browser logs`, and `browser list` with the doctor daemon-session kind taxonomy
+  - let callers filter daemon payloads across these browser surfaces without inferring from field combinations
+- Code changes:
+  - `rust/src/cli/connection.rs`
+    - `daemon_inventory_payload_json(...)` now emits `kind="daemon_session"` for `sessions[]`, `incomplete[]`, and `cleaned[]`
+    - `daemon_status_payload_json(...)` now emits `kind="daemon_session"` on the top-level payload and nested `incomplete` payloads
+  - `rust/src/cli/oneshot.rs`
+    - `browser_logs_payload(...)` now backfills `kind="daemon_session"` when older callers/tests pass a status payload without it
+- Docs synced:
+  - `README.md`
+  - `skills/openpage-test/references/cli-smoke.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml daemon_inventory_payload_json_includes_states_and_summary -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml daemon_status_payload_json_marks_incomplete_with_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_inventory_payload_includes_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_logs_payload_preserves_state_and_reasons -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml browser_logs_payload_preserves_incompatible_state_and_reasons -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - the daemon-session kind taxonomy now spans both doctor checks and browser daemon control payloads
+
+## Browser daemon contract inventory doc (2026-06-05)
+
+- Intent:
+  - give `browser status` / `browser logs` / `browser list` the same explicit contract treatment that `doctor` now has
+  - freeze the current daemon-session field alignment in one place for upper-layer consumers
+- Docs added/updated:
+  - `browser-daemon-契约盘点-v1.md`
+    - stable fields for list/status/logs
+    - stable state set
+    - stable reasons
+    - `kind="daemon_session"` alignment
+    - compatible alias notes for `path` / `exists`
+    - unpromised ranges
+  - `README.md` now links to the browser daemon contract doc
+- Code changes:
+  - `rust/src/cli/oneshot.rs`
+    - added `browser_logs_payload_backfills_daemon_session_kind_when_missing`
+    - this locks in backward-compatible `kind` backfill for old status shapes passed into browser-logs payload composition
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml browser_logs_payload_backfills_daemon_session_kind_when_missing -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - browser daemon shell outputs now have a dedicated contract artifact instead of being implied through scattered tests and README bullets
+
+## Missing/shape invalid-input fixes (2026-06-05)
+
+- Intent:
+  - extend `error.fix` to one more bounded `invalid_input` family where the recovery path is already explicit from the validation message
+- Code changes:
+  - `rust/src/cli/protocol.rs`
+    - `known_invalid_input_fix(...)` now also covers missing-param and payload-shape details:
+      - `missing target`
+      - `missing string/number/numeric/array/headers/param`
+      - `must be a string or string array`
+      - `must be an integer or integer array`
+      - `must be an object`
+      - `array param must contain only strings/integers`
+      - `header values must be strings`
+- Docs synced:
+  - `README.md`
+  - `错误语义地图-v1.md`
+- Verification:
+  - `cargo test --manifest-path rust/Cargo.toml simple_openpage_error_maps_missing_string_param_to_invalid_input -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml simple_openpage_error_exposes_fix_for_missing_headers_param -- --nocapture`
+  - `cargo test --manifest-path rust/Cargo.toml response_openpage_error_exposes_fix_for_object_shape_validation -- --nocapture`
+  - `cargo check --manifest-path rust/Cargo.toml`
+- Observed truth:
+  - covered missing/shape validation errors now surface machine-readable recovery hints instead of requiring callers to infer the next step from free-form detail text
+
+## CLI dogfooding: default dynamic debug ports with persistent profiles (2026-06-06)
+
+- Intent:
+  - validate the highest-leverage CLI UX fix from local dogfooding instead of only recommending it
+  - remove the default multi-session port collision while keeping session-scoped persistent browser profiles
+- Code changes:
+  - `rust/src/config.rs`
+    - completed `ResolvedConfig.debugger_source` tracking and added a focused test for debugger endpoint source resolution
+  - `rust/src/cli/serve.rs`
+    - added a narrow runtime policy: when daemon-backed session launch is still using the built-in debugger default and the caller did not pass `--port`, switch launch to `set_local_port(0)`
+    - kept the existing session-scoped profile assignment, so this uses Chrome's dynamic port allocation without inheriting `auto_port=true` temp-profile semantics
+- Verification:
+  - focused tests:
+    - `cargo test -p openpage_rs resolved_config_tracks_debugger_source -- --nocapture`
+    - `cargo test -p openpage_rs apply_runtime_default_debugger_port -- --nocapture`
+  - local install:
+    - `cargo install --path . --bin openpage --root /tmp/openpage-cli-eval --force`
+  - installed-binary dogfooding:
+    - fresh `OPENPAGE_HOME=/tmp/openpage-dogfood-default-policy.0dbX1j`
+    - `openpage browser start --session default-a --headless https://example.com` => `port=50904`
+    - `openpage browser start --session default-b --headless https://example.com` => `port=50905`
+    - `openpage title --session default-a` => `Example Domain`
+    - `openpage title --session default-b` => `Example Domain`
+    - `openpage browser list` => `healthy=2`, `incomplete=0`
+    - `openpage doctor --quick` => both sessions reported healthy
+    - fresh `OPENPAGE_HOME=/tmp/openpage-dogfood-default-persist.fVav4K`
+    - `openpage browser start --session persist-a --headless https://example.com` => `port=51131`
+    - `openpage js 'localStorage.setItem(...); localStorage.getItem(...)' --session persist-a` => `"default-port-ok"`
+    - confirmed persistent profile directory exists under `profiles/persist-a`
+    - `openpage browser stop --session persist-a`
+    - `openpage browser start --session persist-a --headless https://example.com` => `port=51348`
+    - `openpage js 'localStorage.getItem(...)' --session persist-a` => `"default-port-ok"`
+- Observed truth:
+  - the default daemon-backed CLI startup path no longer collides on the built-in `127.0.0.1:9222` debugger endpoint when opening multiple sessions
+  - the fix preserves session persistence semantics because it uses dynamic debug port allocation via `--port 0` behavior rather than `auto_port=true`
+  - the top remaining UX work is now mostly explanation/discoverability, not core launch behavior correctness
+
+## CLI dogfooding: long-running navigation blocks daemon control plane (2026-06-06)
+
+- Intent:
+  - keep dogfooding past the launch path and identify the next highest-value CLI optimization projects from real interactive usage
+- Installed binary used:
+  - `/tmp/openpage-cli-eval/bin/openpage`
+- Runtime evidence:
+  - fresh `OPENPAGE_HOME=/tmp/openpage-dogfood-workflow.C8X0tB`
+  - `openpage browser start --session flow --headless https://www.wikipedia.org`
+    - command stayed hung
+    - concurrent `openpage browser list` reported:
+      - `session=flow`
+      - `state="incomplete"`
+      - `reasons=["daemon_unresponsive"]`
+    - concurrent `openpage browser status --session flow` also reported `daemon_unresponsive`
+    - `openpage browser logs --session flow --tail 50` showed an empty log file, so the process was alive but not writing stderr
+    - process table showed:
+      - daemon alive: `openpage serve --port 0 --session flow`
+      - Chrome alive with `--remote-debugging-port=0`
+  - fresh `OPENPAGE_HOME=/tmp/openpage-dogfood-nav.PDe8D8`
+  - `openpage browser start --session nav --headless` succeeded immediately
+  - `openpage goto --session nav https://www.wikipedia.org`
+    - command stayed hung
+    - concurrent `openpage browser list` again reported:
+      - `session=nav`
+      - `state="incomplete"`
+      - `reasons=["daemon_unresponsive"]`
+    - `openpage browser stop --session nav` also hung while the navigation request was in flight
+- Code evidence supporting the observed duration:
+  - `rust/src/page.rs`
+    - default page load timeout is `30_000ms`
+    - default navigation retry policy is `retry_times=3`, `retry_interval_millis=2_000`
+    - navigation path retries `goto_once(...)` serially
+  - this means one bad navigation can occupy the daemon for roughly two minutes before surfacing a result
+- Contract mismatch found during the same pass:
+  - `openpage goto --help` says omitting `--wait` should return a follow-up `wait_for_navigation.command`
+  - `rust/src/cli/oneshot.rs::run_goto(...)` always blocks on `rpc_webpage(..., "webpage.get", ...)`
+  - `webpage.get` synchronously calls `page.get(...)`
+  - so current `goto` is blocking even when `--wait` is omitted; the help text overpromises async behavior
+- Additional recovery-surface evidence:
+  - `openpage help browser stop` exposes only `--session` and `--all`
+  - `openpage browser stop --force --session flow` is rejected as invalid input
+  - when the daemon is monopolized by navigation, plain `browser stop` is not a reliable escape hatch
+- Lower-priority but real output issue found during the same dogfood pass:
+  - firing `snapshot --session batch` before `browser start --session batch` finished produced an `unknown target` error whose `error.fix` text was duplicated multiple times in the JSON payload
+- Observed truth:
+  - the next highest-value CLI optimization project is no longer startup policy; it is request-lifecycle isolation for long-running navigation
+  - current health semantics collapse "daemon is busy inside a long request" and "daemon is unhealthy" into the same `daemon_unresponsive` bucket
+  - current recovery UX is incomplete because the CLI lacks an explicit force-stop/kill path for an unresponsive session
+  - `batch` is functionally usable for short flows, so its remaining issue is readability rather than basic capability
+
+## CLI dogfooding: root cause pinned to single-client serial daemon loop (2026-06-06)
+
+- Intent:
+  - move from symptom collection to a concrete implementation-level root cause for the next CLI optimization stream
+- Code evidence:
+  - `rust/src/cli/serve.rs`
+    - `run_tcp(...)` accepts connections in a plain `for stream in listener.incoming()` loop
+    - each accepted connection is handled inline by `handle_client(...)`
+    - `handle_client(...)` reads one request line, takes `runtime.borrow_mut()`, and runs `runtime.dispatch(request)` synchronously before accepting any new client
+  - this means one long-running RPC monopolizes the entire daemon:
+    - no second client can be accepted while the first request is still inside `dispatch(...)`
+    - health probes and stop/status/list requests arrive on fresh TCP connections and therefore stall behind the in-flight request
+- Controlled local repro:
+  - started a local slow HTTP server on `127.0.0.1:55462` that sleeps `45s` before returning
+  - fresh `OPENPAGE_HOME=/tmp/openpage-dogfood-localhang.JvhB1O`
+  - `openpage browser start --session slow --headless` => immediate success
+  - `openpage goto --session slow http://127.0.0.1:55462` => hung
+  - concurrent `openpage browser list` => `state="incomplete"`, `reasons=["daemon_unresponsive"]`
+  - concurrent `openpage browser status --session slow` => same `daemon_unresponsive`
+  - process table confirmed:
+    - daemon process alive: `openpage serve --port 0 --session slow`
+    - browser alive: Chrome on persistent profile
+- Timeout/retry evidence explaining the severity:
+  - `rust/src/cli/connection.rs`
+    - health probe timeout is only `750ms`
+    - normal RPC read timeout is `30s`
+  - `rust/src/page.rs`
+    - `Page::goto(...)` retries serially
+  - `rust/src/browser.rs`
+    - default `retry_times=3`, `retry_interval_millis=2000`
+  - because the local server sleeps `45s`, each navigation attempt overruns the `30s` page-load window and gets retried, keeping the daemon monopolized far longer than a single slow response
+- Recovery-path evidence:
+  - `rust/src/cli/connection.rs::shutdown_daemon(...)` does have a forced-kill fallback after a normal shutdown RPC attempt
+  - but `browser stop` must first wait for that normal RPC path to timeout, so there is still no immediate operator-controlled force-stop path
+  - runtime evidence from the same repro:
+    - the hanging `browser stop --session slow` eventually returned `{"forced": true, "had_daemon": true, "stopped": true}`
+- Observed truth:
+  - the main optimization project is not "navigation is slow"; it is "the daemon concurrency model lets one slow request masquerade as daemon failure"
+  - any fix that only tunes timeouts without changing request isolation will leave the control-plane freeze intact
+
+## CLI dogfooding: concurrency feasibility is real, not hypothetical (2026-06-06)
+
+- Intent:
+  - verify whether the likely higher-value fixes are blocked by Rust type/threading constraints before recommending them as the main optimization stream
+- Scratch compile check:
+  - created a temporary crate under `/tmp/openpage-sendcheck.Voa6Yr`
+  - compile-time assertions:
+    - `assert_send_sync::<openpage_rs::browser::Browser>()`
+    - `assert_send_sync::<openpage_rs::page::Page>()`
+    - `assert_send_sync::<openpage_rs::webpage::WebPage>()`
+  - verification:
+    - `cargo check` succeeded
+- Supporting source evidence:
+  - `rust/src/browser.rs`
+    - `Browser` wraps `Arc<BrowserState>`
+    - `BrowserState` already uses `Arc<Runtime>` plus mutex-protected internals
+  - `rust/src/page.rs`
+    - `Page` is `#[derive(Clone)]` and holds `Arc<Runtime>` plus cloneable page handles
+  - `rust/src/webpage.rs`
+    - `WebPage` is `#[derive(Clone)]` and composes `Browser`, `Page`, `SessionPage`, and `Arc<Mutex<WebMode>>`
+  - dependency evidence:
+    - chromiumoxide's `Page` is itself `#[derive(Clone)]` over `Arc<PageInner>`
+- Practical implication:
+  - a deeper fix such as background navigation work plus a responsive control-plane path is technically viable within the current ownership model
+  - the hard part is request coordination and session state semantics, not Rust sendability
+- Observed truth:
+  - project (1) should stay at the top of the roadmap because it is both high-value and implementable
+  - the most pragmatic sequencing is:
+    1. explicit busy-state instrumentation
+    2. first-class force-stop path
+    3. real async/non-blocking navigation path
+    4. only then, if needed, broader daemon concurrency refactor
+
+## CLI dogfooding: async navigation can reuse existing token/wait protocol (2026-06-06)
+
+- Intent:
+  - determine whether "true non-blocking goto" needs a new protocol surface or can be built on existing primitives
+- Code evidence:
+  - `rust/src/cli/serve.rs`
+    - `ServeWebPage` already stores `navigation_tickets` and `next_navigation_ticket_id`
+    - `record_navigation_baseline()` already produces stable `nav-*` tokens
+    - many existing operations (`click`, `back`, `reload`, `webpage.get`, etc.) already emit `navigation_token`
+    - `wait.navigation` already resolves those tokens through `wait_for_navigation_payload(...)`
+  - `rust/src/cli/oneshot.rs`
+    - `with_navigation_followup(...)` already formats a human-usable `openpage wait-for-navigation --session ... --token ...` follow-up command
+- Practical implication:
+  - the protocol pieces for async navigation already exist
+  - the missing piece is execution model:
+    - return the token before blocking navigation finishes
+    - run the actual navigation work in a background job or other non-blocking path
+    - mark the session as busy while that job owns the page
+- Observed truth:
+  - project (3) is smaller than a net-new feature because it can reuse existing tokens, wait logic, and follow-up output
+
+## CLI dogfooding: browser start with URL shares the same blocking failure mode (2026-06-06)
+
+- Intent:
+  - close the loop on whether the blocking problem is limited to `goto` or also affects `browser start <url>`
+- Code evidence:
+  - `rust/src/cli/oneshot.rs::start_browser(...)`
+    - creates the session first
+    - then, when `args.url` is present, immediately calls synchronous `rpc_webpage(..., "webpage.get", ...)`
+  - so `browser start <url>` is not a separate startup pathway; it re-enters the same blocking navigation path as `goto`
+- Controlled runtime repro:
+  - started a local slow HTTP server on `127.0.0.1:60714` that sleeps `45s`
+  - fresh `OPENPAGE_HOME=/tmp/openpage-dogfood-starturl.D4Cnet`
+  - ran:
+    - `openpage browser start --session slowstart --headless http://127.0.0.1:60714`
+  - concurrent `openpage browser list` reported:
+    - `session=slowstart`
+    - `state="incomplete"`
+    - `reasons=["daemon_unresponsive"]`
+  - concurrent `openpage browser status --session slowstart` also reported `daemon_unresponsive`
+- Observed truth:
+  - the blocking/navigation-control-plane issue spans both user entry points:
+    - `goto`
+    - `browser start <url>`
+  - any contract or implementation fix must cover both commands together
+
+## CLI dogfooding: smallest high-value first step is likely sidecar-backed busy state (2026-06-06)
+
+- Intent:
+  - find the narrowest change that materially improves operator truthfulness before a larger daemon scheduling rewrite
+- Code evidence:
+  - current daemon inventory/status already relies heavily on filesystem sidecars:
+    - `{session}.port`
+    - `{session}.pid`
+    - `{session}.version`
+    - log path discovery
+  - these are read from `rust/src/cli/connection.rs` without needing a responsive daemon RPC
+- Practical design implication:
+  - a new sidecar such as `{session}.activity` / `{session}.busy` can be written before a long request begins and cleared when it ends
+  - `browser list`, `browser status`, and `doctor` could surface:
+    - `state="busy"` or similar
+    - current operation kind, start timestamp, maybe target URL
+  - this would avoid misclassifying "daemon is occupied by navigation" as "daemon is unhealthy"
+- Sizing judgment:
+  - likely a small-to-medium change compared with a full accept-loop / request-scheduler rewrite
+  - likely touches:
+    - `rust/src/cli/serve.rs`
+    - `rust/src/cli/connection.rs`
+    - `rust/src/cli/doctor.rs`
+- Observed truth:
+  - this is the strongest fast-win candidate discovered so far:
+    - high user-facing value
+    - low conceptual blast radius
+    - does not block later async-navigation work
+
+## CLI dogfooding: force-stop is more than a CLI flag because forced cleanup can orphan Chrome (2026-06-06)
+
+- Intent:
+  - validate the real implementation size of the "explicit force-stop" project instead of assuming it is a trivial surface-only change
+- Runtime evidence:
+  - fresh `OPENPAGE_HOME=/tmp/openpage-dogfood-stoptime.MuoNQh`
+  - local slow server slept `90s`
+  - `openpage goto --session stoptime http://127.0.0.1:62177` put the session into the busy/unresponsive state
+  - measured:
+    - `OPENPAGE_HOME=/tmp/openpage-dogfood-stoptime.MuoNQh /usr/bin/time -p openpage browser stop --session stoptime`
+    - result: `{"forced":true,"had_daemon":true,"session":"stoptime","stopped":true}`
+    - wall time: `real 32.39`
+  - after that forced return:
+    - `browser list` was empty
+    - but a Chrome process still existed for `profiles/stoptime`
+    - it had to be killed manually
+- Code evidence explaining the orphan risk:
+  - `rust/src/cli/connection.rs::kill_stale_daemon(...)` kills the pid stored in `{session}.pid`
+  - that sidecar pid is the daemon pid, not the Chrome child pid
+  - `rust/src/browser.rs`
+    - `BrowserState` does track `browser_pid`
+    - but that pid is not currently exported through daemon sidecars
+  - `BrowserState::drop` only aborts handler tasks; it does not itself close the browser child
+- Practical implication:
+  - exposing `browser stop --force` naively would improve latency but would also make orphan-browser leaks easier to trigger
+  - a correct force-stop project likely needs one of:
+    - browser-child pid sidecar(s)
+    - daemon-managed kill-both semantics
+    - stronger parent/child cleanup guarantees on forced daemon death
+- Additional guardrail evidence:
+  - `doctor --quick --fix` did not auto-kill the busy session because doctor only auto-fixes incomplete sessions with `ready=false`
+  - so current doctor behavior is conservative here, even though it still misclassifies the state as `daemon_unresponsive`
+- Observed truth:
+  - the operator-visible need for force-stop is real and urgent
+  - but the project is medium-sized, not tiny, because it must solve both latency and orphan cleanup
+
+## CLI dogfooding: busy-state touches more surfaces than only browser list/status (2026-06-06)
+
+- Intent:
+  - avoid underestimating the blast radius of the top-priority busy/activity project
+- Confirmed user-visible surfaces:
+  - `rust/src/cli/connection.rs`
+    - daemon inventory summary/payload
+    - daemon status payload
+    - browser logs payload fix text
+  - `rust/src/cli/doctor.rs`
+    - daemon incomplete/runtime health checks
+  - `rust/src/cli/args.rs`
+    - `browser start` follow-up help
+    - `goto` follow-up help
+  - `README.md`
+    - current daemon-backed one-command-at-a-time usage examples
+- Practical implication:
+  - the top project still has bounded code scope
+  - but it is not purely internal; payload schema, fix text, and docs/help need to move together
+- Observed truth:
+  - the smallest coherent ship unit is not just "write a busy sidecar"
+  - it is "write busy state + teach status/doctor/help to describe it correctly"
+
+## CLI dogfooding: busy sessions need an error-layer contract too (2026-06-06)
+
+- Intent:
+  - determine whether a future busy/activity project can stop at inventory/status surfaces or must also change ordinary command failures
+- Controlled busy-session matrix:
+  - local slow server on `127.0.0.1:64968` sleeping `45s`
+  - fresh `OPENPAGE_HOME=/tmp/openpage-dogfood-busymatrix.rxTxSG`
+  - active long request:
+    - `openpage goto --session matrix http://127.0.0.1:64968`
+  - concurrent command results:
+    - `browser status --session matrix`
+      - returned `state="incomplete"`, `reasons=["daemon_unresponsive"]`
+    - `browser logs --session matrix --tail 5`
+      - returned the same `daemon_unresponsive` classification plus empty-log hint
+    - `title --session matrix`
+      - eventually failed with:
+        - `kind="daemon_transient"`
+        - message including `io error: Resource temporarily unavailable (os error 35)`
+        - fix: `Retry the same command.`
+    - `snapshot --session matrix`
+      - same `daemon_transient` / `Retry the same command.` result
+- Practical implication:
+  - today's user experience is internally inconsistent during a busy session:
+    - inventory-style commands say "unresponsive"
+    - ordinary page commands say "transient IO error"
+  - a correct busy-state project should include a dedicated user-facing error shape for ordinary commands, not just a new state in `browser list/status`
+- Observed truth:
+  - "busy" is both a state-model project and an error-semantics project
+  - otherwise the CLI will still feel broken even if inventory payloads become truthful
+
+## CLI dogfooding: Busy Slice A installed-binary confirmation (2026-06-06)
+
+- Landed the narrow truthfulness slice in:
+  - `rust/src/cli/connection.rs`
+  - `rust/src/cli/protocol.rs`
+- Added shell-layer regression coverage in:
+  - `rust/src/cli/oneshot.rs`
+- Real installed-binary repro with a slow local server:
+  1. `browser start --session spikedog --headless about:blank`
+  2. `goto --session spikedog http://127.0.0.1:8881`
+  3. while navigation was in flight:
+     - `browser status --session spikedog`
+     - `title --session spikedog`
+     - `snapshot --session spikedog`
+- Result:
+  - `browser status` returned:
+    - `state="incomplete"`
+    - `reasons=["daemon_unresponsive"]`
+  - both `title` and `snapshot` now returned the same structured busy story
+  - they no longer collapsed to bare `daemon_transient`
+- Interpretation:
+  - the first ship unit for the busy project is now proven on the installed binary, not just in focused tests
+
+## CLI dogfooding: forced-stop cleanup gap reconfirmed (2026-06-06)
+
+- Same repro cleanup path:
+  - `browser stop --session spikedog` eventually returned:
+    - `{"forced":true,"had_daemon":true,"session":"spikedog","stopped":true}`
+  - `browser list` for that `OPENPAGE_HOME` then showed zero sessions
+- But Chrome for:
+  - `/tmp/openpage-dogfood-busy-spike.fZFooj/profiles/spikedog`
+  remained alive until manually killed.
+- Interpretation:
+  - forced stop currently means daemon cleanup succeeded
+  - it does not yet mean browser-child cleanup is complete
+
+## CLI dogfooding: `--replace` truthfulness slice (2026-06-06)
+
+- Narrow implementation landed:
+  - `rust/src/cli/oneshot.rs`
+  - when `browser start --session <name> --replace ...` is used, the CLI now quiet-stops that named session first, then runs the existing start path
+- Help/reference wording also now says the narrower truth:
+  - `--replace` restarts an existing named session runtime
+  - it preserves that session's profile directory unless the caller explicitly changes profile paths
+
+### Healthy-session installed-binary smoke
+
+- Fresh `OPENPAGE_HOME=/tmp/openpage-replace-smoke.U3eRO4`
+- Installed binary:
+  - `/tmp/openpage-cli-eval/bin/openpage`
+- Steps:
+  1. `browser start --session replace-dog --headless https://example.com`
+  2. `js --session replace-dog "localStorage.setItem('replace-smoke','persisted'); ..."`
+  3. `browser status --session replace-dog`
+     - before replace:
+       - `pid=52592`
+       - `port=53157`
+  4. `browser start --session replace-dog --replace --headless https://example.com`
+  5. `browser status --session replace-dog`
+     - after replace:
+       - `pid=52857`
+       - `port=53543`
+  6. `js --session replace-dog "localStorage.getItem('replace-smoke')"`
+  7. `title --session replace-dog`
+- Result:
+  - the second `browser start --replace` no longer returned `already_running=true`
+  - it launched a fresh daemon/browser runtime on a new pid/port
+  - localStorage still returned `persisted`
+  - `title` still returned `Example Domain`
+- Interpretation:
+  - the first truthful `--replace` ship unit is now real for healthy named sessions
+  - this confirms the semantic decision:
+    - `--replace` means runtime restart
+    - not fresh-state reset
+
+### Busy-session installed-binary smoke
+
+- Fresh `OPENPAGE_HOME=/tmp/openpage-replace-busy.JKEFPr`
+- Local slow server on `127.0.0.1:8882` sleeping `40s`
+- Steps:
+  1. `browser start --session replace-busy --headless about:blank`
+  2. `goto --session replace-busy http://127.0.0.1:8882`
+  3. while navigation was in flight:
+     - `browser status --session replace-busy`
+       - returned `state="incomplete"` / `reasons=["daemon_unresponsive"]`
+     - `browser start --session replace-busy --replace --headless https://example.com`
+- Result:
+  - the original in-flight `goto` later exited with:
+    - `state="inactive"`
+    - message telling the caller the old session was no longer active
+  - the replacement start no longer fell through to `already_running=true`
+  - but it failed with a Chrome `SingletonLock` / profile-lock startup error
+  - `browser list` for that `OPENPAGE_HOME` was already empty
+  - the old Chrome process for:
+    - `/tmp/openpage-replace-busy.JKEFPr/profiles/replace-busy`
+    remained alive until manually killed
+- Interpretation:
+  - `--replace` is no longer a fake flag
+  - but busy-session recovery still depends on the unresolved browser-child cleanup project
+  - this narrows the remaining recovery work:
+    - replace truthfulness for normal sessions is handled
+    - forced-stop/orphan-Chrome cleanup is now the blocking sub-problem for busy-session recovery
+
+## CLI dogfooding: replace-interruption semantics under busy recovery (2026-06-06)
+
+- Fresh `OPENPAGE_HOME=/tmp/openpage-recovery-int.CcZcv2`
+- Installed binary:
+  - `/tmp/openpage-cli-eval/bin/openpage`
+- Local slow server on `127.0.0.1:8883` sleeping `45s`
+- Steps:
+  1. `browser start --session recover-int --headless about:blank`
+  2. `goto --session recover-int http://127.0.0.1:8883`
+  3. while navigation was in flight, run:
+     - `title --session recover-int`
+     - `snapshot --session recover-int`
+     - `browser status --session recover-int`
+     - `browser logs --session recover-int --tail 20`
+  4. then run:
+     - `browser start --session recover-int --replace --headless https://example.com`
+- Result:
+  - before replacement:
+    - `browser status` returned `state="incomplete"` / `reasons=["daemon_unresponsive"]`
+    - `browser logs` returned the same state plus an empty-log hint
+  - after replacement interrupted the old session:
+    - `title` returned `state="inactive"`
+    - `snapshot` returned `state="inactive"`
+    - the original in-flight `goto` returned:
+      - `kind="daemon_transient"`
+      - `io error: Connection reset by peer (os error 54)`
+      - `Retry the same command.`
+  - the replacement start still failed on Chrome `SingletonLock` / profile lock because the old browser process remained alive
+- Interpretation:
+  - there is not yet one coherent interruption/cancellation story for commands displaced by `--replace`
+  - read-style follow-up commands already degrade to `inactive`
+  - but the original in-flight navigation still leaks through as generic `daemon_transient`
+  - this looks like remaining busy/interruption semantic debt, not a new top-level product project
+
+## CLI dogfooding: profile-lock launch failures still produce misleading recovery advice (2026-06-06)
+
+- In the same `recover-int` repro:
+  - the replacement launch failed with Chrome `ProcessSingleton` / `SingletonLock` stderr
+  - but the shell error stayed:
+    - `kind="browser_launch"`
+    - fix text telling the user to verify browser-path resolution / executable validity
+- Interpretation:
+  - this is not a browser-path problem
+  - it is a recovery cleanup / orphan-browser problem
+  - current `browser_launch` fix text is too coarse for recovery-path failures that come from profile locks after forced-stop cleanup
+
+## CLI dogfooding: normal stop vs forced stop cleanup split (2026-06-06)
+
+- Goal:
+  - verify whether browser-child leakage is a general shutdown defect or specifically a forced-stop recovery defect
+
+### A. Normal stop control run
+
+- Fresh `OPENPAGE_HOME=/tmp/openpage-normal-stop.yqbpiL`
+- Steps:
+  1. `browser start --session normal-stop --headless https://example.com`
+  2. `browser status --session normal-stop`
+     - daemon pid:
+       - `58357`
+     - browser pid from process tree:
+       - `58359`
+  3. `browser stop --session normal-stop`
+- Result:
+  - returned:
+    - `forced=false`
+    - `had_daemon=true`
+  - follow-up `ps` showed no remaining Chrome process for:
+    - `/tmp/openpage-normal-stop.yqbpiL/profiles/normal-stop`
+  - follow-up `browser list` was empty
+
+### B. Forced-stop recovery run
+
+- Fresh `OPENPAGE_HOME=/tmp/openpage-forced-stop.adSX9K`
+- Local slow server on `127.0.0.1:8884`
+- Steps:
+  1. `browser start --session forced-stop --headless about:blank`
+  2. `goto --session forced-stop http://127.0.0.1:8884`
+  3. `browser status --session forced-stop`
+     - returned `state="incomplete"` / `reasons=["daemon_unresponsive"]`
+  4. `browser stop --session forced-stop`
+- Result:
+  - returned:
+    - `forced=true`
+    - `had_daemon=true`
+  - the old in-flight `goto` later failed as `inactive`
+  - follow-up `browser list` was empty
+  - but the Chrome process for:
+    - `/tmp/openpage-forced-stop.adSX9K/profiles/forced-stop`
+    remained alive until manually killed
+
+- Interpretation:
+  - browser-child leakage is not a generic stop bug
+  - it is concentrated in the forced cleanup path
+  - this sharpens Project 2:
+    - the main remaining recovery defect is forced-stop browser-child cleanup, not ordinary graceful shutdown
+
+## CLI dogfooding: startup observation recheck did not produce a new top-level project (2026-06-06)
+
+- Goal:
+  - decide whether a transient startup/list inconsistency deserved to outrank batch readability
+- Fresh `OPENPAGE_HOME=/tmp/openpage-start-race.bgdrqN`
+- Steps:
+  1. `browser start --session race-a --headless about:blank`
+  2. `browser start --session race-b --headless https://example.com`
+  3. immediately check:
+     - `browser list`
+     - `browser status --session race-a`
+     - `browser status --session race-b`
+- Result:
+  - `browser list` showed both sessions under `healthy`
+  - both status calls returned `state="healthy"` and `target_exists=true`
+- Interpretation:
+  - the earlier one-off startup observation anomaly was not strong enough to become a separate optimization project
+  - keep treating startup truthfulness as part of the existing busy/health semantics stream unless a stronger repro appears
+
+## CLI dogfooding: deeper batch readability evidence (2026-06-06)
+
+- Fresh `OPENPAGE_HOME=/tmp/openpage-batch-deep.FogYRh`
+- Steps:
+  1. `browser start --session batch-dog --headless https://example.com`
+  2. run:
+     - `batch "title --session batch-dog" "snapshot --session batch-dog" "click definitely-bad --session batch-dog" "url --session batch-dog"`
+  3. run again with:
+     - `batch --bail ...`
+- Result:
+  - non-bail output was four raw NDJSON lines:
+    - title success
+    - large snapshot success payload
+    - element-not-found failure
+    - url success
+  - bail output was the same first three raw NDJSON lines, then stopped
+  - neither mode printed:
+    - command index
+    - original argv/command text
+    - an explicit marker for which command triggered `--bail`
+- Code path confirms the shell shape:
+  - `rust/src/cli/oneshot.rs::run_batch(...)` simply loops commands and prints each command's native JSON result
+  - there is no correlation envelope around each line
+- Interpretation:
+  - this is a real transcript UX problem, not just a stylistic preference
+  - but it still sits below the first two projects because runtime correctness/recovery truthfulness issues remain more structural
+
+## CLI dogfooding: code-level boundary for forced-stop cleanup (2026-06-06)
+
+- Goal:
+  - confirm whether Project 2 still needs discovery work, or whether the missing piece is already localized in code
+
+### Current ownership from the code
+
+- Graceful stop path:
+  - `rust/src/cli/connection.rs::shutdown_daemon(...)`
+    - sends `daemon.shutdown`
+  - `rust/src/cli/serve.rs::ServeRuntime::dispatch(...)`
+    - handles `daemon.shutdown`
+    - calls `close_all_webpages()`
+  - `rust/src/cli/serve.rs::close_all_webpages()`
+    - drains runtime pages
+    - calls `state.page.quit()`
+  - `rust/src/webpage.rs::WebPage::quit()`
+    - calls `self.browser.close()`
+- Forced path:
+  - `rust/src/cli/connection.rs::shutdown_daemon(...)`
+    - after timeout, falls back to `kill_stale_daemon(session)`
+  - `rust/src/cli/connection.rs::kill_stale_daemon(...)`
+    - only reads the daemon pid sidecar
+    - only kills that daemon pid
+    - then removes sidecars
+
+### Why this matters
+
+- Browser child pid is already available in runtime/browser objects:
+  - `rust/src/browser.rs`
+    - stores `browser_pid: Option<u32>`
+    - exposes `Browser::browser_pid()`
+  - `rust/src/webpage.rs`
+    - exposes `WebPage::browser_pid()`
+- But daemon-backed CLI session metadata persisted to disk only includes:
+  - `port`
+  - `pid` (daemon pid)
+  - `version`
+  - `log`
+- There is no daemon-session browser-pid sidecar or equivalent persisted cleanup handle today.
+- The only shell-visible `browser_pid` usage I found is in:
+  - `rust/src/cli/mod.rs`
+    - DP-compat launch output
+  - not in the active daemon-backed session shutdown path
+
+### Refined implementation read
+
+- Project 2 no longer needs broad discovery.
+- The smallest credible implementation boundary is:
+  1. persist browser child pid (or equivalent durable cleanup handle) for daemon-backed sessions
+  2. teach forced cleanup to kill that browser child as well as the daemon pid
+  3. then update recovery fix text/tests around profile-lock relaunch failures
+- Likely touchpoints:
+  - `rust/src/cli/serve.rs`
+  - `rust/src/cli/connection.rs`
+  - maybe narrow tests in `connection.rs`
+- Current model check:
+  - for the active daemon-backed CLI flow, one browser pid per session is a credible first-pass model
+  - evidence:
+    - `ServeRuntime::create_webpage(...)` creates one `WebPage` for the session target
+    - tab/window workflows operate through that stored `ServeWebPage.page`
+    - target switches use `with_target(...)` / `activate_tab(...)`, which clone/repoint the same browser-backed object rather than launching a second browser process
+  - this does not prove all future daemon protocol extensions fit the same assumption, but it is sufficient for the current session-backed CLI surface
+- Interpretation:
+  - this strengthens Project 2 as an execution-ready optimization project, not just a vague recovery concern

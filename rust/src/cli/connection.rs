@@ -15,17 +15,20 @@ use windows_sys::Win32::Foundation::CloseHandle;
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
-use crate::cli::protocol::{Request, Response};
+use crate::cli::protocol::{Request, Response, openpage_error_from_structured_context};
 use crate::error::{OpenPageError, OpenPageResult};
 
 const CONNECT_TIMEOUT_MS: u64 = 200;
 const READ_TIMEOUT_SECS: u64 = 30;
 const WRITE_TIMEOUT_SECS: u64 = 5;
+const PROBE_READ_TIMEOUT_MS: u64 = 750;
+const PROBE_WRITE_TIMEOUT_MS: u64 = 750;
 const MAX_RETRIES: u32 = 3;
 const STARTUP_POLL_ATTEMPTS: u32 = 30;
 const STARTUP_POLL_DELAY_MS: u64 = 100;
 const SHUTDOWN_POLL_ATTEMPTS: u32 = 20;
 const SHUTDOWN_POLL_DELAY_MS: u64 = 100;
+const READY_RECHECK_DELAY_MS: u64 = 150;
 
 pub(crate) fn openpage_home() -> OpenPageResult<PathBuf> {
     crate::config::openpage_home()
@@ -134,6 +137,7 @@ pub(crate) struct DaemonSessionInfo {
     pub alive: bool,
     pub ready: bool,
     pub log_path: String,
+    pub log_exists: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -147,12 +151,18 @@ pub(crate) struct IncompleteDaemonSession {
     pub alive: bool,
     pub ready: bool,
     pub log_path: String,
+    pub log_exists: bool,
+    #[serde(skip)]
+    pub runtime_issue: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct CleanedDaemonSession {
     pub session: String,
     pub reason: String,
+    pub reasons: Vec<&'static str>,
+    pub log_path: String,
+    pub log_exists: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -179,6 +189,9 @@ pub(crate) fn incomplete_daemon_reasons(incomplete: &IncompleteDaemonSession) ->
     }
     if incomplete.alive && !incomplete.ready {
         reasons.push("daemon_not_ready");
+    }
+    if let Some(issue) = incomplete.runtime_issue {
+        reasons.push(issue);
     }
     reasons
 }
@@ -223,6 +236,32 @@ pub(crate) fn daemon_session_fix(session: &DaemonSessionInfo) -> Option<String> 
 }
 
 pub(crate) fn incomplete_daemon_fix(incomplete: &IncompleteDaemonSession) -> String {
+    if incomplete.runtime_issue == Some("missing_target") {
+        return missing_target_fix(&incomplete.session);
+    }
+
+    if incomplete.runtime_issue == Some("broken_target") {
+        return broken_target_fix_parts(
+            &incomplete.session,
+            &incomplete.log_path,
+            incomplete.log_exists,
+        );
+    }
+
+    if incomplete.runtime_issue == Some("daemon_unresponsive") {
+        let status = DaemonSessionInfo {
+            session: incomplete.session.clone(),
+            port: None,
+            pid: None,
+            version: None,
+            alive: incomplete.alive,
+            ready: incomplete.ready,
+            log_path: incomplete.log_path.clone(),
+            log_exists: incomplete.log_exists,
+        };
+        return daemon_unresponsive_fix(&status);
+    }
+
     if incomplete.ready {
         format!(
             "Run `openpage browser status --session {0}` to inspect the session. If it is no longer needed, run `openpage browser stop --session {0}` and rerun `openpage doctor --quick`.",
@@ -232,6 +271,20 @@ pub(crate) fn incomplete_daemon_fix(incomplete: &IncompleteDaemonSession) -> Str
         format!(
             "Run `openpage doctor --quick --fix` to stop and clean this incomplete unready daemon session, or run `openpage browser stop --session {0}` yourself if you want explicit control.",
             incomplete.session
+        )
+    }
+}
+
+pub(crate) fn cleaned_daemon_fix(cleaned: &CleanedDaemonSession) -> String {
+    if cleaned.log_exists {
+        format!(
+            "If you need to understand why this stale session was cleaned, run `openpage browser logs --session {0} --tail 20` and inspect {1}. If you still need that session, start it again with `openpage browser start --session {0}`.",
+            cleaned.session, cleaned.log_path
+        )
+    } else {
+        format!(
+            "If you still need this cleaned session, start it again with `openpage browser start --session {}`.",
+            cleaned.session
         )
     }
 }
@@ -294,6 +347,7 @@ pub(crate) fn daemon_inventory_payload_json(inventory: &DaemonInventory) -> Valu
             let state = daemon_session_state(session);
             let reasons = daemon_session_reasons(session);
             let mut entry = json!({
+                "kind": "daemon_session",
                 "session": session.session,
                 "port": session.port,
                 "pid": session.pid,
@@ -302,6 +356,7 @@ pub(crate) fn daemon_inventory_payload_json(inventory: &DaemonInventory) -> Valu
                 "alive": session.alive,
                 "ready": session.ready,
                 "log_path": session.log_path,
+                "log_exists": session.log_exists,
                 "state": state,
                 "reasons": reasons,
             });
@@ -312,6 +367,7 @@ pub(crate) fn daemon_inventory_payload_json(inventory: &DaemonInventory) -> Valu
         }).collect::<Vec<_>>(),
         "incomplete": inventory.incomplete.iter().map(|session| {
             let mut entry = json!({
+                "kind": "daemon_session",
                 "session": session.session,
                 "pid_present": session.pid_present,
                 "port_present": session.port_present,
@@ -321,6 +377,7 @@ pub(crate) fn daemon_inventory_payload_json(inventory: &DaemonInventory) -> Valu
                 "alive": session.alive,
                 "ready": session.ready,
                 "log_path": session.log_path,
+                "log_exists": session.log_exists,
                 "state": "incomplete",
                 "reasons": incomplete_daemon_reasons(session),
             });
@@ -328,11 +385,17 @@ pub(crate) fn daemon_inventory_payload_json(inventory: &DaemonInventory) -> Valu
             entry
         }).collect::<Vec<_>>(),
         "cleaned": inventory.cleaned.iter().map(|session| {
-            json!({
+            let mut entry = json!({
+                "kind": "daemon_session",
                 "session": session.session,
                 "reason": session.reason,
+                "reasons": session.reasons,
+                "log_path": session.log_path,
+                "log_exists": session.log_exists,
                 "state": "cleaned",
-            })
+            });
+            entry["fix"] = json!(cleaned_daemon_fix(session));
+            entry
         }).collect::<Vec<_>>(),
     })
 }
@@ -341,7 +404,33 @@ pub(crate) fn daemon_status_payload_json(
     status: &DaemonSessionInfo,
     inventory: &DaemonInventory,
 ) -> Value {
+    daemon_status_payload_json_with_target(status, inventory, None)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionTargetState {
+    Present,
+    Missing,
+    Broken,
+    Unresponsive,
+}
+
+fn daemon_status_payload_json_with_target(
+    status: &DaemonSessionInfo,
+    inventory: &DaemonInventory,
+    target_state: Option<SessionTargetState>,
+) -> Value {
     let mut payload = json!(status);
+    payload["kind"] = Value::from("daemon_session");
+    match target_state {
+        Some(SessionTargetState::Present) => {
+            payload["target_exists"] = Value::Bool(true);
+        }
+        Some(SessionTargetState::Missing) => {
+            payload["target_exists"] = Value::Bool(false);
+        }
+        Some(SessionTargetState::Broken | SessionTargetState::Unresponsive) | None => {}
+    }
 
     if let Some(incomplete) = inventory
         .incomplete
@@ -350,6 +439,7 @@ pub(crate) fn daemon_status_payload_json(
     {
         payload["state"] = Value::from("incomplete");
         payload["incomplete"] = json!(incomplete);
+        payload["incomplete"]["kind"] = Value::from("daemon_session");
         payload["reasons"] = json!(incomplete_daemon_reasons(incomplete));
         if let Some(fix) = daemon_status_fix(status, inventory) {
             payload["fix"] = json!(fix);
@@ -362,6 +452,24 @@ pub(crate) fn daemon_status_payload_json(
         .iter()
         .any(|entry| entry.session == status.session)
     {
+        if target_state == Some(SessionTargetState::Missing) {
+            payload["state"] = Value::from("incomplete");
+            payload["reasons"] = json!(["missing_target"]);
+            payload["fix"] = json!(missing_target_fix(&status.session));
+            return payload;
+        }
+        if target_state == Some(SessionTargetState::Broken) {
+            payload["state"] = Value::from("incomplete");
+            payload["reasons"] = json!(["broken_target"]);
+            payload["fix"] = json!(broken_target_fix(status));
+            return payload;
+        }
+        if target_state == Some(SessionTargetState::Unresponsive) {
+            payload["state"] = Value::from("incomplete");
+            payload["reasons"] = json!(["daemon_unresponsive"]);
+            payload["fix"] = json!(daemon_unresponsive_fix(status));
+            return payload;
+        }
         let state = daemon_session_state(status);
         let reasons = daemon_session_reasons(status);
         payload["version_matches_current_cli"] =
@@ -393,13 +501,91 @@ pub(crate) fn daemon_status_payload_json(
 pub(crate) fn daemon_status_payload_for_session(session: &str) -> OpenPageResult<Value> {
     let status = daemon_status(session)?;
     let inventory = daemon_inventory()?;
-    Ok(daemon_status_payload_json(&status, &inventory))
+    let target_state = session_target_state(&status)?;
+    Ok(daemon_status_payload_json_with_target(
+        &status,
+        &inventory,
+        target_state,
+    ))
+}
+
+fn missing_target_fix(session: &str) -> String {
+    format!(
+        "Run `openpage browser start --session {0} --replace` to recreate the page target, or `openpage goto --session {0} <url>` after fixing launch config.",
+        session
+    )
+}
+
+fn broken_target_fix(status: &DaemonSessionInfo) -> String {
+    broken_target_fix_parts(&status.session, &status.log_path, status.log_exists)
+}
+
+fn daemon_unresponsive_fix(status: &DaemonSessionInfo) -> String {
+    if status.log_exists {
+        format!(
+            "Run `openpage browser logs --session {0} --tail 20` to inspect the daemon log, then retry the command. If this keeps happening, restart the session with `openpage browser stop --session {0}` and `openpage browser start --session {0} --replace ...`.",
+            status.session
+        )
+    } else {
+        format!(
+            "Retry the command once. If this session stays unresponsive, restart it with `openpage browser stop --session {0}` and `openpage browser start --session {0} --replace ...`.",
+            status.session
+        )
+    }
+}
+
+fn broken_target_fix_parts(session: &str, log_path: &str, log_exists: bool) -> String {
+    if log_exists {
+        format!(
+            "Run `openpage browser start --session {0} --replace` to recreate the broken page target, or `openpage goto --session {0} <url>` if you want to recreate it and navigate in one step. Inspect {1} with `openpage browser logs --session {0} --tail 20` if you need the daemon-side failure detail.",
+            session, log_path
+        )
+    } else {
+        format!(
+            "Run `openpage browser start --session {0} --replace` to recreate the broken page target, or `openpage goto --session {0} <url>` if you want to recreate it and navigate in one step.",
+            session
+        )
+    }
 }
 
 enum SidecarState<T> {
     Missing,
     Present(T),
     Invalid,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CleanedReason {
+    NotAlive,
+    MissingPid,
+    InvalidPid,
+    MissingPort,
+    InvalidPort,
+    MissingVersion,
+}
+
+impl CleanedReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            CleanedReason::NotAlive => "not_alive",
+            CleanedReason::MissingPid => "missing_pid",
+            CleanedReason::InvalidPid => "invalid_pid",
+            CleanedReason::MissingPort => "missing_port",
+            CleanedReason::InvalidPort => "invalid_port",
+            CleanedReason::MissingVersion => "missing_version",
+        }
+    }
+
+    fn as_label(self) -> &'static str {
+        match self {
+            CleanedReason::NotAlive => "not alive",
+            CleanedReason::MissingPid => "missing pid",
+            CleanedReason::InvalidPid => "invalid pid",
+            CleanedReason::MissingPort => "missing port",
+            CleanedReason::InvalidPort => "invalid port",
+            CleanedReason::MissingVersion => "missing version",
+        }
+    }
 }
 
 #[cfg(unix)]
@@ -490,11 +676,14 @@ fn existing_daemon_action_with_retry(
     delay_ms: u64,
 ) -> OpenPageResult<ExistingDaemonAction> {
     if daemon_ready(session) {
-        return Ok(if daemon_version_matches(session) {
-            ExistingDaemonAction::Reuse
-        } else {
-            ExistingDaemonAction::Kill
-        });
+        std::thread::sleep(Duration::from_millis(READY_RECHECK_DELAY_MS));
+        if daemon_ready(session) {
+            return Ok(if daemon_version_matches(session) {
+                ExistingDaemonAction::Reuse
+            } else {
+                ExistingDaemonAction::Kill
+            });
+        }
     }
 
     let pid_alive = read_pid(session)?.map(is_pid_alive).unwrap_or(false);
@@ -531,6 +720,7 @@ pub(crate) fn daemon_status(session: &str) -> OpenPageResult<DaemonSessionInfo> 
     let version = read_version(session)?;
     let ready = daemon_ready(session);
     let pid_alive = pid.map(is_pid_alive).unwrap_or(false);
+    let log_path = log_path(session)?;
     Ok(DaemonSessionInfo {
         session: session.to_string(),
         port,
@@ -538,7 +728,8 @@ pub(crate) fn daemon_status(session: &str) -> OpenPageResult<DaemonSessionInfo> 
         version,
         alive: ready || pid_alive,
         ready,
-        log_path: log_path(session)?.display().to_string(),
+        log_exists: log_path.exists(),
+        log_path: log_path.display().to_string(),
     })
 }
 
@@ -553,6 +744,19 @@ pub(crate) fn list_daemons() -> OpenPageResult<Vec<DaemonSessionInfo>> {
 }
 
 pub(crate) fn daemon_inventory() -> OpenPageResult<DaemonInventory> {
+    daemon_inventory_with_mode(DaemonInventoryMode::CleanupStale)
+}
+
+pub(crate) fn daemon_inventory_readonly() -> OpenPageResult<DaemonInventory> {
+    daemon_inventory_with_mode(DaemonInventoryMode::ObserveOnly)
+}
+
+enum DaemonInventoryMode {
+    CleanupStale,
+    ObserveOnly,
+}
+
+fn daemon_inventory_with_mode(mode: DaemonInventoryMode) -> OpenPageResult<DaemonInventory> {
     let dir = daemon_dir()?;
     if !dir.exists() {
         return Ok(DaemonInventory::default());
@@ -597,6 +801,7 @@ pub(crate) fn daemon_inventory() -> OpenPageResult<DaemonInventory> {
         };
         let pid_alive = pid_value.map(is_pid_alive).unwrap_or(false);
         let alive = ready || pid_alive;
+        let session_log_path = log_path(&session)?;
 
         let pid_present = !matches!(pid_state, SidecarState::Missing);
         let port_present = !matches!(port_state, SidecarState::Missing);
@@ -606,7 +811,7 @@ pub(crate) fn daemon_inventory() -> OpenPageResult<DaemonInventory> {
         let complete = pid_present && port_present && version_present && pid_valid && port_valid;
 
         if alive && complete {
-            inventory.sessions.push(DaemonSessionInfo {
+            let status = DaemonSessionInfo {
                 session: session.clone(),
                 port: port_value,
                 pid: pid_value,
@@ -616,8 +821,44 @@ pub(crate) fn daemon_inventory() -> OpenPageResult<DaemonInventory> {
                 },
                 alive,
                 ready,
-                log_path: log_path(&session)?.display().to_string(),
-            });
+                log_exists: session_log_path.exists(),
+                log_path: session_log_path.display().to_string(),
+            };
+            let target_state = if ready && version_matches_current_cli(status.version.as_deref()) {
+                session_target_state(&status).unwrap_or(None)
+            } else {
+                None
+            };
+
+            if matches!(
+                target_state,
+                Some(
+                    SessionTargetState::Missing
+                        | SessionTargetState::Broken
+                        | SessionTargetState::Unresponsive
+                )
+            ) {
+                inventory.incomplete.push(IncompleteDaemonSession {
+                    session: session.clone(),
+                    pid_present,
+                    port_present,
+                    version_present,
+                    pid_valid,
+                    port_valid,
+                    alive,
+                    ready,
+                    log_exists: session_log_path.exists(),
+                    log_path: session_log_path.display().to_string(),
+                    runtime_issue: Some(match target_state {
+                        Some(SessionTargetState::Missing) => "missing_target",
+                        Some(SessionTargetState::Broken) => "broken_target",
+                        Some(SessionTargetState::Unresponsive) => "daemon_unresponsive",
+                        _ => unreachable!("non-runtime issue filtered above"),
+                    }),
+                });
+            } else {
+                inventory.sessions.push(status);
+            }
         } else if alive {
             inventory.incomplete.push(IncompleteDaemonSession {
                 session: session.clone(),
@@ -628,13 +869,21 @@ pub(crate) fn daemon_inventory() -> OpenPageResult<DaemonInventory> {
                 port_valid,
                 alive,
                 ready,
-                log_path: log_path(&session)?.display().to_string(),
+                log_exists: session_log_path.exists(),
+                log_path: session_log_path.display().to_string(),
+                runtime_issue: None,
             });
         } else {
-            let _ = cleanup_sidecars(&session);
+            if matches!(mode, DaemonInventoryMode::CleanupStale) {
+                let _ = cleanup_sidecars(&session);
+            }
+            let cleaned_log_path = log_path(&session)?;
             inventory.cleaned.push(CleanedDaemonSession {
                 session: session.clone(),
                 reason: cleaned_reason(&pid_state, &port_state, version_present),
+                reasons: cleaned_reason_taxonomy(&pid_state, &port_state, version_present),
+                log_exists: cleaned_log_path.exists(),
+                log_path: cleaned_log_path.display().to_string(),
             });
         }
     }
@@ -687,25 +936,47 @@ fn cleaned_reason(
     port_state: &SidecarState<u16>,
     version_present: bool,
 ) -> String {
-    let mut problems = Vec::new();
+    cleaned_reason_codes(pid_state, port_state, version_present)
+        .into_iter()
+        .map(CleanedReason::as_label)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn cleaned_reason_taxonomy(
+    pid_state: &SidecarState<u32>,
+    port_state: &SidecarState<u16>,
+    version_present: bool,
+) -> Vec<&'static str> {
+    cleaned_reason_codes(pid_state, port_state, version_present)
+        .into_iter()
+        .map(CleanedReason::as_str)
+        .collect()
+}
+
+fn cleaned_reason_codes(
+    pid_state: &SidecarState<u32>,
+    port_state: &SidecarState<u16>,
+    version_present: bool,
+) -> Vec<CleanedReason> {
+    let mut reasons = Vec::new();
     match pid_state {
-        SidecarState::Missing => problems.push("missing pid"),
-        SidecarState::Invalid => problems.push("invalid pid"),
+        SidecarState::Missing => reasons.push(CleanedReason::MissingPid),
+        SidecarState::Invalid => reasons.push(CleanedReason::InvalidPid),
         SidecarState::Present(_) => {}
     }
     match port_state {
-        SidecarState::Missing => problems.push("missing port"),
-        SidecarState::Invalid => problems.push("invalid port"),
+        SidecarState::Missing => reasons.push(CleanedReason::MissingPort),
+        SidecarState::Invalid => reasons.push(CleanedReason::InvalidPort),
         SidecarState::Present(_) => {}
     }
     if !version_present {
-        problems.push("missing version");
+        reasons.push(CleanedReason::MissingVersion);
     }
-    if problems.is_empty() {
-        "not alive".to_string()
-    } else {
-        problems.join(", ")
+    if reasons.is_empty() {
+        reasons.push(CleanedReason::NotAlive);
     }
+    reasons
 }
 
 pub(crate) fn ensure_daemon(session: &str) -> OpenPageResult<DaemonStatus> {
@@ -757,23 +1028,39 @@ pub(crate) fn ensure_daemon(session: &str) -> OpenPageResult<DaemonStatus> {
             });
         }
         if let Ok(Some(_)) = child.try_wait() {
-            let log = fs::read_to_string(&log_path).unwrap_or_default();
-            let log = log.trim();
-            if log.is_empty() {
-                return Err(OpenPageError::Io(format!(
-                    "daemon for session '{session}' exited during startup"
-                )));
-            }
-            return Err(OpenPageError::Io(format!(
-                "daemon for session '{session}' exited during startup: {log}"
-            )));
+            return Err(startup_exit_error(session, &log_path));
         }
     }
 
-    Err(OpenPageError::Io(format!(
-        "daemon for session '{session}' failed to become ready; see {}",
+    if let Ok(Some(_)) = child.try_wait() {
+        return Err(startup_exit_error(session, &log_path));
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+    Err(startup_timeout_error(session, &log_path))
+}
+
+fn startup_exit_error(session: &str, log_path: &std::path::Path) -> OpenPageError {
+    let _ = cleanup_sidecars(session);
+    let log = fs::read_to_string(log_path).unwrap_or_default();
+    let log = log.trim();
+    if log.is_empty() {
+        return OpenPageError::Io(format!(
+            "daemon for session '{session}' exited during startup"
+        ));
+    }
+    OpenPageError::Io(format!(
+        "daemon for session '{session}' exited during startup: {log}"
+    ))
+}
+
+fn startup_timeout_error(session: &str, log_path: &std::path::Path) -> OpenPageError {
+    let _ = cleanup_sidecars(session);
+    OpenPageError::Io(format!(
+        "daemon for session '{session}' failed to become ready during startup; startup daemon was stopped. See {}",
         log_path.display()
-    )))
+    ))
 }
 
 pub(crate) fn ensure_existing_daemon(session: &str) -> OpenPageResult<()> {
@@ -830,6 +1117,105 @@ pub(crate) fn send_request_existing(session: &str, request: &Request) -> OpenPag
         |session| ensure_existing_daemon(session),
         send_request_once,
     )
+    .map_err(|error| remap_existing_session_request_error(session, error))
+}
+
+fn session_target_state(status: &DaemonSessionInfo) -> OpenPageResult<Option<SessionTargetState>> {
+    if !status.alive || !status.ready || !version_matches_current_cli(status.version.as_deref()) {
+        return Ok(None);
+    }
+
+    let response = match send_request_once_with_timeouts(
+        &status.session,
+        &Request {
+            id: None,
+            op: "webpage.url".to_string(),
+            target: Some(status.session.clone()),
+            params: Value::Null,
+        },
+        Duration::from_millis(PROBE_READ_TIMEOUT_MS),
+        Duration::from_millis(PROBE_WRITE_TIMEOUT_MS),
+    ) {
+        Ok(response) => response,
+        Err(err) if is_transient_error(&err) => {
+            return Ok(Some(SessionTargetState::Unresponsive));
+        }
+        Err(err) => return Err(err),
+    };
+
+    Ok(session_target_state_from_response(status, &response))
+}
+
+fn session_target_state_from_response(
+    status: &DaemonSessionInfo,
+    response: &Response,
+) -> Option<SessionTargetState> {
+    if response.ok {
+        return Some(SessionTargetState::Present);
+    }
+
+    let is_missing_target = response
+        .error
+        .as_ref()
+        .map(|error| {
+            error.kind == "browser_operation"
+                && error.message == format!("unknown target: {}", status.session)
+        })
+        .unwrap_or(false);
+
+    if is_missing_target {
+        return Some(SessionTargetState::Missing);
+    }
+
+    let is_broken_target = response
+        .error
+        .as_ref()
+        .map(|error| {
+            error.kind == "page_operation" && error.message == "send failed because receiver is gone"
+        })
+        .unwrap_or(false);
+
+    if is_broken_target {
+        return Some(SessionTargetState::Broken);
+    }
+
+    None
+}
+
+fn remap_existing_session_request_error(session: &str, error: OpenPageError) -> OpenPageError {
+    let OpenPageError::BrowserOperation(detail) = &error else {
+        return error;
+    };
+    if !detail.starts_with("daemon transient for session `") {
+        return error;
+    }
+
+    let Ok(status) = daemon_status(session) else {
+        return error;
+    };
+    if !status.alive || !status.ready || !version_matches_current_cli(status.version.as_deref()) {
+        return error;
+    }
+
+    match session_target_state(&status) {
+        Ok(Some(SessionTargetState::Unresponsive)) => daemon_unresponsive_error(&status),
+        _ => error,
+    }
+}
+
+fn daemon_unresponsive_error(status: &DaemonSessionInfo) -> OpenPageError {
+    let reasons = vec!["daemon_unresponsive".to_string()];
+    let fix = daemon_unresponsive_fix(status);
+    openpage_error_from_structured_context(
+        "browser_operation",
+        "daemon reported unresponsive session",
+        Some(&fix),
+        Some(&status.session),
+        Some("incomplete"),
+        Some(&reasons),
+        None,
+        None,
+    )
 }
 
 pub(crate) fn shutdown_daemon(session: &str) -> OpenPageResult<DaemonShutdown> {
@@ -872,14 +1258,28 @@ pub(crate) fn shutdown_daemon(session: &str) -> OpenPageResult<DaemonShutdown> {
 }
 
 fn send_request_once(session: &str, request: &Request) -> OpenPageResult<Response> {
+    send_request_once_with_timeouts(
+        session,
+        request,
+        Duration::from_secs(READ_TIMEOUT_SECS),
+        Duration::from_secs(WRITE_TIMEOUT_SECS),
+    )
+}
+
+fn send_request_once_with_timeouts(
+    session: &str,
+    request: &Request,
+    read_timeout: Duration,
+    write_timeout: Duration,
+) -> OpenPageResult<Response> {
     let port = read_port(session)?.ok_or_else(|| {
         OpenPageError::Io(format!("daemon port not found for session '{session}'"))
     })?;
     let socket = SocketAddr::from(([127, 0, 0, 1], port));
     let mut stream =
         TcpStream::connect_timeout(&socket, Duration::from_millis(CONNECT_TIMEOUT_MS))?;
-    stream.set_read_timeout(Some(Duration::from_secs(READ_TIMEOUT_SECS)))?;
-    stream.set_write_timeout(Some(Duration::from_secs(WRITE_TIMEOUT_SECS)))?;
+    stream.set_read_timeout(Some(read_timeout))?;
+    stream.set_write_timeout(Some(write_timeout))?;
 
     let mut payload = serde_json::to_string(request)
         .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
@@ -904,12 +1304,18 @@ fn is_transient_error(error: &OpenPageError) -> bool {
         || message.contains("connection refused")
         || message.contains("Connection reset")
         || message.contains("connection reset")
+        || message.contains("Connection aborted")
+        || message.contains("connection aborted")
         || message.contains("Broken pipe")
         || message.contains("broken pipe")
         || message.contains("WouldBlock")
         || message.contains("would block")
         || message.contains("Resource temporarily unavailable")
         || message.contains("No such file or directory")
+        || message.contains("EOF while parsing a value")
+        || message.contains("expected value at line 1 column 0")
+        || message.contains("line 1 column 0")
+        || message.contains("os error 2")
         || message.contains("os error 11")
         || message.contains("os error 35")
         || message.contains("os error 54")
@@ -1001,18 +1407,20 @@ impl Drop for SidecarGuard {
 #[cfg(test)]
 mod tests {
     use super::{
-        ExistingDaemonAction, daemon_dir, daemon_inventory_payload_json,
-        daemon_inventory_summary_json, ensure_existing_daemon, existing_daemon_action_with_retry,
-        incomplete_daemon_reasons, pid_path, port_path, read_pid, send_request_with_retry,
-        shutdown_daemon, version_path,
+        ExistingDaemonAction, SidecarState, cleaned_reason, cleaned_reason_taxonomy, daemon_dir,
+        daemon_inventory_payload_json, daemon_inventory_summary_json, ensure_existing_daemon,
+        existing_daemon_action_with_retry, incomplete_daemon_reasons, log_path,
+        remap_existing_session_request_error, pid_path, port_path, read_pid,
+        send_request_with_retry, shutdown_daemon, startup_exit_error, startup_timeout_error,
+        version_path, PROBE_READ_TIMEOUT_MS,
     };
-    use crate::cli::protocol::{Request, Response};
+    use crate::cli::protocol::{Request, Response, simple_openpage_error};
     use crate::error::OpenPageError;
     use serde_json::{Value, json};
     use std::fs;
     use std::net::TcpListener;
     use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     struct EnvVarGuard {
         key: &'static str,
@@ -1132,6 +1540,41 @@ mod tests {
             existing_daemon_action_with_retry(session, 1, 0).expect("existing daemon action");
         assert_eq!(action, ExistingDaemonAction::Kill);
 
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn existing_daemon_action_does_not_reuse_daemon_that_drops_during_recheck_window() {
+        let home = unique_openpage_home("recheck-drop");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
+        let port = listener.local_addr().expect("listener addr").port();
+        let session = "recheck-drop";
+
+        fs::write(port_path(session).expect("port path"), port.to_string()).expect("write port");
+        fs::write(
+            pid_path(session).expect("pid path"),
+            std::process::id().to_string(),
+        )
+        .expect("write pid");
+        fs::write(
+            version_path(session).expect("version path"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("write version");
+
+        let closer = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            drop(listener);
+        });
+
+        let action =
+            existing_daemon_action_with_retry(session, 1, 0).expect("existing daemon action");
+        assert_eq!(action, ExistingDaemonAction::Kill);
+
+        closer.join().expect("join closer");
         let _ = fs::remove_dir_all(home);
     }
 
@@ -1271,6 +1714,127 @@ mod tests {
     }
 
     #[test]
+    fn remap_existing_session_request_error_uses_busy_state_for_unresponsive_session() {
+        let home = unique_openpage_home("retry-unresponsive");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind test listener");
+        let port = listener.local_addr().expect("listener addr").port();
+        let session = "retry-unresponsive";
+
+        fs::write(port_path(session).expect("port path"), port.to_string()).expect("write port");
+        fs::write(
+            pid_path(session).expect("pid path"),
+            std::process::id().to_string(),
+        )
+        .expect("write pid");
+        fs::write(
+            version_path(session).expect("version path"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("write version");
+
+        let acceptor = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let _stream = listener.accept().expect("accept connection");
+                std::thread::sleep(Duration::from_millis(PROBE_READ_TIMEOUT_MS + 100));
+            }
+        });
+
+        let error = remap_existing_session_request_error(
+            session,
+            OpenPageError::BrowserOperation(format!(
+                "daemon transient for session `{session}`: io error: connection reset by peer. Retry the same command."
+            )),
+        );
+        let payload = simple_openpage_error(&error);
+
+        assert_eq!(payload["error"]["kind"], "browser_operation");
+        assert_eq!(payload["error"]["session"], session);
+        assert_eq!(payload["error"]["state"], "incomplete");
+        assert_eq!(payload["error"]["reasons"], json!(["daemon_unresponsive"]));
+        assert!(
+            payload["error"]["message"]
+                .as_str()
+                .expect("message should be a string")
+                .contains("currently busy or unresponsive")
+        );
+
+        acceptor.join().expect("join acceptor");
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn send_request_with_retry_retries_after_eof_like_serialization_error() {
+        let request = test_request();
+        let mut ensure_calls = 0;
+        let mut send_calls = 0;
+
+        let response = send_request_with_retry(
+            "retry-eof",
+            &request,
+            |_| {
+                ensure_calls += 1;
+                Ok(())
+            },
+            |_, _| {
+                send_calls += 1;
+                if send_calls == 1 {
+                    Err(OpenPageError::Serialization(
+                        "invalid daemon response: EOF while parsing a value at line 1 column 0"
+                            .to_string(),
+                    ))
+                } else {
+                    Ok(Response::ok(
+                        Some(json!("test")),
+                        json!({"recovered": "eof"}),
+                    ))
+                }
+            },
+        )
+        .expect("recover after eof-like transient error");
+
+        assert_eq!(ensure_calls, 2);
+        assert_eq!(send_calls, 2);
+        assert_eq!(response.result, Some(json!({"recovered": "eof"})));
+    }
+
+    #[test]
+    fn send_request_with_retry_retries_after_empty_json_like_serialization_error() {
+        let request = test_request();
+        let mut ensure_calls = 0;
+        let mut send_calls = 0;
+
+        let response = send_request_with_retry(
+            "retry-empty-json",
+            &request,
+            |_| {
+                ensure_calls += 1;
+                Ok(())
+            },
+            |_, _| {
+                send_calls += 1;
+                if send_calls == 1 {
+                    Err(OpenPageError::Serialization(
+                        "invalid daemon response: expected value at line 1 column 0".to_string(),
+                    ))
+                } else {
+                    Ok(Response::ok(
+                        Some(json!("test")),
+                        json!({"recovered": "empty-json"}),
+                    ))
+                }
+            },
+        )
+        .expect("recover after empty-json-like transient error");
+
+        assert_eq!(ensure_calls, 2);
+        assert_eq!(send_calls, 2);
+        assert_eq!(response.result, Some(json!({"recovered": "empty-json"})));
+    }
+
+    #[test]
     fn shutdown_daemon_cleans_stale_sidecars_when_process_is_gone() {
         let home = unique_openpage_home("shutdown-stale");
         let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
@@ -1294,6 +1858,130 @@ mod tests {
 
         let _ = fs::remove_dir_all(home);
     }
+    #[test]
+    fn startup_exit_error_cleans_sidecars_and_surfaces_log_content() {
+        let home = unique_openpage_home("startup-exit-log");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let session = "startup-exit-log";
+        fs::write(port_path(session).expect("port path"), "12345").expect("write port");
+        fs::write(
+            pid_path(session).expect("pid path"),
+            std::process::id().to_string(),
+        )
+        .expect("write pid");
+        fs::write(
+            version_path(session).expect("version path"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("write version");
+        fs::write(
+            log_path(session).expect("log path"),
+            "bind failed: synthetic startup failure",
+        )
+        .expect("write log");
+
+        let error = startup_exit_error(session, &log_path(session).expect("log path"));
+
+        match error {
+            OpenPageError::Io(message) => {
+                assert!(message.contains("exited during startup"));
+                assert!(message.contains("synthetic startup failure"));
+            }
+            other => panic!("expected Io error, got {other:?}"),
+        }
+
+        assert!(!port_path(session).expect("port path").exists());
+        assert!(!pid_path(session).expect("pid path").exists());
+        assert!(!version_path(session).expect("version path").exists());
+
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn startup_exit_error_cleans_sidecars_without_log_content() {
+        let home = unique_openpage_home("startup-exit-empty");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let session = "startup-exit-empty";
+        fs::write(port_path(session).expect("port path"), "12345").expect("write port");
+        fs::write(
+            pid_path(session).expect("pid path"),
+            std::process::id().to_string(),
+        )
+        .expect("write pid");
+        fs::write(
+            version_path(session).expect("version path"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("write version");
+        fs::write(log_path(session).expect("log path"), "").expect("write empty log");
+
+        let error = startup_exit_error(session, &log_path(session).expect("log path"));
+
+        match error {
+            OpenPageError::Io(message) => {
+                assert!(message.contains("exited during startup"));
+                assert!(!message.contains(": "));
+            }
+            other => panic!("expected Io error, got {other:?}"),
+        }
+
+        assert!(!port_path(session).expect("port path").exists());
+        assert!(!pid_path(session).expect("pid path").exists());
+        assert!(!version_path(session).expect("version path").exists());
+
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn startup_timeout_error_cleans_sidecars_and_preserves_log_path_in_message() {
+        let home = unique_openpage_home("startup-timeout");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let session = "startup-timeout";
+        fs::write(port_path(session).expect("port path"), "12345").expect("write port");
+        fs::write(
+            pid_path(session).expect("pid path"),
+            std::process::id().to_string(),
+        )
+        .expect("write pid");
+        fs::write(
+            version_path(session).expect("version path"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("write version");
+        fs::write(log_path(session).expect("log path"), "slow startup log").expect("write log");
+
+        let error = startup_timeout_error(session, &log_path(session).expect("log path"));
+
+        match error {
+            OpenPageError::Io(message) => {
+                assert!(message.contains("failed to become ready during startup"));
+                assert!(message.contains("startup daemon was stopped"));
+                assert!(
+                    message.contains(
+                        log_path(session)
+                            .expect("log path")
+                            .display()
+                            .to_string()
+                            .as_str()
+                    )
+                );
+            }
+            other => panic!("expected Io error, got {other:?}"),
+        }
+
+        assert!(!port_path(session).expect("port path").exists());
+        assert!(!pid_path(session).expect("pid path").exists());
+        assert!(!version_path(session).expect("version path").exists());
+        assert!(log_path(session).expect("log path").exists());
+
+        let _ = fs::remove_dir_all(home);
+    }
 
     #[test]
     fn incomplete_daemon_reasons_report_missing_version_and_not_ready() {
@@ -1307,12 +1995,129 @@ mod tests {
             alive: true,
             ready: false,
             log_path: "/tmp/beta.log".to_string(),
+            log_exists: false,
+            runtime_issue: None,
         };
 
         assert_eq!(
             incomplete_daemon_reasons(&incomplete),
             vec!["missing_version", "daemon_not_ready"]
         );
+    }
+
+    #[test]
+    fn incomplete_daemon_reasons_include_runtime_issue() {
+        let incomplete = super::IncompleteDaemonSession {
+            session: "beta".to_string(),
+            pid_present: true,
+            port_present: true,
+            version_present: true,
+            pid_valid: true,
+            port_valid: true,
+            alive: true,
+            ready: true,
+            log_path: "/tmp/beta.log".to_string(),
+            log_exists: true,
+            runtime_issue: Some("broken_target"),
+        };
+
+        assert_eq!(incomplete_daemon_reasons(&incomplete), vec!["broken_target"]);
+        assert!(
+            super::incomplete_daemon_fix(&incomplete).contains("browser start --session beta --replace")
+        );
+    }
+
+    #[test]
+    fn incomplete_daemon_fix_for_unresponsive_session_points_to_logs_and_restart() {
+        let incomplete = super::IncompleteDaemonSession {
+            session: "beta".to_string(),
+            pid_present: true,
+            port_present: true,
+            version_present: true,
+            pid_valid: true,
+            port_valid: true,
+            alive: true,
+            ready: true,
+            log_path: "/tmp/beta.log".to_string(),
+            log_exists: true,
+            runtime_issue: Some("daemon_unresponsive"),
+        };
+
+        let fix = super::incomplete_daemon_fix(&incomplete);
+        assert!(fix.contains("browser logs --session beta --tail 20"));
+        assert!(fix.contains("browser stop --session beta"));
+        assert!(fix.contains("browser start --session beta --replace"));
+    }
+
+    #[test]
+    fn cleaned_reason_taxonomy_is_stable_and_keeps_human_summary() {
+        assert_eq!(
+            cleaned_reason(&SidecarState::Invalid, &SidecarState::Missing, false,),
+            "invalid pid, missing port, missing version"
+        );
+        assert_eq!(
+            cleaned_reason_taxonomy(&SidecarState::Invalid, &SidecarState::Missing, false,),
+            vec!["invalid_pid", "missing_port", "missing_version"]
+        );
+
+        assert_eq!(
+            cleaned_reason(&SidecarState::Present(1), &SidecarState::Present(2), true),
+            "not alive"
+        );
+        assert_eq!(
+            cleaned_reason_taxonomy(&SidecarState::Present(1), &SidecarState::Present(2), true,),
+            vec!["not_alive"]
+        );
+    }
+
+    #[test]
+    fn daemon_inventory_readonly_preserves_stale_sidecars() {
+        let home = unique_openpage_home("inventory-readonly-stale");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let session = "stale";
+        fs::write(pid_path(session).expect("pid path"), "999999").expect("write pid");
+        fs::write(port_path(session).expect("port path"), "12345").expect("write port");
+        fs::write(
+            version_path(session).expect("version path"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("write version");
+
+        let inventory = super::daemon_inventory_readonly().expect("readonly inventory");
+        assert_eq!(inventory.cleaned.len(), 1);
+        assert_eq!(inventory.cleaned[0].session, session);
+        assert!(pid_path(session).expect("pid path").exists());
+        assert!(port_path(session).expect("port path").exists());
+        assert!(version_path(session).expect("version path").exists());
+
+        let _ = fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn daemon_inventory_cleans_stale_sidecars_by_default() {
+        let home = unique_openpage_home("inventory-cleanup-stale");
+        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
+        fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
+
+        let session = "stale";
+        fs::write(pid_path(session).expect("pid path"), "999999").expect("write pid");
+        fs::write(port_path(session).expect("port path"), "12345").expect("write port");
+        fs::write(
+            version_path(session).expect("version path"),
+            env!("CARGO_PKG_VERSION"),
+        )
+        .expect("write version");
+
+        let inventory = super::daemon_inventory().expect("cleanup inventory");
+        assert_eq!(inventory.cleaned.len(), 1);
+        assert_eq!(inventory.cleaned[0].session, session);
+        assert!(!pid_path(session).expect("pid path").exists());
+        assert!(!port_path(session).expect("port path").exists());
+        assert!(!version_path(session).expect("version path").exists());
+
+        let _ = fs::remove_dir_all(home);
     }
 
     #[test]
@@ -1326,6 +2131,7 @@ mod tests {
                 alive: true,
                 ready: true,
                 log_path: "/tmp/alpha.log".to_string(),
+                log_exists: true,
             }],
             incomplete: vec![super::IncompleteDaemonSession {
                 session: "beta".to_string(),
@@ -1337,10 +2143,15 @@ mod tests {
                 alive: true,
                 ready: false,
                 log_path: "/tmp/beta.log".to_string(),
+                log_exists: false,
+                runtime_issue: None,
             }],
             cleaned: vec![super::CleanedDaemonSession {
                 session: "gamma".to_string(),
                 reason: "missing version".to_string(),
+                reasons: vec!["missing_version"],
+                log_path: "/tmp/gamma.log".to_string(),
+                log_exists: true,
             }],
         };
 
@@ -1352,16 +2163,20 @@ mod tests {
         assert_eq!(summary["total"], 3);
 
         let payload = daemon_inventory_payload_json(&inventory);
+        assert_eq!(payload["sessions"][0]["kind"], "daemon_session");
         assert_eq!(payload["sessions"][0]["state"], "healthy");
         assert_eq!(payload["sessions"][0]["version_matches_current_cli"], true);
         assert_eq!(payload["sessions"][0]["reasons"], json!([]));
+        assert_eq!(payload["sessions"][0]["log_exists"], true);
         assert!(payload["sessions"][0].get("fix").is_none());
         assert_eq!(payload["incomplete"][0]["state"], "incomplete");
+        assert_eq!(payload["incomplete"][0]["kind"], "daemon_session");
         assert_eq!(
             payload["incomplete"][0]["reasons"],
             json!(["missing_version", "daemon_not_ready"])
         );
         assert_eq!(payload["incomplete"][0]["log_path"], "/tmp/beta.log");
+        assert_eq!(payload["incomplete"][0]["log_exists"], false);
         assert!(
             payload["incomplete"][0]["fix"]
                 .as_str()
@@ -1369,6 +2184,17 @@ mod tests {
                 .contains("doctor --quick --fix")
         );
         assert_eq!(payload["cleaned"][0]["state"], "cleaned");
+        assert_eq!(payload["cleaned"][0]["kind"], "daemon_session");
+        assert_eq!(payload["cleaned"][0]["reason"], "missing version");
+        assert_eq!(payload["cleaned"][0]["reasons"], json!(["missing_version"]));
+        assert_eq!(payload["cleaned"][0]["log_path"], "/tmp/gamma.log");
+        assert_eq!(payload["cleaned"][0]["log_exists"], true);
+        assert!(
+            payload["cleaned"][0]["fix"]
+                .as_str()
+                .expect("cleaned fix should be present")
+                .contains("browser logs --session gamma --tail 20")
+        );
     }
 
     #[test]
@@ -1382,6 +2208,7 @@ mod tests {
                 alive: true,
                 ready: true,
                 log_path: "/tmp/alpha.log".to_string(),
+                log_exists: false,
             }],
             incomplete: Vec::new(),
             cleaned: Vec::new(),
@@ -1407,6 +2234,79 @@ mod tests {
     }
 
     #[test]
+    fn daemon_inventory_payload_marks_runtime_broken_target_as_incomplete() {
+        let inventory = super::DaemonInventory {
+            sessions: Vec::new(),
+            incomplete: vec![super::IncompleteDaemonSession {
+                session: "beta".to_string(),
+                pid_present: true,
+                port_present: true,
+                version_present: true,
+                pid_valid: true,
+                port_valid: true,
+                alive: true,
+                ready: true,
+                log_path: "/tmp/beta.log".to_string(),
+                log_exists: true,
+                runtime_issue: Some("broken_target"),
+            }],
+            cleaned: Vec::new(),
+        };
+
+        let summary = daemon_inventory_summary_json(&inventory);
+        assert_eq!(summary["healthy"], 0);
+        assert_eq!(summary["incompatible"], 0);
+        assert_eq!(summary["incomplete"], 1);
+
+        let payload = daemon_inventory_payload_json(&inventory);
+        assert_eq!(payload["incomplete"][0]["state"], "incomplete");
+        assert_eq!(payload["incomplete"][0]["reasons"], json!(["broken_target"]));
+        assert!(
+            payload["incomplete"][0]["fix"]
+                .as_str()
+                .expect("broken-target fix should be present")
+                .contains("browser start --session beta --replace")
+        );
+        assert!(
+            payload["incomplete"][0]["fix"]
+                .as_str()
+                .expect("broken-target fix should be present")
+                .contains("browser logs --session beta --tail 20")
+        );
+    }
+
+    #[test]
+    fn daemon_inventory_payload_marks_runtime_unresponsive_as_incomplete() {
+        let inventory = super::DaemonInventory {
+            sessions: Vec::new(),
+            incomplete: vec![super::IncompleteDaemonSession {
+                session: "beta".to_string(),
+                pid_present: true,
+                port_present: true,
+                version_present: true,
+                pid_valid: true,
+                port_valid: true,
+                alive: true,
+                ready: true,
+                log_path: "/tmp/beta.log".to_string(),
+                log_exists: true,
+                runtime_issue: Some("daemon_unresponsive"),
+            }],
+            cleaned: Vec::new(),
+        };
+
+        let payload = daemon_inventory_payload_json(&inventory);
+        assert_eq!(payload["incomplete"][0]["state"], "incomplete");
+        assert_eq!(payload["incomplete"][0]["reasons"], json!(["daemon_unresponsive"]));
+        assert!(
+            payload["incomplete"][0]["fix"]
+                .as_str()
+                .expect("unresponsive fix should be present")
+                .contains("browser logs --session beta --tail 20")
+        );
+    }
+
+    #[test]
     fn daemon_status_payload_json_marks_incomplete_with_reasons() {
         let status = super::DaemonSessionInfo {
             session: "beta".to_string(),
@@ -1416,6 +2316,7 @@ mod tests {
             alive: true,
             ready: false,
             log_path: "/tmp/beta.log".to_string(),
+            log_exists: true,
         };
         let inventory = super::DaemonInventory {
             sessions: Vec::new(),
@@ -1429,18 +2330,24 @@ mod tests {
                 alive: true,
                 ready: false,
                 log_path: "/tmp/beta.log".to_string(),
+                log_exists: true,
+                runtime_issue: None,
             }],
             cleaned: Vec::new(),
         };
 
         let payload = super::daemon_status_payload_json(&status, &inventory);
+        assert_eq!(payload["kind"], "daemon_session");
         assert_eq!(payload["state"], "incomplete");
         assert_eq!(
             payload["reasons"],
             json!(["missing_version", "daemon_not_ready"])
         );
         assert_eq!(payload["incomplete"]["session"], "beta");
+        assert_eq!(payload["incomplete"]["kind"], "daemon_session");
         assert_eq!(payload["incomplete"]["log_path"], "/tmp/beta.log");
+        assert_eq!(payload["log_exists"], true);
+        assert_eq!(payload["incomplete"]["log_exists"], true);
         assert!(
             payload["fix"]
                 .as_str()
@@ -1459,10 +2366,12 @@ mod tests {
             alive: false,
             ready: false,
             log_path: "/tmp/missing.log".to_string(),
+            log_exists: false,
         };
         let inventory = super::DaemonInventory::default();
 
         let payload = super::daemon_status_payload_json(&status, &inventory);
+        assert_eq!(payload["kind"], "daemon_session");
         assert_eq!(payload["state"], "inactive");
         assert!(payload.get("reasons").is_none());
         assert!(
@@ -1483,6 +2392,7 @@ mod tests {
             alive: true,
             ready: true,
             log_path: "/tmp/beta.log".to_string(),
+            log_exists: false,
         };
         let inventory = super::DaemonInventory {
             sessions: vec![status.clone()],
@@ -1491,6 +2401,7 @@ mod tests {
         };
 
         let payload = super::daemon_status_payload_json(&status, &inventory);
+        assert_eq!(payload["kind"], "daemon_session");
         assert_eq!(payload["state"], "incompatible");
         assert_eq!(payload["version_matches_current_cli"], false);
         assert_eq!(payload["reasons"], json!(["version_mismatch"]));
@@ -1499,6 +2410,147 @@ mod tests {
                 .as_str()
                 .expect("incompatible fix should be present")
                 .contains("browser stop --session beta")
+        );
+    }
+
+    #[test]
+    fn daemon_status_payload_json_marks_missing_target_as_incomplete() {
+        let status = super::DaemonSessionInfo {
+            session: "beta".to_string(),
+            port: Some(1111),
+            pid: Some(2222),
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            alive: true,
+            ready: true,
+            log_path: "/tmp/beta.log".to_string(),
+            log_exists: true,
+        };
+        let inventory = super::DaemonInventory {
+            sessions: vec![status.clone()],
+            incomplete: Vec::new(),
+            cleaned: Vec::new(),
+        };
+
+        let payload = super::daemon_status_payload_json_with_target(
+            &status,
+            &inventory,
+            Some(super::SessionTargetState::Missing),
+        );
+        assert_eq!(payload["kind"], "daemon_session");
+        assert_eq!(payload["state"], "incomplete");
+        assert_eq!(payload["reasons"], json!(["missing_target"]));
+        assert_eq!(payload["target_exists"], false);
+        assert!(
+            payload["fix"]
+                .as_str()
+                .expect("missing-target fix should be present")
+                .contains("browser start --session beta --replace")
+        );
+        assert!(
+            payload["fix"]
+                .as_str()
+                .expect("missing-target fix should be present")
+                .contains("goto --session beta <url>")
+        );
+    }
+
+    #[test]
+    fn daemon_status_payload_json_marks_broken_target_as_incomplete() {
+        let status = super::DaemonSessionInfo {
+            session: "gamma".to_string(),
+            port: Some(1111),
+            pid: Some(2222),
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            alive: true,
+            ready: true,
+            log_path: "/tmp/gamma.log".to_string(),
+            log_exists: true,
+        };
+        let inventory = super::DaemonInventory {
+            sessions: vec![status.clone()],
+            incomplete: Vec::new(),
+            cleaned: Vec::new(),
+        };
+
+        let payload = super::daemon_status_payload_json_with_target(
+            &status,
+            &inventory,
+            Some(super::SessionTargetState::Broken),
+        );
+        assert_eq!(payload["kind"], "daemon_session");
+        assert_eq!(payload["state"], "incomplete");
+        assert_eq!(payload["reasons"], json!(["broken_target"]));
+        assert!(payload.get("target_exists").is_none());
+        assert!(
+            payload["fix"]
+                .as_str()
+                .expect("broken-target fix should be present")
+                .contains("browser start --session gamma --replace")
+        );
+        assert!(
+            payload["fix"]
+                .as_str()
+                .expect("broken-target fix should be present")
+                .contains("browser logs --session gamma --tail 20")
+        );
+    }
+
+    #[test]
+    fn daemon_status_payload_json_marks_unresponsive_target_as_incomplete() {
+        let status = super::DaemonSessionInfo {
+            session: "gamma".to_string(),
+            port: Some(1111),
+            pid: Some(2222),
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            alive: true,
+            ready: true,
+            log_path: "/tmp/gamma.log".to_string(),
+            log_exists: true,
+        };
+        let inventory = super::DaemonInventory {
+            sessions: vec![status.clone()],
+            incomplete: Vec::new(),
+            cleaned: Vec::new(),
+        };
+
+        let payload = super::daemon_status_payload_json_with_target(
+            &status,
+            &inventory,
+            Some(super::SessionTargetState::Unresponsive),
+        );
+        assert_eq!(payload["kind"], "daemon_session");
+        assert_eq!(payload["state"], "incomplete");
+        assert_eq!(payload["reasons"], json!(["daemon_unresponsive"]));
+        assert!(payload.get("target_exists").is_none());
+        assert!(
+            payload["fix"]
+                .as_str()
+                .expect("unresponsive fix should be present")
+                .contains("browser logs --session gamma --tail 20")
+        );
+    }
+
+    #[test]
+    fn session_target_state_from_response_detects_broken_target() {
+        let status = super::DaemonSessionInfo {
+            session: "gamma".to_string(),
+            port: Some(1111),
+            pid: Some(2222),
+            version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            alive: true,
+            ready: true,
+            log_path: "/tmp/gamma.log".to_string(),
+            log_exists: true,
+        };
+        let response = Response::error(
+            None,
+            "page_operation",
+            "send failed because receiver is gone",
+        );
+
+        assert_eq!(
+            super::session_target_state_from_response(&status, &response),
+            Some(super::SessionTargetState::Broken)
         );
     }
 

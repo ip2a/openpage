@@ -3078,7 +3078,9 @@ impl Element {
                 OpenPageError::PageOperation(format!("resolve frame viewport offset failed: {err}"))
             })?
             .ok_or_else(|| {
-                OpenPageError::PageOperation("element frame viewport offset unavailable".to_string())
+                OpenPageError::PageOperation(
+                    "element frame viewport offset unavailable".to_string(),
+                )
             })?;
         if x.is_none() && y.is_none() {
             let (point_x, point_y) = self

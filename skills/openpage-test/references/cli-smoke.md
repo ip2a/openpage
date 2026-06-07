@@ -54,6 +54,10 @@ Latest recheck on `2026-05-31`:
   - on the current machine recheck it reported `healthy=18`, `incompatible=0`, `incomplete=0`, `cleaned=0`, `total=18`
   - in a synthetic `OPENPAGE_HOME=/tmp/openpage-list-summary-*` smoke it reported `healthy=1`, `incompatible=0`, `incomplete=0`, `cleaned=0`, `total=1`
 - current-machine `browser list` healthy entries now also each carry `state="healthy"`
+- current-machine `browser list` active and incomplete entries now also carry:
+  - `kind="daemon_session"`
+  - `log_path`
+  - `log_exists`
 - a version-mismatch smoke now also verifies:
   - after overwriting a live session's `.version` sidecar with `0.0.1`, `browser status --session ...` returns `state="incompatible"`
   - the same session then shows up in `browser list` with `summary.incompatible=1`
@@ -62,12 +66,19 @@ Latest recheck on `2026-05-31`:
 - when `browser list` reports incomplete sessions, each `incomplete[]` entry now carries:
   - `state="incomplete"`
   - stable `reasons[]`
-- when `browser list` reports cleaned residue, each `cleaned[]` entry now carries `state="cleaned"`
+- when `browser list` reports cleaned residue, each `cleaned[]` entry now carries:
+  - `state="cleaned"`
+  - stable `reasons[]`
+  - `log_path`
+  - `log_exists`
+  - `fix`
 - a synthetic `OPENPAGE_HOME=/tmp/openpage-status-shapes-*` smoke also verified that:
   - `browser status --session healthy` returns `state="healthy"`
   - `browser status --session mismatch` returns `state="incompatible"` plus `reasons=["version_mismatch"]`
   - `browser status --session incomplete` returns `state="incomplete"` plus `reasons=["missing_version","daemon_not_ready"]`
   - `browser status --session missing` returns `state="inactive"`
+  - browser status payloads now also preserve `kind="daemon_session"`
+  - active and incomplete status payloads also preserve `log_path` / `log_exists`
 - `openpage doctor --quick` currently fails at the browser executable check:
   - in the current dirty worktree on this machine, `rust/configs.ini` currently resolves to `browser_path=/tmp/dp-browser`
   - that configured browser executable is not present on this machine
@@ -78,7 +89,7 @@ Latest recheck on `2026-05-31`:
   - `info=1`
   - `total=24`
   - `fail_ids=["browser.executable"]`
-  - `fixable_ids=["browser.executable","browser.launch"]`
+  - `fixable_ids=[]`
 - for machine-local override work, the active CLI and doctor now also honor:
   - `OPENPAGE_BROWSER_PATH=/absolute/path/to/browser`
 - `openpage doctor --quick` machine-readable summary now also carries actionable ID lists:
@@ -86,6 +97,27 @@ Latest recheck on `2026-05-31`:
   - `fail_ids`
   - `info_ids`
   - `fixable_ids`
+  - `fixable_ids` is narrower than `checks[].fix`: it only lists checks that
+    `doctor --quick --fix` can actually repair automatically
+- when `openpage doctor --quick --fix` returns `fixed[]`, each entry now carries:
+  - `check_id`
+  - `message`
+  - `auto_fixable`
+  - `source`
+  - `reason`
+  - optional `session` / `path` when the fix targets a concrete daemon session or legacy file
+  - `source="direct_fix"` means the action came from the explicit `--fix` cleanup path
+  - `source="inventory_scan"` means the action was opportunistic cleanup discovered during daemon inventory walk
+  - stable `reason` values currently include `legacy_session_json`, `incompatible_daemon`, `incomplete_unready_daemon`, and `stale_sidecars`
+  - the returned `summary` / `checks` / `inventory` are the post-fix view, not a stale pre-fix snapshot
+- concrete daemon-session `doctor checks[]` now also carry `kind="daemon_session"` so callers do not need to recover that meaning from `category + id`
+- `env.legacy_sessions` now also carries `kind="legacy_sessions"`
+- `env.openpage_home` now also carries `kind="openpage_home"`
+- `env.daemon_dir` and `daemon.dir` now also carry `kind="daemon_dir"`
+- `daemon.sessions` now also carries `kind="daemon_sessions"`
+- `browser.config` now also carries `kind="browser_config"`
+- `browser.executable` and `browser.executable.hint` now also carry `kind="browser_executable"`
+- `browser.launch` now also carries `kind="browser_launch"`
 - browser-related `doctor --quick` checks now also carry machine-readable browser-path fields:
   - `browser.config` and `browser.executable` carry `browser_path`
   - when the configured executable resolves, `browser.executable` also carries `resolved_path`
@@ -99,6 +131,7 @@ Latest recheck on `2026-05-31`:
   - `summary.total=18`
   - daemon-related `checks[]` entries now also carry `state/reasons` when the check is about a concrete session
   - those same daemon-related `checks[]` entries now also carry `session` directly
+  - daemon-related `checks[]` entries now also carry `log_path` / `log_exists`
   - healthy `sessions[]` entries currently also carry `state="healthy"`
   - any future `incomplete[]` entries now use the same stable `reasons[]` taxonomy as `browser status` / `browser logs`
 - `openpage doctor` reports the same browser executable/config failure and skips live launch after that
@@ -141,7 +174,10 @@ Interpretation:
 - `openpage browser logs --session ... --tail N` is now the active shell-level way to inspect a
   session's daemon log path and tailed stderr when a persisted log file exists.
   - it now also preserves the same shell-level `state` as `browser status`
+  - it now also preserves `kind="daemon_session"`
+  - it now also preserves the same `log_path` / `log_exists` daemon log diagnostics as `browser status`
   - if a session is incomplete, `browser logs` also preserves stable `reasons[]`
+  - `exists` remains as a compatibility alias for `log_exists`
   - with `OPENPAGE_CONTENT_BOUNDARIES=1` / `OPENPAGE_MAX_OUTPUT_CHARS`, the log `content` field
     now also gets the same boundary / truncate treatment as page text output
 - `openpage browser stop --all` is now the active shell-level way to close every daemon-backed
@@ -161,6 +197,13 @@ Interpretation:
   - `timeout`
   - `io`
   rather than scraping the human message text.
+- startup-timeout / startup-exit direct JSON failures now also preserve:
+  - `error.session`
+  - `error.fix`
+  even when the shell kind remains `io`
+- For the current shell/control-plane classification boundary, see `错误语义地图-v1.md`.
+- For the current shell/control-plane module/ownership map, see `控制面地图-v1.md`.
+- For the executable competitor-borrow checklist, see `借鉴迁移清单-v1.md`.
 
 ## Last Successful Runtime Observations
 
@@ -173,6 +216,14 @@ When the crate built successfully on `2026-05-29`, the following runtime behavio
   - `batch`
   - `doctor`
   - output boundaries via `OPENPAGE_CONTENT_BOUNDARIES` / `OPENPAGE_MAX_OUTPUT_CHARS`
+- malformed `batch` input now uses the same JSON shell as top-level parse failures:
+  - nested parse failures such as `batch "page url"` return `error.kind="invalid_input"`
+  - invalid stdin JSON for `batch` also returns `error.kind="invalid_input"`
+  - direct invalid value checks such as `zoom in --step 0` also return `error.kind="invalid_input"`
+  - daemon-side parameter validation such as `history go 0` also returns `error.kind="invalid_input"`
+  - daemon-side range / empty / missing-param validation such as `history go 999999`,
+    `find-in-page ""`, a missing required request param, or a bad navigation token also returns `error.kind="invalid_input"`
+  - semantic restrictions such as `batch cannot execute serve` stay `error.kind="unsupported_operation"`
 
 Interpretation:
 
@@ -237,6 +288,8 @@ OPENPAGE_HOME=/tmp/openpage-cli-test cargo run --manifest-path rust/Cargo.toml -
 OPENPAGE_HOME=/tmp/openpage-cli-test cargo run --manifest-path rust/Cargo.toml --bin openpage -- browser stop --session review
 ```
 
+`browser start --session ... --replace` should now behave as a real runtime restart for that named session, not just return `already_running=true`. It still preserves the named session profile unless you explicitly change the profile path.
+
 Current behavior:
 
 - named-session CLI commands now route through the same TCP daemon-backed execution path
@@ -258,6 +311,10 @@ Expected result:
 - the same top-level JSON error also carries `error.fix` when the CLI knows the next session action
 - for known session-control failures, the same top-level JSON error also carries `error.state`
   and stable `error.reasons` when applicable
+- for known transient daemon failures, the same top-level JSON error also carries
+  `error.retryable=true` plus a stable `error.suggested_action` such as `retry_same_command`
+- direct CLI daemon errors now preserve these structured fields more directly across the
+  daemon-response round trip instead of depending only on message-text reconstruction
 - when there is no known recovery step, `error.fix` is omitted instead of emitted as `null`
 - message includes `browser start --session missing`
 - no `missing.port` / `missing.pid` / `missing.version` files are created under `$OPENPAGE_HOME/daemon`

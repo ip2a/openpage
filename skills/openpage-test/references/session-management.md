@@ -49,6 +49,10 @@ Expected result:
 - the same top-level JSON error also carries `error.fix` when the CLI knows the next control-plane step
 - for known session-control failures, the same top-level JSON error also carries `error.state`
   and stable `error.reasons` when applicable
+- for known transient daemon failures, the same top-level JSON error also carries
+  `error.retryable=true` plus a stable `error.suggested_action` such as `retry_same_command`
+- direct CLI daemon errors now preserve these structured fields more directly across the
+  daemon-response round trip instead of depending only on message-text reconstruction
 - when the CLI has no such recovery hint, `error.fix` is omitted instead of emitted as `null`
 - message tells you to run `openpage browser start --session missing`
 - no new daemon sidecars should be created for that missing session
@@ -180,7 +184,7 @@ openpage snapshot --session review
 openpage browser stop --session review
 ```
 
-Use `--replace` when you want a clean restart for a known session name.
+Use `--replace` when you want to restart the runtime for a known session name while keeping that session's default profile continuity.
 
 ## Best practices
 

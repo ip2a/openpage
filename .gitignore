@@ -16,3 +16,20 @@ rust/target/
 dist/
 wheelhouse/
 target/
+
+# Local JS dependency installs
+node_modules/
+package-lock.json
+
+# Local editor / analysis state
+.idea/
+.codegraph/
+
+# Local unpacked competitor/reference projects
+参考项目/agent-browser-main/
+参考项目/agent-browser-main.zip
+参考项目/stagehand-main/
+参考项目/stagehand-main.zip
+参考项目/DrissionPage-master/.codegraph/
+package.json
+重要参考文档/

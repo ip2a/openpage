@@ -45,6 +45,7 @@ pub struct ResolvedConfig {
     pub loaded_user_config: bool,
     pub loaded_workspace_config: bool,
     pub browser_path_source: ConfigValueSource,
+    pub debugger_source: ConfigValueSource,
     pub user_data_dir_source: ConfigValueSource,
 }
 
@@ -198,6 +199,7 @@ pub fn load_resolved_config() -> OpenPageResult<ResolvedConfig> {
     let mut loaded_user = false;
     let mut loaded_workspace = false;
     let mut browser_path_source = ConfigValueSource::BuiltInDefault;
+    let mut debugger_source = ConfigValueSource::BuiltInDefault;
     let mut user_data_dir_source = ConfigValueSource::BuiltInDefault;
 
     if let Ok(custom_path) = env::var(OPENPAGE_CONFIG_ENV) {
@@ -209,6 +211,7 @@ pub fn load_resolved_config() -> OpenPageResult<ResolvedConfig> {
             &mut session,
             ConfigValueSource::WorkspaceConfig,
             &mut browser_path_source,
+            &mut debugger_source,
             &mut user_data_dir_source,
         );
         return apply_env_overrides(ResolvedConfig {
@@ -219,6 +222,7 @@ pub fn load_resolved_config() -> OpenPageResult<ResolvedConfig> {
             loaded_user_config: false,
             loaded_workspace_config: true,
             browser_path_source,
+            debugger_source,
             user_data_dir_source,
         });
     }
@@ -231,6 +235,7 @@ pub fn load_resolved_config() -> OpenPageResult<ResolvedConfig> {
             &mut session,
             ConfigValueSource::UserConfig,
             &mut browser_path_source,
+            &mut debugger_source,
             &mut user_data_dir_source,
         );
         loaded_user = true;
@@ -244,6 +249,7 @@ pub fn load_resolved_config() -> OpenPageResult<ResolvedConfig> {
             &mut session,
             ConfigValueSource::WorkspaceConfig,
             &mut browser_path_source,
+            &mut debugger_source,
             &mut user_data_dir_source,
         );
         loaded_workspace = true;
@@ -257,6 +263,7 @@ pub fn load_resolved_config() -> OpenPageResult<ResolvedConfig> {
         loaded_user_config: loaded_user,
         loaded_workspace_config: loaded_workspace,
         browser_path_source,
+        debugger_source,
         user_data_dir_source,
     })
 }
@@ -411,6 +418,7 @@ fn apply_config_file(
     session: &mut SessionOptions,
     source: ConfigValueSource,
     browser_path_source: &mut ConfigValueSource,
+    debugger_source: &mut ConfigValueSource,
     user_data_dir_source: &mut ConfigValueSource,
 ) {
     if let Some(path) = config.browser.executable_path.as_ref() {
@@ -419,9 +427,11 @@ fn apply_config_file(
     }
     if let Some(address) = config.browser.address.as_deref() {
         launch.set_address(address);
+        *debugger_source = source;
     }
     if let Some(port) = config.browser.local_port {
         launch.set_local_port(port);
+        *debugger_source = source;
     }
     if let Some(path) = config.browser.user_data_dir.as_ref() {
         launch.user_data_dir = Some(path.clone());
@@ -743,5 +753,30 @@ mod tests {
             Some(std::path::Path::new("/tmp/user-profile"))
         );
         assert_eq!(config.user_data_dir_source, ConfigValueSource::UserConfig);
+    }
+
+    #[test]
+    fn resolved_config_tracks_debugger_source() {
+        let home = temp_dir("home-debugger-source");
+        let cwd = temp_dir("cwd-debugger-source");
+        let workspace_dir = cwd.join(".openpage");
+        fs::create_dir_all(&workspace_dir).expect("create workspace dir");
+        fs::write(
+            workspace_dir.join("config.toml"),
+            "[browser]\nlocal_port = 9555\n",
+        )
+        .expect("write workspace config");
+
+        let _home_guard = EnvGuard::set("HOME", home.to_string_lossy().as_ref());
+        let _cwd_guard = CurrentDirGuard::set(&cwd);
+        unsafe {
+            std::env::remove_var(OPENPAGE_CONFIG_ENV);
+            std::env::remove_var(OPENPAGE_BROWSER_PATH_ENV);
+        }
+
+        let config = load_resolved_config().expect("load resolved config");
+        assert_eq!(config.launch.remote_debugging_port, Some(9555));
+        assert_eq!(config.launch.address.as_deref(), Some("127.0.0.1:9555"));
+        assert_eq!(config.debugger_source, ConfigValueSource::WorkspaceConfig);
     }
 }
