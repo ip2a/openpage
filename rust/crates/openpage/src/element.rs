@@ -49,17 +49,18 @@ use crate::session::{
     snapshot_fragment_root_with_base_url,
 };
 use crate::settings::{
-    blob_src_data_url_required_message, click_at_count_must_be_positive_message,
-    click_failed_hidden_or_disabled_message, click_failed_no_rect_message,
-    click_failed_should_raise, element_frame_viewport_offset_unavailable_message,
-    element_html_unavailable_message, element_no_visible_rect_message,
-    element_resource_unavailable_message, element_tag_name_unavailable_message,
-    element_top_frame_check_failed_message, frame_index_must_start_message,
-    frame_index_out_of_range_message, multi_select_action_required_message, no_new_tab_message,
-    parent_element_index_must_start_message, parent_element_level_must_start_message,
-    relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
-    resolve_frame_viewport_offset_failed_message, select_element_required_message,
-    session_backed_element_driver_target_message,
+    blob_src_data_url_required_message, browser_backed_element_only_message,
+    click_at_count_must_be_positive_message, click_failed_hidden_or_disabled_message,
+    click_failed_no_rect_message, click_failed_should_raise,
+    element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
+    element_no_visible_rect_message, element_resource_unavailable_message,
+    element_tag_name_unavailable_message, element_top_frame_check_failed_message,
+    frame_index_must_start_message, frame_index_out_of_range_message,
+    javascript_execution_timed_out_message, multi_select_action_required_message,
+    no_new_tab_message, parent_element_index_must_start_message,
+    parent_element_level_must_start_message, relative_direction_index_must_start_message,
+    resolve_element_frame_id_failed_message, resolve_frame_viewport_offset_failed_message,
+    select_element_required_message, session_backed_element_driver_target_message,
     set_file_input_requires_at_least_one_file_message, shadow_root_object_id_unavailable_message,
     unsupported_key_message, unsupported_mouse_button_message,
     value_coordinate_not_numeric_message, value_coordinate_pair_exactly_two_message,
@@ -1642,9 +1643,7 @@ impl Element {
             Some(timeout_ms) => {
                 tokio::time::timeout(Duration::from_millis(timeout_ms.max(1)), future)
                     .await
-                    .map_err(|_| {
-                        OpenPageError::Timeout("javascript execution timed out".to_string())
-                    })?
+                    .map_err(|_| OpenPageError::Timeout(javascript_execution_timed_out_message()))?
             }
             None => future.await,
         }
@@ -4020,10 +4019,9 @@ impl Element {
 impl<'a> ElementClicker<'a> {
     fn browser(&self) -> OpenPageResult<&Browser> {
         self.element.browser.as_ref().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(
-                "clicker() tab-aware helpers are only available on browser-backed elements"
-                    .to_string(),
-            )
+            OpenPageError::UnsupportedOperation(browser_backed_element_only_message(
+                "clicker() tab-aware helpers",
+            ))
         })
     }
 
@@ -4058,8 +4056,7 @@ impl<'a> ElementClicker<'a> {
     pub fn middle(&self, get_tab: bool) -> OpenPageResult<Option<Page>> {
         if get_tab && self.element.browser.as_ref().is_none() {
             return Err(OpenPageError::UnsupportedOperation(
-                "clicker().middle(get_tab=true) is only available on browser-backed elements"
-                    .to_string(),
+                browser_backed_element_only_message("clicker().middle(get_tab=true)"),
             ));
         }
         let timeout_ms = self.timeout_ms(None)?;
@@ -4122,9 +4119,9 @@ impl<'a> ElementClicker<'a> {
     ) -> OpenPageResult<bool> {
         let timeout_ms = self.timeout_ms(timeout_ms)?;
         let uploader = self.element.uploader.as_ref().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(
-                "clicker().to_upload() is only available on browser-backed elements".to_string(),
-            )
+            OpenPageError::UnsupportedOperation(browser_backed_element_only_message(
+                "clicker().to_upload()",
+            ))
         })?;
         uploader.set_files(files)?;
         if !self.left_with_options(Some(by_js), Some(timeout_ms), true)? {

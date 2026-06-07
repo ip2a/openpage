@@ -391,6 +391,13 @@ pub(crate) fn browser_backed_page_only_message(operation: &str) -> String {
     }
 }
 
+pub(crate) fn browser_backed_element_only_message(operation: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{operation} 仅适用于 browser-backed 元素"),
+        _ => format!("{operation} is only available on browser-backed elements"),
+    }
+}
+
 pub(crate) fn zoom_factor_must_be_positive_message(factor: f64) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("zoom factor 必须是有限正数，当前为 {factor}"),
@@ -1077,25 +1084,25 @@ mod tests {
         action_element_missing_clickable_rect_message,
         action_element_missing_rect_location_message, action_type_interval_non_negative_message,
         action_wait_seconds_non_negative_message, blob_src_data_url_required_message,
-        browser_backed_page_only_message, browser_connect_timeout_duration,
-        click_at_count_must_be_positive_message, click_failed_no_rect_message,
-        clipboard_secure_context_required_message, component_not_active_start_message,
-        component_not_running_message, component_not_running_with_error_message,
-        component_state_lock_poisoned_message, component_stopped_while_waiting_message,
-        cookie_name_empty_message, default_suffixes_list_path, download_not_found_message,
-        drag_in_file_path_empty_message, drag_in_requires_file_path_message,
-        driver_mode_only_message, element_frame_viewport_offset_unavailable_message,
-        element_html_unavailable_message, element_no_visible_rect_message,
-        element_resource_unavailable_message, element_tag_name_unavailable_message,
-        element_top_frame_check_failed_message, file_chooser_backend_node_missing_message,
-        frame_element_missing_frame_id_message, frame_execution_context_unavailable_message,
-        frame_html_unavailable_message, frame_index_must_start_message,
-        frame_index_out_of_range_message, invalid_auto_port_scope_message,
-        invalid_cookie_same_site_message, invalid_download_file_exists_mode_message,
-        invalid_file_url_message, invalid_load_mode_message,
-        invalid_options_manager_ini_literal_message, invalid_regex_message,
-        invalid_screencast_data_url_message, invalid_tab_index_message, invalid_url_message,
-        invalid_xpath_html_message, invalid_xpath_query_message,
+        browser_backed_element_only_message, browser_backed_page_only_message,
+        browser_connect_timeout_duration, click_at_count_must_be_positive_message,
+        click_failed_no_rect_message, clipboard_secure_context_required_message,
+        component_not_active_start_message, component_not_running_message,
+        component_not_running_with_error_message, component_state_lock_poisoned_message,
+        component_stopped_while_waiting_message, cookie_name_empty_message,
+        default_suffixes_list_path, download_not_found_message, drag_in_file_path_empty_message,
+        drag_in_requires_file_path_message, driver_mode_only_message,
+        element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
+        element_no_visible_rect_message, element_resource_unavailable_message,
+        element_tag_name_unavailable_message, element_top_frame_check_failed_message,
+        file_chooser_backend_node_missing_message, frame_element_missing_frame_id_message,
+        frame_execution_context_unavailable_message, frame_html_unavailable_message,
+        frame_index_must_start_message, frame_index_out_of_range_message,
+        invalid_auto_port_scope_message, invalid_cookie_same_site_message,
+        invalid_download_file_exists_mode_message, invalid_file_url_message,
+        invalid_load_mode_message, invalid_options_manager_ini_literal_message,
+        invalid_regex_message, invalid_screencast_data_url_message, invalid_tab_index_message,
+        invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
         invalid_xpath_segment_index_message, javascript_execution_timed_out_message,
         launched_browser_only_message, multi_select_action_required_message, no_new_tab_message,
         page_connect_timed_out_message, parent_element_index_must_start_message,
@@ -1287,6 +1294,10 @@ mod tests {
         assert_eq!(
             browser_backed_page_only_message("retry_times()"),
             "retry_times() is only available on browser-backed pages"
+        );
+        assert_eq!(
+            browser_backed_element_only_message("clicker().to_upload()"),
+            "clicker().to_upload() is only available on browser-backed elements"
         );
         assert_eq!(
             zoom_factor_must_be_positive_message(0.0),
@@ -1680,6 +1691,10 @@ mod tests {
         assert_eq!(
             browser_backed_page_only_message("retry_times()"),
             "retry_times() 仅适用于 browser-backed 页面"
+        );
+        assert_eq!(
+            browser_backed_element_only_message("clicker().to_upload()"),
+            "clicker().to_upload() 仅适用于 browser-backed 元素"
         );
         assert_eq!(
             zoom_factor_must_be_positive_message(0.0),
