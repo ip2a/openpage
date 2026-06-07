@@ -20,8 +20,23 @@ use url::Url;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::execute_page_command_async;
 use crate::settings::{
-    component_not_running_message, component_not_running_with_error_message, invalid_regex_message,
+    component_not_running_message, component_not_running_with_error_message,
+    component_state_lock_poisoned_message, invalid_regex_message,
 };
+
+fn listener_packet_state_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "listener packet state",
+        "监听包状态",
+    ))
+}
+
+fn listener_state_lock_poisoned_error() -> OpenPageError {
+    OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+        "listener state",
+        "监听器状态",
+    ))
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ListenerRequest {
@@ -196,18 +211,20 @@ struct ListenerPacketLateExtraInfo {
 
 impl ListenerPacketLateExtraInfo {
     fn set_request_extra_info(&self, extra_info: ListenerRequestExtraInfo) -> OpenPageResult<()> {
-        let mut state = self.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("listener packet state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| listener_packet_state_lock_poisoned_error())?;
         state.request_extra_info = Some(extra_info);
         self.condvar.notify_all();
         Ok(())
     }
 
     fn set_response_extra_info(&self, extra_info: ListenerResponseExtraInfo) -> OpenPageResult<()> {
-        let mut state = self.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("listener packet state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| listener_packet_state_lock_poisoned_error())?;
         state.response_extra_info = Some(extra_info);
         self.condvar.notify_all();
         Ok(())
@@ -226,9 +243,10 @@ impl ListenerPacket {
         };
 
         let deadline = timeout_ms.map(|timeout| Instant::now() + Duration::from_millis(timeout));
-        let mut state = shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("listener packet state lock poisoned".to_string())
-        })?;
+        let mut state = shared
+            .state
+            .lock()
+            .map_err(|_| listener_packet_state_lock_poisoned_error())?;
 
         loop {
             if state.response_extra_info.is_some() {
@@ -240,11 +258,10 @@ impl ListenerPacket {
 
             match deadline {
                 None => {
-                    state = shared.condvar.wait(state).map_err(|_| {
-                        OpenPageError::BrowserOperation(
-                            "listener packet state lock poisoned".to_string(),
-                        )
-                    })?;
+                    state = shared
+                        .condvar
+                        .wait(state)
+                        .map_err(|_| listener_packet_state_lock_poisoned_error())?;
                 }
                 Some(deadline) => {
                     let now = Instant::now();
@@ -252,11 +269,10 @@ impl ListenerPacket {
                         return Ok(false);
                     }
                     let wait_for = deadline.saturating_duration_since(now);
-                    let result = shared.condvar.wait_timeout(state, wait_for).map_err(|_| {
-                        OpenPageError::BrowserOperation(
-                            "listener packet state lock poisoned".to_string(),
-                        )
-                    })?;
+                    let result = shared
+                        .condvar
+                        .wait_timeout(state, wait_for)
+                        .map_err(|_| listener_packet_state_lock_poisoned_error())?;
                     state = result.0;
                     if result.1.timed_out() && state.response_extra_info.is_none() {
                         return Ok(false);
@@ -278,9 +294,10 @@ impl ListenerPacket {
             return Ok(());
         };
         let state = {
-            let state = shared.state.lock().map_err(|_| {
-                OpenPageError::BrowserOperation("listener packet state lock poisoned".to_string())
-            })?;
+            let state = shared
+                .state
+                .lock()
+                .map_err(|_| listener_packet_state_lock_poisoned_error())?;
             state.clone()
         };
         self.apply_late_extra_info_state(state);
@@ -615,9 +632,11 @@ impl Listener {
         methods: Option<Vec<String>>,
         resource_types: Option<Vec<String>>,
     ) -> OpenPageResult<()> {
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| listener_state_lock_poisoned_error())?;
 
         state.queue.clear();
         state.inflight.clear();
@@ -657,9 +676,11 @@ impl Listener {
         methods: Option<Vec<String>>,
         resource_types: Option<Vec<String>>,
     ) -> OpenPageResult<()> {
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| listener_state_lock_poisoned_error())?;
         update_listener_filters(&mut state, targets, is_regex, methods, resource_types)?;
         self.shared.condvar.notify_all();
         Ok(())
@@ -673,9 +694,11 @@ impl Listener {
     ) -> OpenPageResult<Vec<ListenerPacket>> {
         let needed = count.max(1);
         let deadline = timeout_ms.map(|timeout| Instant::now() + Duration::from_millis(timeout));
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| listener_state_lock_poisoned_error())?;
 
         if !listener_is_active(&state) {
             return Err(listener_not_running_error(&state));
@@ -692,9 +715,11 @@ impl Listener {
 
             match deadline {
                 None => {
-                    state = self.shared.condvar.wait(state).map_err(|_| {
-                        OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-                    })?;
+                    state = self
+                        .shared
+                        .condvar
+                        .wait(state)
+                        .map_err(|_| listener_state_lock_poisoned_error())?;
                 }
                 Some(deadline) => {
                     let now = Instant::now();
@@ -702,15 +727,11 @@ impl Listener {
                         break;
                     }
                     let wait_for = deadline.saturating_duration_since(now);
-                    let result =
-                        self.shared
-                            .condvar
-                            .wait_timeout(state, wait_for)
-                            .map_err(|_| {
-                                OpenPageError::BrowserOperation(
-                                    "listener state lock poisoned".to_string(),
-                                )
-                            })?;
+                    let result = self
+                        .shared
+                        .condvar
+                        .wait_timeout(state, wait_for)
+                        .map_err(|_| listener_state_lock_poisoned_error())?;
                     state = result.0;
                     if result.1.timed_out() {
                         break;
@@ -753,9 +774,11 @@ impl Listener {
     }
 
     pub fn clear(&self) -> OpenPageResult<()> {
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| listener_state_lock_poisoned_error())?;
         state.queue.clear();
         state.inflight.clear();
         state.request_extra_infos.clear();
@@ -767,9 +790,11 @@ impl Listener {
     }
 
     pub fn pause(&self, clear: bool) -> OpenPageResult<()> {
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| listener_state_lock_poisoned_error())?;
         if !state.listening {
             return Ok(());
         }
@@ -787,9 +812,11 @@ impl Listener {
     }
 
     pub fn resume(&self) -> OpenPageResult<()> {
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| listener_state_lock_poisoned_error())?;
         if !state.listening {
             return Err(listener_not_running_error(&state));
         }
@@ -804,9 +831,11 @@ impl Listener {
         targets_only: bool,
     ) -> OpenPageResult<bool> {
         let deadline = timeout_ms.map(|timeout| Instant::now() + Duration::from_millis(timeout));
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| listener_state_lock_poisoned_error())?;
 
         if !listener_is_active(&state) {
             return Err(listener_not_running_error(&state));
@@ -823,9 +852,11 @@ impl Listener {
 
             match deadline {
                 None => {
-                    state = self.shared.condvar.wait(state).map_err(|_| {
-                        OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-                    })?;
+                    state = self
+                        .shared
+                        .condvar
+                        .wait(state)
+                        .map_err(|_| listener_state_lock_poisoned_error())?;
                 }
                 Some(deadline) => {
                     let now = Instant::now();
@@ -833,15 +864,11 @@ impl Listener {
                         return Ok(listener_is_idle(&state, targets_only));
                     }
                     let wait_for = deadline.saturating_duration_since(now);
-                    let result =
-                        self.shared
-                            .condvar
-                            .wait_timeout(state, wait_for)
-                            .map_err(|_| {
-                                OpenPageError::BrowserOperation(
-                                    "listener state lock poisoned".to_string(),
-                                )
-                            })?;
+                    let result = self
+                        .shared
+                        .condvar
+                        .wait_timeout(state, wait_for)
+                        .map_err(|_| listener_state_lock_poisoned_error())?;
                     state = result.0;
                     if result.1.timed_out() {
                         return Ok(listener_is_idle(&state, targets_only));
@@ -858,9 +885,11 @@ impl Listener {
         limit: usize,
     ) -> OpenPageResult<bool> {
         let deadline = timeout_ms.map(|timeout| Instant::now() + Duration::from_millis(timeout));
-        let mut state = self.shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-        })?;
+        let mut state = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| listener_state_lock_poisoned_error())?;
 
         if !listener_is_active(&state) {
             return Err(listener_not_running_error(&state));
@@ -877,9 +906,11 @@ impl Listener {
 
             match deadline {
                 None => {
-                    state = self.shared.condvar.wait(state).map_err(|_| {
-                        OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-                    })?;
+                    state = self
+                        .shared
+                        .condvar
+                        .wait(state)
+                        .map_err(|_| listener_state_lock_poisoned_error())?;
                 }
                 Some(deadline) => {
                     let now = Instant::now();
@@ -887,15 +918,11 @@ impl Listener {
                         return Ok(listener_is_idle_with_limit(&state, targets_only, limit));
                     }
                     let wait_for = deadline.saturating_duration_since(now);
-                    let result =
-                        self.shared
-                            .condvar
-                            .wait_timeout(state, wait_for)
-                            .map_err(|_| {
-                                OpenPageError::BrowserOperation(
-                                    "listener state lock poisoned".to_string(),
-                                )
-                            })?;
+                    let result = self
+                        .shared
+                        .condvar
+                        .wait_timeout(state, wait_for)
+                        .map_err(|_| listener_state_lock_poisoned_error())?;
                     state = result.0;
                     if result.1.timed_out() {
                         return Ok(listener_is_idle_with_limit(&state, targets_only, limit));
@@ -907,9 +934,11 @@ impl Listener {
 
     pub fn stop(&self) -> OpenPageResult<()> {
         let handle = {
-            let mut state = self.shared.state.lock().map_err(|_| {
-                OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-            })?;
+            let mut state = self
+                .shared
+                .state
+                .lock()
+                .map_err(|_| listener_state_lock_poisoned_error())?;
             state.queue.clear();
             state.inflight.clear();
             state.request_extra_infos.clear();
@@ -934,9 +963,7 @@ impl Listener {
             .state
             .lock()
             .map(|state| listener_is_active(&state))
-            .map_err(|_| {
-                OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-            })
+            .map_err(|_| listener_state_lock_poisoned_error())
     }
 }
 
@@ -1045,9 +1072,10 @@ fn on_request_will_be_sent(
         .map(|frame_id| frame_id.as_ref().to_string());
     let resource_type = event.r#type.as_ref().map(resource_type_to_string);
     let matched_target = {
-        let state = shared.state.lock().map_err(|_| {
-            OpenPageError::BrowserOperation("listener state lock poisoned".to_string())
-        })?;
+        let state = shared
+            .state
+            .lock()
+            .map_err(|_| listener_state_lock_poisoned_error())?;
         if !listener_is_active(&state) {
             return Ok(());
         }
@@ -1064,7 +1092,7 @@ fn on_request_will_be_sent(
     let mut state = shared
         .state
         .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("listener state lock poisoned".to_string()))?;
+        .map_err(|_| listener_state_lock_poisoned_error())?;
     if !listener_is_active(&state) {
         return Ok(());
     }
@@ -1105,7 +1133,7 @@ fn on_request_will_be_sent_extra_info(
     let mut state = shared
         .state
         .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("listener state lock poisoned".to_string()))?;
+        .map_err(|_| listener_state_lock_poisoned_error())?;
     if !listener_is_active(&state) {
         return Ok(());
     }
@@ -1127,7 +1155,7 @@ fn on_response_received(
     let mut state = shared
         .state
         .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("listener state lock poisoned".to_string()))?;
+        .map_err(|_| listener_state_lock_poisoned_error())?;
     if !listener_is_active(&state) {
         return Ok(());
     }
@@ -1159,7 +1187,7 @@ fn on_response_received_extra_info(
     let mut state = shared
         .state
         .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("listener state lock poisoned".to_string()))?;
+        .map_err(|_| listener_state_lock_poisoned_error())?;
     if !listener_is_active(&state) {
         return Ok(());
     }
@@ -1192,7 +1220,7 @@ async fn on_loading_finished(
     let mut state = shared
         .state
         .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("listener state lock poisoned".to_string()))?;
+        .map_err(|_| listener_state_lock_poisoned_error())?;
     if !state.listening {
         return Ok(());
     }
@@ -1227,7 +1255,7 @@ fn on_loading_failed(
     let mut state = shared
         .state
         .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("listener state lock poisoned".to_string()))?;
+        .map_err(|_| listener_state_lock_poisoned_error())?;
     if !state.listening {
         return Ok(());
     }
@@ -1252,7 +1280,7 @@ fn set_listener_stopped(shared: &Arc<ListenerShared>, error: Option<String>) -> 
     let mut state = shared
         .state
         .lock()
-        .map_err(|_| OpenPageError::BrowserOperation("listener state lock poisoned".to_string()))?;
+        .map_err(|_| listener_state_lock_poisoned_error())?;
     state.listening = false;
     state.paused = false;
     state.task = None;
@@ -1615,8 +1643,9 @@ mod tests {
         ListenerAssociatedCookie, ListenerFilters, ListenerRequest, ListenerRequestExtraInfo,
         ListenerResponse, ListenerResponseExtraInfo, ListenerShared, ListenerState, PendingPacket,
         apply_response_extra_info, headers_to_map, listener_not_running_error,
-        listener_request_extra_info_from_cdp, listener_response_extra_info_from_cdp,
-        listener_response_from_cdp, on_loading_failed, on_request_will_be_sent,
+        listener_packet_state_lock_poisoned_error, listener_request_extra_info_from_cdp,
+        listener_response_extra_info_from_cdp, listener_response_from_cdp,
+        listener_state_lock_poisoned_error, on_loading_failed, on_request_will_be_sent,
         on_request_will_be_sent_extra_info, on_response_received_extra_info,
         preserve_existing_response_extra_info, update_listener_filters,
     };
@@ -1719,6 +1748,16 @@ mod tests {
         state.last_error = Some("boom".to_string());
         let english_not_running = listener_not_running_error(&state).to_string();
         assert!(english_not_running.contains("listener is not running: boom"));
+        assert!(
+            listener_state_lock_poisoned_error()
+                .to_string()
+                .contains("listener state lock poisoned")
+        );
+        assert!(
+            listener_packet_state_lock_poisoned_error()
+                .to_string()
+                .contains("listener packet state lock poisoned")
+        );
 
         Settings::set_language("cn");
 
@@ -1729,6 +1768,16 @@ mod tests {
 
         let chinese_not_running = listener_not_running_error(&state).to_string();
         assert!(chinese_not_running.contains("监听器未运行: boom"));
+        assert!(
+            listener_state_lock_poisoned_error()
+                .to_string()
+                .contains("监听器状态锁已损坏")
+        );
+        assert!(
+            listener_packet_state_lock_poisoned_error()
+                .to_string()
+                .contains("监听包状态锁已损坏")
+        );
     }
 
     #[test]
