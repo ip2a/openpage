@@ -3702,7 +3702,7 @@ impl WebPage {
     pub fn scroll_position(&self) -> OpenPageResult<(f64, f64)> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "scroll_position() is only available in driver mode".to_string(),
+                driver_mode_only_message("scroll_position()"),
             ));
         }
         self.driver.scroll_position()
@@ -3711,7 +3711,7 @@ impl WebPage {
     pub fn viewport_size(&self) -> OpenPageResult<Option<(f64, f64)>> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "viewport_size() is only available in driver mode".to_string(),
+                driver_mode_only_message("viewport_size()"),
             ));
         }
         self.driver.viewport_size()
@@ -3720,7 +3720,7 @@ impl WebPage {
     pub fn refresh(&self, ignore_cache: bool) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "refresh() is only available in driver mode".to_string(),
+                driver_mode_only_message("refresh()"),
             ));
         }
         self.driver.refresh(ignore_cache)
@@ -3729,7 +3729,7 @@ impl WebPage {
     pub fn back(&self, steps: usize) -> OpenPageResult<bool> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "back() is only available in driver mode".to_string(),
+                driver_mode_only_message("back()"),
             ));
         }
         self.driver.back(steps)
@@ -3738,7 +3738,7 @@ impl WebPage {
     pub fn forward(&self, steps: usize) -> OpenPageResult<bool> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "forward() is only available in driver mode".to_string(),
+                driver_mode_only_message("forward()"),
             ));
         }
         self.driver.forward(steps)
@@ -6410,6 +6410,52 @@ mod tests {
         let _ = page.quit();
         let _ = fs::remove_dir_all(&temp_dir);
         result.expect("webpage session capture errors should localize");
+    }
+
+    #[test]
+    fn webpage_session_viewport_navigation_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) = launch_headless_test_webpage(
+            "webpage-session-viewport-navigation-errors",
+            WebMode::Session,
+        )
+        .expect("launch headless webpage");
+        let result = (|| -> crate::OpenPageResult<()> {
+            let english = page
+                .scroll_position()
+                .expect_err("session-mode WebPage scroll_position should fail");
+            assert!(matches!(
+                english,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("scroll_position() is only available in driver mode")
+            ));
+
+            Settings::set_language("cn");
+
+            let chinese_viewport = page
+                .viewport_size()
+                .expect_err("session-mode WebPage viewport_size should fail");
+            assert!(matches!(
+                chinese_viewport,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("viewport_size() 仅在 driver 模式可用")
+            ));
+            let chinese_back = page
+                .back(1)
+                .expect_err("session-mode WebPage back should fail");
+            assert!(matches!(
+                chinese_back,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("back() 仅在 driver 模式可用")
+            ));
+            Ok(())
+        })();
+
+        let _ = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+        result.expect("webpage session viewport/navigation errors should localize");
     }
 
     #[test]
