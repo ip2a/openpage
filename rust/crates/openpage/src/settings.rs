@@ -469,6 +469,13 @@ pub(crate) fn download_directory_create_failed_message(path: &Path, err: &str) -
     }
 }
 
+pub(crate) fn browser_command_failed_message(operation: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("浏览器命令 {operation} 执行失败: {err}"),
+        _ => format!("browser command {operation} failed: {err}"),
+    }
+}
+
 pub(crate) fn invalid_options_manager_ini_literal_message(detail: &str) -> String {
     localized_error_with_detail(
         "invalid options manager ini literal",

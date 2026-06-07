@@ -32,9 +32,10 @@ use crate::download::{
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::Page;
 use crate::settings::{
-    browser_config_path_failed_message, browser_connect_timeout_duration,
-    browser_temp_dir_create_failed_message, browser_user_data_dir_reset_failed_message,
-    cdp_timeout_duration, component_state_lock_poisoned_message, download_canceled_message,
+    browser_command_failed_message, browser_config_path_failed_message,
+    browser_connect_timeout_duration, browser_temp_dir_create_failed_message,
+    browser_user_data_dir_reset_failed_message, cdp_timeout_duration,
+    component_state_lock_poisoned_message, download_canceled_message,
     download_did_not_complete_in_time_message, download_directory_create_failed_message,
     download_file_operation_failed_message, download_frame_not_mapped_to_tab_message,
     download_path_not_configured_message, download_skipped_without_final_path_message,
@@ -3947,7 +3948,12 @@ where
     tokio_timeout(timeout, future)
         .await
         .map_err(|_| timeout_error(operation, timeout_ms))?
-        .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))
+        .map_err(|err| {
+            OpenPageError::BrowserOperation(browser_command_failed_message(
+                operation,
+                &err.to_string(),
+            ))
+        })
 }
 
 fn download_source_path(info: &DownloadInfo, download_dir: &Path) -> OpenPageResult<PathBuf> {
@@ -4310,8 +4316,9 @@ mod tests {
         page_download_settings_lock_poisoned_error, reset_browser_user_data_dir,
         resolve_browser_tab_target_id, resolve_browser_tab_target_ids,
         resolve_launch_options_ini_path, resolve_launch_user_data_dir, resolved_download_name,
-        select_browser_tab_info_by_selector, system_user_data_dir, unique_download_path,
-        validate_auto_port_scope, write_chrome_flags, write_chrome_prefs,
+        run_browser_future_with_cdp_timeout, select_browser_tab_info_by_selector,
+        system_user_data_dir, unique_download_path, validate_auto_port_scope, write_chrome_flags,
+        write_chrome_prefs,
     };
     use crate::settings::{
         download_canceled_message, download_frame_not_mapped_to_tab_message,
@@ -4570,6 +4577,33 @@ mod tests {
         assert!(chinese.contains("parent-file"));
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn browser_command_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+
+        let english = runtime
+            .block_on(run_browser_future_with_cdp_timeout(
+                async { Err::<(), _>("boom") },
+                "Browser::unit_test()",
+            ))
+            .expect_err("future error should fail")
+            .to_string();
+        assert!(english.contains("browser command Browser::unit_test() failed: boom"));
+
+        Settings::set_language("cn");
+
+        let chinese = runtime
+            .block_on(run_browser_future_with_cdp_timeout(
+                async { Err::<(), _>("boom") },
+                "Browser::unit_test()",
+            ))
+            .expect_err("future error should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains("浏览器命令 Browser::unit_test() 执行失败: boom"));
     }
 
     fn launch_headless_test_browser(
