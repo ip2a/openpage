@@ -4842,7 +4842,7 @@ impl WebPage {
     pub fn add_init_js(&self, script: &str) -> OpenPageResult<String> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "add_init_js() is only available in driver mode".to_string(),
+                driver_mode_only_message("add_init_js()"),
             ));
         }
         self.driver.add_init_js(script)
@@ -4851,7 +4851,7 @@ impl WebPage {
     pub fn remove_init_js(&self, script_id: Option<&str>) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "remove_init_js() is only available in driver mode".to_string(),
+                driver_mode_only_message("remove_init_js()"),
             ));
         }
         self.driver.remove_init_js(script_id)
@@ -4866,7 +4866,7 @@ impl WebPage {
     ) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "clear_cache() is only available in driver mode".to_string(),
+                driver_mode_only_message("clear_cache()"),
             ));
         }
         self.driver
@@ -4882,7 +4882,7 @@ impl WebPage {
     ) -> OpenPageResult<String> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "set_permission() is only available in driver mode".to_string(),
+                driver_mode_only_message("set_permission()"),
             ));
         }
         self.driver
@@ -4892,7 +4892,7 @@ impl WebPage {
     pub fn reset_permissions(&self) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "reset_permissions() is only available in driver mode".to_string(),
+                driver_mode_only_message("reset_permissions()"),
             ));
         }
         self.driver.reset_permissions()
@@ -4901,7 +4901,7 @@ impl WebPage {
     pub fn clipboard_read_text(&self) -> OpenPageResult<String> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "clipboard_read_text() is only available in driver mode".to_string(),
+                driver_mode_only_message("clipboard_read_text()"),
             ));
         }
         self.driver.clipboard_read_text()
@@ -4910,7 +4910,7 @@ impl WebPage {
     pub fn clipboard_write_text(&self, text: &str) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "clipboard_write_text() is only available in driver mode".to_string(),
+                driver_mode_only_message("clipboard_write_text()"),
             ));
         }
         self.driver.clipboard_write_text(text)
@@ -6018,6 +6018,58 @@ mod tests {
         let _ = page.quit();
         let _ = fs::remove_dir_all(&temp_dir);
         result.expect("webpage session script/cdp errors should localize");
+    }
+
+    #[test]
+    fn webpage_session_tool_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-session-tool-errors", WebMode::Session)
+                .expect("launch headless webpage");
+        let result = (|| -> crate::OpenPageResult<()> {
+            let english = page
+                .add_init_js("window.__openpageInit = true;")
+                .expect_err("session-mode WebPage add_init_js should fail");
+            assert!(matches!(
+                english,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("add_init_js() is only available in driver mode")
+            ));
+
+            Settings::set_language("cn");
+
+            let chinese_cache = page
+                .clear_cache(true, true, true, true)
+                .expect_err("session-mode WebPage clear_cache should fail");
+            assert!(matches!(
+                chinese_cache,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("clear_cache() 仅在 driver 模式可用")
+            ));
+            let chinese_permission = page
+                .set_permission("clipboard-read", "granted", None, None)
+                .expect_err("session-mode WebPage set_permission should fail");
+            assert!(matches!(
+                chinese_permission,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("set_permission() 仅在 driver 模式可用")
+            ));
+            let chinese_clipboard = page
+                .clipboard_write_text("openpage")
+                .expect_err("session-mode WebPage clipboard_write_text should fail");
+            assert!(matches!(
+                chinese_clipboard,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("clipboard_write_text() 仅在 driver 模式可用")
+            ));
+            Ok(())
+        })();
+
+        let _ = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+        result.expect("webpage session tool errors should localize");
     }
 
     #[test]
