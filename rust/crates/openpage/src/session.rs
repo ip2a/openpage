@@ -38,9 +38,10 @@ use crate::settings::{
     cookie_list_item_single_message, cookie_name_empty_message, cookie_name_value_required_message,
     cookie_object_requires_assignment_message, cookie_requires_url_or_domain_message,
     cookie_text_requires_assignment_message, cookie_text_separator_conflict_message,
-    cookie_value_empty_message, default_none_element_runtime_config,
-    invalid_cookie_field_boolean_message, invalid_cookie_text_missing_value_message,
-    invalid_css_selector_message, invalid_file_url_message, invalid_session_ini_boolean_message,
+    cookie_value_empty_message, css_locator_unsupported_for_node_queries_message,
+    default_none_element_runtime_config, invalid_cookie_field_boolean_message,
+    invalid_cookie_text_missing_value_message, invalid_css_selector_message,
+    invalid_file_url_message, invalid_session_ini_boolean_message,
     invalid_session_ini_field_expected_message, invalid_session_ini_field_message,
     invalid_session_ini_python_string_message, invalid_session_proxy_message, invalid_url_message,
     invalid_xpath_html_message, invalid_xpath_query_message, invalid_xpath_segment_index_message,
@@ -5209,11 +5210,9 @@ fn parse_optional_locator(locator: Option<&str>) -> OpenPageResult<Option<Locato
 fn parse_optional_xpath_locator(locator: Option<&str>) -> OpenPageResult<Option<Locator>> {
     let locator = parse_optional_locator(locator)?;
     match locator {
-        Some(locator) if locator.kind() == LocatorKind::Css => {
-            Err(OpenPageError::UnsupportedLocator(
-                "css locator is not supported for node queries".to_string(),
-            ))
-        }
+        Some(locator) if locator.kind() == LocatorKind::Css => Err(
+            OpenPageError::UnsupportedLocator(css_locator_unsupported_for_node_queries_message()),
+        ),
         other => Ok(other),
     }
 }
@@ -5224,11 +5223,9 @@ where
 {
     let locator = parse_optional_locator_input(locator)?;
     match locator {
-        Some(locator) if locator.kind() == LocatorKind::Css => {
-            Err(OpenPageError::UnsupportedLocator(
-                "css locator is not supported for node queries".to_string(),
-            ))
-        }
+        Some(locator) if locator.kind() == LocatorKind::Css => Err(
+            OpenPageError::UnsupportedLocator(css_locator_unsupported_for_node_queries_message()),
+        ),
         other => Ok(other),
     }
 }
@@ -8753,6 +8750,33 @@ mod tests {
             .to_string();
         assert!(chinese.contains("没有找到元素"));
         assert!(chinese.contains("无效的 css selector `[`"));
+    }
+
+    #[test]
+    fn snapshot_node_query_css_rejection_follows_language_setting() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
+        let root = snapshot_fragment_root(
+            r#"<div id="root">alpha<span id="a">a</span><span id="b">b</span></div>"#,
+        )
+        .expect("fragment root should exist");
+
+        let english = root
+            .children_nodes_with(Some("span"))
+            .expect_err("css locators should be rejected for node queries")
+            .to_string();
+        assert!(english.contains("unsupported locator syntax"));
+        assert!(english.contains("css locator is not supported for node queries"));
+
+        Settings::set_language("cn");
+
+        let chinese = root
+            .children_nodes_with(Some("span"))
+            .expect_err("css node query rejection should localize")
+            .to_string();
+        assert!(chinese.contains("定位符语法不受支持"));
+        assert!(chinese.contains("node 查询不支持 css locator"));
     }
 
     #[test]

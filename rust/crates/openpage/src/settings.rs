@@ -879,6 +879,13 @@ pub(crate) fn invalid_css_selector_message(query: &str, detail: &str) -> String 
     }
 }
 
+pub(crate) fn css_locator_unsupported_for_node_queries_message() -> String {
+    localized_message(
+        "css locator is not supported for node queries",
+        "node 查询不支持 css locator",
+    )
+}
+
 pub(crate) fn invalid_session_ini_field_message(field: &str, detail: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("session options ini 中的 {field} 无效: {detail}"),
