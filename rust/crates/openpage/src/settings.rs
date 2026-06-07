@@ -1360,6 +1360,13 @@ pub(crate) fn invalid_regex_message(
     }
 }
 
+pub(crate) fn intercepted_request_no_longer_pending_message(request_id: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("被拦截请求 `{request_id}` 已不再等待处理"),
+        _ => format!("intercepted request `{request_id}` is no longer pending"),
+    }
+}
+
 pub(crate) fn target_tab_not_found_message() -> String {
     localized_message("target tab not found", "没有找到指定标签页")
 }

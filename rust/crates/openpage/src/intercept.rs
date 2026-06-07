@@ -20,7 +20,8 @@ use crate::page::{execute_page_command_async, execute_page_command_blocking};
 use crate::settings::{
     component_not_active_start_message, component_not_running_message,
     component_not_running_with_error_message, component_state_lock_poisoned_message,
-    component_stopped_while_waiting_message, invalid_regex_message,
+    component_stopped_while_waiting_message, intercepted_request_no_longer_pending_message,
+    invalid_regex_message,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -596,9 +597,9 @@ where
             .lock()
             .map_err(|_| intercept_state_lock_poisoned_error())?;
         if !state.pending_request_ids.remove(request_id) {
-            return Err(OpenPageError::BrowserOperation(format!(
-                "intercepted request `{request_id}` is no longer pending"
-            )));
+            return Err(OpenPageError::BrowserOperation(
+                intercepted_request_no_longer_pending_message(request_id),
+            ));
         }
     }
 
@@ -704,9 +705,14 @@ fn resource_type_to_string(value: &ResourceType) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use crate::settings::{Settings, scoped_test_settings};
 
-    use super::{InterceptFilters, InterceptState, interceptor_not_running_error};
+    use super::{
+        InterceptFilters, InterceptShared, InterceptState, interceptor_not_running_error,
+        with_pending_request,
+    };
 
     #[test]
     fn intercept_errors_follow_language_setting() {
@@ -723,6 +729,12 @@ mod tests {
         let english_not_running = interceptor_not_running_error(&state).to_string();
         assert!(english_not_running.contains("interceptor is not running: boom"));
 
+        let shared = Arc::new(InterceptShared::new());
+        let english_pending = with_pending_request(&shared, "req-1", || Ok(()))
+            .expect_err("missing pending request should fail")
+            .to_string();
+        assert!(english_pending.contains("intercepted request `req-1` is no longer pending"));
+
         Settings::set_language("cn");
 
         let chinese_regex = InterceptFilters::new(Some(vec!["(".to_string()]), true, None, None)
@@ -732,5 +744,10 @@ mod tests {
 
         let chinese_not_running = interceptor_not_running_error(&state).to_string();
         assert!(chinese_not_running.contains("拦截器未运行: boom"));
+
+        let chinese_pending = with_pending_request(&shared, "req-1", || Ok(()))
+            .expect_err("missing pending request should fail in Chinese")
+            .to_string();
+        assert!(chinese_pending.contains("被拦截请求 `req-1` 已不再等待处理"));
     }
 }
