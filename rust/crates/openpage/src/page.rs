@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -3200,6 +3200,7 @@ impl Page {
             return Ok(fresh_config);
         }
 
+        self.prune_frame_none_element_configs()?;
         let mut configs = self.frame_none_element_configs.lock().map_err(|_| {
             OpenPageError::PageOperation(component_state_lock_poisoned_message(
                 "frame none element config cache",
@@ -3211,6 +3212,19 @@ impl Page {
         }
         configs.insert(frame_id.to_string(), Arc::clone(&fresh_config));
         Ok(fresh_config)
+    }
+
+    fn prune_frame_none_element_configs(&self) -> OpenPageResult<()> {
+        let live_frame_ids: HashSet<String> =
+            self.download_scope_frame_ids()?.into_iter().collect();
+        let mut configs = self.frame_none_element_configs.lock().map_err(|_| {
+            OpenPageError::PageOperation(component_state_lock_poisoned_message(
+                "frame none element config cache",
+                "frame 未找到元素配置缓存",
+            ))
+        })?;
+        configs.retain(|frame_id, _| live_frame_ids.contains(frame_id));
+        Ok(())
     }
 
     pub fn set_none_element_value(&self, value: Option<&str>, on_off: bool) -> OpenPageResult<()> {
@@ -10917,6 +10931,74 @@ mod tests {
             panic!("close headless browser: {err}");
         }
         result.expect("singleton frame runtime-state regression");
+    }
+
+    #[test]
+    fn singleton_frame_runtime_cache_prunes_detached_frames() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(true);
+
+        let (browser, temp_dir) =
+            launch_headless_test_browser("frame-cache-prune").expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="demo-frame"
+                            srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let frame = page.get_frame_context("css:#demo-frame")?;
+            assert!(frame.wait_for_doc_loaded(5_000)?);
+            let old_frame_id = frame.id().to_string();
+            frame.set_none_element_value(Some("stale"), true)?;
+
+            assert!(
+                page.frame_none_element_configs
+                    .lock()
+                    .expect("frame runtime cache")
+                    .contains_key(&old_frame_id)
+            );
+
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="replacement-frame"
+                            srcdoc="<html><body><div id='inside'>fresh</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let replacement = page.get_frame_context("css:#replacement-frame")?;
+            assert!(replacement.wait_for_doc_loaded(5_000)?);
+            assert_ne!(replacement.id(), old_frame_id);
+
+            let configs = page
+                .frame_none_element_configs
+                .lock()
+                .expect("frame runtime cache");
+            assert!(!configs.contains_key(&old_frame_id));
+            assert!(configs.contains_key(replacement.id()));
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("detached frame runtime cache prune regression");
     }
 
     #[test]
