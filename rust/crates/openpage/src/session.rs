@@ -47,14 +47,15 @@ use crate::settings::{
     missing_session_ini_field_message, parent_element_index_must_start_message,
     parent_element_level_must_start_message, parent_element_not_found_message,
     session_cert_read_failed_message, session_cookie_requires_url_or_domain_message,
-    session_download_status_message, session_identity_parse_failed_message,
-    session_local_file_failed_message, session_page_no_current_url_message,
-    session_page_no_loaded_document_message, session_request_failed_message,
-    session_response_body_read_failed_message, snapshot_fragment_root_not_found_message,
-    snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
-    unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
-    unterminated_session_ini_python_string_message, xpath_node_no_longer_exists_message,
-    xpath_path_not_found_message, xpath_segment_not_found_message,
+    session_download_file_failed_message, session_download_status_message,
+    session_identity_parse_failed_message, session_local_file_failed_message,
+    session_page_no_current_url_message, session_page_no_loaded_document_message,
+    session_request_failed_message, session_response_body_read_failed_message,
+    snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
+    snapshot_node_no_longer_exists_message, unsupported_snapshot_node_kind_message,
+    unsupported_xpath_path_message, unterminated_session_ini_python_string_message,
+    xpath_node_no_longer_exists_message, xpath_path_not_found_message,
+    xpath_segment_not_found_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -2827,11 +2828,21 @@ impl SessionPage {
                         let target_path = self
                             .resolve_session_download_target(explicit_target.as_ref(), &filename)?;
                         if let Some(parent) = target_path.parent() {
-                            std::fs::create_dir_all(parent)
-                                .map_err(|err| OpenPageError::Io(err.to_string()))?;
+                            std::fs::create_dir_all(parent).map_err(|err| {
+                                OpenPageError::Io(session_download_file_failed_message(
+                                    "create parent directory",
+                                    &parent.display().to_string(),
+                                    &err.to_string(),
+                                ))
+                            })?;
                         }
-                        std::fs::write(&target_path, raw_data.as_ref())
-                            .map_err(|err| OpenPageError::Io(err.to_string()))?;
+                        std::fs::write(&target_path, raw_data.as_ref()).map_err(|err| {
+                            OpenPageError::Io(session_download_file_failed_message(
+                                "write",
+                                &target_path.display().to_string(),
+                                &err.to_string(),
+                            ))
+                        })?;
 
                         let path = target_path.display().to_string();
                         let filename = target_path
@@ -7428,6 +7439,43 @@ mod tests {
         let _ = handle.join().expect("server thread");
         let _ = fs::remove_file(&target_path);
         let _ = fs::remove_dir_all(&target_dir);
+    }
+
+    #[test]
+    fn session_download_file_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        let page = SessionPage::new(SessionOptions {
+            retry_times: 0,
+            ..SessionOptions::default()
+        })
+        .expect("session page");
+        let blocker = make_temp_file("session-download-blocker", "not a directory");
+        let target_path = blocker.join("payload.bin");
+
+        let (english_address, english_handle) = spawn_capture_server("200 OK", "payload");
+        let english_url = format!("{english_address}/payload.bin");
+        let english = page
+            .download_to(&english_url, &target_path)
+            .expect_err("download parent directory creation should fail")
+            .to_string();
+        assert!(english.contains("failed to create parent directory session download file"));
+        assert!(english.contains(&blocker.display().to_string()));
+        let _ = english_handle.join();
+
+        Settings::set_language("cn");
+
+        let (chinese_address, chinese_handle) = spawn_capture_server("200 OK", "payload");
+        let chinese_url = format!("{chinese_address}/payload.bin");
+        let chinese = page
+            .download_to(&chinese_url, &target_path)
+            .expect_err("download parent directory creation should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains("session 下载文件 create parent directory 失败"));
+        assert!(chinese.contains(&blocker.display().to_string()));
+        let _ = chinese_handle.join();
+
+        let _ = fs::remove_file(&blocker);
     }
 
     #[test]

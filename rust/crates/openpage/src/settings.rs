@@ -970,6 +970,13 @@ pub(crate) fn session_local_file_failed_message(action: &str, path: &str, err: &
     }
 }
 
+pub(crate) fn session_download_file_failed_message(action: &str, path: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("session 下载文件 {action} 失败 {path}: {err}"),
+        _ => format!("failed to {action} session download file {path}: {err}"),
+    }
+}
+
 pub(crate) fn select_element_required_message() -> String {
     localized_message(
         "select() is only available for <select> elements",
