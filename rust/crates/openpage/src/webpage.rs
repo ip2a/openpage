@@ -4113,6 +4113,18 @@ impl WebPage {
         }
     }
 
+    pub fn cookie_header(&self) -> OpenPageResult<Option<String>> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.cookie_header(),
+            WebMode::Session => {
+                let Some(url) = self.session.url()? else {
+                    return Ok(None);
+                };
+                self.session.cookie_header(&url)
+            }
+        }
+    }
+
     pub fn set_cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()>
     where
         C: Into<CookieInput<'a>>,
@@ -4120,6 +4132,13 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.driver.set_cookies(cookies),
             WebMode::Session => self.session.set_cookies(cookies),
+        }
+    }
+
+    pub fn set_cookie_header(&self, url: &str, cookie_header: &str) -> OpenPageResult<()> {
+        match self.mode()? {
+            WebMode::Driver => self.driver.set_cookie_header(url, cookie_header),
+            WebMode::Session => self.session.set_cookie_header(url, cookie_header),
         }
     }
 
@@ -6094,8 +6113,11 @@ fn webpage_timeout_seconds_to_millis(seconds: f64) -> OpenPageResult<u64> {
 mod tests {
     use chromiumoxide::cdp::browser_protocol::emulation::SetDeviceMetricsOverrideParams;
     use std::fs;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
     use std::path::{Path, PathBuf};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::thread;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use serde_json::{Value, json};
 
@@ -6145,6 +6167,42 @@ mod tests {
                 path.display()
             ))
         })
+    }
+
+    fn spawn_cookie_site() -> (u16, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind cookie server");
+        listener
+            .set_nonblocking(true)
+            .expect("set cookie server nonblocking");
+        let port = listener.local_addr().expect("cookie server addr").port();
+        let handle = thread::spawn(move || {
+            let html = "<!doctype html><html><body id=\"root\">cookie</body></html>";
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < deadline {
+                let (mut stream, _) = match listener.accept() {
+                    Ok(pair) => pair,
+                    Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(20));
+                        continue;
+                    }
+                    Err(_) => break,
+                };
+                let mut buffer = [0_u8; 4096];
+                let Ok(read) = stream.read(&mut buffer) else {
+                    continue;
+                };
+                if read == 0 {
+                    continue;
+                }
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n{html}",
+                    html.len()
+                );
+                break;
+            }
+        });
+        (port, handle)
     }
 
     #[test]
@@ -9083,19 +9141,80 @@ mod tests {
             let _ = page.set_cookies(&cookie);
             let _ = page.set_cookies(&cookies);
             let _ = page.set_cookies(&cookie_json);
+            let _ = page.cookie_header();
+            let _ = page.set_cookie_header("https://example.test/", "sid=abc");
 
             let _ = web_page.set_cookies("sid=abc; domain=.example.test; path=/");
             let _ = web_page.set_cookies(&cookie);
             let _ = web_page.set_cookies(&cookies);
             let _ = web_page.set_cookies(&cookie_json);
+            let _ = web_page.cookie_header();
+            let _ = web_page.set_cookie_header("https://example.test/", "sid=abc");
 
             let _ = session_page.set_cookies("sid=abc; domain=.example.test; path=/");
             let _ = session_page.set_cookies(&cookie);
             let _ = session_page.set_cookies(&cookies);
             let _ = session_page.set_cookies(&cookie_json);
+            let _ = session_page.cookie_header("https://example.test/");
+            let _ = session_page.set_cookie_header("https://example.test/", "sid=abc");
         }
 
         let _ = assert_calls as fn(&Page, &WebPage, &SessionPage);
+    }
+
+    #[test]
+    fn webpage_cookie_header_wrappers_follow_current_mode() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (driver_port, driver_server) = spawn_cookie_site();
+        let (driver_page, driver_temp_dir) =
+            launch_headless_test_webpage("cookie-header-driver", WebMode::Driver)
+                .expect("launch driver webpage");
+        let driver_result = (|| -> OpenPageResult<()> {
+            let url = format!("http://localhost:{driver_port}/");
+            driver_page.goto(&url)?;
+            assert!(driver_page.wait_for_doc_loaded(5_000)?);
+
+            driver_page.set_cookie_header(&url, "driver_sid=abc")?;
+            let cookie_header = driver_page.cookie_header()?.unwrap_or_default();
+            assert!(
+                cookie_header.contains("driver_sid=abc"),
+                "driver cookie header should include driver_sid=abc, got {cookie_header}"
+            );
+            Ok(())
+        })();
+        let driver_close_result = driver_page.quit();
+        let _ = fs::remove_dir_all(&driver_temp_dir);
+        let _ = driver_server.join();
+        if let Err(err) = driver_close_result {
+            panic!("close driver webpage: {err}");
+        }
+        driver_result.expect("driver mode cookie header wrapper regression");
+
+        let (session_port, session_server) = spawn_cookie_site();
+        let (session_page, session_temp_dir) =
+            launch_headless_test_webpage("cookie-header-session", WebMode::Session)
+                .expect("launch session webpage");
+        let session_result = (|| -> OpenPageResult<()> {
+            let url = format!("http://localhost:{session_port}/");
+            session_page.get(&url)?;
+
+            session_page.set_cookie_header(&url, "session_sid=abc")?;
+            let cookie_header = session_page.cookie_header()?.unwrap_or_default();
+            assert!(
+                cookie_header.contains("session_sid=abc"),
+                "session cookie header should include session_sid=abc, got {cookie_header}"
+            );
+            Ok(())
+        })();
+        let session_close_result = session_page.quit();
+        let _ = fs::remove_dir_all(&session_temp_dir);
+        let _ = session_server.join();
+        if let Err(err) = session_close_result {
+            panic!("close session webpage: {err}");
+        }
+        session_result.expect("session mode cookie header wrapper regression");
     }
 
     #[test]
