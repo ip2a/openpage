@@ -34,21 +34,25 @@ use crate::locator::{
     parse_locator_batch_input, parse_optional_locator_input,
 };
 use crate::settings::{
-    component_state_lock_poisoned_message, cookie_name_empty_message,
-    cookie_requires_url_or_domain_message, cookie_text_separator_conflict_message,
-    cookie_value_empty_message, default_none_element_runtime_config, invalid_file_url_message,
-    invalid_session_ini_boolean_message, invalid_session_ini_field_expected_message,
-    invalid_session_ini_field_message, invalid_session_ini_python_string_message,
-    invalid_url_message, invalid_xpath_html_message, invalid_xpath_query_message,
-    invalid_xpath_segment_index_message, missing_session_ini_field_message,
-    parent_element_index_must_start_message, parent_element_level_must_start_message,
-    parent_element_not_found_message, session_cert_read_failed_message,
-    session_cookie_requires_url_or_domain_message, session_page_no_current_url_message,
-    session_page_no_loaded_document_message, snapshot_fragment_root_not_found_message,
-    snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
-    unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
-    unterminated_session_ini_python_string_message, xpath_node_no_longer_exists_message,
-    xpath_path_not_found_message, xpath_segment_not_found_message,
+    component_state_lock_poisoned_message, cookie_input_type_message,
+    cookie_list_item_single_message, cookie_name_empty_message, cookie_name_value_required_message,
+    cookie_object_requires_assignment_message, cookie_requires_url_or_domain_message,
+    cookie_text_requires_assignment_message, cookie_text_separator_conflict_message,
+    cookie_value_empty_message, default_none_element_runtime_config,
+    invalid_cookie_field_boolean_message, invalid_cookie_text_missing_value_message,
+    invalid_file_url_message, invalid_session_ini_boolean_message,
+    invalid_session_ini_field_expected_message, invalid_session_ini_field_message,
+    invalid_session_ini_python_string_message, invalid_url_message, invalid_xpath_html_message,
+    invalid_xpath_query_message, invalid_xpath_segment_index_message,
+    missing_session_ini_field_message, parent_element_index_must_start_message,
+    parent_element_level_must_start_message, parent_element_not_found_message,
+    session_cert_read_failed_message, session_cookie_requires_url_or_domain_message,
+    session_page_no_current_url_message, session_page_no_loaded_document_message,
+    snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
+    snapshot_node_no_longer_exists_message, unsupported_snapshot_node_kind_message,
+    unsupported_xpath_path_message, unterminated_session_ini_python_string_message,
+    xpath_node_no_longer_exists_message, xpath_path_not_found_message,
+    xpath_segment_not_found_message,
 };
 
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
@@ -1247,9 +1251,9 @@ fn parse_cookie_text_input(text: &str) -> OpenPageResult<Vec<SessionCookieParam>
             continue;
         }
         let Some(value) = value else {
-            return Err(OpenPageError::Http(format!(
-                "invalid cookie text: `{key}` is missing a value"
-            )));
+            return Err(OpenPageError::Http(
+                invalid_cookie_text_missing_value_message(&key),
+            ));
         };
         cookies.push(cookie_draft_to_param(CookieDraft {
             name: key,
@@ -1264,7 +1268,7 @@ fn parse_cookie_text_input(text: &str) -> OpenPageResult<Vec<SessionCookieParam>
     }
     if cookies.is_empty() {
         return Err(OpenPageError::Http(
-            "cookie text must contain at least one cookie assignment".to_string(),
+            cookie_text_requires_assignment_message(),
         ));
     }
     Ok(cookies)
@@ -1280,17 +1284,13 @@ fn parse_cookie_json_input(value: &Value) -> OpenPageResult<Vec<SessionCookiePar
             for item in items {
                 let item_cookies = parse_cookie_json_input(item)?;
                 if item_cookies.len() != 1 {
-                    return Err(OpenPageError::Http(
-                        "cookie list items must each describe exactly one cookie".to_string(),
-                    ));
+                    return Err(OpenPageError::Http(cookie_list_item_single_message()));
                 }
                 cookies.extend(item_cookies);
             }
             Ok(cookies)
         }
-        _ => Err(OpenPageError::Http(
-            "cookie input must be null, string, object, or array".to_string(),
-        )),
+        _ => Err(OpenPageError::Http(cookie_input_type_message())),
     }
 }
 
@@ -1324,7 +1324,7 @@ fn parse_cookie_json_object(
     }
     if cookies.is_empty() {
         return Err(OpenPageError::Http(
-            "cookie object must contain at least one cookie assignment".to_string(),
+            cookie_object_requires_assignment_message(),
         ));
     }
     Ok(cookies)
@@ -1371,8 +1371,8 @@ fn parse_single_cookie_entries(
         }
     }
     if cookie.name.trim().is_empty() || cookie.value.trim().is_empty() {
-        return Err(OpenPageError::Http(format!(
-            "{field} must contain `name` and `value`"
+        return Err(OpenPageError::Http(cookie_name_value_required_message(
+            field,
         )));
     }
     Ok(cookie)
@@ -1516,9 +1516,8 @@ fn is_shared_cookie_key(key: &str) -> bool {
 fn parse_cookie_flag_value(value: Option<&str>, field: &str, attr: &str) -> OpenPageResult<bool> {
     match value {
         None => Ok(true),
-        Some(value) => parse_optional_ini_bool(value)?.ok_or_else(|| {
-            OpenPageError::Http(format!("invalid {field}.{attr}: expected boolean"))
-        }),
+        Some(value) => parse_optional_ini_bool(value)?
+            .ok_or_else(|| OpenPageError::Http(invalid_cookie_field_boolean_message(field, attr))),
     }
 }
 
@@ -6639,6 +6638,67 @@ mod tests {
             .to_string();
         assert!(english_separators.contains("cookie text cannot mix ';' and ',' separators"));
 
+        let english_missing_text_value = cookie_input_to_params(
+            CookieInput::from("sid; domain=example.test"),
+            Some("https://example.test/"),
+        )
+        .expect_err("cookie text missing value validation should fail")
+        .to_string();
+        assert!(
+            english_missing_text_value.contains("invalid cookie text: `sid` is missing a value")
+        );
+
+        let english_text_without_cookie = cookie_input_to_params(
+            CookieInput::from("domain=example.test; path=/"),
+            Some("https://example.test/"),
+        )
+        .expect_err("cookie text assignment validation should fail")
+        .to_string();
+        assert!(
+            english_text_without_cookie
+                .contains("cookie text must contain at least one cookie assignment")
+        );
+
+        let english_list_item = cookie_input_to_params(
+            CookieInput::from(&json!([{"sid": "1", "token": "2", "domain": "example.test"}])),
+            None,
+        )
+        .expect_err("cookie list item validation should fail")
+        .to_string();
+        assert!(
+            english_list_item.contains("cookie list items must each describe exactly one cookie")
+        );
+
+        let english_object_without_cookie =
+            cookie_input_to_params(CookieInput::from(&json!({"domain": "example.test"})), None)
+                .expect_err("cookie object assignment validation should fail")
+                .to_string();
+        assert!(
+            english_object_without_cookie
+                .contains("cookie object must contain at least one cookie assignment")
+        );
+
+        let english_type = cookie_input_to_params(CookieInput::from(&json!(true)), None)
+            .expect_err("cookie input type validation should fail")
+            .to_string();
+        assert!(english_type.contains("cookie input must be null, string, object, or array"));
+
+        let english_name_value = cookie_input_to_params(
+            CookieInput::from("name=sid; domain=example.test"),
+            Some("https://example.test/"),
+        )
+        .expect_err("cookie name/value validation should fail")
+        .to_string();
+        assert!(english_name_value.contains("cookie text must contain `name` and `value`"));
+
+        let english_bool = cookie_input_to_params(
+            CookieInput::from("sid=1; secure=None; domain=example.test"),
+            None,
+        )
+        .expect_err("cookie boolean validation should fail")
+        .to_string();
+        assert!(english_bool.contains("invalid cookie text.secure: expected boolean"));
+
         Settings::set_language("cn");
 
         let chinese_empty_name =
@@ -6657,6 +6717,57 @@ mod tests {
             .expect_err("cookie separator validation should fail in Chinese")
             .to_string();
         assert!(chinese_separators.contains("cookie 文本不能同时混用 ';' 和 ',' 分隔符"));
+
+        let chinese_missing_text_value = cookie_input_to_params(
+            CookieInput::from("sid; domain=example.test"),
+            Some("https://example.test/"),
+        )
+        .expect_err("cookie text missing value validation should fail in Chinese")
+        .to_string();
+        assert!(chinese_missing_text_value.contains("cookie 文本中的 `sid` 缺少值"));
+
+        let chinese_text_without_cookie = cookie_input_to_params(
+            CookieInput::from("domain=example.test; path=/"),
+            Some("https://example.test/"),
+        )
+        .expect_err("cookie text assignment validation should fail in Chinese")
+        .to_string();
+        assert!(chinese_text_without_cookie.contains("cookie 文本必须至少包含一个 cookie 赋值"));
+
+        let chinese_list_item = cookie_input_to_params(
+            CookieInput::from(&json!([{"sid": "1", "token": "2", "domain": "example.test"}])),
+            None,
+        )
+        .expect_err("cookie list item validation should fail in Chinese")
+        .to_string();
+        assert!(chinese_list_item.contains("cookie 列表中的每一项必须只描述一个 cookie"));
+
+        let chinese_object_without_cookie =
+            cookie_input_to_params(CookieInput::from(&json!({"domain": "example.test"})), None)
+                .expect_err("cookie object assignment validation should fail in Chinese")
+                .to_string();
+        assert!(chinese_object_without_cookie.contains("cookie 对象必须至少包含一个 cookie 赋值"));
+
+        let chinese_type = cookie_input_to_params(CookieInput::from(&json!(true)), None)
+            .expect_err("cookie input type validation should fail in Chinese")
+            .to_string();
+        assert!(chinese_type.contains("cookie 输入必须是 null、字符串、对象或数组"));
+
+        let chinese_name_value = cookie_input_to_params(
+            CookieInput::from("name=sid; domain=example.test"),
+            Some("https://example.test/"),
+        )
+        .expect_err("cookie name/value validation should fail in Chinese")
+        .to_string();
+        assert!(chinese_name_value.contains("cookie text 必须包含 `name` 和 `value`"));
+
+        let chinese_bool = cookie_input_to_params(
+            CookieInput::from("sid=1; secure=None; domain=example.test"),
+            None,
+        )
+        .expect_err("cookie boolean validation should fail in Chinese")
+        .to_string();
+        assert!(chinese_bool.contains("cookie text.secure 无效: 期望 boolean"));
     }
 
     #[test]

@@ -243,6 +243,55 @@ pub(crate) fn cookie_text_separator_conflict_message() -> String {
     )
 }
 
+pub(crate) fn invalid_cookie_text_missing_value_message(key: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("cookie 文本中的 `{key}` 缺少值"),
+        _ => format!("invalid cookie text: `{key}` is missing a value"),
+    }
+}
+
+pub(crate) fn cookie_text_requires_assignment_message() -> String {
+    localized_message(
+        "cookie text must contain at least one cookie assignment",
+        "cookie 文本必须至少包含一个 cookie 赋值",
+    )
+}
+
+pub(crate) fn cookie_list_item_single_message() -> String {
+    localized_message(
+        "cookie list items must each describe exactly one cookie",
+        "cookie 列表中的每一项必须只描述一个 cookie",
+    )
+}
+
+pub(crate) fn cookie_input_type_message() -> String {
+    localized_message(
+        "cookie input must be null, string, object, or array",
+        "cookie 输入必须是 null、字符串、对象或数组",
+    )
+}
+
+pub(crate) fn cookie_object_requires_assignment_message() -> String {
+    localized_message(
+        "cookie object must contain at least one cookie assignment",
+        "cookie 对象必须至少包含一个 cookie 赋值",
+    )
+}
+
+pub(crate) fn cookie_name_value_required_message(field: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{field} 必须包含 `name` 和 `value`"),
+        _ => format!("{field} must contain `name` and `value`"),
+    }
+}
+
+pub(crate) fn invalid_cookie_field_boolean_message(field: &str, attr: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{field}.{attr} 无效: 期望 boolean"),
+        _ => format!("invalid {field}.{attr}: expected boolean"),
+    }
+}
+
 pub(crate) fn invalid_cookie_same_site_message(same_site: &str, name: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("cookie `{name}` 的 same_site `{same_site}` 无效"),
