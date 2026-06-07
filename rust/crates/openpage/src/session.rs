@@ -3212,7 +3212,8 @@ fn sanitize_download_filename(value: &str) -> Option<String> {
 
 fn cookie_scope_url_from_param(cookie: &SessionCookieParam) -> OpenPageResult<Url> {
     if let Some(url) = cookie.url.as_deref() {
-        return Url::parse(url).map_err(|err| OpenPageError::Http(err.to_string()));
+        return Url::parse(url)
+            .map_err(|err| OpenPageError::Http(invalid_url_message(url, Some(&err.to_string()))));
     }
 
     let domain = cookie
@@ -3230,8 +3231,9 @@ fn cookie_scope_url_from_param(cookie: &SessionCookieParam) -> OpenPageResult<Ur
         .as_deref()
         .filter(|value| !value.is_empty())
         .unwrap_or("/");
-    Url::parse(&format!("{scheme}://{host}{path}"))
-        .map_err(|err| OpenPageError::Http(err.to_string()))
+    let candidate = format!("{scheme}://{host}{path}");
+    Url::parse(&candidate)
+        .map_err(|err| OpenPageError::Http(invalid_url_message(&candidate, Some(&err.to_string()))))
 }
 
 fn cookie_param_to_set_cookie(cookie: &SessionCookieParam) -> String {
@@ -6973,6 +6975,61 @@ mod tests {
             .to_string();
         assert!(chinese_set_cookie.contains("session 页面没有当前 url；请显式传入 url"));
         assert!(chinese_set_cookie.contains("HTTP 操作失败"));
+    }
+
+    #[test]
+    fn session_cookie_param_url_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let page = SessionPage::new(SessionOptions::default()).expect("create session page");
+        let explicit_url = [SessionCookieParam {
+            name: "sid".to_string(),
+            value: "1".to_string(),
+            url: Some("not a url".to_string()),
+            domain: None,
+            path: None,
+            secure: false,
+            http_only: false,
+            same_site: None,
+        }];
+        let english_explicit_url = page
+            .set_cookies(explicit_url.as_slice())
+            .expect_err("set_cookies() should reject invalid explicit cookie url")
+            .to_string();
+        assert!(english_explicit_url.contains("invalid url `not a url`"));
+
+        let domain_url = [SessionCookieParam {
+            name: "sid".to_string(),
+            value: "1".to_string(),
+            url: None,
+            domain: Some("[bad".to_string()),
+            path: Some("/".to_string()),
+            secure: false,
+            http_only: false,
+            same_site: None,
+        }];
+        let english_domain_url = page
+            .set_cookies(domain_url.as_slice())
+            .expect_err("set_cookies() should reject invalid domain-derived cookie url")
+            .to_string();
+        assert!(english_domain_url.contains("invalid url `http://[bad/`"));
+
+        Settings::set_language("cn");
+
+        let chinese_explicit_url = page
+            .set_cookies(explicit_url.as_slice())
+            .expect_err("set_cookies() should localize invalid explicit cookie url")
+            .to_string();
+        assert!(chinese_explicit_url.contains("无效的 url `not a url`"));
+        assert!(chinese_explicit_url.contains("HTTP 操作失败"));
+
+        let chinese_domain_url = page
+            .set_cookies(domain_url.as_slice())
+            .expect_err("set_cookies() should localize invalid domain-derived cookie url")
+            .to_string();
+        assert!(chinese_domain_url.contains("无效的 url `http://[bad/`"));
+        assert!(chinese_domain_url.contains("HTTP 操作失败"));
     }
 
     #[test]
