@@ -4175,7 +4175,7 @@ impl Page {
             self.inner
                 .save_screenshot(params, path)
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| page_operation_error("save screenshot", err))?;
             Ok(())
         })
     }
@@ -4191,7 +4191,7 @@ impl Page {
             self.inner
                 .screenshot(params)
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                .map_err(|err| page_operation_error("capture screenshot", err))
         })
     }
 
@@ -4250,7 +4250,7 @@ impl Page {
                 self.inner
                     .pdf(pdf_options.unwrap_or_default())
                     .await
-                    .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                    .map_err(|err| page_operation_error("print pdf", err))
             })?;
             PageSaveContent::Pdf(pdf)
         } else {
@@ -4283,7 +4283,7 @@ impl Page {
             self.inner
                 .save_pdf(PrintToPdfParams::default(), path)
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| page_operation_error("save pdf", err))?;
             Ok(())
         })
     }
