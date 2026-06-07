@@ -3607,7 +3607,7 @@ impl WebPage {
     pub fn save_screenshot(&self, path: impl AsRef<Path>, full_page: bool) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "save_screenshot() is only available in driver mode".to_string(),
+                driver_mode_only_message("save_screenshot()"),
             ));
         }
         self.driver.save_screenshot(path, full_page)
@@ -3621,7 +3621,7 @@ impl WebPage {
     ) -> OpenPageResult<PageSaveContent> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "save() is only available in driver mode".to_string(),
+                driver_mode_only_message("save()"),
             ));
         }
         self.driver.save(path, name, as_pdf)
@@ -3636,7 +3636,7 @@ impl WebPage {
     ) -> OpenPageResult<PageSaveContent> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "save_with_options() is only available in driver mode".to_string(),
+                driver_mode_only_message("save_with_options()"),
             ));
         }
         self.driver
@@ -3646,7 +3646,7 @@ impl WebPage {
     pub fn save_pdf(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "save_pdf() is only available in driver mode".to_string(),
+                driver_mode_only_message("save_pdf()"),
             ));
         }
         self.driver.save_pdf(path)
@@ -3660,7 +3660,7 @@ impl WebPage {
     ) -> OpenPageResult<Vec<u8>> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "screenshot_bytes() is only available in driver mode".to_string(),
+                driver_mode_only_message("screenshot_bytes()"),
             ));
         }
         self.driver
@@ -3675,7 +3675,7 @@ impl WebPage {
     ) -> OpenPageResult<String> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "screenshot_base64() is only available in driver mode".to_string(),
+                driver_mode_only_message("screenshot_base64()"),
             ));
         }
         self.driver
@@ -3692,7 +3692,7 @@ impl WebPage {
     ) -> OpenPageResult<std::path::PathBuf> {
         if self.mode()? != WebMode::Driver {
             return Err(OpenPageError::UnsupportedOperation(
-                "get_screenshot() is only available in driver mode".to_string(),
+                driver_mode_only_message("get_screenshot()"),
             ));
         }
         self.driver
@@ -6366,6 +6366,50 @@ mod tests {
         let _ = page.quit();
         let _ = fs::remove_dir_all(&temp_dir);
         result.expect("webpage session click helper errors should localize");
+    }
+
+    #[test]
+    fn webpage_session_capture_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-session-capture-errors", WebMode::Session)
+                .expect("launch headless webpage");
+        let result = (|| -> crate::OpenPageResult<()> {
+            let english = page
+                .save_screenshot(temp_dir.join("page.png"), false)
+                .expect_err("session-mode WebPage save_screenshot should fail");
+            assert!(matches!(
+                english,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("save_screenshot() is only available in driver mode")
+            ));
+
+            Settings::set_language("cn");
+
+            let chinese_bytes = page
+                .screenshot_bytes(false, None, None)
+                .expect_err("session-mode WebPage screenshot_bytes should fail");
+            assert!(matches!(
+                chinese_bytes,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("screenshot_bytes() 仅在 driver 模式可用")
+            ));
+            let chinese_pdf = page
+                .save_pdf(temp_dir.join("page.pdf"))
+                .expect_err("session-mode WebPage save_pdf should fail");
+            assert!(matches!(
+                chinese_pdf,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("save_pdf() 仅在 driver 模式可用")
+            ));
+            Ok(())
+        })();
+
+        let _ = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+        result.expect("webpage session capture errors should localize");
     }
 
     #[test]
