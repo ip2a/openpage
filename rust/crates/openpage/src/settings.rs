@@ -368,6 +368,13 @@ pub(crate) fn unsupported_key_message(key: &str) -> String {
     }
 }
 
+pub(crate) fn driver_mode_only_message(operation: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{operation} 仅在 driver 模式可用"),
+        _ => format!("{operation} is only available in driver mode"),
+    }
+}
+
 pub(crate) fn resolve_frame_viewport_offset_failed_message(detail: &str) -> String {
     localized_error_with_detail(
         "resolve frame viewport offset failed",
@@ -760,7 +767,7 @@ mod tests {
         component_not_active_start_message, component_not_running_message,
         component_not_running_with_error_message, component_state_lock_poisoned_message,
         component_stopped_while_waiting_message, cookie_name_empty_message,
-        default_suffixes_list_path, download_not_found_message,
+        default_suffixes_list_path, download_not_found_message, driver_mode_only_message,
         element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
         element_no_visible_rect_message, element_resource_unavailable_message,
         element_tag_name_unavailable_message, element_top_frame_check_failed_message,
@@ -936,6 +943,10 @@ mod tests {
             "unsupported xpath path `broken`"
         );
         assert_eq!(unsupported_key_message("Hyper"), "unsupported key: Hyper");
+        assert_eq!(
+            driver_mode_only_message("get_frame()"),
+            "get_frame() is only available in driver mode"
+        );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),
             "resolve frame viewport offset failed: detail"
@@ -1152,6 +1163,10 @@ mod tests {
             "不支持的 xpath 路径 `broken`"
         );
         assert_eq!(unsupported_key_message("Hyper"), "不支持的按键: Hyper");
+        assert_eq!(
+            driver_mode_only_message("get_frame()"),
+            "get_frame() 仅在 driver 模式可用"
+        );
         assert_eq!(
             resolve_frame_viewport_offset_failed_message("detail"),
             "解析 frame 视口偏移失败: detail"

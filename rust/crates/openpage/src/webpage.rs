@@ -31,8 +31,8 @@ use crate::session::{
     SessionXPathResult,
 };
 use crate::settings::{
-    component_state_lock_poisoned_message, timeout_must_be_non_negative_message,
-    wait_timeout_result,
+    component_state_lock_poisoned_message, driver_mode_only_message,
+    timeout_must_be_non_negative_message, wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 
@@ -1142,7 +1142,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.get_frame(target).map(WebFrame::Browser),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "get_frame() is only available in driver mode".to_string(),
+                driver_mode_only_message("get_frame()"),
             )),
         }
     }
@@ -1151,7 +1151,7 @@ impl WebElement {
         match self {
             Self::Browser(element) => element.get_frame_by_index(index).map(WebFrame::Browser),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                "get_frame_by_index() is only available in driver mode".to_string(),
+                driver_mode_only_message("get_frame_by_index()"),
             )),
         }
     }
@@ -5812,6 +5812,7 @@ mod tests {
     use super::{WebElement, WebFrame, WebMode, WebPage, webpage_timeout_seconds_to_millis};
     use crate::browser::{BrowserTabReference, LaunchOptions};
     use crate::element_list::ElementsListExt;
+    use crate::session::snapshot_root;
     use crate::settings::scoped_test_settings;
     use crate::{
         By, DownloadFileExistsMode, Element, Frame, LocatorInput, OpenPageError, OpenPageResult,
@@ -5877,6 +5878,38 @@ mod tests {
             chinese,
             OpenPageError::UnsupportedOperation(ref message)
                 if message.contains("timeout 必须是有限且非负的数字")
+        ));
+    }
+
+    #[test]
+    fn web_element_session_frame_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let element = WebElement::Session(
+            snapshot_root("<html><body><iframe></iframe></body></html>")
+                .expect("session snapshot root should parse"),
+        );
+        let english = match element.get_frame("tag:iframe") {
+            Err(error) => error,
+            Ok(_) => panic!("session-backed WebElement get_frame should fail"),
+        };
+        assert!(matches!(
+            english,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("get_frame() is only available in driver mode")
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese = match element.get_frame_by_index(1) {
+            Err(error) => error,
+            Ok(_) => panic!("session-backed WebElement get_frame_by_index should fail"),
+        };
+        assert!(matches!(
+            chinese,
+            OpenPageError::UnsupportedOperation(ref message)
+                if message.contains("get_frame_by_index() 仅在 driver 模式可用")
         ));
     }
 
