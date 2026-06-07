@@ -7614,6 +7614,47 @@ mod tests {
     }
 
     #[test]
+    fn singleton_tab_obj_returns_fresh_webframe_state_when_disabled() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(false);
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webframe-singleton-disabled", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="demo-frame"
+                            srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let frame = page.get_frame("css:#demo-frame")?;
+            assert!(frame.wait_for_doc_loaded(5_000)?);
+            frame.set_none_element_value(Some("missing"), true)?;
+
+            let fresh_frame = page.get_frame("css:#demo-frame")?;
+            assert_eq!(fresh_frame.ele(".does-not-exist")?.text()?, None);
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("non-singleton webframe runtime-state regression");
+    }
+
+    #[test]
     fn page_frame_webpage_and_webframe_js_helper_signatures_accept_common_inputs() {
         fn assert_calls(page: &Page, frame: &Frame, web_page: &WebPage, web_frame: &WebFrame) {
             let args = [Value::from(1), Value::from(2)];
