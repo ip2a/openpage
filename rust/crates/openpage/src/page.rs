@@ -6093,7 +6093,7 @@ impl Page {
             self.inner
                 .frame_name(FrameId::new(frame_id.to_string()))
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                .map_err(|err| page_operation_error("read frame name", err))
         })
     }
 
@@ -6102,7 +6102,7 @@ impl Page {
             self.inner
                 .frame_url(FrameId::new(frame_id.to_string()))
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                .map_err(|err| page_operation_error("read frame url", err))
         })
     }
 
@@ -6112,7 +6112,7 @@ impl Page {
                 .frame_parent(FrameId::new(frame_id.to_string()))
                 .await
                 .map(|value| value.map(|frame_id| frame_id.as_ref().to_string()))
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+                .map_err(|err| page_operation_error("read frame parent", err))
         })
     }
 
@@ -6121,7 +6121,7 @@ impl Page {
             self.inner
                 .frame_execution_context(FrameId::new(frame_id.to_string()))
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?
+                .map_err(|err| page_operation_error("read frame execution context", err))?
                 .ok_or_else(|| {
                     OpenPageError::PageOperation(frame_execution_context_unavailable_message(
                         frame_id,
