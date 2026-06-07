@@ -4509,7 +4509,7 @@ impl Page {
             self.inner
                 .bring_to_front()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| page_operation_error("bring to front", err))?;
             Ok::<(), OpenPageError>(())
         })?;
         #[cfg(target_os = "macos")]
@@ -5777,7 +5777,7 @@ impl Page {
             self.inner
                 .close()
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| page_operation_error("close page", err))?;
             Ok::<(), OpenPageError>(())
         })?;
         Ok(())
@@ -5855,7 +5855,7 @@ impl Page {
             self.inner
                 .goto(url.to_string())
                 .await
-                .map_err(|err| OpenPageError::PageOperation(err.to_string()))?;
+                .map_err(|err| page_operation_error("navigate", err))?;
             Ok::<(), OpenPageError>(())
         })
     }
