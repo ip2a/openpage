@@ -3005,7 +3005,7 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.driver.navigation_snapshot(),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "navigation_snapshot() is only available in driver mode".to_string(),
+                driver_mode_only_message("navigation_snapshot()"),
             )),
         }
     }
@@ -3024,7 +3024,7 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => self.driver.actions(),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "actions() is only available in driver mode".to_string(),
+                driver_mode_only_message("actions()"),
             )),
         }
     }
@@ -3033,7 +3033,7 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => Ok(self.driver.new_actions()),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
-                "new_actions() is only available in driver mode".to_string(),
+                driver_mode_only_message("new_actions()"),
             )),
         }
     }
@@ -6264,6 +6264,52 @@ mod tests {
             OpenPageError::UnsupportedOperation(ref message)
                 if message.contains("wait_until_stop_moving() 仅在 driver 模式可用")
         ));
+    }
+
+    #[test]
+    fn webpage_session_driver_action_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-session-driver-action-errors", WebMode::Session)
+                .expect("launch headless webpage");
+        let result = (|| -> crate::OpenPageResult<()> {
+            let english = page
+                .navigation_snapshot()
+                .expect_err("session-mode WebPage navigation_snapshot should fail");
+            assert!(matches!(
+                english,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("navigation_snapshot() is only available in driver mode")
+            ));
+
+            Settings::set_language("cn");
+
+            let chinese_actions = match page.actions() {
+                Err(error) => error,
+                Ok(_) => panic!("session-mode WebPage actions should fail"),
+            };
+            assert!(matches!(
+                chinese_actions,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("actions() 仅在 driver 模式可用")
+            ));
+            let chinese_new_actions = match page.new_actions() {
+                Err(error) => error,
+                Ok(_) => panic!("session-mode WebPage new_actions should fail"),
+            };
+            assert!(matches!(
+                chinese_new_actions,
+                OpenPageError::UnsupportedOperation(ref message)
+                    if message.contains("new_actions() 仅在 driver 模式可用")
+            ));
+            Ok(())
+        })();
+
+        let _ = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+        result.expect("webpage session driver action errors should localize");
     }
 
     #[test]
