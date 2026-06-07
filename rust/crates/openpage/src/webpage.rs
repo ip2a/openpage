@@ -33,6 +33,8 @@ use crate::session::{
 use crate::settings::{
     component_state_lock_poisoned_message, driver_mode_only_message,
     timeout_must_be_non_negative_message, wait_timeout_result,
+    web_browser_backed_option_required_message, web_driver_element_required_message,
+    web_mode_invalid_message, web_timeout_base_non_negative_message,
 };
 use crate::shadow_root::ShadowRoot;
 
@@ -54,8 +56,8 @@ impl WebMode {
         match mode.to_ascii_lowercase().as_str() {
             "d" => Ok(Self::Driver),
             "s" => Ok(Self::Session),
-            _ => Err(OpenPageError::BrowserOperation(format!(
-                "mode must be 'd' or 's', got {mode}"
+            _ => Err(OpenPageError::BrowserOperation(web_mode_invalid_message(
+                mode,
             ))),
         }
     }
@@ -2194,7 +2196,7 @@ impl WebElement {
                 element.drag_to(target, duration_secs)
             }
             (Self::Browser(_), Self::Session(_)) => Err(OpenPageError::UnsupportedOperation(
-                "drag_to_element() target must be a driver element".to_string(),
+                web_driver_element_required_message("drag_to_element() target"),
             )),
             (Self::Session(_), _) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("drag_to_element()"),
@@ -2494,7 +2496,7 @@ impl WebElement {
                 element.select_by_option(option)
             }
             (Self::Browser(_), WebElement::Session(_)) => Err(OpenPageError::UnsupportedOperation(
-                "select_by_option() requires a browser-backed option element".to_string(),
+                web_browser_backed_option_required_message("select_by_option()"),
             )),
             (Self::Session(_), _) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("select_by_option()"),
@@ -2660,7 +2662,7 @@ impl WebElement {
                 element.cancel_by_option(option)
             }
             (Self::Browser(_), WebElement::Session(_)) => Err(OpenPageError::UnsupportedOperation(
-                "cancel_by_option() requires a browser-backed option element".to_string(),
+                web_browser_backed_option_required_message("cancel_by_option()"),
             )),
             (Self::Session(_), _) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("cancel_by_option()"),
@@ -3345,9 +3347,9 @@ impl WebPage {
                 }
                 if let Some(base_secs) = base_secs {
                     if !base_secs.is_finite() || base_secs.is_sign_negative() {
-                        return Err(OpenPageError::UnsupportedOperation(format!(
-                            "set_timeouts(base) requires a finite non-negative number, got {base_secs}"
-                        )));
+                        return Err(OpenPageError::UnsupportedOperation(
+                            web_timeout_base_non_negative_message(base_secs),
+                        ));
                     }
                     self.session.set_timeout(base_secs.round() as u64)?;
                 }

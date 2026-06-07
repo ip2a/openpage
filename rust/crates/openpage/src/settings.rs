@@ -375,6 +375,36 @@ pub(crate) fn driver_mode_only_message(operation: &str) -> String {
     }
 }
 
+pub(crate) fn web_mode_invalid_message(mode: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("mode 必须是 'd' 或 's'，当前为 {mode}"),
+        _ => format!("mode must be 'd' or 's', got {mode}"),
+    }
+}
+
+pub(crate) fn web_driver_element_required_message(operation: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{operation} 需要 driver 元素"),
+        _ => format!("{operation} must be a driver element"),
+    }
+}
+
+pub(crate) fn web_browser_backed_option_required_message(operation: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{operation} 需要 browser-backed option 元素"),
+        _ => format!("{operation} requires a browser-backed option element"),
+    }
+}
+
+pub(crate) fn web_timeout_base_non_negative_message(seconds: f64) -> String {
+    match current_language_code() {
+        Some("zh_cn") => {
+            format!("set_timeouts(base) 需要有限非负数，当前为 {seconds}")
+        }
+        _ => format!("set_timeouts(base) requires a finite non-negative number, got {seconds}"),
+    }
+}
+
 pub(crate) fn web_element_list_driver_filter_message(operation: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => {
@@ -1240,7 +1270,9 @@ mod tests {
         value_returned_non_string_entry_message, value_state_bool_required_message,
         value_string_compatible_required_message, value_string_required_message,
         value_string_vec_array_required_message, value_string_vec_entry_required_message,
-        value_unavailable_message, web_element_list_driver_filter_message,
+        value_unavailable_message, web_browser_backed_option_required_message,
+        web_driver_element_required_message, web_element_list_driver_filter_message,
+        web_mode_invalid_message, web_timeout_base_non_negative_message,
         xpath_node_no_longer_exists_message, xpath_path_not_found_message,
         xpath_segment_not_found_message, zoom_factor_must_be_positive_message,
     };
@@ -1393,6 +1425,22 @@ mod tests {
         assert_eq!(
             driver_mode_only_message("get_frame()"),
             "get_frame() is only available in driver mode"
+        );
+        assert_eq!(
+            web_mode_invalid_message("x"),
+            "mode must be 'd' or 's', got x"
+        );
+        assert_eq!(
+            web_driver_element_required_message("drag_to_element() target"),
+            "drag_to_element() target must be a driver element"
+        );
+        assert_eq!(
+            web_browser_backed_option_required_message("select_by_option()"),
+            "select_by_option() requires a browser-backed option element"
+        );
+        assert_eq!(
+            web_timeout_base_non_negative_message(-0.5),
+            "set_timeouts(base) requires a finite non-negative number, got -0.5"
         );
         assert_eq!(
             web_element_list_driver_filter_message("displayed()"),
@@ -1838,6 +1886,22 @@ mod tests {
         assert_eq!(
             driver_mode_only_message("get_frame()"),
             "get_frame() 仅在 driver 模式可用"
+        );
+        assert_eq!(
+            web_mode_invalid_message("x"),
+            "mode 必须是 'd' 或 's'，当前为 x"
+        );
+        assert_eq!(
+            web_driver_element_required_message("drag_to_element() target"),
+            "drag_to_element() target 需要 driver 元素"
+        );
+        assert_eq!(
+            web_browser_backed_option_required_message("select_by_option()"),
+            "select_by_option() 需要 browser-backed option 元素"
+        );
+        assert_eq!(
+            web_timeout_base_non_negative_message(-0.5),
+            "set_timeouts(base) 需要有限非负数，当前为 -0.5"
         );
         assert_eq!(
             web_element_list_driver_filter_message("displayed()"),
