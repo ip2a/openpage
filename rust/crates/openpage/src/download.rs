@@ -16,7 +16,10 @@ use tokio::task::JoinHandle;
 
 use crate::browser::Browser;
 use crate::error::{OpenPageError, OpenPageResult};
-use crate::settings::{component_state_lock_poisoned_message, download_not_found_message};
+use crate::settings::{
+    component_state_lock_poisoned_message, download_did_not_complete_in_time_message,
+    download_not_found_message, download_tracker_stopped_message,
+};
 
 fn download_state_lock_poisoned_error() -> OpenPageError {
     OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
@@ -469,9 +472,9 @@ impl DownloadStore {
             }
 
             if let Some(error) = &state.last_error {
-                return Err(OpenPageError::BrowserOperation(format!(
-                    "download tracker stopped: {error}"
-                )));
+                return Err(OpenPageError::BrowserOperation(
+                    download_tracker_stopped_message(error),
+                ));
             }
 
             let now = Instant::now();
@@ -518,9 +521,9 @@ impl DownloadStore {
             }
 
             if let Some(error) = &state.last_error {
-                return Err(OpenPageError::BrowserOperation(format!(
-                    "download tracker stopped: {error}"
-                )));
+                return Err(OpenPageError::BrowserOperation(
+                    download_tracker_stopped_message(error),
+                ));
             }
 
             let now = Instant::now();
@@ -561,15 +564,15 @@ impl DownloadStore {
             }
 
             if let Some(error) = &state.last_error {
-                return Err(OpenPageError::BrowserOperation(format!(
-                    "download tracker stopped: {error}"
-                )));
+                return Err(OpenPageError::BrowserOperation(
+                    download_tracker_stopped_message(error),
+                ));
             }
 
             let now = Instant::now();
             if now >= deadline {
                 return Err(OpenPageError::Timeout(
-                    "download did not complete in time".to_string(),
+                    download_did_not_complete_in_time_message(),
                 ));
             }
 
@@ -582,7 +585,7 @@ impl DownloadStore {
             state = result.0;
             if result.1.timed_out() {
                 return Err(OpenPageError::Timeout(
-                    "download did not complete in time".to_string(),
+                    download_did_not_complete_in_time_message(),
                 ));
             }
         }
@@ -604,9 +607,9 @@ impl DownloadStore {
             }
 
             if let Some(error) = &state.last_error {
-                return Err(OpenPageError::BrowserOperation(format!(
-                    "download tracker stopped: {error}"
-                )));
+                return Err(OpenPageError::BrowserOperation(
+                    download_tracker_stopped_message(error),
+                ));
             }
 
             state = self
@@ -873,5 +876,58 @@ mod tests {
             .expect_err("missing download should localize")
             .to_string();
         assert_eq!(chinese, "浏览器操作失败: 没有找到下载任务 `missing-guid`");
+    }
+
+    #[test]
+    fn download_wait_timeout_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let store = DownloadStore::new();
+        let english = store
+            .wait_for_guid("missing-guid", 0)
+            .expect_err("missing download wait should time out")
+            .to_string();
+        assert_eq!(
+            english,
+            "timeout waiting for locator: download did not complete in time"
+        );
+
+        Settings::set_language("cn");
+
+        let chinese = store
+            .wait_for_guid("missing-guid", 0)
+            .expect_err("missing download wait should localize timeout")
+            .to_string();
+        assert_eq!(chinese, "等待超时: 下载未在规定时间内完成");
+    }
+
+    #[test]
+    fn download_tracker_stopped_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let store = DownloadStore::new();
+        {
+            let mut state = store.shared.state.lock().expect("lock download state");
+            state.last_error = Some("boom".to_string());
+        }
+
+        let english = store
+            .wait_for_guid("missing-guid", 1_000)
+            .expect_err("stopped tracker should fail")
+            .to_string();
+        assert_eq!(
+            english,
+            "browser operation failed: download tracker stopped: boom"
+        );
+
+        Settings::set_language("cn");
+
+        let chinese = store
+            .wait_for_guid("missing-guid", 1_000)
+            .expect_err("stopped tracker should localize")
+            .to_string();
+        assert_eq!(chinese, "浏览器操作失败: 下载跟踪器已停止: boom");
     }
 }

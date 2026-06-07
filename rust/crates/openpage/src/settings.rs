@@ -359,6 +359,20 @@ pub(crate) fn download_not_found_message(guid: &str) -> String {
     }
 }
 
+pub(crate) fn download_tracker_stopped_message(error: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("下载跟踪器已停止: {error}"),
+        _ => format!("download tracker stopped: {error}"),
+    }
+}
+
+pub(crate) fn download_did_not_complete_in_time_message() -> String {
+    localized_message(
+        "download did not complete in time",
+        "下载未在规定时间内完成",
+    )
+}
+
 pub(crate) fn invalid_options_manager_ini_literal_message(detail: &str) -> String {
     localized_error_with_detail(
         "invalid options manager ini literal",
