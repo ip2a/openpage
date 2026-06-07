@@ -1094,6 +1094,13 @@ pub(crate) fn session_request_failed_message(method: &str, request_url: &str, er
     }
 }
 
+pub(crate) fn session_request_retry_loop_exited_message() -> String {
+    localized_message(
+        "session request retry loop exited unexpectedly",
+        "session 请求重试循环意外退出",
+    )
+}
+
 pub(crate) fn session_response_body_read_failed_message(request_url: &str, err: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("读取 session 响应体 {request_url} 失败: {err}"),
@@ -1113,6 +1120,13 @@ pub(crate) fn session_download_file_failed_message(action: &str, path: &str, err
         Some("zh_cn") => format!("session 下载文件 {action} 失败 {path}: {err}"),
         _ => format!("failed to {action} session download file {path}: {err}"),
     }
+}
+
+pub(crate) fn session_download_retry_loop_exited_message() -> String {
+    localized_message(
+        "session download retry loop exited unexpectedly",
+        "session 下载重试循环意外退出",
+    )
 }
 
 pub(crate) fn select_element_required_message() -> String {
@@ -1574,7 +1588,8 @@ mod tests {
         screenshot_clip_order_message, select_element_required_message,
         session_backed_element_driver_target_message,
         session_backed_web_element_driver_actions_message, session_cert_read_failed_message,
-        session_page_no_current_url_message, session_page_no_loaded_document_message,
+        session_download_retry_loop_exited_message, session_page_no_current_url_message,
+        session_page_no_loaded_document_message, session_request_retry_loop_exited_message,
         set_file_input_requires_at_least_one_file_message,
         shadow_root_object_id_unavailable_message,
         shadow_root_xpath_traversal_not_implemented_message,
@@ -1746,6 +1761,14 @@ mod tests {
         assert_eq!(
             session_cert_read_failed_message("cert", "/tmp/client.pem", "not found"),
             "failed to read cert /tmp/client.pem: not found"
+        );
+        assert_eq!(
+            session_request_retry_loop_exited_message(),
+            "session request retry loop exited unexpectedly"
+        );
+        assert_eq!(
+            session_download_retry_loop_exited_message(),
+            "session download retry loop exited unexpectedly"
         );
         assert_eq!(
             invalid_xpath_html_message("parse error"),
@@ -2262,6 +2285,14 @@ mod tests {
         assert_eq!(
             session_cert_read_failed_message("cert", "/tmp/client.pem", "not found"),
             "读取 session 证书 /tmp/client.pem 失败: not found"
+        );
+        assert_eq!(
+            session_request_retry_loop_exited_message(),
+            "session 请求重试循环意外退出"
+        );
+        assert_eq!(
+            session_download_retry_loop_exited_message(),
+            "session 下载重试循环意外退出"
         );
         assert_eq!(
             invalid_xpath_html_message("parse error"),
