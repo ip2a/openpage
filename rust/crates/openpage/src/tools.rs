@@ -11,6 +11,10 @@ use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::Locator;
 use crate::page::{Frame, Page};
 use crate::session::{SessionElement, SessionPage, snapshot_find_all, snapshot_root};
+use crate::settings::{
+    data_url_missing_comma_message, get_blob_data_url_required_message,
+    get_blob_resolve_failed_message, get_blob_url_required_message,
+};
 use crate::shadow_root::ShadowRoot;
 use crate::webpage::{WebElement, WebFrame, WebPage};
 
@@ -531,9 +535,9 @@ where
     F: FnOnce(&str) -> OpenPageResult<Value>,
 {
     if !url.starts_with("blob:") {
-        return Err(OpenPageError::UnsupportedOperation(format!(
-            "get_blob() only accepts blob: urls, got {url}"
-        )));
+        return Err(OpenPageError::UnsupportedOperation(
+            get_blob_url_required_message(url),
+        ));
     }
 
     let script = build_blob_fetch_script(url)?;
@@ -560,19 +564,17 @@ fn build_blob_fetch_script(url: &str) -> OpenPageResult<String> {
 fn decode_blob_fetch_result(result: Value, as_bytes: bool) -> OpenPageResult<ElementResource> {
     match result {
         Value::String(data_url) => decode_blob_data_url(&data_url, as_bytes),
-        Value::Null => Err(OpenPageError::JavaScript(
-            "get_blob() failed to resolve blob content".to_string(),
+        Value::Null => Err(OpenPageError::JavaScript(get_blob_resolve_failed_message())),
+        other => Err(OpenPageError::JavaScript(
+            get_blob_data_url_required_message(&other.to_string()),
         )),
-        other => Err(OpenPageError::JavaScript(format!(
-            "get_blob() expected a data URL string, got {other}"
-        ))),
     }
 }
 
 fn decode_blob_data_url(data_url: &str, as_bytes: bool) -> OpenPageResult<ElementResource> {
-    let (_, payload) = data_url.split_once(',').ok_or_else(|| {
-        OpenPageError::Serialization("blob data URL is missing a comma separator".to_string())
-    })?;
+    let (_, payload) = data_url
+        .split_once(',')
+        .ok_or_else(|| OpenPageError::Serialization(data_url_missing_comma_message()))?;
     if !as_bytes {
         return Ok(ElementResource::Text(payload.to_string()));
     }
@@ -685,7 +687,8 @@ mod tests {
 
     use crate::element::ElementResource;
     use crate::session::{snapshot_find, snapshot_root};
-    use crate::{SessionOptions, SessionPage};
+    use crate::settings::scoped_test_settings;
+    use crate::{SessionOptions, SessionPage, Settings};
 
     const HTML: &str = r#"
 <html>
@@ -726,6 +729,9 @@ mod tests {
 
     #[test]
     fn get_blob_rejects_non_blob_urls() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
         let error = get_blob_with_runner("https://example.com/demo.png", true, |_| {
             panic!("non-blob url should fail before JS runs")
         })
@@ -734,6 +740,20 @@ mod tests {
         match error {
             crate::OpenPageError::UnsupportedOperation(message) => {
                 assert!(message.contains("only accepts blob: urls"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        Settings::set_language("cn");
+
+        let error = get_blob_with_runner("https://example.com/demo.png", true, |_| {
+            panic!("non-blob url should fail before JS runs")
+        })
+        .expect_err("non-blob url should localize");
+
+        match error {
+            crate::OpenPageError::UnsupportedOperation(message) => {
+                assert!(message.contains("只接受 blob: url"));
             }
             other => panic!("unexpected error: {other:?}"),
         }
@@ -770,6 +790,9 @@ mod tests {
 
     #[test]
     fn get_blob_reports_non_string_results() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
         let error = decode_blob_fetch_result(Value::Bool(true), true)
             .expect_err("non-string blob result should fail");
 
@@ -779,6 +802,48 @@ mod tests {
             }
             other => panic!("unexpected error: {other:?}"),
         }
+
+        Settings::set_language("cn");
+
+        let error = decode_blob_fetch_result(Value::Bool(true), true)
+            .expect_err("non-string blob result should localize");
+
+        match error {
+            crate::OpenPageError::JavaScript(message) => {
+                assert!(message.contains("需要 data URL 字符串"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn get_blob_null_and_malformed_data_url_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english_null = decode_blob_fetch_result(Value::Null, true)
+            .expect_err("null blob result should fail")
+            .to_string();
+        assert!(english_null.contains("failed to resolve blob content"));
+
+        let english_malformed =
+            decode_blob_fetch_result(Value::String("data:text/plain".into()), true)
+                .expect_err("malformed data URL should fail")
+                .to_string();
+        assert!(english_malformed.contains("data URL did not contain a comma separator"));
+
+        Settings::set_language("cn");
+
+        let chinese_null = decode_blob_fetch_result(Value::Null, true)
+            .expect_err("null blob result should localize")
+            .to_string();
+        assert!(chinese_null.contains("未能解析 blob 内容"));
+
+        let chinese_malformed =
+            decode_blob_fetch_result(Value::String("data:text/plain".into()), true)
+                .expect_err("malformed data URL should localize")
+                .to_string();
+        assert!(chinese_malformed.contains("data URL 不包含逗号分隔符"));
     }
 
     #[test]

@@ -687,6 +687,27 @@ pub(crate) fn data_url_missing_comma_message() -> String {
     )
 }
 
+pub(crate) fn get_blob_url_required_message(url: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("get_blob() 只接受 blob: url，收到 {url}"),
+        _ => format!("get_blob() only accepts blob: urls, got {url}"),
+    }
+}
+
+pub(crate) fn get_blob_resolve_failed_message() -> String {
+    localized_message(
+        "get_blob() failed to resolve blob content",
+        "get_blob() 未能解析 blob 内容",
+    )
+}
+
+pub(crate) fn get_blob_data_url_required_message(value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("get_blob() 需要 data URL 字符串，收到 {value}"),
+        _ => format!("get_blob() expected a data URL string, got {value}"),
+    }
+}
+
 pub(crate) fn resolve_top_viewport_screen_origin_failed_message(detail: &str) -> String {
     localized_error_with_detail(
         "resolve top viewport screen origin failed",
