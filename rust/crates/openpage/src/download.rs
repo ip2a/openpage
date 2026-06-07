@@ -18,13 +18,21 @@ use crate::browser::Browser;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::settings::{
     component_state_lock_poisoned_message, download_did_not_complete_in_time_message,
-    download_not_found_message, download_tracker_stopped_message,
+    download_not_found_message, download_setup_operation_failed_message,
+    download_tracker_stopped_message,
 };
 
 fn download_state_lock_poisoned_error() -> OpenPageError {
     OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
         "download state",
         "下载状态",
+    ))
+}
+
+fn download_setup_error(operation: &str, err: impl ToString) -> OpenPageError {
+    OpenPageError::BrowserOperation(download_setup_operation_failed_message(
+        operation,
+        &err.to_string(),
     ))
 }
 
@@ -663,11 +671,11 @@ pub(crate) fn attach_download_store(
         let will_begin = browser
             .event_listener::<EventDownloadWillBegin>()
             .await
-            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+            .map_err(|err| download_setup_error("register download begin listener", err))?;
         let progress = browser
             .event_listener::<EventDownloadProgress>()
             .await
-            .map_err(|err| OpenPageError::BrowserOperation(err.to_string()))?;
+            .map_err(|err| download_setup_error("register download progress listener", err))?;
         Ok::<_, OpenPageError>((will_begin, progress))
     })?;
 
@@ -847,6 +855,26 @@ mod tests {
             .to_string();
         assert!(chinese.contains("下载状态锁已损坏"));
         assert!(chinese.contains("浏览器操作失败"));
+    }
+
+    #[test]
+    fn download_setup_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let english = super::download_setup_error("register listener", "boom").to_string();
+        assert_eq!(
+            english,
+            "browser operation failed: download setup operation register listener failed: boom"
+        );
+
+        Settings::set_language("cn");
+
+        let chinese = super::download_setup_error("register listener", "boom").to_string();
+        assert_eq!(
+            chinese,
+            "浏览器操作失败: 下载初始化操作 register listener 失败: boom"
+        );
     }
 
     #[test]

@@ -469,6 +469,13 @@ pub(crate) fn download_directory_create_failed_message(path: &Path, err: &str) -
     }
 }
 
+pub(crate) fn download_setup_operation_failed_message(operation: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("下载初始化操作 {operation} 失败: {err}"),
+        _ => format!("download setup operation {operation} failed: {err}"),
+    }
+}
+
 pub(crate) fn browser_command_failed_message(operation: &str, err: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("浏览器命令 {operation} 执行失败: {err}"),
