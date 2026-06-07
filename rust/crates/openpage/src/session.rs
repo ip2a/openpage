@@ -2637,13 +2637,17 @@ impl SessionPage {
 
     fn cookie_scope_url(&self, url: Option<&str>) -> OpenPageResult<Url> {
         match url {
-            Some(url) => Url::parse(url).map_err(|err| OpenPageError::Http(err.to_string())),
+            Some(url) => Url::parse(url).map_err(|err| {
+                OpenPageError::Http(invalid_url_message(url, Some(&err.to_string())))
+            }),
             None => {
                 let current_url =
                     self.lock_state()?.url.clone().ok_or_else(|| {
                         OpenPageError::Http(session_page_no_current_url_message())
                     })?;
-                Url::parse(&current_url).map_err(|err| OpenPageError::Http(err.to_string()))
+                Url::parse(&current_url).map_err(|err| {
+                    OpenPageError::Http(invalid_url_message(&current_url, Some(&err.to_string())))
+                })
             }
         }
     }
@@ -6864,6 +6868,12 @@ mod tests {
             .to_string();
         assert!(english_set_cookie_header.contains("invalid url `not a url`"));
 
+        let english_set_cookie = page
+            .set_cookie("sid", "1", Some("not a url"), None, None)
+            .expect_err("set_cookie() should reject invalid explicit url")
+            .to_string();
+        assert!(english_set_cookie.contains("invalid url `not a url`"));
+
         let english_referer = default_referer_header(None, "not a url")
             .expect_err("default_referer_header() should reject invalid url")
             .to_string();
@@ -6893,6 +6903,12 @@ mod tests {
             .expect_err("set_cookie_header() should reject invalid url in Chinese")
             .to_string();
         assert!(chinese_set_cookie_header.contains("无效的 url `not a url`"));
+
+        let chinese_set_cookie = page
+            .set_cookie("sid", "1", Some("not a url"), None, None)
+            .expect_err("set_cookie() should reject invalid explicit url in Chinese")
+            .to_string();
+        assert!(chinese_set_cookie.contains("无效的 url `not a url`"));
 
         let chinese_referer = default_referer_header(None, "not a url")
             .expect_err("default_referer_header() should reject invalid url in Chinese")
