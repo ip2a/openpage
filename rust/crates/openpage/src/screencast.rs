@@ -21,11 +21,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
+use tokio::time::timeout as tokio_timeout;
 
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::execute_page_command_async;
 use crate::settings::{
-    component_not_running_message, component_state_lock_poisoned_message,
+    cdp_timeout_duration, component_not_running_message, component_state_lock_poisoned_message,
     invalid_screencast_data_url_message, screencast_already_running_message,
     screencast_capture_operation_failed_message, screencast_capture_path_unavailable_message,
     screencast_empty_mime_type_message, screencast_encode_output_failed_message,
@@ -33,7 +34,8 @@ use crate::settings::{
     screencast_mode_change_while_running_message, screencast_mode_output_suffix_message,
     screencast_no_frames_message, screencast_output_path_unavailable_message,
     screencast_requires_save_path_message, screencast_save_path_must_be_directory_message,
-    screencast_setup_operation_failed_message, unsupported_screencast_output_suffix_message,
+    screencast_setup_operation_failed_message, timeout_duration_millis, timeout_error,
+    unsupported_screencast_output_suffix_message,
 };
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -413,6 +415,22 @@ fn screencast_setup_error(operation: &str, err: impl ToString) -> OpenPageError 
     ))
 }
 
+async fn register_screencast_listener_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| screencast_setup_error(operation, err))
+}
+
 async fn run_imgs_screencast(
     page: OxPage,
     shared: Arc<ScreencastShared>,
@@ -441,10 +459,11 @@ async fn run_frugal_imgs_screencast(
     shared: Arc<ScreencastShared>,
     capture_dir: PathBuf,
 ) -> OpenPageResult<()> {
-    let mut events = page
-        .event_listener::<EventScreencastFrame>()
-        .await
-        .map_err(|err| screencast_setup_error("register screencast frame listener", err))?;
+    let mut events = register_screencast_listener_with_cdp_timeout(
+        page.event_listener::<EventScreencastFrame>(),
+        "register screencast frame listener",
+    )
+    .await?;
 
     execute_page_command_async(
         &page,
@@ -725,11 +744,14 @@ mod tests {
     use std::env;
     use std::fs;
     use std::path::Path;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    use tokio::runtime::Runtime;
 
     use super::{
         ScreencastMode, build_video_output_path, decode_data_url, encode_frames_output,
-        frame_output_path, image_error, prepare_output_dir, screencast_capture_error,
+        frame_output_path, image_error, prepare_output_dir,
+        register_screencast_listener_with_cdp_timeout, screencast_capture_error,
         screencast_setup_error,
     };
     use crate::settings::{Settings, scoped_test_settings};
@@ -806,6 +828,26 @@ mod tests {
         assert!(chinese_capture.contains("录屏捕获操作 unit capture 失败: boom"));
         let chinese_setup = screencast_setup_error("unit setup", "boom").to_string();
         assert!(chinese_setup.contains("录屏初始化操作 unit setup 失败: boom"));
+    }
+
+    #[test]
+    fn screencast_listener_registration_respects_cdp_timeout() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+        let runtime = Runtime::new().expect("runtime");
+
+        let error = runtime
+            .block_on(register_screencast_listener_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    Ok::<(), &str>(())
+                },
+                "register screencast frame listener",
+            ))
+            .expect_err("screencast listener registration should time out")
+            .to_string();
+        assert!(error.contains("register screencast frame listener"));
     }
 
     #[test]
