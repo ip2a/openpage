@@ -8826,6 +8826,8 @@ mod tests {
             let cookies = json!({"sid": "abc", "domain": ".example.test", "path": "/"});
 
             let _ = frame.set().cookie().set(&cookies);
+            let _ = frame.set().cookie().clear();
+            let _ = frame.set().cookie().remove("sid", None, None, None);
             let _ = frame.frame_id();
             let _ = frame.set_upload_files(&files);
             let _ = frame.set_upload_paths(&files);
@@ -8885,6 +8887,8 @@ mod tests {
             let _ = web_page.click_middle("css:#open", Some(1_000), true);
 
             let _ = web_frame.set().cookie().set(&cookies);
+            let _ = web_frame.set().cookie().clear();
+            let _ = web_frame.set().cookie().remove("sid", None, None, None);
             let _ = web_frame.frame_id();
             let _ = web_frame.set_upload_files(&files);
             let _ = web_frame.set_upload_paths(&files);

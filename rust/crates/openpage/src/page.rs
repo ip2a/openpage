@@ -1555,6 +1555,20 @@ impl Frame {
         self.page.set_cookies(cookies)
     }
 
+    pub fn remove_cookie(
+        &self,
+        name: &str,
+        url: Option<&str>,
+        domain: Option<&str>,
+        path: Option<&str>,
+    ) -> OpenPageResult<()> {
+        self.page.remove_cookie(name, url, domain, path)
+    }
+
+    pub fn clear_cookies(&self) -> OpenPageResult<()> {
+        self.page.clear_cookies()
+    }
+
     pub fn set_download_path(&self, path: &str) -> OpenPageResult<()> {
         self.page.set_tab_download_path(path)
     }
@@ -2762,6 +2776,20 @@ impl FrameCookieSetter<'_> {
         C: Into<CookieInput<'a>>,
     {
         self.frame.set_cookies(cookies)
+    }
+
+    pub fn clear(&self) -> OpenPageResult<()> {
+        self.frame.clear_cookies()
+    }
+
+    pub fn remove(
+        &self,
+        name: &str,
+        url: Option<&str>,
+        domain: Option<&str>,
+        path: Option<&str>,
+    ) -> OpenPageResult<()> {
+        self.frame.remove_cookie(name, url, domain, path)
     }
 }
 
