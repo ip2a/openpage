@@ -89,6 +89,10 @@ pub enum WebFrame {
 #[derive(Clone, Debug)]
 pub enum DisconnectedWebFrame {
     Browser(DisconnectedFrame),
+    Mix {
+        frame: DisconnectedFrame,
+        page: Box<WebPage>,
+    },
 }
 
 pub struct WebElementScroller<'a> {
@@ -212,6 +216,9 @@ impl DisconnectedWebFrame {
     pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<WebFrame> {
         match self {
             Self::Browser(frame) => frame.reconnect(wait_ms).map(WebFrame::Browser),
+            Self::Mix { frame, page } => frame
+                .reconnect(wait_ms)
+                .map(|frame| page.with_driver_frame(frame)),
         }
     }
 }
@@ -625,7 +632,10 @@ impl WebFrame {
     pub fn disconnect(self) -> OpenPageResult<DisconnectedWebFrame> {
         match self {
             Self::Browser(frame) => frame.disconnect().map(DisconnectedWebFrame::Browser),
-            Self::Mix { frame, .. } => frame.disconnect().map(DisconnectedWebFrame::Browser),
+            Self::Mix { frame, page } => Ok(DisconnectedWebFrame::Mix {
+                frame: frame.disconnect()?,
+                page,
+            }),
         }
     }
 
@@ -8074,6 +8084,71 @@ mod tests {
             panic!("close headless webpage: {err}");
         }
         result.expect("webframe tab reference wrapper regression");
+    }
+
+    #[test]
+    fn disconnected_webframe_reconnect_preserves_mix_context() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webframe-disconnect-mix", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<WebFrame> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="demo-frame"
+                            srcdoc="<html><body><div id='inside'>frame reconnect</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let frame = page.get_frame("css:#demo-frame")?;
+            assert!(frame.wait_for_doc_loaded(5_000)?);
+            let disconnected = frame.disconnect()?;
+            let reconnected = disconnected.reconnect(0)?;
+            assert_eq!(
+                reconnected.run_js("document.querySelector('#inside').textContent")?,
+                Value::from("frame reconnect")
+            );
+            match reconnected.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                    assert_eq!(owner.mode()?, WebMode::Driver);
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "reconnected mix WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("reconnected mix WebFrame should keep webpage owner, got id {id}");
+                }
+            }
+            Ok(reconnected)
+        })();
+
+        let reconnected = match result {
+            Ok(frame) => frame,
+            Err(err) => {
+                let _ = page.quit();
+                let _ = fs::remove_dir_all(&temp_dir);
+                panic!("webframe disconnect mix regression failed before cleanup: {err}");
+            }
+        };
+
+        let close_result = reconnected.owner().quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage after frame reconnect: {err}");
+        }
     }
 
     #[test]
