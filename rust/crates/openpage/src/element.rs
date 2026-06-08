@@ -28,6 +28,7 @@ use chromiumoxide::layout::Point;
 use chromiumoxide::page::Page as OxPage;
 use serde_json::Value;
 use tokio::runtime::Runtime;
+use tokio::time::timeout as tokio_timeout;
 
 use crate::browser::Browser;
 use crate::download::DownloadMission;
@@ -49,7 +50,7 @@ use crate::session::{
     snapshot_fragment_root_with_base_url,
 };
 use crate::settings::{
-    blob_src_data_url_required_message, browser_backed_element_only_message,
+    blob_src_data_url_required_message, browser_backed_element_only_message, cdp_timeout_duration,
     click_at_count_must_be_positive_message, click_failed_hidden_or_disabled_message,
     click_failed_no_rect_message, click_failed_should_raise, data_url_missing_comma_message,
     element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
@@ -68,7 +69,7 @@ use crate::settings::{
     scan_frame_marker_failed_message, scan_frame_marker_javascript_failed_message,
     select_element_required_message, session_backed_element_driver_target_message,
     set_file_input_requires_at_least_one_file_message, shadow_root_object_id_unavailable_message,
-    top_window_device_pixel_ratio_not_numeric_message,
+    timeout_duration_millis, timeout_error, top_window_device_pixel_ratio_not_numeric_message,
     top_window_viewport_size_lookup_failed_message, unsupported_key_message,
     unsupported_mouse_button_message, value_coordinate_not_numeric_message,
     value_coordinate_pair_exactly_two_message, value_coordinate_pair_parse_failed_message,
@@ -94,6 +95,22 @@ fn element_operation_error(operation: &str, err: impl ToString) -> OpenPageError
         operation,
         &err.to_string(),
     ))
+}
+
+async fn run_element_future_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| element_operation_error(operation, err))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -684,10 +701,7 @@ impl Element {
 
     pub fn text(&self) -> OpenPageResult<Option<String>> {
         self.runtime.block_on(async {
-            self.inner
-                .inner_text()
-                .await
-                .map_err(|err| element_operation_error("read inner text", err))
+            run_element_future_with_cdp_timeout(self.inner.inner_text(), "read inner text").await
         })
     }
 
@@ -705,19 +719,13 @@ impl Element {
 
     pub fn html(&self) -> OpenPageResult<Option<String>> {
         self.runtime.block_on(async {
-            self.inner
-                .outer_html()
-                .await
-                .map_err(|err| element_operation_error("read outer html", err))
+            run_element_future_with_cdp_timeout(self.inner.outer_html(), "read outer html").await
         })
     }
 
     pub fn inner_html(&self) -> OpenPageResult<Option<String>> {
         self.runtime.block_on(async {
-            self.inner
-                .inner_html()
-                .await
-                .map_err(|err| element_operation_error("read inner html", err))
+            run_element_future_with_cdp_timeout(self.inner.inner_html(), "read inner html").await
         })
     }
 
@@ -787,11 +795,9 @@ impl Element {
 
     pub fn attrs(&self) -> OpenPageResult<Vec<(String, String)>> {
         self.runtime.block_on(async {
-            let attrs = self
-                .inner
-                .attributes()
-                .await
-                .map_err(|err| element_operation_error("read attributes", err))?;
+            let attrs =
+                run_element_future_with_cdp_timeout(self.inner.attributes(), "read attributes")
+                    .await?;
             Ok(attrs
                 .chunks(2)
                 .filter_map(|chunk| match chunk {
@@ -806,10 +812,11 @@ impl Element {
         match name {
             "href" => {
                 let raw = self.runtime.block_on(async {
-                    self.inner
-                        .attribute("href")
-                        .await
-                        .map_err(|err| element_operation_error("read href attribute", err))
+                    run_element_future_with_cdp_timeout(
+                        self.inner.attribute("href"),
+                        "read href attribute",
+                    )
+                    .await
                 })?;
                 let Some(value) = raw else {
                     return Ok(None);
@@ -823,10 +830,11 @@ impl Element {
             }
             "src" => {
                 let raw = self.runtime.block_on(async {
-                    self.inner
-                        .attribute("src")
-                        .await
-                        .map_err(|err| element_operation_error("read src attribute", err))
+                    run_element_future_with_cdp_timeout(
+                        self.inner.attribute("src"),
+                        "read src attribute",
+                    )
+                    .await
                 })?;
                 if raw.is_none() {
                     return Ok(None);
@@ -839,20 +847,15 @@ impl Element {
             "html" | "outerHTML" => self.html(),
             "innerHTML" => self.inner_html(),
             _ => self.runtime.block_on(async {
-                self.inner
-                    .attribute(name)
+                run_element_future_with_cdp_timeout(self.inner.attribute(name), "read attribute")
                     .await
-                    .map_err(|err| element_operation_error("read attribute", err))
             }),
         }
     }
 
     pub fn property(&self, name: &str) -> OpenPageResult<Option<Value>> {
         self.runtime.block_on(async {
-            self.inner
-                .property(name)
-                .await
-                .map_err(|err| element_operation_error("read property", err))
+            run_element_future_with_cdp_timeout(self.inner.property(name), "read property").await
         })
     }
 
@@ -5385,7 +5388,7 @@ fn mac_meta_commands(key: &str) -> Option<&'static [&'static str]> {
 mod tests {
     use super::{
         element_operation_error, parse_mouse_button, resolve_javascript_timeout_ms,
-        validate_click_at_count,
+        run_element_future_with_cdp_timeout, validate_click_at_count,
     };
 
     #[test]
@@ -5436,6 +5439,46 @@ mod tests {
     }
 
     #[test]
+    fn element_read_operations_respect_global_timeout_setting() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+        crate::Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("runtime");
+
+        let text_error = runtime
+            .block_on(run_element_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<Option<String>, &'static str>(Some("hello".to_string()))
+                },
+                "read inner text",
+            ))
+            .expect_err("element text read should time out");
+        assert!(
+            matches!(text_error, crate::OpenPageError::Timeout(ref message) if message.contains("read inner text")),
+            "unexpected text timeout error: {text_error}"
+        );
+
+        let attrs_error = runtime
+            .block_on(run_element_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<Vec<String>, &'static str>(vec!["class".to_string(), "demo".to_string()])
+                },
+                "read attributes",
+            ))
+            .expect_err("element attrs read should time out");
+
+        crate::Settings::reset();
+
+        assert!(
+            matches!(attrs_error, crate::OpenPageError::Timeout(ref message) if message.contains("read attributes")),
+            "unexpected attrs timeout error: {attrs_error}"
+        );
+    }
+
+    #[test]
     fn validate_click_at_count_errors_follow_settings_language() {
         let _guard = crate::settings::scoped_test_settings();
         crate::Settings::reset();
@@ -5470,6 +5513,7 @@ mod tests {
     };
     use crate::Keys;
     use chromiumoxide::layout::Point;
+    use tokio::runtime::Runtime;
 
     #[test]
     fn src_attribute_name_prefers_href_for_link() {
