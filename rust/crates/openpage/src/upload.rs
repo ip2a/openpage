@@ -11,12 +11,14 @@ use chromiumoxide::page::Page as OxPage;
 use futures::StreamExt;
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
+use tokio::time::timeout as tokio_timeout;
 
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::{execute_page_command_async, execute_page_command_blocking};
 use crate::settings::{
-    component_not_running_message, component_state_lock_poisoned_message,
-    file_chooser_backend_node_missing_message, upload_requires_at_least_one_file_message,
+    cdp_timeout_duration, component_not_running_message, component_state_lock_poisoned_message,
+    file_chooser_backend_node_missing_message, timeout_duration_millis, timeout_error,
+    upload_requires_at_least_one_file_message,
 };
 
 #[derive(Debug, Default)]
@@ -63,7 +65,12 @@ impl UploadTracker {
         let task_shared = Arc::clone(&shared);
         let task_page = page.clone();
         let handle = runtime.spawn(async move {
-            let mut events = match task_page.event_listener::<EventFileChooserOpened>().await {
+            let mut events = match register_upload_listener_with_cdp_timeout(
+                task_page.event_listener::<EventFileChooserOpened>(),
+                "register upload file chooser listener",
+            )
+            .await
+            {
                 Ok(events) => events,
                 Err(err) => {
                     set_last_error(&task_shared, err.to_string());
@@ -174,6 +181,22 @@ impl UploadTracker {
     }
 }
 
+async fn register_upload_listener_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+}
+
 async fn apply_upload_files(
     page: &OxPage,
     event: Arc<EventFileChooserOpened>,
@@ -262,9 +285,14 @@ fn finish_request(shared: &Arc<UploadShared>, request_id: u64, error: Option<Str
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use tokio::runtime::Runtime;
+
+    use crate::error::OpenPageError;
     use crate::settings::{Settings, scoped_test_settings};
 
-    use super::prepare_upload_file_paths;
+    use super::{prepare_upload_file_paths, register_upload_listener_with_cdp_timeout};
 
     #[test]
     fn upload_validation_errors_follow_language_setting() {
@@ -282,5 +310,32 @@ mod tests {
             .expect_err("empty upload list should fail in Chinese")
             .to_string();
         assert!(chinese.contains("upload_files() 至少需要一个文件"));
+    }
+
+    #[test]
+    fn upload_listener_registration_respects_global_timeout_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("create tokio runtime");
+        let result = runtime.block_on(async {
+            register_upload_listener_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "register upload file chooser listener",
+            )
+            .await
+        });
+
+        Settings::reset();
+
+        let error = result.expect_err("upload listener registration should time out");
+        assert!(
+            matches!(error, OpenPageError::Timeout(ref message) if message.contains("register upload file chooser listener")),
+            "unexpected upload registration timeout error: {error}"
+        );
     }
 }
