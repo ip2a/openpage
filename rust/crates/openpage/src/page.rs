@@ -4827,10 +4827,11 @@ impl Page {
 
         let content = if as_pdf {
             let pdf = self.runtime.block_on(async {
-                self.inner
-                    .pdf(pdf_options.unwrap_or_default())
-                    .await
-                    .map_err(|err| page_operation_error("print pdf", err))
+                run_page_future_with_cdp_timeout(
+                    self.inner.pdf(pdf_options.unwrap_or_default()),
+                    "print pdf",
+                )
+                .await
             })?;
             PageSaveContent::Pdf(pdf)
         } else {
@@ -12799,6 +12800,32 @@ mod tests {
         assert!(
             matches!(cookie_helper_error, OpenPageError::Timeout(ref message) if message.contains("read cookies")),
             "unexpected page cookie helper timeout error: {cookie_helper_error}"
+        );
+    }
+
+    #[test]
+    fn page_pdf_generation_respects_global_timeout_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("create tokio runtime");
+
+        let pdf_error = runtime
+            .block_on(run_page_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<Vec<u8>, &'static str>(vec![1, 2, 3])
+                },
+                "print pdf",
+            ))
+            .expect_err("page pdf generation should time out");
+
+        Settings::reset();
+
+        assert!(
+            matches!(pdf_error, OpenPageError::Timeout(ref message) if message.contains("print pdf")),
+            "unexpected page pdf timeout error: {pdf_error}"
         );
     }
 
