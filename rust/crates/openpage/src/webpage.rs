@@ -268,6 +268,20 @@ impl WebFrame {
         self.frame().set_cookies(cookies)
     }
 
+    pub fn remove_cookie(
+        &self,
+        name: &str,
+        url: Option<&str>,
+        domain: Option<&str>,
+        path: Option<&str>,
+    ) -> OpenPageResult<()> {
+        self.frame().remove_cookie(name, url, domain, path)
+    }
+
+    pub fn clear_cookies(&self) -> OpenPageResult<()> {
+        self.frame().clear_cookies()
+    }
+
     pub fn set_upload_files(&self, files: &[String]) -> OpenPageResult<()> {
         self.frame().set_upload_files(files)
     }
@@ -8889,6 +8903,9 @@ mod tests {
             let _ = web_frame.set().cookie().set(&cookies);
             let _ = web_frame.set().cookie().clear();
             let _ = web_frame.set().cookie().remove("sid", None, None, None);
+            let _ = web_frame.set_cookies(&cookies);
+            let _ = web_frame.clear_cookies();
+            let _ = web_frame.remove_cookie("sid", None, None, None);
             let _ = web_frame.frame_id();
             let _ = web_frame.set_upload_files(&files);
             let _ = web_frame.set_upload_paths(&files);
