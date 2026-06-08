@@ -1730,6 +1730,10 @@ pub struct SessionPage {
     none_element_config: ElementsOneRuntimeConfigHandle,
 }
 
+pub struct SessionPageSetter<'a> {
+    page: &'a SessionPage,
+}
+
 #[derive(Clone, Debug)]
 pub struct SessionHandle {
     inner: Arc<Mutex<SessionState>>,
@@ -1758,6 +1762,122 @@ impl SessionHandle {
 
     pub fn response_snapshot(&self) -> OpenPageResult<Option<SessionResponseInfo>> {
         self.response()
+    }
+}
+
+impl SessionPageSetter<'_> {
+    pub fn user_agent(&self, user_agent: Option<String>) -> OpenPageResult<()> {
+        self.page.set_user_agent(user_agent)
+    }
+
+    pub fn headers(&self, headers: &[(String, String)]) -> OpenPageResult<()> {
+        self.page.set_headers(headers)
+    }
+
+    pub fn header(&self, name: &str, value: &str) -> OpenPageResult<()> {
+        self.page.set_header(name, value)
+    }
+
+    pub fn timeout(&self, timeout_secs: u64) -> OpenPageResult<()> {
+        self.page.set_timeout(timeout_secs)
+    }
+
+    pub fn retry(
+        &self,
+        retry_times: Option<usize>,
+        retry_interval_millis: Option<u64>,
+    ) -> OpenPageResult<()> {
+        self.page.set_retry(retry_times, retry_interval_millis)
+    }
+
+    pub fn retry_times(&self, retry_times: usize) -> OpenPageResult<()> {
+        self.page.set_retry(Some(retry_times), None)
+    }
+
+    pub fn retry_interval(&self, retry_interval_millis: u64) -> OpenPageResult<()> {
+        self.page.set_retry(None, Some(retry_interval_millis))
+    }
+
+    pub fn download_path(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
+        self.page.set_download_path(path)
+    }
+
+    pub fn encoding(&self, encoding: Option<String>) -> OpenPageResult<()> {
+        self.page.set_encoding(encoding)
+    }
+
+    pub fn params(&self, params: &[(String, String)]) -> OpenPageResult<()> {
+        self.page.set_params(params)
+    }
+
+    pub fn auth(&self, auth: Option<(String, String)>) -> OpenPageResult<()> {
+        self.page.set_auth(auth)
+    }
+
+    pub fn hooks(&self, hooks: SessionHooks) -> OpenPageResult<()> {
+        self.page.set_hooks(hooks)
+    }
+
+    pub fn stream(&self, stream: bool) -> OpenPageResult<()> {
+        self.page.set_stream(stream)
+    }
+
+    pub fn proxies(
+        &self,
+        http_proxy: Option<String>,
+        https_proxy: Option<String>,
+    ) -> OpenPageResult<()> {
+        self.page.set_proxies(http_proxy, https_proxy)
+    }
+
+    pub fn verify(&self, verify: bool) -> OpenPageResult<()> {
+        self.page.set_verify(verify)
+    }
+
+    pub fn cert(&self, cert: Option<SessionCert>) -> OpenPageResult<()> {
+        self.page.set_cert(cert)
+    }
+
+    pub fn trust_env(&self, trust_env: bool) -> OpenPageResult<()> {
+        self.page.set_trust_env(trust_env)
+    }
+
+    pub fn max_redirects(&self, max_redirects: Option<usize>) -> OpenPageResult<()> {
+        self.page.set_max_redirects(max_redirects)
+    }
+
+    pub fn add_adapter(
+        &self,
+        url_prefix: impl Into<String>,
+        adapter: SessionAdapter,
+    ) -> OpenPageResult<()> {
+        self.page.add_adapter(url_prefix, adapter)
+    }
+
+    pub fn cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()>
+    where
+        C: Into<CookieInput<'a>>,
+    {
+        self.page.set_cookies(cookies)
+    }
+
+    pub fn cookie(
+        &self,
+        name: &str,
+        value: &str,
+        url: Option<&str>,
+        domain: Option<&str>,
+        path: Option<&str>,
+    ) -> OpenPageResult<()> {
+        self.page.set_cookie(name, value, url, domain, path)
+    }
+
+    pub fn clear_cookies(&self) -> OpenPageResult<()> {
+        self.page.clear_cookies()
+    }
+
+    pub fn remove_cookie(&self, name: &str, url: Option<&str>) -> OpenPageResult<()> {
+        self.page.remove_cookie(name, url)
     }
 }
 
@@ -1939,6 +2059,10 @@ impl SessionPage {
             })),
             none_element_config: Arc::new(Mutex::new(default_none_element_runtime_config())),
         })
+    }
+
+    pub fn set(&self) -> SessionPageSetter<'_> {
+        SessionPageSetter { page: self }
     }
 
     pub fn from_session_handle(handle: SessionHandle) -> Self {
@@ -9548,6 +9672,52 @@ mod tests {
         }
 
         let _ = assert_calls as fn(&SessionPage, &SessionElement);
+    }
+
+    #[test]
+    fn session_page_setter_signatures_accept_existing_runtime_settings() {
+        fn assert_calls(page: &SessionPage) {
+            let setter = page.set();
+            let headers = [("Accept".to_string(), "text/html".to_string())];
+            let params = [("q".to_string(), "openpage".to_string())];
+            let cookie = SessionCookieParam {
+                name: "sid".to_string(),
+                value: "1".to_string(),
+                url: Some("https://example.test/".to_string()),
+                domain: None,
+                path: Some("/".to_string()),
+                secure: false,
+                http_only: false,
+                same_site: None,
+            };
+
+            let _ = setter.user_agent(Some("OpenPage/Test".to_string()));
+            let _ = setter.headers(&headers);
+            let _ = setter.header("Accept", "application/json");
+            let _ = setter.timeout(10);
+            let _ = setter.retry(Some(3), Some(250));
+            let _ = setter.retry_times(4);
+            let _ = setter.retry_interval(500);
+            let _ = setter.download_path(std::path::Path::new("/tmp/openpage-downloads"));
+            let _ = setter.encoding(Some("utf-8".to_string()));
+            let _ = setter.params(&params);
+            let _ = setter.auth(Some(("user".to_string(), "pass".to_string())));
+            let _ = setter.hooks(SessionHooks::default());
+            let _ = setter.stream(true);
+            let _ = setter.proxies(Some("http://127.0.0.1:8080".to_string()), None);
+            let _ = setter.verify(false);
+            let _ = setter.cert(None);
+            let _ = setter.trust_env(false);
+            let _ = setter.max_redirects(Some(5));
+            let _ = setter.add_adapter("https://example.test/", SessionAdapter::new());
+            let _ = setter.cookies("sid=1; domain=example.test; path=/");
+            let _ = setter.cookies(&cookie);
+            let _ = setter.cookie("sid", "2", Some("https://example.test/"), None, Some("/"));
+            let _ = setter.clear_cookies();
+            let _ = setter.remove_cookie("sid", Some("https://example.test/"));
+        }
+
+        let _ = assert_calls as fn(&SessionPage);
     }
 
     #[test]
