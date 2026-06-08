@@ -1607,10 +1607,11 @@ impl Element {
     ) -> OpenPageResult<Vec<u8>> {
         self.prepare_element_screenshot(scroll_to_center, timeout_ms)?;
         self.runtime.block_on(async {
-            self.inner
-                .screenshot(CaptureScreenshotFormat::Png)
-                .await
-                .map_err(|err| element_operation_error("capture screenshot", err))
+            run_element_future_with_cdp_timeout(
+                self.inner.screenshot(CaptureScreenshotFormat::Png),
+                "capture screenshot",
+            )
+            .await
         })
     }
 
@@ -1637,10 +1638,12 @@ impl Element {
 
     pub fn save_screenshot(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
         self.runtime.block_on(async {
-            self.inner
-                .save_screenshot(CaptureScreenshotFormat::Png, path)
-                .await
-                .map_err(|err| element_operation_error("save screenshot", err))?;
+            run_element_future_with_cdp_timeout(
+                self.inner
+                    .save_screenshot(CaptureScreenshotFormat::Png, path),
+                "save screenshot",
+            )
+            .await?;
             Ok(())
         })
     }
@@ -1707,10 +1710,7 @@ impl Element {
             return self.press_key(value);
         }
         self.runtime.block_on(async {
-            self.inner
-                .type_str(value)
-                .await
-                .map_err(|err| element_operation_error("type text", err))?;
+            run_element_future_with_cdp_timeout(self.inner.type_str(value), "type text").await?;
             Ok(())
         })
     }
@@ -1737,10 +1737,7 @@ impl Element {
 
     pub fn focus(&self) -> OpenPageResult<()> {
         self.runtime.block_on(async {
-            self.inner
-                .focus()
-                .await
-                .map_err(|err| element_operation_error("focus", err))?;
+            run_element_future_with_cdp_timeout(self.inner.focus(), "focus").await?;
             Ok(())
         })
     }
@@ -1776,10 +1773,7 @@ impl Element {
     ) -> OpenPageResult<()> {
         if offset_x.is_none() && offset_y.is_none() {
             return self.runtime.block_on(async {
-                self.inner
-                    .hover()
-                    .await
-                    .map_err(|err| element_operation_error("hover", err))?;
+                run_element_future_with_cdp_timeout(self.inner.hover(), "hover").await?;
                 Ok(())
             });
         }
@@ -5475,6 +5469,46 @@ mod tests {
         assert!(
             matches!(attrs_error, crate::OpenPageError::Timeout(ref message) if message.contains("read attributes")),
             "unexpected attrs timeout error: {attrs_error}"
+        );
+    }
+
+    #[test]
+    fn element_lightweight_operations_respect_global_timeout_setting() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+        crate::Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("runtime");
+
+        let screenshot_error = runtime
+            .block_on(run_element_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<Vec<u8>, &'static str>(vec![1, 2, 3])
+                },
+                "capture screenshot",
+            ))
+            .expect_err("element screenshot should time out");
+        assert!(
+            matches!(screenshot_error, crate::OpenPageError::Timeout(ref message) if message.contains("capture screenshot")),
+            "unexpected screenshot timeout error: {screenshot_error}"
+        );
+
+        let focus_error = runtime
+            .block_on(run_element_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "focus",
+            ))
+            .expect_err("element focus should time out");
+
+        crate::Settings::reset();
+
+        assert!(
+            matches!(focus_error, crate::OpenPageError::Timeout(ref message) if message.contains("focus")),
+            "unexpected focus timeout error: {focus_error}"
         );
     }
 
