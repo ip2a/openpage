@@ -8,16 +8,33 @@ use chromiumoxide::page::Page as OxPage;
 use futures::StreamExt;
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
+use tokio::time::timeout as tokio_timeout;
 
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::execute_page_command_async;
 use crate::settings::{
-    alert_operation_failed_message, component_state_lock_poisoned_message,
-    default_auto_handle_alert,
+    alert_operation_failed_message, cdp_timeout_duration, component_state_lock_poisoned_message,
+    default_auto_handle_alert, timeout_duration_millis, timeout_error,
 };
 
 fn alert_operation_error(operation: &str, err: impl ToString) -> OpenPageError {
     OpenPageError::PageOperation(alert_operation_failed_message(operation, &err.to_string()))
+}
+
+async fn register_alert_listener_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| alert_operation_error(operation, err))
 }
 
 #[derive(Clone, Debug)]
@@ -79,9 +96,11 @@ impl AlertTracker {
         let opening_shared = Arc::clone(&shared);
         let opening_page = page.clone();
         let opening_task = runtime.spawn(async move {
-            let mut events = match opening_page
-                .event_listener::<EventJavascriptDialogOpening>()
-                .await
+            let mut events = match register_alert_listener_with_cdp_timeout(
+                opening_page.event_listener::<EventJavascriptDialogOpening>(),
+                "register javascript dialog opening listener",
+            )
+            .await
             {
                 Ok(events) => events,
                 Err(err) => {
@@ -121,9 +140,11 @@ impl AlertTracker {
         let closed_shared = Arc::clone(&shared);
         let closed_page = page.clone();
         let closed_task = runtime.spawn(async move {
-            let mut events = match closed_page
-                .event_listener::<EventJavascriptDialogClosed>()
-                .await
+            let mut events = match register_alert_listener_with_cdp_timeout(
+                closed_page.event_listener::<EventJavascriptDialogClosed>(),
+                "register javascript dialog closed listener",
+            )
+            .await
             {
                 Ok(events) => events,
                 Err(err) => {
@@ -332,7 +353,11 @@ fn set_last_error(shared: &AlertShared, error: String) {
 
 #[cfg(test)]
 mod tests {
-    use super::alert_operation_error;
+    use std::time::Duration;
+
+    use tokio::runtime::Runtime;
+
+    use super::{alert_operation_error, register_alert_listener_with_cdp_timeout};
     use crate::Settings;
     use crate::settings::scoped_test_settings;
 
@@ -351,5 +376,25 @@ mod tests {
 
         let chinese = alert_operation_error("handle dialog", "boom").to_string();
         assert_eq!(chinese, "页面操作失败: 弹窗操作 handle dialog 失败: boom");
+    }
+
+    #[test]
+    fn alert_listener_registration_respects_cdp_timeout() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+        let runtime = Runtime::new().expect("runtime");
+
+        let error = runtime
+            .block_on(register_alert_listener_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    Ok::<(), &str>(())
+                },
+                "register javascript dialog opening listener",
+            ))
+            .expect_err("alert listener registration should time out")
+            .to_string();
+        assert!(error.contains("register javascript dialog opening listener"));
     }
 }
