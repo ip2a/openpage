@@ -119,7 +119,7 @@ fn page_operation_error(operation: &str, err: impl ToString) -> OpenPageError {
     OpenPageError::PageOperation(page_operation_failed_message(operation, &err.to_string()))
 }
 
-async fn register_navigation_listener_with_cdp_timeout<Fut, T, E>(
+async fn run_page_future_with_cdp_timeout<Fut, T, E>(
     future: Fut,
     operation: &str,
 ) -> OpenPageResult<T>
@@ -133,6 +133,17 @@ where
         .await
         .map_err(|_| timeout_error(operation, timeout_ms))?
         .map_err(|err| page_operation_error(operation, err))
+}
+
+async fn register_navigation_listener_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    run_page_future_with_cdp_timeout(future, operation).await
 }
 
 #[derive(Clone, Debug)]
@@ -6183,10 +6194,8 @@ impl Page {
         }
 
         self.runtime.block_on(async {
-            self.inner
-                .set_cookies(cookies)
-                .await
-                .map_err(|err| page_operation_error("set cookie header", err))?;
+            run_page_future_with_cdp_timeout(self.inner.set_cookies(cookies), "set cookie header")
+                .await?;
             Ok(())
         })
     }
@@ -6225,10 +6234,7 @@ impl Page {
     ) -> OpenPageResult<()> {
         let cookie = cookie_param(name, value, url, domain, path);
         self.runtime.block_on(async {
-            self.inner
-                .set_cookie(cookie)
-                .await
-                .map_err(|err| page_operation_error("set cookie", err))?;
+            run_page_future_with_cdp_timeout(self.inner.set_cookie(cookie), "set cookie").await?;
             Ok(())
         })
     }
@@ -6242,10 +6248,8 @@ impl Page {
     ) -> OpenPageResult<()> {
         let params = delete_cookie_params(name, url, domain, path);
         self.runtime.block_on(async {
-            self.inner
-                .delete_cookie(params)
-                .await
-                .map_err(|err| page_operation_error("delete cookie", err))?;
+            run_page_future_with_cdp_timeout(self.inner.delete_cookie(params), "delete cookie")
+                .await?;
             Ok(())
         })
     }
@@ -8093,9 +8097,9 @@ mod tests {
         register_navigation_listener_with_cdp_timeout, remaining_timeout_ms,
         resolve_implicit_wait_timeout_ms, resolve_navigation_local_file_path,
         resolve_page_save_target_path, resolve_page_screenshot_target_path,
-        resolve_permission_origin, run_with_timeout, runtime_timeout_seconds_to_millis,
-        screenshot_clip, storage_lookup_script, value_as_f64_pair, value_as_optional_string,
-        value_as_string, value_as_string_vec,
+        resolve_permission_origin, run_page_future_with_cdp_timeout, run_with_timeout,
+        runtime_timeout_seconds_to_millis, screenshot_clip, storage_lookup_script,
+        value_as_f64_pair, value_as_optional_string, value_as_string, value_as_string_vec,
     };
     use crate::element_list::ElementsListExt;
     use crate::error::OpenPageError;
@@ -12581,6 +12585,33 @@ mod tests {
         assert!(
             matches!(error, OpenPageError::Timeout(ref message) if message.contains("Page::is_alive()")),
             "unexpected page is_alive timeout error: {error}"
+        );
+    }
+
+    #[test]
+    fn page_cookie_operations_respect_global_timeout_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("create tokio runtime");
+        let result = runtime.block_on(async {
+            run_page_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "set cookie",
+            )
+            .await
+        });
+
+        Settings::reset();
+
+        let error = result.expect_err("page cookie operation should time out");
+        assert!(
+            matches!(error, OpenPageError::Timeout(ref message) if message.contains("set cookie")),
+            "unexpected page cookie timeout error: {error}"
         );
     }
 
