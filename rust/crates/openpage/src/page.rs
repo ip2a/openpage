@@ -6520,7 +6520,7 @@ impl Page {
         }
     }
 
-    fn resolve_dom_backend_node_id(
+    pub(crate) fn resolve_dom_backend_node_id(
         &self,
         backend_node_id: BackendNodeId,
     ) -> OpenPageResult<Element> {

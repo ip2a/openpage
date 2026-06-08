@@ -339,6 +339,18 @@ impl WebFrame {
         self.frame_element()
     }
 
+    pub fn frame_element_reference(&self) -> OpenPageResult<WebElement> {
+        let element = self
+            .frame()
+            .owner()
+            .resolve_dom_backend_node_id(self.frame().frame_element().backend_node_id())?;
+        Ok(self.wrap_element(element))
+    }
+
+    pub fn frame_ele_reference(&self) -> OpenPageResult<WebElement> {
+        self.frame_element_reference()
+    }
+
     pub fn owner(&self) -> &crate::page::Page {
         self.frame().owner()
     }
@@ -8058,6 +8070,25 @@ mod tests {
                     panic!("mix WebFrame tab_reference should return webpage, got id {id}");
                 }
             }
+            match frame.frame_element_reference()? {
+                WebElement::Mix {
+                    element,
+                    page: owner,
+                } => {
+                    assert_eq!(element.attr("id")?, Some("demo-frame".to_string()));
+                    assert_eq!(owner.target_id(), page.target_id());
+                    assert_eq!(owner.mode()?, WebMode::Driver);
+                }
+                WebElement::Browser(element) => {
+                    panic!(
+                        "mix WebFrame frame_element_reference should return mix element, got browser element {:?}",
+                        element.attr("id")?
+                    );
+                }
+                WebElement::Session(_) => {
+                    panic!("mix WebFrame frame_element_reference should return mix element");
+                }
+            }
 
             let browser_frame = WebFrame::Browser(page.driver.get_frame("css:#demo-frame")?);
             match browser_frame.tab_reference() {
@@ -8072,6 +8103,20 @@ mod tests {
                 }
                 BrowserTabReference::Id(id) => {
                     panic!("browser WebFrame tab_reference should return page, got id {id}");
+                }
+            }
+            match browser_frame.frame_ele_reference()? {
+                WebElement::Browser(element) => {
+                    assert_eq!(element.attr("id")?, Some("demo-frame".to_string()));
+                }
+                WebElement::Mix { page, .. } => {
+                    panic!(
+                        "browser WebFrame frame_ele_reference should return browser element, got mix page {}",
+                        page.target_id()
+                    );
+                }
+                WebElement::Session(_) => {
+                    panic!("browser WebFrame frame_ele_reference should return browser element");
                 }
             }
             Ok(())
