@@ -8481,6 +8481,64 @@ mod tests {
     }
 
     #[test]
+    fn singleton_tab_obj_reuses_webframe_state_when_enabled() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(true);
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webframe-singleton-enabled", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="demo-frame"
+                            srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let frame = page.get_frame("css:#demo-frame")?;
+            assert!(frame.wait_for_doc_loaded(5_000)?);
+            frame.set_none_element_value(Some("missing"), true)?;
+
+            let same_frame = page.get_frame("css:#demo-frame")?;
+            assert_eq!(
+                same_frame.ele(".does-not-exist")?.text()?,
+                Some("missing".to_string())
+            );
+            match same_frame.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "singleton mix WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("singleton mix WebFrame should keep webpage owner, got id {id}");
+                }
+            }
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("singleton webframe runtime-state regression");
+    }
+
+    #[test]
     fn singleton_tab_obj_returns_fresh_webframe_state_when_disabled() {
         let _settings = scoped_test_settings();
         Settings::reset();
