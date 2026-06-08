@@ -15,15 +15,17 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
+use tokio::time::timeout as tokio_timeout;
 use url::Url;
 
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::execute_page_command_async;
 use crate::settings::{
-    component_not_running_message, component_not_running_with_error_message,
+    cdp_timeout_duration, component_not_running_message, component_not_running_with_error_message,
     component_state_lock_poisoned_message, invalid_regex_message,
     listener_response_body_decode_failed_message, listener_response_body_json_failed_message,
     listener_response_body_utf8_failed_message, listener_setup_operation_failed_message,
+    timeout_duration_millis, timeout_error,
 };
 
 fn listener_packet_state_lock_poisoned_error() -> OpenPageError {
@@ -45,6 +47,22 @@ fn listener_setup_error(operation: &str, err: impl ToString) -> OpenPageError {
         operation,
         &err.to_string(),
     ))
+}
+
+async fn register_listener_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| listener_setup_error(operation, err))
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1013,30 +1031,36 @@ impl Iterator for ListenerSteps {
 }
 
 async fn run_listener(page: OxPage, shared: Arc<ListenerShared>) -> OpenPageResult<()> {
-    let mut request_events = page
-        .event_listener::<EventRequestWillBeSent>()
-        .await
-        .map_err(|err| listener_setup_error("register request listener", err))?;
-    let mut response_events = page
-        .event_listener::<EventResponseReceived>()
-        .await
-        .map_err(|err| listener_setup_error("register response listener", err))?;
-    let mut request_extra_events = page
-        .event_listener::<EventRequestWillBeSentExtraInfo>()
-        .await
-        .map_err(|err| listener_setup_error("register request extra info listener", err))?;
-    let mut response_extra_events = page
-        .event_listener::<EventResponseReceivedExtraInfo>()
-        .await
-        .map_err(|err| listener_setup_error("register response extra info listener", err))?;
-    let mut finished_events = page
-        .event_listener::<EventLoadingFinished>()
-        .await
-        .map_err(|err| listener_setup_error("register loading finished listener", err))?;
-    let mut failed_events = page
-        .event_listener::<EventLoadingFailed>()
-        .await
-        .map_err(|err| listener_setup_error("register loading failed listener", err))?;
+    let mut request_events = register_listener_with_cdp_timeout(
+        page.event_listener::<EventRequestWillBeSent>(),
+        "register request listener",
+    )
+    .await?;
+    let mut response_events = register_listener_with_cdp_timeout(
+        page.event_listener::<EventResponseReceived>(),
+        "register response listener",
+    )
+    .await?;
+    let mut request_extra_events = register_listener_with_cdp_timeout(
+        page.event_listener::<EventRequestWillBeSentExtraInfo>(),
+        "register request extra info listener",
+    )
+    .await?;
+    let mut response_extra_events = register_listener_with_cdp_timeout(
+        page.event_listener::<EventResponseReceivedExtraInfo>(),
+        "register response extra info listener",
+    )
+    .await?;
+    let mut finished_events = register_listener_with_cdp_timeout(
+        page.event_listener::<EventLoadingFinished>(),
+        "register loading finished listener",
+    )
+    .await?;
+    let mut failed_events = register_listener_with_cdp_timeout(
+        page.event_listener::<EventLoadingFailed>(),
+        "register loading failed listener",
+    )
+    .await?;
 
     loop {
         tokio::select! {
@@ -1644,7 +1668,7 @@ async fn fetch_request_post_data(page: &OxPage, event: &EventLoadingFinished) ->
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, sync::Arc};
+    use std::{collections::HashMap, sync::Arc, time::Duration};
 
     use crate::settings::{Settings, scoped_test_settings};
 
@@ -1656,13 +1680,15 @@ mod tests {
         listener_response_extra_info_from_cdp, listener_response_from_cdp, listener_setup_error,
         listener_state_lock_poisoned_error, on_loading_failed, on_request_will_be_sent,
         on_request_will_be_sent_extra_info, on_response_received_extra_info,
-        preserve_existing_response_extra_info, update_listener_filters,
+        preserve_existing_response_extra_info, register_listener_with_cdp_timeout,
+        update_listener_filters,
     };
     use chromiumoxide::cdp::browser_protocol::network::{
         EventLoadingFailed, EventRequestWillBeSent, EventRequestWillBeSentExtraInfo,
         EventResponseReceivedExtraInfo, Headers, Response,
     };
     use serde_json::json;
+    use tokio::runtime::Runtime;
 
     #[test]
     fn headers_are_converted_into_plain_strings() {
@@ -1948,6 +1974,26 @@ mod tests {
             .expect_err("invalid json body should localize")
             .to_string();
         assert!(chinese_json.contains("按 json 解析监听响应体失败"));
+    }
+
+    #[test]
+    fn listener_registration_respects_cdp_timeout() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+        let runtime = Runtime::new().expect("runtime");
+
+        let error = runtime
+            .block_on(register_listener_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    Ok::<(), &str>(())
+                },
+                "register request listener",
+            ))
+            .expect_err("listener registration should time out")
+            .to_string();
+        assert!(error.contains("register request listener"));
     }
 
     #[test]
