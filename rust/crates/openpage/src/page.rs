@@ -6051,8 +6051,20 @@ impl Page {
     }
 
     pub fn is_alive(&self) -> OpenPageResult<bool> {
-        self.runtime
-            .block_on(async { Ok(self.inner.url().await.is_ok()) })
+        self.runtime.block_on(async {
+            Ok(run_with_timeout(
+                async {
+                    self.inner
+                        .url()
+                        .await
+                        .map_err(|err| page_operation_error("Page::is_alive()", err))
+                },
+                timeout_duration_millis(cdp_timeout_duration()),
+                "Page::is_alive()",
+            )
+            .await
+            .is_ok())
+        })
     }
 
     pub fn wait_for_url_change(
@@ -8088,7 +8100,7 @@ mod tests {
     use crate::element_list::ElementsListExt;
     use crate::error::OpenPageError;
     use crate::session::SessionCookieParam;
-    use crate::settings::scoped_test_settings;
+    use crate::settings::{cdp_timeout_duration, scoped_test_settings, timeout_duration_millis};
     use crate::{
         Browser, BrowserTabReference, BrowserTabSelector, By, DisconnectedFrame, DisconnectedPage,
         Frame, Keys, LaunchOptions, OpenPageResult, Settings, WebElement, wait_until,
@@ -12541,6 +12553,34 @@ mod tests {
         assert!(
             matches!(error, OpenPageError::Timeout(ref message) if message.contains("register navigation lifecycle listener")),
             "unexpected navigation registration timeout error: {error}"
+        );
+    }
+
+    #[test]
+    fn page_is_alive_respects_global_timeout_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("create tokio runtime");
+        let result = runtime.block_on(async {
+            run_with_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), OpenPageError>(())
+                },
+                timeout_duration_millis(cdp_timeout_duration()),
+                "Page::is_alive()",
+            )
+            .await
+        });
+
+        Settings::reset();
+
+        let error = result.expect_err("page is_alive should time out");
+        assert!(
+            matches!(error, OpenPageError::Timeout(ref message) if message.contains("Page::is_alive()")),
+            "unexpected page is_alive timeout error: {error}"
         );
     }
 
