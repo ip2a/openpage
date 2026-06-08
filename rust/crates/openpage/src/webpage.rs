@@ -4836,11 +4836,46 @@ impl WebPage {
         }
     }
 
+    pub fn get_frame_with_timeout<'a, L>(
+        &self,
+        target: L,
+        timeout_ms: u64,
+    ) -> OpenPageResult<WebFrame>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        match self.mode()? {
+            WebMode::Driver => self
+                .driver
+                .get_frame_with_timeout(target, timeout_ms)
+                .map(WebFrame::Browser),
+            WebMode::Session => Err(OpenPageError::UnsupportedOperation(
+                driver_mode_only_message("get_frame_with_timeout()"),
+            )),
+        }
+    }
+
     pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
         match self.mode()? {
             WebMode::Driver => self.driver.get_frame_by_index(index).map(WebFrame::Browser),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_by_index()"),
+            )),
+        }
+    }
+
+    pub fn get_frame_by_index_with_timeout(
+        &self,
+        index: usize,
+        timeout_ms: u64,
+    ) -> OpenPageResult<WebFrame> {
+        match self.mode()? {
+            WebMode::Driver => self
+                .driver
+                .get_frame_by_index_with_timeout(index, timeout_ms)
+                .map(WebFrame::Browser),
+            WebMode::Session => Err(OpenPageError::UnsupportedOperation(
+                driver_mode_only_message("get_frame_by_index_with_timeout()"),
             )),
         }
     }
@@ -7572,8 +7607,10 @@ mod tests {
             web_element: &WebElement,
         ) {
             let _ = page.get_frame((By::ID, "theFrame"));
+            let _ = page.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = page.get_frame_ele((By::ID, "theFrame"));
             let _ = page.get_frame(1usize);
+            let _ = page.get_frame_by_index_with_timeout(1usize, 10);
             let _ = page.get_frame_ele(1usize);
             let _ = page.get_frame(-1isize);
             let _ = page.get_frame_ele(-1isize);
@@ -7593,8 +7630,10 @@ mod tests {
             let _ = element.get_frame(1usize);
             let _ = element.get_frame(frame);
             let _ = web_page.get_frame((By::ID, "theFrame"));
+            let _ = web_page.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = web_page.get_frame_ele((By::ID, "theFrame"));
             let _ = web_page.get_frame(1usize);
+            let _ = web_page.get_frame_by_index_with_timeout(1usize, 10);
             let _ = web_page.get_frame_ele(1usize);
             let _ = web_page.get_frame(-1isize);
             let _ = web_page.get_frame_ele(-1isize);

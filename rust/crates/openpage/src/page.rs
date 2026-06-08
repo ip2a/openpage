@@ -602,6 +602,7 @@ pub enum ActionsDragData<'a> {
     },
 }
 
+#[derive(Clone, Copy)]
 pub enum PageFrameTarget<'a> {
     Locator(LocatorInput<'a>),
     Index(isize),
@@ -4207,8 +4208,38 @@ impl Page {
         self.frame_from_element(self.get_frame_ele(target)?)
     }
 
+    pub fn get_frame_with_timeout<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<Frame>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        let target = target.into();
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        loop {
+            match self.get_frame(target) {
+                Ok(frame) => return Ok(frame),
+                Err(err) => {
+                    if Instant::now() >= deadline {
+                        return Err(OpenPageError::Timeout(wait_for_locator_timed_out_message(
+                            "frame",
+                            &err.to_string(),
+                        )));
+                    }
+                }
+            }
+            sleep(Duration::from_millis(50));
+        }
+    }
+
     pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<Frame> {
         self.get_frame(index)
+    }
+
+    pub fn get_frame_by_index_with_timeout(
+        &self,
+        index: usize,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Frame> {
+        self.get_frame_with_timeout(index, timeout_ms)
     }
 
     pub fn get_frame_ele<'a, L>(&self, target: L) -> OpenPageResult<Element>
@@ -9684,6 +9715,55 @@ mod tests {
             panic!("close headless browser: {err}");
         }
         result.expect("frame target lookup regression");
+    }
+
+    #[test]
+    fn page_get_frame_with_timeout_waits_for_delayed_iframe() {
+        let (browser, temp_dir) = launch_headless_test_browser("page-get-frame-timeout")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = '<div id="host"></div>';
+                    setTimeout(() => {
+                        const frame = document.createElement('iframe');
+                        frame.id = 'delayed-frame';
+                        frame.name = 'delayed-frame';
+                        frame.srcdoc = "<html><body><button id='inside'>inside</button></body></html>";
+                        document.getElementById('host').appendChild(frame);
+                    }, 150);
+                    return true;
+                })()"#,
+            )?;
+
+            assert!(page.get_frame("css:#delayed-frame").is_err());
+
+            let frame = page.get_frame_with_timeout("css:#delayed-frame", 2_000)?;
+            assert!(frame.wait_for_doc_loaded(2_000)?);
+            assert_eq!(frame.attr("name")?, Some("delayed-frame".to_string()));
+            assert_eq!(
+                frame.find("css:#inside")?.text()?,
+                Some("inside".to_string())
+            );
+
+            let frame_by_index = page.get_frame_by_index_with_timeout(1, 500)?;
+            assert_eq!(
+                frame_by_index.attr("id")?,
+                Some("delayed-frame".to_string())
+            );
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("frame timeout lookup regression");
     }
 
     #[test]
