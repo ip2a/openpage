@@ -13,13 +13,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
+use tokio::time::timeout as tokio_timeout;
 
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::execute_page_command_blocking;
 use crate::settings::{
-    component_not_active_start_message, component_not_running_message,
+    cdp_timeout_duration, component_not_active_start_message, component_not_running_message,
     component_not_running_with_error_message, component_state_lock_poisoned_message,
     component_stopped_while_waiting_message, console_setup_operation_failed_message,
+    timeout_duration_millis, timeout_error,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -234,10 +236,11 @@ impl Iterator for ConsoleSteps {
 }
 
 async fn run_console(page: OxPage, shared: Arc<ConsoleShared>) -> OpenPageResult<()> {
-    let mut events = page
-        .event_listener::<EventConsoleApiCalled>()
-        .await
-        .map_err(|err| console_setup_error("register console api listener", err))?;
+    let mut events = register_console_listener_with_cdp_timeout(
+        page.event_listener::<EventConsoleApiCalled>(),
+        "register console api listener",
+    )
+    .await?;
 
     while let Some(event) = events.next().await {
         push_console_message(&shared, console_message_from_api_call(&event))?;
@@ -251,6 +254,22 @@ fn console_setup_error(operation: &str, err: impl ToString) -> OpenPageError {
         operation,
         &err.to_string(),
     ))
+}
+
+async fn register_console_listener_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| console_setup_error(operation, err))
 }
 
 fn push_console_message(
@@ -448,7 +467,7 @@ mod tests {
     use super::{
         ConsoleMessage, ConsoleShared, console_message_from_entry, console_not_running_error,
         console_setup_error, drain_console_messages, push_console_message,
-        wait_for_console_message,
+        register_console_listener_with_cdp_timeout, wait_for_console_message,
     };
 
     fn sample_message(text: &str) -> ConsoleMessage {
@@ -601,5 +620,25 @@ mod tests {
         assert!(chinese_not_running.contains("控制台未运行: boom"));
         let chinese_setup = console_setup_error("unit test setup", "boom").to_string();
         assert!(chinese_setup.contains("控制台初始化操作 unit test setup 失败: boom"));
+    }
+
+    #[test]
+    fn console_listener_registration_respects_cdp_timeout() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+        let runtime = Runtime::new().expect("runtime");
+
+        let error = runtime
+            .block_on(register_console_listener_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    Ok::<(), &str>(())
+                },
+                "register console api listener",
+            ))
+            .expect_err("console listener registration should time out")
+            .to_string();
+        assert!(error.contains("register console api listener"));
     }
 }
