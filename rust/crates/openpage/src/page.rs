@@ -119,6 +119,22 @@ fn page_operation_error(operation: &str, err: impl ToString) -> OpenPageError {
     OpenPageError::PageOperation(page_operation_failed_message(operation, &err.to_string()))
 }
 
+async fn register_navigation_listener_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| page_operation_error(operation, err))
+}
+
 #[derive(Clone, Debug)]
 pub struct Page {
     runtime: Arc<Runtime>,
@@ -274,7 +290,12 @@ impl NavigationTracker {
         let lifecycle_shared = Arc::clone(&shared);
         let lifecycle_page = page.clone();
         let lifecycle_task = runtime.spawn(async move {
-            let mut events = match lifecycle_page.event_listener::<EventLifecycleEvent>().await {
+            let mut events = match register_navigation_listener_with_cdp_timeout(
+                lifecycle_page.event_listener::<EventLifecycleEvent>(),
+                "register navigation lifecycle listener",
+            )
+            .await
+            {
                 Ok(events) => events,
                 Err(err) => {
                     set_navigation_last_error(&lifecycle_shared, err.to_string());
@@ -290,7 +311,12 @@ impl NavigationTracker {
         let frame_shared = Arc::clone(&shared);
         let frame_page = page.clone();
         let frame_navigated_task = runtime.spawn(async move {
-            let mut events = match frame_page.event_listener::<EventFrameNavigated>().await {
+            let mut events = match register_navigation_listener_with_cdp_timeout(
+                frame_page.event_listener::<EventFrameNavigated>(),
+                "register navigation frame listener",
+            )
+            .await
+            {
                 Ok(events) => events,
                 Err(err) => {
                     set_navigation_last_error(&frame_shared, err.to_string());
@@ -306,9 +332,11 @@ impl NavigationTracker {
         let same_document_shared = Arc::clone(&shared);
         let same_document_page = page;
         let same_document_task = runtime.spawn(async move {
-            let mut events = match same_document_page
-                .event_listener::<EventNavigatedWithinDocument>()
-                .await
+            let mut events = match register_navigation_listener_with_cdp_timeout(
+                same_document_page.event_listener::<EventNavigatedWithinDocument>(),
+                "register navigation same-document listener",
+            )
+            .await
             {
                 Ok(events) => events,
                 Err(err) => {
@@ -8040,6 +8068,7 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+    use tokio::runtime::Runtime;
     use url::Url;
 
     use super::{
@@ -8049,7 +8078,8 @@ mod tests {
         delete_cookie_params, frame_locator, frame_locator_input, history_entry_index,
         is_explicit_locator, marker_xpath, optional_frame_locator_input,
         page_element_info_properties_json, page_operation_error, permission_origin_from_input,
-        remaining_timeout_ms, resolve_implicit_wait_timeout_ms, resolve_navigation_local_file_path,
+        register_navigation_listener_with_cdp_timeout, remaining_timeout_ms,
+        resolve_implicit_wait_timeout_ms, resolve_navigation_local_file_path,
         resolve_page_save_target_path, resolve_page_screenshot_target_path,
         resolve_permission_origin, run_with_timeout, runtime_timeout_seconds_to_millis,
         screenshot_clip, storage_lookup_script, value_as_f64_pair, value_as_optional_string,
@@ -12485,6 +12515,33 @@ mod tests {
             panic!("close headless browser: {err}");
         }
         result.expect("page global cdp-timeout setting regression");
+    }
+
+    #[test]
+    fn page_navigation_listener_registration_respects_global_timeout_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("create tokio runtime");
+        let result = runtime.block_on(async {
+            register_navigation_listener_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "register navigation lifecycle listener",
+            )
+            .await
+        });
+
+        Settings::reset();
+
+        let error = result.expect_err("navigation listener registration should time out");
+        assert!(
+            matches!(error, OpenPageError::Timeout(ref message) if message.contains("register navigation lifecycle listener")),
+            "unexpected navigation registration timeout error: {error}"
+        );
     }
 
     #[test]
