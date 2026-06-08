@@ -3801,23 +3801,21 @@ impl Page {
 
     pub fn url(&self) -> OpenPageResult<String> {
         self.runtime.block_on(async {
-            Ok(self
-                .inner
-                .url()
-                .await
-                .map_err(|err| page_operation_error("read url", err))?
-                .unwrap_or_default())
+            Ok(
+                run_page_future_with_cdp_timeout(self.inner.url(), "read url")
+                    .await?
+                    .unwrap_or_default(),
+            )
         })
     }
 
     pub fn title(&self) -> OpenPageResult<String> {
         self.runtime.block_on(async {
-            Ok(self
-                .inner
-                .get_title()
-                .await
-                .map_err(|err| page_operation_error("read title", err))?
-                .unwrap_or_default())
+            Ok(
+                run_page_future_with_cdp_timeout(self.inner.get_title(), "read title")
+                    .await?
+                    .unwrap_or_default(),
+            )
         })
     }
 
@@ -12612,6 +12610,46 @@ mod tests {
         assert!(
             matches!(error, OpenPageError::Timeout(ref message) if message.contains("set cookie")),
             "unexpected page cookie timeout error: {error}"
+        );
+    }
+
+    #[test]
+    fn page_url_and_title_operations_respect_global_timeout_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("create tokio runtime");
+
+        let url_error = runtime
+            .block_on(run_page_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<Option<String>, &'static str>(Some("https://example.com".to_string()))
+                },
+                "read url",
+            ))
+            .expect_err("page url operation should time out");
+        assert!(
+            matches!(url_error, OpenPageError::Timeout(ref message) if message.contains("read url")),
+            "unexpected page url timeout error: {url_error}"
+        );
+
+        let title_error = runtime
+            .block_on(run_page_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<Option<String>, &'static str>(Some("example".to_string()))
+                },
+                "read title",
+            ))
+            .expect_err("page title operation should time out");
+
+        Settings::reset();
+
+        assert!(
+            matches!(title_error, OpenPageError::Timeout(ref message) if message.contains("read title")),
+            "unexpected page title timeout error: {title_error}"
         );
     }
 
