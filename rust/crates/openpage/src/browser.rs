@@ -2459,7 +2459,7 @@ impl Browser {
         self.inner.runtime.block_on(async {
             let mut browser = self.inner.browser.lock().await;
             run_browser_future_with_cdp_timeout(browser.close(), "Browser::close()").await?;
-            let _ = browser.wait().await;
+            run_browser_future_with_cdp_timeout(browser.wait(), "Browser::close().wait()").await?;
             Ok::<(), OpenPageError>(())
         })?;
         if let Ok(mut cache) = self.inner.page_cache.lock() {
@@ -4627,6 +4627,26 @@ mod tests {
             .expect_err("future error should fail in Chinese")
             .to_string();
         assert!(chinese.contains("浏览器命令 Browser::unit_test() 执行失败: boom"));
+    }
+
+    #[test]
+    fn browser_close_wait_respects_cdp_timeout() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+
+        let error = runtime
+            .block_on(run_browser_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    Ok::<(), &str>(())
+                },
+                "Browser::close().wait()",
+            ))
+            .expect_err("close wait should time out")
+            .to_string();
+        assert!(error.contains("Browser::close().wait()"));
     }
 
     #[test]
