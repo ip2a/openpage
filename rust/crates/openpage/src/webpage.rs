@@ -336,8 +336,16 @@ impl WebFrame {
         self.frame().owner()
     }
 
+    pub fn owner_reference(&self) -> BrowserTabReference {
+        self.wrap_page(self.frame().owner().clone())
+    }
+
     pub fn tab(&self) -> &crate::page::Page {
         self.frame().tab()
+    }
+
+    pub fn tab_reference(&self) -> BrowserTabReference {
+        self.owner_reference()
     }
 
     pub fn tab_id(&self) -> String {
@@ -7984,6 +7992,88 @@ mod tests {
             panic!("close headless webpage: {err}");
         }
         result.expect("webframe new-tab click wrapper regression");
+    }
+
+    #[test]
+    fn webframe_tab_references_preserve_mix_context() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webframe-tab-reference-wrappers", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="demo-frame"
+                            srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let frame = page.get_frame("css:#demo-frame")?;
+            assert!(frame.wait_for_doc_loaded(5_000)?);
+            match frame.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                    assert_eq!(owner.mode()?, WebMode::Driver);
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "mix WebFrame owner_reference should return webpage, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("mix WebFrame owner_reference should return webpage, got id {id}");
+                }
+            }
+            match frame.tab_reference() {
+                BrowserTabReference::WebPage(tab) => {
+                    assert_eq!(tab.target_id(), page.target_id());
+                    assert_eq!(tab.mode()?, WebMode::Driver);
+                }
+                BrowserTabReference::Page(tab) => {
+                    panic!(
+                        "mix WebFrame tab_reference should return webpage, got page {}",
+                        tab.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("mix WebFrame tab_reference should return webpage, got id {id}");
+                }
+            }
+
+            let browser_frame = WebFrame::Browser(page.driver.get_frame("css:#demo-frame")?);
+            match browser_frame.tab_reference() {
+                BrowserTabReference::Page(tab) => {
+                    assert_eq!(tab.target_id(), page.target_id());
+                }
+                BrowserTabReference::WebPage(tab) => {
+                    panic!(
+                        "browser WebFrame tab_reference should return page, got webpage {}",
+                        tab.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("browser WebFrame tab_reference should return page, got id {id}");
+                }
+            }
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("webframe tab reference wrapper regression");
     }
 
     #[test]
