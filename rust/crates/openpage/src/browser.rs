@@ -1225,10 +1225,11 @@ impl Browser {
             attach_newest_tab_tracker(&runtime, &browser, Arc::clone(&newest_tab_id))?;
 
         runtime.block_on(async {
-            browser
-                .fetch_targets()
-                .await
-                .map_err(|err| browser_operation_error("fetch initial targets", err))
+            run_browser_future_with_cdp_timeout(
+                browser.fetch_targets(),
+                "Browser::connect().fetch_targets()",
+            )
+            .await
         })?;
 
         let (downloads, download_task) = attach_download_store(Arc::clone(&runtime), &browser)?;
@@ -4673,6 +4674,26 @@ mod tests {
                 "Browser::attach_newest_tab_tracker().register_target_created_listener()"
             )
         );
+    }
+
+    #[test]
+    fn browser_fetch_targets_respects_cdp_timeout() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+
+        let error = runtime
+            .block_on(run_browser_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    Ok::<(), &str>(())
+                },
+                "Browser::connect().fetch_targets()",
+            ))
+            .expect_err("fetch_targets should time out")
+            .to_string();
+        assert!(error.contains("Browser::connect().fetch_targets()"));
     }
 
     #[test]
