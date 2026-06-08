@@ -6504,6 +6504,14 @@ impl WebPageSetter<'_> {
         self.page.activate()
     }
 
+    pub fn retry(
+        &self,
+        retry_times: Option<usize>,
+        retry_interval_secs: Option<f64>,
+    ) -> OpenPageResult<()> {
+        self.page.set_retry(retry_times, retry_interval_secs)
+    }
+
     pub fn retry_times(&self, times: usize) -> OpenPageResult<()> {
         self.page.set_retry(Some(times), None)
     }
@@ -9049,6 +9057,7 @@ mod tests {
             let _ = page.set().upload_files(&files);
             let _ = page.set().upload_paths(&files);
             let _ = page.set().activate();
+            let _ = page.set().retry(Some(5), Some(0.25));
             let _ = page.set().retry_times(5);
             let _ = page.set().retry_interval(0.25);
             let _ = page.set().timeouts(Some(1.0), Some(2.0), Some(3.0));
@@ -9088,6 +9097,7 @@ mod tests {
             let _ = web_page.set().upload_files(&files);
             let _ = web_page.set().upload_paths(&files);
             let _ = web_page.set().activate();
+            let _ = web_page.set().retry(Some(5), Some(0.25));
             let _ = web_page.set().retry_times(5);
             let _ = web_page.set().retry_interval(0.25);
             let _ = web_page.set().timeouts(Some(1.0), Some(2.0), Some(3.0));

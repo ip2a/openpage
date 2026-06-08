@@ -2625,6 +2625,14 @@ impl PageSetter<'_> {
         self.page.activate()
     }
 
+    pub fn retry(
+        &self,
+        retry_times: Option<usize>,
+        retry_interval_secs: Option<f64>,
+    ) -> OpenPageResult<()> {
+        self.page.set_retry(retry_times, retry_interval_secs)
+    }
+
     pub fn retry_times(&self, times: usize) -> OpenPageResult<()> {
         self.page.set_retry(Some(times), None)
     }
