@@ -478,10 +478,8 @@ impl Element {
         count: u32,
     ) -> OpenPageResult<()> {
         self.runtime.block_on(async {
-            self.inner
-                .scroll_into_view()
-                .await
-                .map_err(|err| element_operation_error("scroll into view", err))?;
+            run_element_future_with_cdp_timeout(self.inner.scroll_into_view(), "scroll into view")
+                .await?;
             Ok::<(), OpenPageError>(())
         })?;
         let (x, y) = self.offset_click_point(offset_x, offset_y)?;
@@ -691,10 +689,7 @@ impl Element {
 
     pub fn press_key(&self, key: &str) -> OpenPageResult<()> {
         self.runtime.block_on(async {
-            self.inner
-                .press_key(key)
-                .await
-                .map_err(|err| element_operation_error("press key", err))?;
+            run_element_future_with_cdp_timeout(self.inner.press_key(key), "press key").await?;
             Ok(())
         })
     }
@@ -963,10 +958,8 @@ impl Element {
 
     pub fn scroll_to_see(&self, center: Option<bool>) -> OpenPageResult<()> {
         self.runtime.block_on(async {
-            self.inner
-                .scroll_into_view()
-                .await
-                .map_err(|err| element_operation_error("scroll into view", err))?;
+            run_element_future_with_cdp_timeout(self.inner.scroll_into_view(), "scroll into view")
+                .await?;
             Ok::<(), OpenPageError>(())
         })?;
         if center == Some(true) || (center != Some(false) && self.is_covered().unwrap_or(false)) {
@@ -1779,10 +1772,8 @@ impl Element {
         }
 
         self.runtime.block_on(async {
-            self.inner
-                .scroll_into_view()
-                .await
-                .map_err(|err| element_operation_error("scroll into view", err))?;
+            run_element_future_with_cdp_timeout(self.inner.scroll_into_view(), "scroll into view")
+                .await?;
             Ok::<(), OpenPageError>(())
         })?;
         let (x, y) = self.offset_target_point(offset_x, offset_y)?;
@@ -5509,6 +5500,46 @@ mod tests {
         assert!(
             matches!(focus_error, crate::OpenPageError::Timeout(ref message) if message.contains("focus")),
             "unexpected focus timeout error: {focus_error}"
+        );
+    }
+
+    #[test]
+    fn element_key_and_scroll_operations_respect_global_timeout_setting() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+        crate::Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("runtime");
+
+        let press_key_error = runtime
+            .block_on(run_element_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "press key",
+            ))
+            .expect_err("element press_key should time out");
+        assert!(
+            matches!(press_key_error, crate::OpenPageError::Timeout(ref message) if message.contains("press key")),
+            "unexpected press key timeout error: {press_key_error}"
+        );
+
+        let scroll_error = runtime
+            .block_on(run_element_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "scroll into view",
+            ))
+            .expect_err("element scroll_into_view should time out");
+
+        crate::Settings::reset();
+
+        assert!(
+            matches!(scroll_error, crate::OpenPageError::Timeout(ref message) if message.contains("scroll into view")),
+            "unexpected scroll timeout error: {scroll_error}"
         );
     }
 
