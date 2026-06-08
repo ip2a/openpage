@@ -3963,10 +3963,7 @@ impl Page {
 
     pub fn html(&self) -> OpenPageResult<String> {
         self.runtime.block_on(async {
-            self.inner
-                .content()
-                .await
-                .map_err(|err| page_operation_error("read html", err))
+            run_page_future_with_cdp_timeout(self.inner.content(), "read html").await
         })
     }
 
@@ -4756,10 +4753,11 @@ impl Page {
             .build();
 
         self.runtime.block_on(async {
-            self.inner
-                .save_screenshot(params, path)
-                .await
-                .map_err(|err| page_operation_error("save screenshot", err))?;
+            run_page_future_with_cdp_timeout(
+                self.inner.save_screenshot(params, path),
+                "save screenshot",
+            )
+            .await?;
             Ok(())
         })
     }
@@ -4772,10 +4770,8 @@ impl Page {
     ) -> OpenPageResult<Vec<u8>> {
         let params = page_screenshot_params(full_page, left_top, right_bottom)?;
         self.runtime.block_on(async {
-            self.inner
-                .screenshot(params)
+            run_page_future_with_cdp_timeout(self.inner.screenshot(params), "capture screenshot")
                 .await
-                .map_err(|err| page_operation_error("capture screenshot", err))
         })
     }
 
@@ -5090,10 +5086,7 @@ impl Page {
             set_app_visibility(browser_pid, true)?;
         }
         self.runtime.block_on(async {
-            self.inner
-                .bring_to_front()
-                .await
-                .map_err(|err| page_operation_error("bring to front", err))?;
+            run_page_future_with_cdp_timeout(self.inner.bring_to_front(), "bring to front").await?;
             Ok::<(), OpenPageError>(())
         })?;
         #[cfg(target_os = "macos")]
@@ -12650,6 +12643,46 @@ mod tests {
         assert!(
             matches!(title_error, OpenPageError::Timeout(ref message) if message.contains("read title")),
             "unexpected page title timeout error: {title_error}"
+        );
+    }
+
+    #[test]
+    fn page_content_and_visual_operations_respect_global_timeout_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("create tokio runtime");
+
+        let html_error = runtime
+            .block_on(run_page_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<String, &'static str>("<html></html>".to_string())
+                },
+                "read html",
+            ))
+            .expect_err("page html operation should time out");
+        assert!(
+            matches!(html_error, OpenPageError::Timeout(ref message) if message.contains("read html")),
+            "unexpected page html timeout error: {html_error}"
+        );
+
+        let screenshot_error = runtime
+            .block_on(run_page_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<Vec<u8>, &'static str>(vec![1, 2, 3])
+                },
+                "capture screenshot",
+            ))
+            .expect_err("page screenshot operation should time out");
+
+        Settings::reset();
+
+        assert!(
+            matches!(screenshot_error, OpenPageError::Timeout(ref message) if message.contains("capture screenshot")),
+            "unexpected page screenshot timeout error: {screenshot_error}"
         );
     }
 
