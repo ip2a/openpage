@@ -2727,6 +2727,20 @@ impl FrameSetter<'_> {
         self.frame.set_cookies(cookies)
     }
 
+    pub fn clear_cookies(&self) -> OpenPageResult<()> {
+        self.frame.clear_cookies()
+    }
+
+    pub fn remove_cookie(
+        &self,
+        name: &str,
+        url: Option<&str>,
+        domain: Option<&str>,
+        path: Option<&str>,
+    ) -> OpenPageResult<()> {
+        self.frame.remove_cookie(name, url, domain, path)
+    }
+
     pub fn attr(&self, name: &str, value: &str) -> OpenPageResult<()> {
         self.frame.set_attr(name, value)
     }

@@ -8842,6 +8842,8 @@ mod tests {
             let _ = frame.set().cookie().set(&cookies);
             let _ = frame.set().cookie().clear();
             let _ = frame.set().cookie().remove("sid", None, None, None);
+            let _ = frame.set().clear_cookies();
+            let _ = frame.set().remove_cookie("sid", None, None, None);
             let _ = frame.frame_id();
             let _ = frame.set_upload_files(&files);
             let _ = frame.set_upload_paths(&files);
