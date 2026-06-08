@@ -777,6 +777,76 @@ impl WebFrame {
         self.find_all(locator)
     }
 
+    pub fn get_frame<'a, L>(&self, target: L) -> OpenPageResult<WebFrame>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        match self {
+            Self::Browser(frame) => frame.get_frame(target).map(WebFrame::Browser),
+        }
+    }
+
+    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
+        match self {
+            Self::Browser(frame) => frame.get_frame_by_index(index).map(WebFrame::Browser),
+        }
+    }
+
+    pub fn get_frame_ele<'a, L>(&self, target: L) -> OpenPageResult<WebElement>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        match self {
+            Self::Browser(frame) => frame.get_frame_ele(target).map(WebElement::Browser),
+        }
+    }
+
+    pub fn get_frame_ele_by_index(&self, index: usize) -> OpenPageResult<WebElement> {
+        match self {
+            Self::Browser(frame) => frame.get_frame_ele_by_index(index).map(WebElement::Browser),
+        }
+    }
+
+    pub fn get_frames<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebFrame>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        match self {
+            Self::Browser(frame) => frame
+                .get_frames(locator)
+                .map(|frames| frames.into_iter().map(WebFrame::Browser).collect()),
+        }
+    }
+
+    pub fn get_frame_eles<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        match self {
+            Self::Browser(frame) => frame
+                .get_frame_eles(locator)
+                .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
+        }
+    }
+
+    pub fn get_frame_context<'a, L>(&self, target: L) -> OpenPageResult<WebFrame>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        self.get_frame(target)
+    }
+
+    pub fn get_frame_context_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
+        self.get_frame_by_index(index)
+    }
+
+    pub fn get_frame_contexts<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebFrame>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.get_frames(locator)
+    }
+
     pub fn find_locators<'a, L>(
         &self,
         locators: L,
@@ -7626,6 +7696,15 @@ mod tests {
             let _ = page.get_frame_context(element);
             let _ = page.get_frame_context(frame);
             let _ = page.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
+            let _ = frame.get_frame((By::ID, "childFrame"));
+            let _ = frame.get_frame_ele((By::ID, "childFrame"));
+            let _ = frame.get_frame(1usize);
+            let _ = frame.get_frame_ele(1usize);
+            let _ = frame.get_frames(Some((By::TAG_NAME, "iframe")));
+            let _ = frame.get_frame_eles(Some((By::TAG_NAME, "iframe")));
+            let _ = frame.get_frame_context((By::ID, "childFrame"));
+            let _ = frame.get_frame_context(1usize);
+            let _ = frame.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
             let _ = element.get_frame((By::ID, "theFrame"));
             let _ = element.get_frame(1usize);
             let _ = element.get_frame(frame);
@@ -7649,6 +7728,15 @@ mod tests {
             let _ = web_page.get_frame_context(web_element);
             let _ = web_page.get_frame_context(web_frame);
             let _ = web_page.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
+            let _ = web_frame.get_frame((By::ID, "childFrame"));
+            let _ = web_frame.get_frame_ele((By::ID, "childFrame"));
+            let _ = web_frame.get_frame(1usize);
+            let _ = web_frame.get_frame_ele(1usize);
+            let _ = web_frame.get_frames(Some((By::TAG_NAME, "iframe")));
+            let _ = web_frame.get_frame_eles(Some((By::TAG_NAME, "iframe")));
+            let _ = web_frame.get_frame_context((By::ID, "childFrame"));
+            let _ = web_frame.get_frame_context(1usize);
+            let _ = web_frame.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
             let _ = web_element.get_frame((By::ID, "theFrame"));
             let _ = web_element.get_frame(1usize);
             let _ = web_element.get_frame(web_frame);

@@ -1788,6 +1788,64 @@ impl Frame {
         Ok(elements)
     }
 
+    pub fn get_frame<'a, L>(&self, target: L) -> OpenPageResult<Frame>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        self.page.frame_from_element(self.get_frame_ele(target)?)
+    }
+
+    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<Frame> {
+        self.get_frame(index)
+    }
+
+    pub fn get_frame_ele<'a, L>(&self, target: L) -> OpenPageResult<Element>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        self.resolve_frame_target(target.into())
+    }
+
+    pub fn get_frame_ele_by_index(&self, index: usize) -> OpenPageResult<Element> {
+        self.get_frame_ele(index)
+    }
+
+    pub fn get_frames<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Frame>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.get_frame_eles(locator)?
+            .into_iter()
+            .map(|element| self.page.frame_from_element(element))
+            .collect()
+    }
+
+    pub fn get_frame_eles<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = optional_frame_locator_input(locator)?;
+        self.find_all(locator.as_str())
+    }
+
+    pub fn get_frame_context<'a, L>(&self, target: L) -> OpenPageResult<Frame>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        self.get_frame(target)
+    }
+
+    pub fn get_frame_context_by_index(&self, index: usize) -> OpenPageResult<Frame> {
+        self.get_frame_by_index(index)
+    }
+
+    pub fn get_frame_contexts<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Frame>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.get_frames(locator)
+    }
+
     pub fn parent(&self) -> OpenPageResult<Element> {
         self.frame_element.parent()
     }
@@ -2185,6 +2243,54 @@ impl Frame {
 
     pub fn console(&self) -> Console {
         self.page.console()
+    }
+
+    fn resolve_frame_target<'a>(&self, target: PageFrameTarget<'a>) -> OpenPageResult<Element> {
+        match target {
+            PageFrameTarget::Locator(locator) => {
+                let locator = frame_locator_input(locator)?;
+                self.find(locator.as_str())
+            }
+            PageFrameTarget::Index(index) => self.frame_element_by_index(index),
+            PageFrameTarget::Element(element) => {
+                find_frame_element_from_object(&self.page, element)
+            }
+            PageFrameTarget::WebElement(element) => match element {
+                WebElement::Browser(element) => find_frame_element_from_object(&self.page, element),
+                WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
+                    session_backed_element_driver_target_message(
+                        "WebElement",
+                        "frame frame",
+                        "frame 元素定位",
+                    ),
+                )),
+            },
+            PageFrameTarget::Frame(frame) => {
+                find_frame_element_from_object(&self.page, frame.frame_element())
+            }
+            PageFrameTarget::WebFrame(frame) => match frame {
+                WebFrame::Browser(frame) => {
+                    find_frame_element_from_object(&self.page, frame.frame_element())
+                }
+            },
+        }
+    }
+
+    fn frame_element_by_index(&self, index: isize) -> OpenPageResult<Element> {
+        if index == 0 {
+            return Err(OpenPageError::ElementNotFound(
+                frame_index_must_start_message(),
+            ));
+        }
+        let frames = self.get_frame_eles(None::<&str>)?;
+        let resolved_index = if index > 0 {
+            (index as usize).checked_sub(1)
+        } else {
+            frames.len().checked_sub(index.unsigned_abs())
+        };
+        resolved_index
+            .and_then(|resolved_index| frames.into_iter().nth(resolved_index))
+            .ok_or_else(|| OpenPageError::ElementNotFound(frame_index_out_of_range_message(index)))
     }
 }
 
@@ -9764,6 +9870,64 @@ mod tests {
             panic!("close headless browser: {err}");
         }
         result.expect("frame timeout lookup regression");
+    }
+
+    #[test]
+    fn frame_get_frame_finds_nested_iframe_in_frame_context() {
+        let (browser, temp_dir) = launch_headless_test_browser("frame-get-nested-frame")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(2_000)?);
+            outer.run_js(
+                r#"(() => {
+                    const frame = document.createElement('iframe');
+                    frame.id = 'inner-frame';
+                    frame.name = 'inner-frame';
+                    frame.srcdoc = "<html><body><button id='inside'>inside</button></body></html>";
+                    document.getElementById('outer-host').appendChild(frame);
+                    return true;
+                })()"#,
+            )?;
+
+            let inner = outer.get_frame("css:#inner-frame")?;
+            let inner_by_index = outer.get_frame_by_index(1)?;
+            let inner_ele = outer.get_frame_ele("css:#inner-frame")?;
+            let nested_frames = outer.get_frames(Some((By::TAG_NAME, "iframe")))?;
+
+            assert!(inner.wait_for_doc_loaded(2_000)?);
+            assert_eq!(inner.attr("name")?, Some("inner-frame".to_string()));
+            assert_eq!(inner_by_index.attr("id")?, Some("inner-frame".to_string()));
+            assert_eq!(inner_ele.attr("id")?, Some("inner-frame".to_string()));
+            assert_eq!(nested_frames.len(), 1);
+            assert_eq!(
+                inner.find("css:#inside")?.text()?,
+                Some("inside".to_string())
+            );
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("nested frame lookup regression");
     }
 
     #[test]
