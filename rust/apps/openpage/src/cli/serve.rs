@@ -12,7 +12,7 @@ use chromiumoxide::cdp::browser_protocol::page::{
 };
 use serde_json::{Map, Value, json};
 
-use crate::browser::{DownloadFileExistsMode, LoadMode};
+use crate::browser::{BrowserTabReference, DownloadFileExistsMode, LoadMode};
 use crate::cli::args::ServeArgs;
 use crate::cli::connection::write_tcp_sidecars;
 use crate::cli::protocol::{Request, Response};
@@ -2082,13 +2082,19 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
                 )?;
             match new_page {
                 Some(new_page) => {
-                    let target_id = new_page.target_id();
+                    let (target_id, url) = match new_page {
+                        BrowserTabReference::Page(page) => (page.target_id(), json!(page.url()?)),
+                        BrowserTabReference::WebPage(page) => {
+                            (page.target_id(), json!(page.url()?))
+                        }
+                        BrowserTabReference::Id(id) => (id, Value::Null),
+                    };
                     state.switch_target(&target_id)?;
                     Ok(json!({
                         "created": true,
                         "switched": true,
                         "target_id": target_id,
-                        "url": new_page.url()?,
+                        "url": url,
                     }))
                 }
                 None => Ok(json!({"created": false})),

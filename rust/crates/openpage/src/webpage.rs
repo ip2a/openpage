@@ -74,6 +74,10 @@ impl WebMode {
 #[derive(Debug)]
 pub enum WebElement {
     Browser(Element),
+    Mix {
+        element: Element,
+        page: Box<WebPage>,
+    },
     Session(SessionElement),
 }
 
@@ -223,6 +227,13 @@ impl WebFrame {
         match self {
             Self::Browser(_) => WebFrame::Browser(frame),
             Self::Mix { page, .. } => page.with_driver_frame(frame),
+        }
+    }
+
+    fn wrap_element(&self, element: Element) -> WebElement {
+        match self {
+            Self::Browser(_) => WebElement::Browser(element),
+            Self::Mix { page, .. } => page.with_driver_element(element),
         }
     }
 
@@ -629,7 +640,7 @@ impl WebFrame {
     pub fn active_element(&self) -> OpenPageResult<Option<WebElement>> {
         self.frame()
             .active_element()
-            .map(|element| element.map(WebElement::Browser))
+            .map(|element| element.map(|element| self.wrap_element(element)))
     }
 
     pub fn active_ele(&self) -> OpenPageResult<Option<WebElement>> {
@@ -643,23 +654,28 @@ impl WebFrame {
         let locator = Locator::from_input(locator)?;
         self.frame()
             .ele(locator.raw())
-            .map(|element| element.map(WebElement::Browser))
+            .map(|element| element.map(|element| self.wrap_element(element)))
     }
 
     pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<WebElement>
     where
         L: Into<LocatorInput<'a>>,
     {
-        self.frame().find(locator).map(WebElement::Browser)
+        self.frame()
+            .find(locator)
+            .map(|element| self.wrap_element(element))
     }
 
     pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<WebElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
-        self.frame()
-            .find_all(locator)
-            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
+        self.frame().find_all(locator).map(|elements| {
+            elements
+                .into_iter()
+                .map(|element| self.wrap_element(element))
+                .collect()
+        })
     }
 
     pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<WebElement>>
@@ -711,7 +727,9 @@ impl WebFrame {
     where
         L: Into<PageFrameTarget<'a>>,
     {
-        self.frame().get_frame_ele(target).map(WebElement::Browser)
+        self.frame()
+            .get_frame_ele(target)
+            .map(|element| self.wrap_element(element))
     }
 
     pub fn get_frame_ele_with_timeout<'a, L>(
@@ -724,13 +742,13 @@ impl WebFrame {
     {
         self.frame()
             .get_frame_ele_with_timeout(target, timeout_ms)
-            .map(WebElement::Browser)
+            .map(|element| self.wrap_element(element))
     }
 
     pub fn get_frame_ele_by_index(&self, index: usize) -> OpenPageResult<WebElement> {
         self.frame()
             .get_frame_ele_by_index(index)
-            .map(WebElement::Browser)
+            .map(|element| self.wrap_element(element))
     }
 
     pub fn get_frame_ele_by_index_with_timeout(
@@ -740,7 +758,7 @@ impl WebFrame {
     ) -> OpenPageResult<WebElement> {
         self.frame()
             .get_frame_ele_by_index_with_timeout(index, timeout_ms)
-            .map(WebElement::Browser)
+            .map(|element| self.wrap_element(element))
     }
 
     pub fn get_frames<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebFrame>>
@@ -777,9 +795,12 @@ impl WebFrame {
     where
         L: Into<LocatorInput<'a>>,
     {
-        self.frame()
-            .get_frame_eles(locator)
-            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
+        self.frame().get_frame_eles(locator).map(|elements| {
+            elements
+                .into_iter()
+                .map(|element| self.wrap_element(element))
+                .collect()
+        })
     }
 
     pub fn get_frame_eles_with_timeout<'a, L>(
@@ -792,7 +813,12 @@ impl WebFrame {
     {
         self.frame()
             .get_frame_eles_with_timeout(locator, timeout_ms)
-            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
+            .map(|elements| {
+                elements
+                    .into_iter()
+                    .map(|element| self.wrap_element(element))
+                    .collect()
+            })
     }
 
     pub fn get_frame_context<'a, L>(&self, target: L) -> OpenPageResult<WebFrame>
@@ -829,54 +855,80 @@ impl WebFrame {
                     .into_iter()
                     .map(|item| LocatorMatch {
                         locator: item.locator,
-                        elements: item.elements.into_iter().map(WebElement::Browser).collect(),
+                        elements: item
+                            .elements
+                            .into_iter()
+                            .map(|element| self.wrap_element(element))
+                            .collect(),
                     })
                     .collect()
             })
     }
 
     pub fn parent(&self) -> OpenPageResult<WebElement> {
-        self.frame().parent().map(WebElement::Browser)
+        self.frame()
+            .parent()
+            .map(|element| self.wrap_element(element))
     }
 
     pub fn prev(&self) -> OpenPageResult<WebElement> {
-        self.frame().prev().map(WebElement::Browser)
+        self.frame()
+            .prev()
+            .map(|element| self.wrap_element(element))
     }
 
     pub fn next(&self) -> OpenPageResult<WebElement> {
-        self.frame().next().map(WebElement::Browser)
+        self.frame()
+            .next()
+            .map(|element| self.wrap_element(element))
     }
 
     pub fn before(&self) -> OpenPageResult<WebElement> {
-        self.frame().before().map(WebElement::Browser)
+        self.frame()
+            .before()
+            .map(|element| self.wrap_element(element))
     }
 
     pub fn after(&self) -> OpenPageResult<WebElement> {
-        self.frame().after().map(WebElement::Browser)
+        self.frame()
+            .after()
+            .map(|element| self.wrap_element(element))
     }
 
     pub fn prevs(&self) -> OpenPageResult<Vec<WebElement>> {
-        self.frame()
-            .prevs()
-            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
+        self.frame().prevs().map(|elements| {
+            elements
+                .into_iter()
+                .map(|element| self.wrap_element(element))
+                .collect()
+        })
     }
 
     pub fn nexts(&self) -> OpenPageResult<Vec<WebElement>> {
-        self.frame()
-            .nexts()
-            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
+        self.frame().nexts().map(|elements| {
+            elements
+                .into_iter()
+                .map(|element| self.wrap_element(element))
+                .collect()
+        })
     }
 
     pub fn befores(&self) -> OpenPageResult<Vec<WebElement>> {
-        self.frame()
-            .befores()
-            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
+        self.frame().befores().map(|elements| {
+            elements
+                .into_iter()
+                .map(|element| self.wrap_element(element))
+                .collect()
+        })
     }
 
     pub fn afters(&self) -> OpenPageResult<Vec<WebElement>> {
-        self.frame()
-            .afters()
-            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
+        self.frame().afters().map(|elements| {
+            elements
+                .into_iter()
+                .map(|element| self.wrap_element(element))
+                .collect()
+        })
     }
 
     pub fn screenshot_bytes(
@@ -1115,11 +1167,46 @@ impl WebFrame {
 }
 
 impl WebElement {
+    fn browser_element(&self) -> Option<&Element> {
+        match self {
+            Self::Browser(element) | Self::Mix { element, .. } => Some(element),
+            Self::Session(_) => None,
+        }
+    }
+
+    fn wrap_browser_element(&self, element: Element) -> WebElement {
+        match self {
+            Self::Browser(_) => WebElement::Browser(element),
+            Self::Mix { page, .. } => page.with_driver_element(element),
+            Self::Session(_) => WebElement::Browser(element),
+        }
+    }
+
+    fn wrap_browser_frame(&self, frame: Frame) -> WebFrame {
+        match self {
+            Self::Browser(_) => WebFrame::Browser(frame),
+            Self::Mix { page, .. } => page.with_driver_frame(frame),
+            Self::Session(_) => WebFrame::Browser(frame),
+        }
+    }
+
+    fn wrap_page(&self, page: Page) -> BrowserTabReference {
+        match self {
+            Self::Browser(_) => BrowserTabReference::Page(page),
+            Self::Mix { page: owner, .. } => {
+                BrowserTabReference::WebPage(owner.with_driver_page(page))
+            }
+            Self::Session(_) => BrowserTabReference::Page(page),
+        }
+    }
+
     pub(crate) fn none_element_runtime_config_handle(
         &self,
     ) -> Option<&ElementsOneRuntimeConfigHandle> {
         match self {
-            Self::Browser(element) => Some(element.none_element_runtime_config_handle()),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                Some(element.none_element_runtime_config_handle())
+            }
             Self::Session(element) => element.none_element_runtime_config_handle(),
         }
     }
@@ -1154,56 +1241,60 @@ impl WebElement {
 
     pub fn tag(&self) -> OpenPageResult<String> {
         match self {
-            Self::Browser(element) => element.tag(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.tag(),
             Self::Session(element) => element.tag(),
         }
     }
 
     pub fn text(&self) -> OpenPageResult<Option<String>> {
         match self {
-            Self::Browser(element) => element.text(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.text(),
             Self::Session(element) => element.text(),
         }
     }
 
     pub fn html(&self) -> OpenPageResult<Option<String>> {
         match self {
-            Self::Browser(element) => element.html(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.html(),
             Self::Session(element) => element.html(),
         }
     }
 
     pub fn inner_html(&self) -> OpenPageResult<Option<String>> {
         match self {
-            Self::Browser(element) => element.inner_html(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.inner_html(),
             Self::Session(element) => element.inner_html(),
         }
     }
 
     pub fn snapshot_root(&self) -> OpenPageResult<SessionElement> {
         match self {
-            Self::Browser(element) => element.snapshot_root(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.snapshot_root(),
             Self::Session(element) => Ok(element.clone()),
         }
     }
 
     pub fn snapshot_find(&self, locator: &str) -> OpenPageResult<SessionElement> {
         match self {
-            Self::Browser(element) => element.snapshot_find(locator),
+            Self::Browser(element) | Self::Mix { element, .. } => element.snapshot_find(locator),
             Self::Session(element) => element.find(locator),
         }
     }
 
     pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
         match self {
-            Self::Browser(element) => element.snapshot_find_all(locator),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.snapshot_find_all(locator)
+            }
             Self::Session(element) => element.find_all(locator),
         }
     }
 
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
         match self {
-            Self::Browser(element) => element.snapshot_find_by(by, value),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.snapshot_find_by(by, value)
+            }
             Self::Session(element) => element.find_by(by, value),
         }
     }
@@ -1214,7 +1305,9 @@ impl WebElement {
         value: &str,
     ) -> OpenPageResult<Vec<SessionElement>> {
         match self {
-            Self::Browser(element) => element.snapshot_find_all_by(by, value),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.snapshot_find_all_by(by, value)
+            }
             Self::Session(element) => element.find_all_by(by, value),
         }
     }
@@ -1224,7 +1317,9 @@ impl WebElement {
         expression: &str,
     ) -> OpenPageResult<Vec<SessionXPathResult>> {
         match self {
-            Self::Browser(element) => element.snapshot_query_xpath(expression),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.snapshot_query_xpath(expression)
+            }
             Self::Session(element) => element.query_xpath(expression),
         }
     }
@@ -1235,9 +1330,9 @@ impl WebElement {
     {
         let locator = Locator::from_input(locator)?;
         match self {
-            Self::Browser(element) => element
+            Self::Browser(element) | Self::Mix { element, .. } => element
                 .ele(locator.raw())
-                .map(|value| value.map(Self::Browser)),
+                .map(|value| value.map(|element| self.wrap_browser_element(element))),
             Self::Session(element) => element
                 .ele(locator.raw())
                 .map(|value| value.map(Self::Session)),
@@ -1249,7 +1344,9 @@ impl WebElement {
         L: Into<PageFrameTarget<'a>>,
     {
         match self {
-            Self::Browser(element) => element.get_frame(target).map(WebFrame::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .get_frame(target)
+                .map(|frame| self.wrap_browser_frame(frame)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame()"),
             )),
@@ -1265,9 +1362,9 @@ impl WebElement {
         L: Into<PageFrameTarget<'a>>,
     {
         match self {
-            Self::Browser(element) => element
+            Self::Browser(element) | Self::Mix { element, .. } => element
                 .get_frame_with_timeout(target, timeout_ms)
-                .map(WebFrame::Browser),
+                .map(|frame| self.wrap_browser_frame(frame)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_with_timeout()"),
             )),
@@ -1276,7 +1373,9 @@ impl WebElement {
 
     pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
         match self {
-            Self::Browser(element) => element.get_frame_by_index(index).map(WebFrame::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .get_frame_by_index(index)
+                .map(|frame| self.wrap_browser_frame(frame)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_by_index()"),
             )),
@@ -1289,9 +1388,9 @@ impl WebElement {
         timeout_ms: u64,
     ) -> OpenPageResult<WebFrame> {
         match self {
-            Self::Browser(element) => element
+            Self::Browser(element) | Self::Mix { element, .. } => element
                 .get_frame_by_index_with_timeout(index, timeout_ms)
-                .map(WebFrame::Browser),
+                .map(|frame| self.wrap_browser_frame(frame)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_by_index_with_timeout()"),
             )),
@@ -1303,7 +1402,9 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.find(locator).map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .find(locator)
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(element) => element.find(locator).map(Self::Session),
         }
     }
@@ -1313,9 +1414,14 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element
-                .find_all(locator)
-                .map(|elements| elements.into_iter().map(Self::Browser).collect()),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.find_all(locator).map(|elements| {
+                    elements
+                        .into_iter()
+                        .map(|element| self.wrap_browser_element(element))
+                        .collect()
+                })
+            }
             Self::Session(element) => element
                 .find_all(locator)
                 .map(|elements| elements.into_iter().map(Self::Session).collect()),
@@ -1339,14 +1445,18 @@ impl WebElement {
         L: Into<LocatorBatchInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element
+            Self::Browser(element) | Self::Mix { element, .. } => element
                 .find_locators(locators, any_one, first_match_only)
                 .map(|items| {
                     items
                         .into_iter()
                         .map(|item| LocatorMatch {
                             locator: item.locator,
-                            elements: item.elements.into_iter().map(WebElement::Browser).collect(),
+                            elements: item
+                                .elements
+                                .into_iter()
+                                .map(|element| self.wrap_browser_element(element))
+                                .collect(),
                         })
                         .collect()
                 }),
@@ -1366,21 +1476,21 @@ impl WebElement {
 
     pub fn attrs(&self) -> OpenPageResult<Vec<(String, String)>> {
         match self {
-            Self::Browser(element) => element.attrs(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.attrs(),
             Self::Session(element) => element.attrs(),
         }
     }
 
     pub fn attr(&self, name: &str) -> OpenPageResult<Option<String>> {
         match self {
-            Self::Browser(element) => element.attr(name),
+            Self::Browser(element) | Self::Mix { element, .. } => element.attr(name),
             Self::Session(element) => element.attr(name),
         }
     }
 
     pub fn property(&self, name: &str) -> OpenPageResult<Option<Value>> {
         match self {
-            Self::Browser(element) => element.property(name),
+            Self::Browser(element) | Self::Mix { element, .. } => element.property(name),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("property()"),
             )),
@@ -1389,21 +1499,21 @@ impl WebElement {
 
     pub fn raw_text(&self) -> OpenPageResult<Option<String>> {
         match self {
-            Self::Browser(element) => element.raw_text(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.raw_text(),
             Self::Session(element) => element.raw_text(),
         }
     }
 
     pub fn value(&self) -> OpenPageResult<Option<String>> {
         match self {
-            Self::Browser(element) => element.value(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.value(),
             Self::Session(element) => element.attr("value"),
         }
     }
 
     pub fn link(&self) -> OpenPageResult<Option<String>> {
         match self {
-            Self::Browser(element) => element.link(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.link(),
             Self::Session(element) => {
                 let href = element.attr("href")?;
                 if href.as_deref().is_some_and(|value| !value.is_empty()) {
@@ -1416,42 +1526,42 @@ impl WebElement {
 
     pub fn child_count(&self) -> OpenPageResult<usize> {
         match self {
-            Self::Browser(element) => element.child_count(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.child_count(),
             Self::Session(element) => Ok(element.children()?.len()),
         }
     }
 
     pub fn css_path(&self) -> OpenPageResult<String> {
         match self {
-            Self::Browser(element) => element.css_path(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.css_path(),
             Self::Session(element) => element.css_path(),
         }
     }
 
     pub fn xpath(&self) -> OpenPageResult<String> {
         match self {
-            Self::Browser(element) => element.xpath(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.xpath(),
             Self::Session(element) => element.xpath(),
         }
     }
 
     pub fn comments(&self) -> OpenPageResult<Vec<String>> {
         match self {
-            Self::Browser(element) => element.comments(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.comments(),
             Self::Session(element) => element.comments(),
         }
     }
 
     pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Vec<String>> {
         match self {
-            Self::Browser(element) => element.texts(text_node_only),
+            Self::Browser(element) | Self::Mix { element, .. } => element.texts(text_node_only),
             Self::Session(element) => element.texts(text_node_only),
         }
     }
 
     pub fn is_displayed(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_displayed(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_displayed(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("is_displayed()"),
             )),
@@ -1460,7 +1570,7 @@ impl WebElement {
 
     pub fn is_checked(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_checked(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_checked(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("is_checked()"),
             )),
@@ -1469,7 +1579,7 @@ impl WebElement {
 
     pub fn is_selected(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_selected(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_selected(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("is_selected()"),
             )),
@@ -1478,7 +1588,7 @@ impl WebElement {
 
     pub fn is_enabled(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_enabled(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_enabled(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("is_enabled()"),
             )),
@@ -1487,7 +1597,7 @@ impl WebElement {
 
     pub fn is_alive(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_alive(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_alive(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("is_alive()"),
             )),
@@ -1496,7 +1606,7 @@ impl WebElement {
 
     pub fn is_in_viewport(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_in_viewport(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_in_viewport(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("is_in_viewport()"),
             )),
@@ -1505,7 +1615,7 @@ impl WebElement {
 
     pub fn is_whole_in_viewport(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_whole_in_viewport(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_whole_in_viewport(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("is_whole_in_viewport()"),
             )),
@@ -1514,7 +1624,7 @@ impl WebElement {
 
     pub fn is_covered(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_covered(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_covered(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("is_covered()"),
             )),
@@ -1523,7 +1633,7 @@ impl WebElement {
 
     pub fn is_clickable(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_clickable(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_clickable(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("is_clickable()"),
             )),
@@ -1532,7 +1642,7 @@ impl WebElement {
 
     pub fn has_rect(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.has_rect(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.has_rect(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("has_rect()"),
             )),
@@ -1541,7 +1651,7 @@ impl WebElement {
 
     pub fn style(&self, name: &str, pseudo: Option<&str>) -> OpenPageResult<String> {
         match self {
-            Self::Browser(element) => element.style(name, pseudo),
+            Self::Browser(element) | Self::Mix { element, .. } => element.style(name, pseudo),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("style()"),
             )),
@@ -1550,7 +1660,7 @@ impl WebElement {
 
     pub fn pseudo_before(&self) -> OpenPageResult<String> {
         match self {
-            Self::Browser(element) => element.pseudo_before(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.pseudo_before(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("pseudo_before()"),
             )),
@@ -1559,7 +1669,7 @@ impl WebElement {
 
     pub fn pseudo_after(&self) -> OpenPageResult<String> {
         match self {
-            Self::Browser(element) => element.pseudo_after(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.pseudo_after(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("pseudo_after()"),
             )),
@@ -1568,7 +1678,7 @@ impl WebElement {
 
     pub fn scroll_to_top(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.scroll_to_top(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.scroll_to_top(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("scroll_to_top()"),
             )),
@@ -1577,7 +1687,7 @@ impl WebElement {
 
     pub fn scroll_to_bottom(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.scroll_to_bottom(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.scroll_to_bottom(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("scroll_to_bottom()"),
             )),
@@ -1586,7 +1696,7 @@ impl WebElement {
 
     pub fn scroll_to_half(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.scroll_to_half(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.scroll_to_half(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("scroll_to_half()"),
             )),
@@ -1595,7 +1705,7 @@ impl WebElement {
 
     pub fn scroll_to_rightmost(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.scroll_to_rightmost(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.scroll_to_rightmost(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("scroll_to_rightmost()"),
             )),
@@ -1604,7 +1714,7 @@ impl WebElement {
 
     pub fn scroll_to_leftmost(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.scroll_to_leftmost(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.scroll_to_leftmost(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("scroll_to_leftmost()"),
             )),
@@ -1613,7 +1723,7 @@ impl WebElement {
 
     pub fn scroll_to_location(&self, x: f64, y: f64) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.scroll_to_location(x, y),
+            Self::Browser(element) | Self::Mix { element, .. } => element.scroll_to_location(x, y),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("scroll_to_location()"),
             )),
@@ -1622,7 +1732,7 @@ impl WebElement {
 
     pub fn scroll_up(&self, pixels: f64) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.scroll_up(pixels),
+            Self::Browser(element) | Self::Mix { element, .. } => element.scroll_up(pixels),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("scroll_up()"),
             )),
@@ -1631,7 +1741,7 @@ impl WebElement {
 
     pub fn scroll_down(&self, pixels: f64) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.scroll_down(pixels),
+            Self::Browser(element) | Self::Mix { element, .. } => element.scroll_down(pixels),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("scroll_down()"),
             )),
@@ -1640,7 +1750,7 @@ impl WebElement {
 
     pub fn scroll_left(&self, pixels: f64) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.scroll_left(pixels),
+            Self::Browser(element) | Self::Mix { element, .. } => element.scroll_left(pixels),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("scroll_left()"),
             )),
@@ -1649,7 +1759,7 @@ impl WebElement {
 
     pub fn scroll_right(&self, pixels: f64) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.scroll_right(pixels),
+            Self::Browser(element) | Self::Mix { element, .. } => element.scroll_right(pixels),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("scroll_right()"),
             )),
@@ -1658,7 +1768,7 @@ impl WebElement {
 
     pub fn scroll_to_see(&self, center: Option<bool>) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.scroll_to_see(center),
+            Self::Browser(element) | Self::Mix { element, .. } => element.scroll_to_see(center),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("scroll_to_see()"),
             )),
@@ -1667,7 +1777,7 @@ impl WebElement {
 
     pub fn scroll_to_center(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.scroll_to_center(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.scroll_to_center(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("scroll_to_center()"),
             )),
@@ -1680,7 +1790,9 @@ impl WebElement {
         base64_to_bytes: bool,
     ) -> OpenPageResult<Option<ElementResource>> {
         match self {
-            Self::Browser(element) => element.src(timeout_ms, base64_to_bytes),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.src(timeout_ms, base64_to_bytes)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("src()"),
             )),
@@ -1695,7 +1807,9 @@ impl WebElement {
         rename: bool,
     ) -> OpenPageResult<std::path::PathBuf> {
         match self {
-            Self::Browser(element) => element.save(path, name, timeout_ms, rename),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.save(path, name, timeout_ms, rename)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("save()"),
             )),
@@ -1704,7 +1818,7 @@ impl WebElement {
 
     pub fn shadow_root(&self) -> OpenPageResult<Option<ShadowRoot>> {
         match self {
-            Self::Browser(element) => element.shadow_root(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.shadow_root(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("shadow_root()"),
             )),
@@ -1717,14 +1831,18 @@ impl WebElement {
 
     pub fn parent(&self) -> OpenPageResult<WebElement> {
         match self {
-            Self::Browser(element) => element.parent().map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .parent()
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(element) => element.parent().map(Self::Session),
         }
     }
 
     pub fn parent_level(&self, level: usize) -> OpenPageResult<WebElement> {
         match self {
-            Self::Browser(element) => element.parent_level(level).map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .parent_level(level)
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(element) => element.parent_level(level).map(Self::Session),
         }
     }
@@ -1734,7 +1852,9 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.parent_with(locator, index).map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .parent_with(locator, index)
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(element) => element.parent_with(locator, index).map(Self::Session),
         }
     }
@@ -1748,7 +1868,9 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.child_with(locator, index).map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .child_with(locator, index)
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(element) => element.child_with(locator, index).map(Self::Session),
         }
     }
@@ -1762,9 +1884,14 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element
-                .children_with(locator)
-                .map(|elements| elements.into_iter().map(Self::Browser).collect()),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.children_with(locator).map(|elements| {
+                    elements
+                        .into_iter()
+                        .map(|element| self.wrap_browser_element(element))
+                        .collect()
+                })
+            }
             Self::Session(element) => element
                 .children_with(locator)
                 .map(|elements| elements.into_iter().map(Self::Session).collect()),
@@ -1780,7 +1907,9 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.prev_with(locator, index).map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .prev_with(locator, index)
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(element) => element.prev_with(locator, index).map(Self::Session),
         }
     }
@@ -1794,9 +1923,14 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element
-                .prevs_with(locator)
-                .map(|elements| elements.into_iter().map(Self::Browser).collect()),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.prevs_with(locator).map(|elements| {
+                    elements
+                        .into_iter()
+                        .map(|element| self.wrap_browser_element(element))
+                        .collect()
+                })
+            }
             Self::Session(element) => element
                 .prevs_with(locator)
                 .map(|elements| elements.into_iter().map(Self::Session).collect()),
@@ -1812,7 +1946,9 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.next_with(locator, index).map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .next_with(locator, index)
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(element) => element.next_with(locator, index).map(Self::Session),
         }
     }
@@ -1826,9 +1962,14 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element
-                .nexts_with(locator)
-                .map(|elements| elements.into_iter().map(Self::Browser).collect()),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.nexts_with(locator).map(|elements| {
+                    elements
+                        .into_iter()
+                        .map(|element| self.wrap_browser_element(element))
+                        .collect()
+                })
+            }
             Self::Session(element) => element
                 .nexts_with(locator)
                 .map(|elements| elements.into_iter().map(Self::Session).collect()),
@@ -1844,7 +1985,9 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.before_with(locator, index).map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .before_with(locator, index)
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(element) => element.before_with(locator, index).map(Self::Session),
         }
     }
@@ -1858,9 +2001,14 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element
-                .befores_with(locator)
-                .map(|elements| elements.into_iter().map(Self::Browser).collect()),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.befores_with(locator).map(|elements| {
+                    elements
+                        .into_iter()
+                        .map(|element| self.wrap_browser_element(element))
+                        .collect()
+                })
+            }
             Self::Session(element) => element
                 .befores_with(locator)
                 .map(|elements| elements.into_iter().map(Self::Session).collect()),
@@ -1876,7 +2024,9 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.after_with(locator, index).map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .after_with(locator, index)
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(element) => element.after_with(locator, index).map(Self::Session),
         }
     }
@@ -1890,9 +2040,14 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element
-                .afters_with(locator)
-                .map(|elements| elements.into_iter().map(Self::Browser).collect()),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.afters_with(locator).map(|elements| {
+                    elements
+                        .into_iter()
+                        .map(|element| self.wrap_browser_element(element))
+                        .collect()
+                })
+            }
             Self::Session(element) => element
                 .afters_with(locator)
                 .map(|elements| elements.into_iter().map(Self::Session).collect()),
@@ -1901,7 +2056,9 @@ impl WebElement {
 
     pub fn over(&self) -> OpenPageResult<Option<WebElement>> {
         match self {
-            Self::Browser(element) => element.over().map(|value| value.map(Self::Browser)),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .over()
+                .map(|value| value.map(|element| self.wrap_browser_element(element))),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("over()"),
             )),
@@ -1910,9 +2067,9 @@ impl WebElement {
 
     pub fn over_with_timeout(&self, timeout_ms: u64) -> OpenPageResult<Option<WebElement>> {
         match self {
-            Self::Browser(element) => element
+            Self::Browser(element) | Self::Mix { element, .. } => element
                 .over_with_timeout(timeout_ms)
-                .map(|value| value.map(Self::Browser)),
+                .map(|value| value.map(|element| self.wrap_browser_element(element))),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("over_with_timeout()"),
             )),
@@ -1930,7 +2087,9 @@ impl WebElement {
         L: Into<LocatorInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.offset(locator, x, y, timeout_ms).map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .offset(locator, x, y, timeout_ms)
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("offset()"),
             )),
@@ -1944,7 +2103,9 @@ impl WebElement {
         index: usize,
     ) -> OpenPageResult<WebElement> {
         match self {
-            Self::Browser(element) => element.east(locator, pixels, index).map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .east(locator, pixels, index)
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("east()"),
             )),
@@ -1958,7 +2119,9 @@ impl WebElement {
         index: usize,
     ) -> OpenPageResult<WebElement> {
         match self {
-            Self::Browser(element) => element.south(locator, pixels, index).map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .south(locator, pixels, index)
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("south()"),
             )),
@@ -1972,7 +2135,9 @@ impl WebElement {
         index: usize,
     ) -> OpenPageResult<WebElement> {
         match self {
-            Self::Browser(element) => element.west(locator, pixels, index).map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .west(locator, pixels, index)
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("west()"),
             )),
@@ -1986,7 +2151,9 @@ impl WebElement {
         index: usize,
     ) -> OpenPageResult<WebElement> {
         match self {
-            Self::Browser(element) => element.north(locator, pixels, index).map(Self::Browser),
+            Self::Browser(element) | Self::Mix { element, .. } => element
+                .north(locator, pixels, index)
+                .map(|element| self.wrap_browser_element(element)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("north()"),
             )),
@@ -1995,7 +2162,7 @@ impl WebElement {
 
     pub fn click(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.click(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.click(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("click()"),
             )),
@@ -2009,7 +2176,9 @@ impl WebElement {
         wait_stop: bool,
     ) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.click_with_options(by_js, timeout_ms, wait_stop),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.click_with_options(by_js, timeout_ms, wait_stop)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("click_with_options()"),
             )),
@@ -2024,7 +2193,9 @@ impl WebElement {
         count: u32,
     ) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.click_at(offset_x, offset_y, button, count),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.click_at(offset_x, offset_y, button, count)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("click_at()"),
             )),
@@ -2033,7 +2204,7 @@ impl WebElement {
 
     pub fn click_multi(&self, times: u32) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.click_multi(times),
+            Self::Browser(element) | Self::Mix { element, .. } => element.click_multi(times),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("click_multi()"),
             )),
@@ -2042,7 +2213,7 @@ impl WebElement {
 
     pub fn click_left(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.click_left(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.click_left(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("click_left()"),
             )),
@@ -2056,7 +2227,9 @@ impl WebElement {
         wait_stop: bool,
     ) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.click_left_with_options(by_js, timeout_ms, wait_stop),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.click_left_with_options(by_js, timeout_ms, wait_stop)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("click_left_with_options()"),
             )),
@@ -2065,7 +2238,7 @@ impl WebElement {
 
     pub fn click_middle(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.click_middle(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.click_middle(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("click_middle()"),
             )),
@@ -2074,7 +2247,7 @@ impl WebElement {
 
     pub fn click_right(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.click_right(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.click_right(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("click_right()"),
             )),
@@ -2083,7 +2256,7 @@ impl WebElement {
 
     pub fn input(&self, text: &str) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.input(text),
+            Self::Browser(element) | Self::Mix { element, .. } => element.input(text),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("input()"),
             )),
@@ -2092,7 +2265,9 @@ impl WebElement {
 
     pub fn input_with_options(&self, text: &str, clear: bool, by_js: bool) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.input_with_options(text, clear, by_js),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.input_with_options(text, clear, by_js)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("input_with_options()"),
             )),
@@ -2106,7 +2281,9 @@ impl WebElement {
         by_js: bool,
     ) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.input_keys_with_options(values, clear, by_js),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.input_keys_with_options(values, clear, by_js)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("input_keys_with_options()"),
             )),
@@ -2115,7 +2292,7 @@ impl WebElement {
 
     pub fn clear(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.clear(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.clear(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("clear()"),
             )),
@@ -2124,7 +2301,7 @@ impl WebElement {
 
     pub fn submit(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.submit(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.submit(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("submit()"),
             )),
@@ -2133,7 +2310,7 @@ impl WebElement {
 
     pub fn clear_with_mode(&self, by_js: bool) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.clear_with_mode(by_js),
+            Self::Browser(element) | Self::Mix { element, .. } => element.clear_with_mode(by_js),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("clear_with_mode()"),
             )),
@@ -2142,7 +2319,9 @@ impl WebElement {
 
     pub fn set_file_input_files(&self, files: &[String]) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.set_file_input_files(files),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.set_file_input_files(files)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("set_file_input_files()"),
             )),
@@ -2151,7 +2330,7 @@ impl WebElement {
 
     pub fn press_key(&self, key: &str) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.press_key(key),
+            Self::Browser(element) | Self::Mix { element, .. } => element.press_key(key),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("press_key()"),
             )),
@@ -2160,7 +2339,7 @@ impl WebElement {
 
     pub fn run_js(&self, script: &str) -> OpenPageResult<Value> {
         match self {
-            Self::Browser(element) => element.run_js(script),
+            Self::Browser(element) | Self::Mix { element, .. } => element.run_js(script),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("run_js()"),
             )),
@@ -2174,7 +2353,9 @@ impl WebElement {
         as_expr: bool,
     ) -> OpenPageResult<Value> {
         match self {
-            Self::Browser(element) => element.run_js_with_args(script, args, as_expr),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.run_js_with_args(script, args, as_expr)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("run_js_with_args()"),
             )),
@@ -2189,7 +2370,7 @@ impl WebElement {
         timeout_ms: Option<u64>,
     ) -> OpenPageResult<Value> {
         match self {
-            Self::Browser(element) => {
+            Self::Browser(element) | Self::Mix { element, .. } => {
                 element.run_js_with_options(script, args, as_expr, timeout_ms)
             }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
@@ -2200,7 +2381,7 @@ impl WebElement {
 
     pub fn run_async_js(&self, script: &str) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.run_async_js(script),
+            Self::Browser(element) | Self::Mix { element, .. } => element.run_async_js(script),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("run_async_js()"),
             )),
@@ -2214,7 +2395,9 @@ impl WebElement {
         as_expr: bool,
     ) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.run_async_js_with_args(script, args, as_expr),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.run_async_js_with_args(script, args, as_expr)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("run_async_js_with_args()"),
             )),
@@ -2229,7 +2412,7 @@ impl WebElement {
         timeout_ms: Option<u64>,
     ) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => {
+            Self::Browser(element) | Self::Mix { element, .. } => {
                 element.run_async_js_with_options(script, args, as_expr, timeout_ms)
             }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
@@ -2240,7 +2423,7 @@ impl WebElement {
 
     pub fn save_screenshot(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.save_screenshot(path),
+            Self::Browser(element) | Self::Mix { element, .. } => element.save_screenshot(path),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("save_screenshot()"),
             )),
@@ -2253,7 +2436,9 @@ impl WebElement {
         timeout_ms: u64,
     ) -> OpenPageResult<Vec<u8>> {
         match self {
-            Self::Browser(element) => element.screenshot_bytes(scroll_to_center, timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.screenshot_bytes(scroll_to_center, timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("screenshot_bytes()"),
             )),
@@ -2266,7 +2451,9 @@ impl WebElement {
         timeout_ms: u64,
     ) -> OpenPageResult<String> {
         match self {
-            Self::Browser(element) => element.screenshot_base64(scroll_to_center, timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.screenshot_base64(scroll_to_center, timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("screenshot_base64()"),
             )),
@@ -2281,7 +2468,7 @@ impl WebElement {
         timeout_ms: u64,
     ) -> OpenPageResult<std::path::PathBuf> {
         match self {
-            Self::Browser(element) => {
+            Self::Browser(element) | Self::Mix { element, .. } => {
                 element.get_screenshot(path, name, scroll_to_center, timeout_ms)
             }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
@@ -2292,7 +2479,7 @@ impl WebElement {
 
     pub fn focus(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.focus(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.focus(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("focus()"),
             )),
@@ -2301,7 +2488,7 @@ impl WebElement {
 
     pub fn hover(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.hover(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.hover(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("hover()"),
             )),
@@ -2314,7 +2501,9 @@ impl WebElement {
         offset_y: Option<f64>,
     ) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.hover_with_offset(offset_x, offset_y),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.hover_with_offset(offset_x, offset_y)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("hover_with_offset()"),
             )),
@@ -2323,7 +2512,9 @@ impl WebElement {
 
     pub fn drag(&self, offset_x: f64, offset_y: f64, duration_secs: f64) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.drag(offset_x, offset_y, duration_secs),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.drag(offset_x, offset_y, duration_secs)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("drag()"),
             )),
@@ -2331,36 +2522,38 @@ impl WebElement {
     }
 
     pub fn drag_to_element(&self, target: &WebElement, duration_secs: f64) -> OpenPageResult<()> {
-        match (self, target) {
-            (Self::Browser(element), Self::Browser(target)) => {
-                element.drag_to(target, duration_secs)
-            }
-            (Self::Browser(_), Self::Session(_)) => Err(OpenPageError::UnsupportedOperation(
-                web_driver_element_required_message("drag_to_element() target"),
-            )),
-            (Self::Session(_), _) => Err(OpenPageError::UnsupportedOperation(
+        let Some(element) = self.browser_element() else {
+            return Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("drag_to_element()"),
-            )),
-        }
+            ));
+        };
+        let Some(target) = target.browser_element() else {
+            return Err(OpenPageError::UnsupportedOperation(
+                web_driver_element_required_message("drag_to_element() target"),
+            ));
+        };
+        element.drag_to(target, duration_secs)
     }
 
     pub fn drag_to(&self, target: &WebElement, duration_secs: f64) -> OpenPageResult<()> {
-        match (self, target) {
-            (Self::Browser(element), Self::Browser(target)) => {
-                element.drag_to(target, duration_secs)
-            }
-            (Self::Browser(_), Self::Session(_)) => Err(OpenPageError::UnsupportedOperation(
-                web_driver_element_required_message("drag_to() target"),
-            )),
-            (Self::Session(_), _) => Err(OpenPageError::UnsupportedOperation(
+        let Some(element) = self.browser_element() else {
+            return Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("drag_to()"),
-            )),
-        }
+            ));
+        };
+        let Some(target) = target.browser_element() else {
+            return Err(OpenPageError::UnsupportedOperation(
+                web_driver_element_required_message("drag_to() target"),
+            ));
+        };
+        element.drag_to(target, duration_secs)
     }
 
     pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.drag_to_point(x, y, duration_secs),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.drag_to_point(x, y, duration_secs)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("drag_to_point()"),
             )),
@@ -2369,7 +2562,7 @@ impl WebElement {
 
     pub fn remove_attr(&self, name: &str) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.remove_attr(name),
+            Self::Browser(element) | Self::Mix { element, .. } => element.remove_attr(name),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("remove_attr()"),
             )),
@@ -2378,7 +2571,7 @@ impl WebElement {
 
     pub fn set_attr(&self, name: &str, value: &str) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.set_attr(name, value),
+            Self::Browser(element) | Self::Mix { element, .. } => element.set_attr(name, value),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("set_attr()"),
             )),
@@ -2387,7 +2580,7 @@ impl WebElement {
 
     pub fn set_property(&self, name: &str, value: &Value) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.set_property(name, value),
+            Self::Browser(element) | Self::Mix { element, .. } => element.set_property(name, value),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("set_property()"),
             )),
@@ -2396,7 +2589,7 @@ impl WebElement {
 
     pub fn set_style(&self, name: &str, value: &str) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.set_style(name, value),
+            Self::Browser(element) | Self::Mix { element, .. } => element.set_style(name, value),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("set_style()"),
             )),
@@ -2405,7 +2598,7 @@ impl WebElement {
 
     pub fn set_checked(&self, checked: bool) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.set_checked(checked),
+            Self::Browser(element) | Self::Mix { element, .. } => element.set_checked(checked),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("set_checked()"),
             )),
@@ -2414,7 +2607,7 @@ impl WebElement {
 
     pub fn check(&self, uncheck: bool, by_js: bool) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.check(uncheck, by_js),
+            Self::Browser(element) | Self::Mix { element, .. } => element.check(uncheck, by_js),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("check()"),
             )),
@@ -2423,7 +2616,7 @@ impl WebElement {
 
     pub fn uncheck(&self, by_js: bool) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.uncheck(by_js),
+            Self::Browser(element) | Self::Mix { element, .. } => element.uncheck(by_js),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("uncheck()"),
             )),
@@ -2432,14 +2625,14 @@ impl WebElement {
 
     pub fn is_multi_select(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_multi_select(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_multi_select(),
             Self::Session(element) => Ok(element.attr("multiple")?.is_some()),
         }
     }
 
     pub fn option_texts(&self) -> OpenPageResult<Vec<String>> {
         match self {
-            Self::Browser(element) => element.option_texts(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.option_texts(),
             Self::Session(element) => {
                 let options = element.children_with(Some("css:option"))?;
                 let mut texts = Vec::with_capacity(options.len());
@@ -2455,7 +2648,7 @@ impl WebElement {
 
     pub fn selected_option(&self) -> OpenPageResult<Option<String>> {
         match self {
-            Self::Browser(element) => element.selected_option(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.selected_option(),
             Self::Session(element) => {
                 let option = element
                     .children_with(Some("css:option[selected]"))?
@@ -2471,7 +2664,7 @@ impl WebElement {
 
     pub fn selected_options(&self) -> OpenPageResult<Vec<String>> {
         match self {
-            Self::Browser(element) => element.selected_options(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.selected_options(),
             Self::Session(element) => {
                 let options = element.children_with(Some("css:option[selected]"))?;
                 let mut texts = Vec::with_capacity(options.len());
@@ -2495,7 +2688,7 @@ impl WebElement {
 
     pub fn selected_option_elements(&self) -> OpenPageResult<Vec<WebElement>> {
         match self {
-            Self::Browser(_) => self.find_all("css:option:checked"),
+            Self::Browser(_) | Self::Mix { .. } => self.find_all("css:option:checked"),
             Self::Session(_) => self.find_all("css:option[selected]"),
         }
     }
@@ -2505,7 +2698,7 @@ impl WebElement {
         I: Into<ActionsInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.select_by_text(text),
+            Self::Browser(element) | Self::Mix { element, .. } => element.select_by_text(text),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("select_by_text()"),
             )),
@@ -2521,7 +2714,9 @@ impl WebElement {
         I: Into<ActionsInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.select_by_text_with_timeout(text, timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.select_by_text_with_timeout(text, timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("select_by_text_with_timeout()"),
             )),
@@ -2533,7 +2728,7 @@ impl WebElement {
         I: Into<ActionsInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.select_by_value(value),
+            Self::Browser(element) | Self::Mix { element, .. } => element.select_by_value(value),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("select_by_value()"),
             )),
@@ -2549,7 +2744,9 @@ impl WebElement {
         I: Into<ActionsInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.select_by_value_with_timeout(value, timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.select_by_value_with_timeout(value, timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("select_by_value_with_timeout()"),
             )),
@@ -2561,7 +2758,9 @@ impl WebElement {
         L: Into<LocatorBatchInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.select_by_locator(locator),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.select_by_locator(locator)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("select_by_locator()"),
             )),
@@ -2577,7 +2776,9 @@ impl WebElement {
         L: Into<LocatorBatchInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.select_by_locator_with_timeout(locator, timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.select_by_locator_with_timeout(locator, timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("select_by_locator_with_timeout()"),
             )),
@@ -2589,7 +2790,7 @@ impl WebElement {
         I: Into<SelectIndexInput>,
     {
         match self {
-            Self::Browser(element) => element.select_by_index(index),
+            Self::Browser(element) | Self::Mix { element, .. } => element.select_by_index(index),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("select_by_index()"),
             )),
@@ -2605,7 +2806,9 @@ impl WebElement {
         I: Into<SelectIndexInput>,
     {
         match self {
-            Self::Browser(element) => element.select_by_index_with_timeout(index, timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.select_by_index_with_timeout(index, timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("select_by_index_with_timeout()"),
             )),
@@ -2614,7 +2817,9 @@ impl WebElement {
 
     pub fn select_by_indices(&self, indices: &[usize]) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.select_by_indices(indices),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.select_by_indices(indices)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("select_by_indices()"),
             )),
@@ -2627,7 +2832,9 @@ impl WebElement {
         timeout_ms: Option<u64>,
     ) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.select_by_indices_with_timeout(indices, timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.select_by_indices_with_timeout(indices, timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("select_by_indices_with_timeout()"),
             )),
@@ -2645,17 +2852,17 @@ impl WebElement {
     }
 
     fn select_by_option_value(&self, option: &WebElement) -> OpenPageResult<bool> {
-        match (self, option) {
-            (Self::Browser(element), WebElement::Browser(option)) => {
-                element.select_by_option(option)
-            }
-            (Self::Browser(_), WebElement::Session(_)) => Err(OpenPageError::UnsupportedOperation(
-                web_browser_backed_option_required_message("select_by_option()"),
-            )),
-            (Self::Session(_), _) => Err(OpenPageError::UnsupportedOperation(
+        let Some(element) = self.browser_element() else {
+            return Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("select_by_option()"),
-            )),
-        }
+            ));
+        };
+        let Some(option) = option.browser_element() else {
+            return Err(OpenPageError::UnsupportedOperation(
+                web_browser_backed_option_required_message("select_by_option()"),
+            ));
+        };
+        element.select_by_option(option)
     }
 
     pub fn select_by_options(&self, options: &[&WebElement]) -> OpenPageResult<bool> {
@@ -2671,7 +2878,7 @@ impl WebElement {
         I: Into<ActionsInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.cancel_by_text(text),
+            Self::Browser(element) | Self::Mix { element, .. } => element.cancel_by_text(text),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("cancel_by_text()"),
             )),
@@ -2687,7 +2894,9 @@ impl WebElement {
         I: Into<ActionsInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.cancel_by_text_with_timeout(text, timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.cancel_by_text_with_timeout(text, timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("cancel_by_text_with_timeout()"),
             )),
@@ -2699,7 +2908,7 @@ impl WebElement {
         I: Into<ActionsInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.cancel_by_value(value),
+            Self::Browser(element) | Self::Mix { element, .. } => element.cancel_by_value(value),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("cancel_by_value()"),
             )),
@@ -2715,7 +2924,9 @@ impl WebElement {
         I: Into<ActionsInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.cancel_by_value_with_timeout(value, timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.cancel_by_value_with_timeout(value, timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("cancel_by_value_with_timeout()"),
             )),
@@ -2727,7 +2938,7 @@ impl WebElement {
         I: Into<SelectIndexInput>,
     {
         match self {
-            Self::Browser(element) => element.cancel_by_index(index),
+            Self::Browser(element) | Self::Mix { element, .. } => element.cancel_by_index(index),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("cancel_by_index()"),
             )),
@@ -2743,7 +2954,9 @@ impl WebElement {
         I: Into<SelectIndexInput>,
     {
         match self {
-            Self::Browser(element) => element.cancel_by_index_with_timeout(index, timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.cancel_by_index_with_timeout(index, timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("cancel_by_index_with_timeout()"),
             )),
@@ -2752,7 +2965,9 @@ impl WebElement {
 
     pub fn cancel_by_indices(&self, indices: &[usize]) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.cancel_by_indices(indices),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.cancel_by_indices(indices)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("cancel_by_indices()"),
             )),
@@ -2765,7 +2980,9 @@ impl WebElement {
         timeout_ms: Option<u64>,
     ) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.cancel_by_indices_with_timeout(indices, timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.cancel_by_indices_with_timeout(indices, timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("cancel_by_indices_with_timeout()"),
             )),
@@ -2777,7 +2994,9 @@ impl WebElement {
         L: Into<LocatorBatchInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.cancel_by_locator(locator),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.cancel_by_locator(locator)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("cancel_by_locator()"),
             )),
@@ -2793,7 +3012,9 @@ impl WebElement {
         L: Into<LocatorBatchInput<'a>>,
     {
         match self {
-            Self::Browser(element) => element.cancel_by_locator_with_timeout(locator, timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.cancel_by_locator_with_timeout(locator, timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("cancel_by_locator_with_timeout()"),
             )),
@@ -2811,17 +3032,17 @@ impl WebElement {
     }
 
     fn cancel_by_option_value(&self, option: &WebElement) -> OpenPageResult<bool> {
-        match (self, option) {
-            (Self::Browser(element), WebElement::Browser(option)) => {
-                element.cancel_by_option(option)
-            }
-            (Self::Browser(_), WebElement::Session(_)) => Err(OpenPageError::UnsupportedOperation(
-                web_browser_backed_option_required_message("cancel_by_option()"),
-            )),
-            (Self::Session(_), _) => Err(OpenPageError::UnsupportedOperation(
+        let Some(element) = self.browser_element() else {
+            return Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("cancel_by_option()"),
-            )),
-        }
+            ));
+        };
+        let Some(option) = option.browser_element() else {
+            return Err(OpenPageError::UnsupportedOperation(
+                web_browser_backed_option_required_message("cancel_by_option()"),
+            ));
+        };
+        element.cancel_by_option(option)
     }
 
     pub fn cancel_by_options(&self, options: &[&WebElement]) -> OpenPageResult<bool> {
@@ -2834,7 +3055,7 @@ impl WebElement {
 
     pub fn select_all(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.select_all(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.select_all(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("select_all()"),
             )),
@@ -2843,7 +3064,7 @@ impl WebElement {
 
     pub fn invert_selected(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.invert_selected(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.invert_selected(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("invert_selected()"),
             )),
@@ -2852,7 +3073,7 @@ impl WebElement {
 
     pub fn clear_selected(&self) -> OpenPageResult<()> {
         match self {
-            Self::Browser(element) => element.clear_selected(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.clear_selected(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("clear_selected()"),
             )),
@@ -2861,7 +3082,7 @@ impl WebElement {
 
     pub fn rect_corners(&self) -> OpenPageResult<Option<Vec<(f64, f64)>>> {
         match self {
-            Self::Browser(element) => element.rect_corners(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.rect_corners(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("rect_corners()"),
             )),
@@ -2870,7 +3091,7 @@ impl WebElement {
 
     pub fn rect_viewport_corners(&self) -> OpenPageResult<Option<Vec<(f64, f64)>>> {
         match self {
-            Self::Browser(element) => element.rect_viewport_corners(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.rect_viewport_corners(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("rect_viewport_corners()"),
             )),
@@ -2879,7 +3100,7 @@ impl WebElement {
 
     pub fn rect_location(&self) -> OpenPageResult<Option<(f64, f64)>> {
         match self {
-            Self::Browser(element) => element.rect_location(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.rect_location(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("rect_location()"),
             )),
@@ -2888,7 +3109,7 @@ impl WebElement {
 
     pub fn rect_viewport_location(&self) -> OpenPageResult<Option<(f64, f64)>> {
         match self {
-            Self::Browser(element) => element.rect_viewport_location(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.rect_viewport_location(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("rect_viewport_location()"),
             )),
@@ -2897,7 +3118,7 @@ impl WebElement {
 
     pub fn rect_screen_location(&self) -> OpenPageResult<Option<(f64, f64)>> {
         match self {
-            Self::Browser(element) => element.rect_screen_location(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.rect_screen_location(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("rect_screen_location()"),
             )),
@@ -2906,7 +3127,7 @@ impl WebElement {
 
     pub fn rect_midpoint(&self) -> OpenPageResult<Option<(f64, f64)>> {
         match self {
-            Self::Browser(element) => element.rect_midpoint(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.rect_midpoint(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("rect_midpoint()"),
             )),
@@ -2915,7 +3136,7 @@ impl WebElement {
 
     pub fn rect_viewport_midpoint(&self) -> OpenPageResult<Option<(f64, f64)>> {
         match self {
-            Self::Browser(element) => element.rect_viewport_midpoint(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.rect_viewport_midpoint(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("rect_viewport_midpoint()"),
             )),
@@ -2924,7 +3145,7 @@ impl WebElement {
 
     pub fn rect_click_point(&self) -> OpenPageResult<Option<(f64, f64)>> {
         match self {
-            Self::Browser(element) => element.rect_click_point(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.rect_click_point(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("rect_click_point()"),
             )),
@@ -2933,7 +3154,9 @@ impl WebElement {
 
     pub fn rect_viewport_click_point(&self) -> OpenPageResult<Option<(f64, f64)>> {
         match self {
-            Self::Browser(element) => element.rect_viewport_click_point(),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.rect_viewport_click_point()
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("rect_viewport_click_point()"),
             )),
@@ -2942,7 +3165,7 @@ impl WebElement {
 
     pub fn rect_size(&self) -> OpenPageResult<Option<(f64, f64)>> {
         match self {
-            Self::Browser(element) => element.rect_size(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.rect_size(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("rect_size()"),
             )),
@@ -2951,7 +3174,7 @@ impl WebElement {
 
     pub fn rect_screen_midpoint(&self) -> OpenPageResult<Option<(f64, f64)>> {
         match self {
-            Self::Browser(element) => element.rect_screen_midpoint(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.rect_screen_midpoint(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("rect_screen_midpoint()"),
             )),
@@ -2960,7 +3183,7 @@ impl WebElement {
 
     pub fn rect_screen_click_point(&self) -> OpenPageResult<Option<(f64, f64)>> {
         match self {
-            Self::Browser(element) => element.rect_screen_click_point(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.rect_screen_click_point(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("rect_screen_click_point()"),
             )),
@@ -2969,7 +3192,7 @@ impl WebElement {
 
     pub fn rect_scroll_position(&self) -> OpenPageResult<Option<(f64, f64)>> {
         match self {
-            Self::Browser(element) => element.rect_scroll_position(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.rect_scroll_position(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("rect_scroll_position()"),
             )),
@@ -2978,7 +3201,9 @@ impl WebElement {
 
     pub fn wait_until_displayed(&self, timeout_ms: u64) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.wait_until_displayed(timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.wait_until_displayed(timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("wait_until_displayed()"),
             )),
@@ -2987,7 +3212,9 @@ impl WebElement {
 
     pub fn wait_until_hidden(&self, timeout_ms: u64) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.wait_until_hidden(timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.wait_until_hidden(timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("wait_until_hidden()"),
             )),
@@ -2996,7 +3223,9 @@ impl WebElement {
 
     pub fn wait_until_enabled(&self, timeout_ms: u64) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.wait_until_enabled(timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.wait_until_enabled(timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("wait_until_enabled()"),
             )),
@@ -3005,7 +3234,9 @@ impl WebElement {
 
     pub fn wait_until_disabled(&self, timeout_ms: u64) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.wait_until_disabled(timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.wait_until_disabled(timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("wait_until_disabled()"),
             )),
@@ -3014,7 +3245,9 @@ impl WebElement {
 
     pub fn wait_until_deleted(&self, timeout_ms: u64) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.wait_until_deleted(timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.wait_until_deleted(timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("wait_until_deleted()"),
             )),
@@ -3023,7 +3256,9 @@ impl WebElement {
 
     pub fn wait_until_clickable(&self, timeout_ms: u64) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.wait_until_clickable(timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.wait_until_clickable(timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("wait_until_clickable()"),
             )),
@@ -3032,7 +3267,9 @@ impl WebElement {
 
     pub fn wait_until_has_rect(&self, timeout_ms: u64) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.wait_until_has_rect(timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.wait_until_has_rect(timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("wait_until_has_rect()"),
             )),
@@ -3041,7 +3278,9 @@ impl WebElement {
 
     pub fn wait_until_covered(&self, timeout_ms: u64) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.wait_until_covered(timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.wait_until_covered(timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("wait_until_covered()"),
             )),
@@ -3050,7 +3289,9 @@ impl WebElement {
 
     pub fn wait_until_not_covered(&self, timeout_ms: u64) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.wait_until_not_covered(timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.wait_until_not_covered(timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("wait_until_not_covered()"),
             )),
@@ -3059,7 +3300,9 @@ impl WebElement {
 
     pub fn wait_until_disabled_or_deleted(&self, timeout_ms: u64) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.wait_until_disabled_or_deleted(timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.wait_until_disabled_or_deleted(timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("wait_until_disabled_or_deleted()"),
             )),
@@ -3068,7 +3311,9 @@ impl WebElement {
 
     pub fn wait_until_stop_moving(&self, timeout_ms: u64) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.wait_until_stop_moving(timeout_ms),
+            Self::Browser(element) | Self::Mix { element, .. } => {
+                element.wait_until_stop_moving(timeout_ms)
+            }
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("wait_until_stop_moving()"),
             )),
@@ -3126,6 +3371,13 @@ impl WebPage {
     fn with_driver_frame(&self, frame: Frame) -> WebFrame {
         WebFrame::Mix {
             frame,
+            page: Box::new(self.clone()),
+        }
+    }
+
+    fn with_driver_element(&self, element: Element) -> WebElement {
+        WebElement::Mix {
+            element,
             page: Box::new(self.clone()),
         }
     }
@@ -4478,7 +4730,7 @@ impl WebPage {
             }
             PageElementTarget::WebElement(element) => match element {
                 WebElement::Session(element) => Ok(format!("xpath:{}", element.xpath()?)),
-                WebElement::Browser(_) => Err(OpenPageError::UnsupportedOperation(
+                WebElement::Browser(_) | WebElement::Mix { .. } => Err(OpenPageError::UnsupportedOperation(
                     "browser-backed element object is not supported for session mode wait_for_ele_*()"
                         .to_string(),
                 )),
@@ -4539,7 +4791,10 @@ impl WebPage {
         L: Into<LocatorInput<'a>>,
     {
         match self.mode()? {
-            WebMode::Driver => self.driver.find(locator).map(WebElement::Browser),
+            WebMode::Driver => self
+                .driver
+                .find(locator)
+                .map(|element| self.with_driver_element(element)),
             WebMode::Session => self.session.find(locator).map(WebElement::Session),
         }
     }
@@ -4596,7 +4851,7 @@ impl WebPage {
             WebMode::Driver => self
                 .driver
                 .ele(locator.raw())
-                .map(|element| element.map(WebElement::Browser)),
+                .map(|element| element.map(|element| self.with_driver_element(element))),
             WebMode::Session => self
                 .session
                 .ele(locator.raw())
@@ -4609,10 +4864,12 @@ impl WebPage {
         L: Into<LocatorInput<'a>>,
     {
         match self.mode()? {
-            WebMode::Driver => self
-                .driver
-                .find_all(locator)
-                .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
+            WebMode::Driver => self.driver.find_all(locator).map(|elements| {
+                elements
+                    .into_iter()
+                    .map(|element| self.with_driver_element(element))
+                    .collect()
+            }),
             WebMode::Session => self
                 .session
                 .find_all(locator)
@@ -4645,7 +4902,11 @@ impl WebPage {
                         .into_iter()
                         .map(|item| LocatorMatch {
                             locator: item.locator,
-                            elements: item.elements.into_iter().map(WebElement::Browser).collect(),
+                            elements: item
+                                .elements
+                                .into_iter()
+                                .map(|element| self.with_driver_element(element))
+                                .collect(),
                         })
                         .collect()
                 }),
@@ -4669,7 +4930,7 @@ impl WebPage {
             WebMode::Driver => self
                 .driver
                 .active_element()
-                .map(|element| element.map(WebElement::Browser)),
+                .map(|element| element.map(|element| self.with_driver_element(element))),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("active_element()"),
             )),
@@ -4709,7 +4970,7 @@ impl WebPage {
             WebMode::Driver => self
                 .driver
                 .add_element_html(html, insert_to, before)
-                .map(WebElement::Browser),
+                .map(|element| self.with_driver_element(element)),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("add_element_html()"),
             )),
@@ -4731,7 +4992,7 @@ impl WebPage {
             WebMode::Driver => self
                 .driver
                 .add_element(content, insert_to, before)
-                .map(WebElement::Browser),
+                .map(|element| self.with_driver_element(element)),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("add_element()"),
             )),
@@ -4767,7 +5028,7 @@ impl WebPage {
             WebMode::Driver => self
                 .driver
                 .add_element_info(info, insert_to, before)
-                .map(WebElement::Browser),
+                .map(|element| self.with_driver_element(element)),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("add_element_info()"),
             )),
@@ -4850,7 +5111,10 @@ impl WebPage {
         L: Into<PageFrameTarget<'a>>,
     {
         match self.mode()? {
-            WebMode::Driver => self.driver.get_frame_ele(target).map(WebElement::Browser),
+            WebMode::Driver => self
+                .driver
+                .get_frame_ele(target)
+                .map(|element| self.with_driver_element(element)),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_ele()"),
             )),
@@ -4869,7 +5133,7 @@ impl WebPage {
             WebMode::Driver => self
                 .driver
                 .get_frame_ele_with_timeout(target, timeout_ms)
-                .map(WebElement::Browser),
+                .map(|element| self.with_driver_element(element)),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_ele_with_timeout()"),
             )),
@@ -4881,7 +5145,7 @@ impl WebPage {
             WebMode::Driver => self
                 .driver
                 .get_frame_ele_by_index(index)
-                .map(WebElement::Browser),
+                .map(|element| self.with_driver_element(element)),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_ele_by_index()"),
             )),
@@ -4897,7 +5161,7 @@ impl WebPage {
             WebMode::Driver => self
                 .driver
                 .get_frame_ele_by_index_with_timeout(index, timeout_ms)
-                .map(WebElement::Browser),
+                .map(|element| self.with_driver_element(element)),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_ele_by_index_with_timeout()"),
             )),
@@ -4950,10 +5214,12 @@ impl WebPage {
         L: Into<LocatorInput<'a>>,
     {
         match self.mode()? {
-            WebMode::Driver => self
-                .driver
-                .get_frame_eles(locator)
-                .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
+            WebMode::Driver => self.driver.get_frame_eles(locator).map(|elements| {
+                elements
+                    .into_iter()
+                    .map(|element| self.with_driver_element(element))
+                    .collect()
+            }),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_eles()"),
             )),
@@ -4972,7 +5238,12 @@ impl WebPage {
             WebMode::Driver => self
                 .driver
                 .get_frame_eles_with_timeout(locator, timeout_ms)
-                .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
+                .map(|elements| {
+                    elements
+                        .into_iter()
+                        .map(|element| self.with_driver_element(element))
+                        .collect()
+                }),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_eles_with_timeout()"),
             )),
@@ -5507,7 +5778,7 @@ impl WebPage {
 impl<'a> WebElementClicker<'a> {
     fn browser_clicker(&self) -> OpenPageResult<ElementClicker<'a>> {
         match self.element {
-            WebElement::Browser(element) => Ok(element.clicker()),
+            WebElement::Browser(element) | WebElement::Mix { element, .. } => Ok(element.clicker()),
             WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("clicker()"),
             )),
@@ -5532,8 +5803,10 @@ impl<'a> WebElementClicker<'a> {
         self.element.click_right()
     }
 
-    pub fn middle(&self, get_tab: bool) -> OpenPageResult<Option<crate::page::Page>> {
-        self.browser_clicker()?.middle(get_tab)
+    pub fn middle(&self, get_tab: bool) -> OpenPageResult<Option<BrowserTabReference>> {
+        self.browser_clicker()?
+            .middle(get_tab)
+            .map(|page| page.map(|page| self.element.wrap_page(page)))
     }
 
     pub fn multi(&self, times: u32) -> OpenPageResult<()> {
@@ -5584,8 +5857,10 @@ impl<'a> WebElementClicker<'a> {
         &self,
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<Option<crate::page::Page>> {
-        self.browser_clicker()?.for_new_tab(timeout_ms, by_js)
+    ) -> OpenPageResult<Option<BrowserTabReference>> {
+        self.browser_clicker()?
+            .for_new_tab(timeout_ms, by_js)
+            .map(|page| page.map(|page| self.element.wrap_page(page)))
     }
 }
 
@@ -7709,6 +7984,96 @@ mod tests {
             panic!("close headless webpage: {err}");
         }
         result.expect("webframe new-tab click wrapper regression");
+    }
+
+    #[test]
+    fn webelement_new_tab_click_helpers_return_webpage_references() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webelement-click-new-tab-wrappers", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    const newTabUrl = 'about:blank#webelement-new-tab';
+                    const middleUrl = 'about:blank#webelement-middle-tab';
+                    document.body.innerHTML = `
+                        <a id="open-tab" href="${newTabUrl}" target="_blank">Open tab</a>
+                        <iframe id="demo-frame"
+                            srcdoc="<html><body>
+                                <a id='middle-open-tab' href='${middleUrl}'>Open by middle click</a>
+                            </body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let new_tab = page
+                .find("css:#open-tab")?
+                .clicker()
+                .for_new_tab(Some(5_000), false)?
+                .expect("webelement clicker for_new_tab should return a tab");
+            match new_tab {
+                BrowserTabReference::WebPage(new_page) => {
+                    assert_eq!(new_page.mode()?, WebMode::Driver);
+                    assert!(new_page.wait_for_doc_loaded(5_000)?);
+                    assert_eq!(
+                        new_page.url()?,
+                        Some("about:blank#webelement-new-tab".to_string())
+                    );
+                }
+                BrowserTabReference::Page(new_page) => {
+                    panic!(
+                        "webelement clicker for_new_tab should return webpage, got page {}",
+                        new_page.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("webelement clicker for_new_tab should return webpage, got id {id}");
+                }
+            }
+
+            let frame = page.get_frame("css:#demo-frame")?;
+            assert!(frame.wait_for_doc_loaded(5_000)?);
+            let middle_tab = frame
+                .find("css:#middle-open-tab")?
+                .clicker()
+                .middle(true)?
+                .expect("webelement clicker middle should return a tab");
+            match middle_tab {
+                BrowserTabReference::WebPage(middle_page) => {
+                    assert_eq!(middle_page.mode()?, WebMode::Driver);
+                    assert!(middle_page.wait_for_doc_loaded(5_000)?);
+                    assert_eq!(
+                        middle_page.url()?,
+                        Some("about:blank#webelement-middle-tab".to_string())
+                    );
+                }
+                BrowserTabReference::Page(middle_page) => {
+                    panic!(
+                        "webelement clicker middle should return webpage, got page {}",
+                        middle_page.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("webelement clicker middle should return webpage, got id {id}");
+                }
+            }
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("webelement new-tab click wrapper regression");
     }
 
     #[test]

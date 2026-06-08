@@ -2386,7 +2386,9 @@ impl Frame {
                 find_frame_element_from_object(&self.page, element)
             }
             PageFrameTarget::WebElement(element) => match element {
-                WebElement::Browser(element) => find_frame_element_from_object(&self.page, element),
+                WebElement::Browser(element) | WebElement::Mix { element, .. } => {
+                    find_frame_element_from_object(&self.page, element)
+                }
                 WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
                     session_backed_element_driver_target_message(
                         "WebElement",
@@ -6741,7 +6743,9 @@ fn resolve_page_element_target<'a>(
             ),
         )),
         PageElementTarget::WebElement(element) => match element {
-            WebElement::Browser(element) => Ok(ResolvedPageElementTarget::Borrowed(element)),
+            WebElement::Browser(element) | WebElement::Mix { element, .. } => {
+                Ok(ResolvedPageElementTarget::Borrowed(element))
+            }
             WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 session_backed_element_driver_target_message(
                     "WebElement",
@@ -6765,7 +6769,9 @@ fn resolve_page_frame_target<'a>(
         PageFrameTarget::Index(index) => page_frame_element_by_index(page, index),
         PageFrameTarget::Element(element) => find_frame_element_from_object(page, element),
         PageFrameTarget::WebElement(element) => match element {
-            WebElement::Browser(element) => find_frame_element_from_object(page, element),
+            WebElement::Browser(element) | WebElement::Mix { element, .. } => {
+                find_frame_element_from_object(page, element)
+            }
             WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 session_backed_element_driver_target_message(
                     "WebElement",
@@ -6860,7 +6866,7 @@ fn resolve_actions_target_point<'a>(
             action_point_from_element(page, element, offset_x, offset_y)
         }
         ActionsTarget::WebElement(element) => match element {
-            WebElement::Browser(element) => {
+            WebElement::Browser(element) | WebElement::Mix { element, .. } => {
                 action_point_from_element(page, element, offset_x, offset_y)
             }
             WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
@@ -15026,6 +15032,9 @@ mod tests {
                     OpenPageError::PageOperation(format!("clicker.middle(true): {err}"))
                 })?
                 .expect("clicker middle tab");
+            let BrowserTabReference::Page(middle_page) = middle_page else {
+                panic!("browser-backed WebElement should return a Page tab reference");
+            };
             assert!(middle_page.wait_for_doc_loaded(5_000).map_err(|err| {
                 OpenPageError::PageOperation(format!("middle_tab.wait_for_doc_loaded(): {err}"))
             })?);

@@ -3085,7 +3085,8 @@ impl Element {
             PageFrameTarget::Index(index) => self.frame_element_by_index(index),
             PageFrameTarget::Element(element) => self.find_frame_element_from_object(element),
             PageFrameTarget::WebElement(element) => match element {
-                crate::webpage::WebElement::Browser(element) => {
+                crate::webpage::WebElement::Browser(element)
+                | crate::webpage::WebElement::Mix { element, .. } => {
                     self.find_frame_element_from_object(element)
                 }
                 crate::webpage::WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(

@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
+use crate::browser::BrowserTabReference;
 use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::session::SessionElement;
@@ -3662,7 +3663,7 @@ impl<'a> ElementsOneClicker<'a, WebElement> {
         }
     }
 
-    pub fn middle(&self, get_tab: bool) -> OpenPageResult<Option<crate::page::Page>> {
+    pub fn middle(&self, get_tab: bool) -> OpenPageResult<Option<BrowserTabReference>> {
         match self.element {
             Some(element) => element.clicker().middle(get_tab),
             None => Ok(None),
@@ -3735,7 +3736,7 @@ impl<'a> ElementsOneClicker<'a, WebElement> {
         &self,
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<Option<crate::page::Page>> {
+    ) -> OpenPageResult<Option<BrowserTabReference>> {
         match self.element {
             Some(element) => element.clicker().for_new_tab(timeout_ms, by_js),
             None => Ok(None),
@@ -5089,7 +5090,7 @@ impl ElementListItem for WebElement {
 impl ElementListStateItem for WebElement {
     fn list_is_displayed(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_displayed(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_displayed(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 web_element_list_driver_filter_message("displayed()"),
             )),
@@ -5098,7 +5099,7 @@ impl ElementListStateItem for WebElement {
 
     fn list_is_checked(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_checked(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_checked(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 web_element_list_driver_filter_message("checked()"),
             )),
@@ -5107,7 +5108,7 @@ impl ElementListStateItem for WebElement {
 
     fn list_is_selected(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_selected(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_selected(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 web_element_list_driver_filter_message("selected()"),
             )),
@@ -5116,7 +5117,7 @@ impl ElementListStateItem for WebElement {
 
     fn list_is_enabled(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_enabled(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_enabled(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 web_element_list_driver_filter_message("enabled()"),
             )),
@@ -5125,7 +5126,7 @@ impl ElementListStateItem for WebElement {
 
     fn list_is_clickable(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.is_clickable(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.is_clickable(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 web_element_list_driver_filter_message("clickable()"),
             )),
@@ -5134,7 +5135,7 @@ impl ElementListStateItem for WebElement {
 
     fn list_has_rect(&self) -> OpenPageResult<bool> {
         match self {
-            Self::Browser(element) => element.has_rect(),
+            Self::Browser(element) | Self::Mix { element, .. } => element.has_rect(),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 web_element_list_driver_filter_message("have_rect()"),
             )),
@@ -5145,7 +5146,7 @@ impl ElementListStateItem for WebElement {
 impl ElementListDriverItem for WebElement {
     fn list_style(&self, name: &str) -> OpenPageResult<String> {
         match self {
-            Self::Browser(element) => element.style(name, None),
+            Self::Browser(element) | Self::Mix { element, .. } => element.style(name, None),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 web_element_list_driver_filter_message("style()"),
             )),
@@ -5154,7 +5155,7 @@ impl ElementListDriverItem for WebElement {
 
     fn list_property(&self, name: &str) -> OpenPageResult<Option<Value>> {
         match self {
-            Self::Browser(element) => element.property(name),
+            Self::Browser(element) | Self::Mix { element, .. } => element.property(name),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 web_element_list_driver_filter_message("property()"),
             )),
