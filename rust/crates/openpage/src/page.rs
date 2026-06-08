@@ -4860,10 +4860,11 @@ impl Page {
 
     pub fn save_pdf(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
         self.runtime.block_on(async {
-            self.inner
-                .save_pdf(PrintToPdfParams::default(), path)
-                .await
-                .map_err(|err| page_operation_error("save pdf", err))?;
+            run_page_future_with_cdp_timeout(
+                self.inner.save_pdf(PrintToPdfParams::default(), path),
+                "save pdf",
+            )
+            .await?;
             Ok(())
         })
     }
@@ -6145,11 +6146,8 @@ impl Page {
 
     pub fn cookie_header(&self) -> OpenPageResult<Option<String>> {
         self.runtime.block_on(async {
-            let cookies = self
-                .inner
-                .get_cookies()
-                .await
-                .map_err(|err| page_operation_error("read cookies", err))?;
+            let cookies =
+                run_page_future_with_cdp_timeout(self.inner.get_cookies(), "read cookies").await?;
             if cookies.is_empty() {
                 return Ok(None);
             }
@@ -6364,10 +6362,7 @@ impl Page {
             return browser.close_target(&target_id);
         }
         self.runtime.block_on(async {
-            self.inner
-                .close()
-                .await
-                .map_err(|err| page_operation_error("close page", err))?;
+            run_page_future_with_cdp_timeout(self.inner.close(), "close page").await?;
             Ok::<(), OpenPageError>(())
         })?;
         Ok(())
@@ -12683,6 +12678,48 @@ mod tests {
         assert!(
             matches!(screenshot_error, OpenPageError::Timeout(ref message) if message.contains("capture screenshot")),
             "unexpected page screenshot timeout error: {screenshot_error}"
+        );
+    }
+
+    #[test]
+    fn page_cookie_pdf_and_close_operations_respect_global_timeout_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("create tokio runtime");
+
+        let cookie_error = runtime
+            .block_on(run_page_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<Vec<chromiumoxide::cdp::browser_protocol::network::Cookie>, &'static str>(
+                        Vec::new(),
+                    )
+                },
+                "read cookies",
+            ))
+            .expect_err("page cookie read should time out");
+        assert!(
+            matches!(cookie_error, OpenPageError::Timeout(ref message) if message.contains("read cookies")),
+            "unexpected page cookie read timeout error: {cookie_error}"
+        );
+
+        let pdf_error = runtime
+            .block_on(run_page_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "save pdf",
+            ))
+            .expect_err("page save_pdf should time out");
+
+        Settings::reset();
+
+        assert!(
+            matches!(pdf_error, OpenPageError::Timeout(ref message) if message.contains("save pdf")),
+            "unexpected page save_pdf timeout error: {pdf_error}"
         );
     }
 
