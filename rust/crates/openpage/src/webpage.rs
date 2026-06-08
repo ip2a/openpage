@@ -6520,6 +6520,10 @@ impl WebPageSetter<'_> {
         self.page.set_retry(None, Some(interval_secs))
     }
 
+    pub fn timeout(&self, timeout_secs: f64) -> OpenPageResult<()> {
+        self.page.set_timeouts(Some(timeout_secs), None, None)
+    }
+
     pub fn timeouts(
         &self,
         base_secs: Option<f64>,
@@ -9060,6 +9064,7 @@ mod tests {
             let _ = page.set().retry(Some(5), Some(0.25));
             let _ = page.set().retry_times(5);
             let _ = page.set().retry_interval(0.25);
+            let _ = page.set().timeout(1.0);
             let _ = page.set().timeouts(Some(1.0), Some(2.0), Some(3.0));
 
             let _ = web_page.set().window().max();
@@ -9100,6 +9105,7 @@ mod tests {
             let _ = web_page.set().retry(Some(5), Some(0.25));
             let _ = web_page.set().retry_times(5);
             let _ = web_page.set().retry_interval(0.25);
+            let _ = web_page.set().timeout(1.0);
             let _ = web_page.set().timeouts(Some(1.0), Some(2.0), Some(3.0));
         }
 

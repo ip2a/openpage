@@ -2641,6 +2641,10 @@ impl PageSetter<'_> {
         self.page.set_retry(None, Some(interval_secs))
     }
 
+    pub fn timeout(&self, timeout_secs: f64) -> OpenPageResult<()> {
+        self.page.set_timeouts(Some(timeout_secs), None, None)
+    }
+
     pub fn timeouts(
         &self,
         base_secs: Option<f64>,
