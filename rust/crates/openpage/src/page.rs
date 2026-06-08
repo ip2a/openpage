@@ -1795,8 +1795,38 @@ impl Frame {
         self.page.frame_from_element(self.get_frame_ele(target)?)
     }
 
+    pub fn get_frame_with_timeout<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<Frame>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        let target = target.into();
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        loop {
+            match self.get_frame(target) {
+                Ok(frame) => return Ok(frame),
+                Err(err) => {
+                    if Instant::now() >= deadline {
+                        return Err(OpenPageError::Timeout(wait_for_locator_timed_out_message(
+                            "frame",
+                            &err.to_string(),
+                        )));
+                    }
+                }
+            }
+            sleep(Duration::from_millis(50));
+        }
+    }
+
     pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<Frame> {
         self.get_frame(index)
+    }
+
+    pub fn get_frame_by_index_with_timeout(
+        &self,
+        index: usize,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Frame> {
+        self.get_frame_with_timeout(index, timeout_ms)
     }
 
     pub fn get_frame_ele<'a, L>(&self, target: L) -> OpenPageResult<Element>
@@ -9928,6 +9958,64 @@ mod tests {
             panic!("close headless browser: {err}");
         }
         result.expect("nested frame lookup regression");
+    }
+
+    #[test]
+    fn frame_get_frame_with_timeout_waits_for_delayed_nested_iframe() {
+        let (browser, temp_dir) = launch_headless_test_browser("frame-get-nested-frame-timeout")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(2_000)?);
+            outer.run_js(
+                r#"(() => {
+                    setTimeout(() => {
+                        const frame = document.createElement('iframe');
+                        frame.id = 'inner-frame';
+                        frame.name = 'inner-frame';
+                        frame.srcdoc = "<html><body><button id='inside'>inside</button></body></html>";
+                        document.getElementById('outer-host').appendChild(frame);
+                    }, 150);
+                    return true;
+                })()"#,
+            )?;
+
+            assert!(outer.get_frame("css:#inner-frame").is_err());
+
+            let inner = outer.get_frame_with_timeout("css:#inner-frame", 2_000)?;
+            assert!(inner.wait_for_doc_loaded(2_000)?);
+            assert_eq!(inner.attr("name")?, Some("inner-frame".to_string()));
+            assert_eq!(
+                inner.find("css:#inside")?.text()?,
+                Some("inside".to_string())
+            );
+
+            let inner_by_index = outer.get_frame_by_index_with_timeout(1, 500)?;
+            assert_eq!(inner_by_index.attr("id")?, Some("inner-frame".to_string()));
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("nested frame timeout lookup regression");
     }
 
     #[test]

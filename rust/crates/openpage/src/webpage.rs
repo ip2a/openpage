@@ -786,9 +786,36 @@ impl WebFrame {
         }
     }
 
+    pub fn get_frame_with_timeout<'a, L>(
+        &self,
+        target: L,
+        timeout_ms: u64,
+    ) -> OpenPageResult<WebFrame>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        match self {
+            Self::Browser(frame) => frame
+                .get_frame_with_timeout(target, timeout_ms)
+                .map(WebFrame::Browser),
+        }
+    }
+
     pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
         match self {
             Self::Browser(frame) => frame.get_frame_by_index(index).map(WebFrame::Browser),
+        }
+    }
+
+    pub fn get_frame_by_index_with_timeout(
+        &self,
+        index: usize,
+        timeout_ms: u64,
+    ) -> OpenPageResult<WebFrame> {
+        match self {
+            Self::Browser(frame) => frame
+                .get_frame_by_index_with_timeout(index, timeout_ms)
+                .map(WebFrame::Browser),
         }
     }
 
@@ -7697,8 +7724,10 @@ mod tests {
             let _ = page.get_frame_context(frame);
             let _ = page.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
             let _ = frame.get_frame((By::ID, "childFrame"));
+            let _ = frame.get_frame_with_timeout((By::ID, "childFrame"), 10);
             let _ = frame.get_frame_ele((By::ID, "childFrame"));
             let _ = frame.get_frame(1usize);
+            let _ = frame.get_frame_by_index_with_timeout(1usize, 10);
             let _ = frame.get_frame_ele(1usize);
             let _ = frame.get_frames(Some((By::TAG_NAME, "iframe")));
             let _ = frame.get_frame_eles(Some((By::TAG_NAME, "iframe")));
@@ -7729,8 +7758,10 @@ mod tests {
             let _ = web_page.get_frame_context(web_frame);
             let _ = web_page.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
             let _ = web_frame.get_frame((By::ID, "childFrame"));
+            let _ = web_frame.get_frame_with_timeout((By::ID, "childFrame"), 10);
             let _ = web_frame.get_frame_ele((By::ID, "childFrame"));
             let _ = web_frame.get_frame(1usize);
+            let _ = web_frame.get_frame_by_index_with_timeout(1usize, 10);
             let _ = web_frame.get_frame_ele(1usize);
             let _ = web_frame.get_frames(Some((By::TAG_NAME, "iframe")));
             let _ = web_frame.get_frame_eles(Some((By::TAG_NAME, "iframe")));
