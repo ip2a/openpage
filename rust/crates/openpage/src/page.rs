@@ -5667,8 +5667,16 @@ impl Page {
         Listener::new(Arc::clone(&self.runtime), self.inner.clone())
     }
 
+    pub fn listen(&self) -> Listener {
+        self.listener()
+    }
+
     pub fn interceptor(&self) -> Interceptor {
         self.interceptor.clone()
+    }
+
+    pub fn intercept(&self) -> Interceptor {
+        self.interceptor()
     }
 
     pub fn console(&self) -> Console {
@@ -12082,6 +12090,18 @@ mod tests {
             let _ = page.close_with_options(true, false);
             let _ = page.close_with_options(false, true);
             let _ = page.quit();
+        }
+
+        let _ = assert_calls as fn(&Page);
+    }
+
+    #[test]
+    fn page_listener_interceptor_alias_signatures_accept_calls() {
+        fn assert_calls(page: &Page) {
+            let _ = page.listener();
+            let _ = page.listen();
+            let _ = page.interceptor();
+            let _ = page.intercept();
         }
 
         let _ = assert_calls as fn(&Page);

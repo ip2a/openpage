@@ -3980,8 +3980,16 @@ impl WebPage {
         self.driver.listener()
     }
 
+    pub fn listen(&self) -> Listener {
+        self.listener()
+    }
+
     pub fn interceptor(&self) -> Interceptor {
         self.driver.interceptor()
+    }
+
+    pub fn intercept(&self) -> Interceptor {
+        self.interceptor()
     }
 
     pub fn console(&self) -> Console {
@@ -7593,6 +7601,18 @@ mod tests {
             let _ = page.close(true, true);
             let _ = page.close_with_options(false, false);
             let _ = page.close_with_options(true, true);
+        }
+
+        let _ = assert_calls as fn(&WebPage);
+    }
+
+    #[test]
+    fn webpage_listener_interceptor_alias_signatures_accept_calls() {
+        fn assert_calls(page: &WebPage) {
+            let _ = page.listener();
+            let _ = page.listen();
+            let _ = page.interceptor();
+            let _ = page.intercept();
         }
 
         let _ = assert_calls as fn(&WebPage);
