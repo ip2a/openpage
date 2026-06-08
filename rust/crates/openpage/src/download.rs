@@ -14,13 +14,15 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
+use tokio::time::timeout as tokio_timeout;
 
 use crate::browser::Browser;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::settings::{
-    component_state_lock_poisoned_message, download_did_not_complete_in_time_message,
-    download_not_found_message, download_setup_operation_failed_message,
-    download_tracker_stopped_message,
+    cdp_timeout_duration, component_state_lock_poisoned_message,
+    download_did_not_complete_in_time_message, download_not_found_message,
+    download_setup_operation_failed_message, download_tracker_stopped_message,
+    timeout_duration_millis, timeout_error,
 };
 
 fn download_state_lock_poisoned_error() -> OpenPageError {
@@ -35,6 +37,22 @@ fn download_setup_error(operation: &str, err: impl ToString) -> OpenPageError {
         operation,
         &err.to_string(),
     ))
+}
+
+async fn register_download_listener_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| download_setup_error(operation, err))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -679,14 +697,16 @@ pub(crate) fn attach_download_store(
     browser: &OxBrowser,
 ) -> OpenPageResult<(DownloadStore, JoinHandle<()>)> {
     let (mut will_begin, mut progress) = runtime.block_on(async {
-        let will_begin = browser
-            .event_listener::<EventDownloadWillBegin>()
-            .await
-            .map_err(|err| download_setup_error("register download begin listener", err))?;
-        let progress = browser
-            .event_listener::<EventDownloadProgress>()
-            .await
-            .map_err(|err| download_setup_error("register download progress listener", err))?;
+        let will_begin = register_download_listener_with_cdp_timeout(
+            browser.event_listener::<EventDownloadWillBegin>(),
+            "register download begin listener",
+        )
+        .await?;
+        let progress = register_download_listener_with_cdp_timeout(
+            browser.event_listener::<EventDownloadProgress>(),
+            "register download progress listener",
+        )
+        .await?;
         Ok::<_, OpenPageError>((will_begin, progress))
     })?;
 
@@ -824,9 +844,14 @@ fn download_rate(info: &DownloadInfo) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use tokio::runtime::Runtime;
+
     use super::{DownloadInfo, DownloadMission, DownloadStore};
     use crate::OpenPageResult;
     use crate::Settings;
+    use crate::error::OpenPageError;
     use crate::settings::scoped_test_settings;
     use std::sync::Arc;
     use std::thread;
@@ -899,6 +924,33 @@ mod tests {
         assert_eq!(
             chinese,
             "浏览器操作失败: 下载初始化操作 register listener 失败: boom"
+        );
+    }
+
+    #[test]
+    fn download_listener_registration_respects_global_timeout_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("create tokio runtime");
+        let result = runtime.block_on(async {
+            super::register_download_listener_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "register download begin listener",
+            )
+            .await
+        });
+
+        Settings::reset();
+
+        let error = result.expect_err("download listener registration should time out");
+        assert!(
+            matches!(error, OpenPageError::Timeout(ref message) if message.contains("register download begin listener")),
+            "unexpected download registration timeout error: {error}"
         );
     }
 
