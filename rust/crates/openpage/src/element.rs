@@ -3099,11 +3099,9 @@ impl Element {
             PageFrameTarget::Frame(frame) => {
                 self.find_frame_element_from_object(frame.frame_element())
             }
-            PageFrameTarget::WebFrame(frame) => match frame {
-                crate::webpage::WebFrame::Browser(frame) => {
-                    self.find_frame_element_from_object(frame.frame_element())
-                }
-            },
+            PageFrameTarget::WebFrame(frame) => {
+                self.find_frame_element_from_object(frame.frame_element())
+            }
         }
     }
 

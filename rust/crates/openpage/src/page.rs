@@ -2398,11 +2398,9 @@ impl Frame {
             PageFrameTarget::Frame(frame) => {
                 find_frame_element_from_object(&self.page, frame.frame_element())
             }
-            PageFrameTarget::WebFrame(frame) => match frame {
-                WebFrame::Browser(frame) => {
-                    find_frame_element_from_object(&self.page, frame.frame_element())
-                }
-            },
+            PageFrameTarget::WebFrame(frame) => {
+                find_frame_element_from_object(&self.page, frame.frame_element())
+            }
         }
     }
 
@@ -6779,9 +6777,9 @@ fn resolve_page_frame_target<'a>(
         PageFrameTarget::Frame(frame) => {
             find_frame_element_from_object(page, frame.frame_element())
         }
-        PageFrameTarget::WebFrame(frame) => match frame {
-            WebFrame::Browser(frame) => find_frame_element_from_object(page, frame.frame_element()),
-        },
+        PageFrameTarget::WebFrame(frame) => {
+            find_frame_element_from_object(page, frame.frame_element())
+        }
     }
 }
 

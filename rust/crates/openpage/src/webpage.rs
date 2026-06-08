@@ -79,6 +79,7 @@ pub enum WebElement {
 
 pub enum WebFrame {
     Browser(Frame),
+    Mix { frame: Frame, page: Box<WebPage> },
 }
 
 #[derive(Clone, Debug)]
@@ -212,58 +213,64 @@ impl DisconnectedWebFrame {
 }
 
 impl WebFrame {
-    pub fn scroll(&self) -> FrameScroller<'_> {
+    fn frame(&self) -> &Frame {
         match self {
-            Self::Browser(frame) => frame.scroll(),
+            Self::Browser(frame) | Self::Mix { frame, .. } => frame,
         }
     }
 
-    pub fn set(&self) -> FrameSetter<'_> {
+    fn wrap_frame(&self, frame: Frame) -> WebFrame {
         match self {
-            Self::Browser(frame) => frame.set(),
+            Self::Browser(_) => WebFrame::Browser(frame),
+            Self::Mix { page, .. } => page.with_driver_frame(frame),
         }
+    }
+
+    fn wrap_page(&self, page: Page) -> BrowserTabReference {
+        match self {
+            Self::Browser(_) => BrowserTabReference::Page(page),
+            Self::Mix { page: owner, .. } => {
+                BrowserTabReference::WebPage(owner.with_driver_page(page))
+            }
+        }
+    }
+
+    pub fn scroll(&self) -> FrameScroller<'_> {
+        self.frame().scroll()
+    }
+
+    pub fn set(&self) -> FrameSetter<'_> {
+        self.frame().set()
     }
 
     pub fn set_cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()>
     where
         C: Into<CookieInput<'a>>,
     {
-        match self {
-            Self::Browser(frame) => frame.set_cookies(cookies),
-        }
+        self.frame().set_cookies(cookies)
     }
 
     pub fn set_upload_files(&self, files: &[String]) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.set_upload_files(files),
-        }
+        self.frame().set_upload_files(files)
     }
 
     pub fn set_upload_paths(&self, files: &[String]) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.set_upload_paths(files),
-        }
+        self.frame().set_upload_paths(files)
     }
 
     pub fn set_download_path(&self, path: &str) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.set_download_path(path),
-        }
+        self.frame().set_download_path(path)
     }
 
     pub fn set_download_file_exists_mode(
         &self,
         mode: DownloadFileExistsMode,
     ) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.set_download_file_exists_mode(mode),
-        }
+        self.frame().set_download_file_exists_mode(mode)
     }
 
     pub fn set_when_download_file_exists(&self, mode: &str) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.set_when_download_file_exists(mode),
-        }
+        self.frame().set_when_download_file_exists(mode)
     }
 
     pub fn set_download_filename(
@@ -272,9 +279,8 @@ impl WebFrame {
         suffix: Option<&str>,
         suffix_specified: bool,
     ) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.set_download_filename(rename, suffix, suffix_specified),
-        }
+        self.frame()
+            .set_download_filename(rename, suffix, suffix_specified)
     }
 
     pub fn set_download_file_name(
@@ -283,45 +289,32 @@ impl WebFrame {
         suffix: Option<&str>,
         suffix_specified: bool,
     ) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.set_download_file_name(rename, suffix, suffix_specified),
-        }
+        self.frame()
+            .set_download_file_name(rename, suffix, suffix_specified)
     }
 
     pub fn states(&self) -> FrameStates<'_> {
-        match self {
-            Self::Browser(frame) => frame.states(),
-        }
+        self.frame().states()
     }
 
     pub fn wait(&self) -> FrameWait<'_> {
-        match self {
-            Self::Browser(frame) => frame.wait(),
-        }
+        self.frame().wait()
     }
 
     pub fn rect(&self) -> FrameRect<'_> {
-        match self {
-            Self::Browser(frame) => frame.rect(),
-        }
+        self.frame().rect()
     }
 
     pub fn id(&self) -> &str {
-        match self {
-            Self::Browser(frame) => frame.id(),
-        }
+        self.frame().id()
     }
 
     pub fn frame_id(&self) -> &str {
-        match self {
-            Self::Browser(frame) => frame.frame_id(),
-        }
+        self.frame().frame_id()
     }
 
     pub fn frame_element(&self) -> &Element {
-        match self {
-            Self::Browser(frame) => frame.frame_element(),
-        }
+        self.frame().frame_element()
     }
 
     pub fn frame_ele(&self) -> &Element {
@@ -329,147 +322,99 @@ impl WebFrame {
     }
 
     pub fn owner(&self) -> &crate::page::Page {
-        match self {
-            Self::Browser(frame) => frame.owner(),
-        }
+        self.frame().owner()
     }
 
     pub fn tab(&self) -> &crate::page::Page {
-        match self {
-            Self::Browser(frame) => frame.tab(),
-        }
+        self.frame().tab()
     }
 
     pub fn tab_id(&self) -> String {
-        match self {
-            Self::Browser(frame) => frame.tab_id(),
-        }
+        self.frame().tab_id()
     }
 
     pub fn set_none_element_value(&self, value: Option<&str>, on_off: bool) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.set_none_element_value(value, on_off),
-        }
+        self.frame().set_none_element_value(value, on_off)
     }
 
     pub fn set_raise_when_ele_not_found(&self, on_off: bool) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.set_raise_when_ele_not_found(on_off),
-        }
+        self.frame().set_raise_when_ele_not_found(on_off)
     }
 
     pub fn name(&self) -> OpenPageResult<Option<String>> {
-        match self {
-            Self::Browser(frame) => frame.name(),
-        }
+        self.frame().name()
     }
 
     pub fn tag(&self) -> OpenPageResult<String> {
-        match self {
-            Self::Browser(frame) => frame.tag(),
-        }
+        self.frame().tag()
     }
 
     pub fn link(&self) -> OpenPageResult<Option<String>> {
-        match self {
-            Self::Browser(frame) => frame.link(),
-        }
+        self.frame().link()
     }
 
     pub fn attrs(&self) -> OpenPageResult<Vec<(String, String)>> {
-        match self {
-            Self::Browser(frame) => frame.attrs(),
-        }
+        self.frame().attrs()
     }
 
     pub fn attr(&self, name: &str) -> OpenPageResult<Option<String>> {
-        match self {
-            Self::Browser(frame) => frame.attr(name),
-        }
+        self.frame().attr(name)
     }
 
     pub fn property(&self, name: &str) -> OpenPageResult<Option<Value>> {
-        match self {
-            Self::Browser(frame) => frame.property(name),
-        }
+        self.frame().property(name)
     }
 
     pub fn style(&self, name: &str, pseudo: Option<&str>) -> OpenPageResult<String> {
-        match self {
-            Self::Browser(frame) => frame.style(name, pseudo),
-        }
+        self.frame().style(name, pseudo)
     }
 
     pub fn css_path(&self) -> OpenPageResult<String> {
-        match self {
-            Self::Browser(frame) => frame.css_path(),
-        }
+        self.frame().css_path()
     }
 
     pub fn xpath(&self) -> OpenPageResult<String> {
-        match self {
-            Self::Browser(frame) => frame.xpath(),
-        }
+        self.frame().xpath()
     }
 
     pub fn child_count(&self) -> OpenPageResult<usize> {
-        match self {
-            Self::Browser(frame) => frame.child_count(),
-        }
+        self.frame().child_count()
     }
 
     pub fn sr(&self) -> OpenPageResult<Option<ShadowRoot>> {
-        match self {
-            Self::Browser(frame) => frame.sr(),
-        }
+        self.frame().sr()
     }
 
     pub fn shadow_root(&self) -> OpenPageResult<Option<ShadowRoot>> {
-        match self {
-            Self::Browser(frame) => frame.shadow_root(),
-        }
+        self.frame().shadow_root()
     }
 
     pub fn url(&self) -> OpenPageResult<Option<String>> {
-        match self {
-            Self::Browser(frame) => frame.url(),
-        }
+        self.frame().url()
     }
 
     pub fn parent_id(&self) -> OpenPageResult<Option<String>> {
-        match self {
-            Self::Browser(frame) => frame.parent_id(),
-        }
+        self.frame().parent_id()
     }
 
     pub fn title(&self) -> OpenPageResult<Option<String>> {
-        match self {
-            Self::Browser(frame) => frame.title(),
-        }
+        self.frame().title()
     }
 
     pub fn download_path(&self) -> OpenPageResult<Option<String>> {
-        match self {
-            Self::Browser(frame) => frame.download_path(),
-        }
+        self.frame().download_path()
     }
 
     pub fn download(&self, url: &str) -> OpenPageResult<String> {
-        match self {
-            Self::Browser(frame) => frame.download(url),
-        }
+        self.frame().download(url)
     }
 
     pub fn download_to(&self, url: &str, path: impl AsRef<Path>) -> OpenPageResult<String> {
-        match self {
-            Self::Browser(frame) => frame.download_to(url, path),
-        }
+        self.frame().download_to(url, path)
     }
 
     pub fn wait_for_upload_paths_inputted(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_for_upload_paths_inputted(timeout_ms),
-        }
+        self.frame().wait_for_upload_paths_inputted(timeout_ms)
     }
 
     pub fn wait_for_download_begin(
@@ -477,9 +422,7 @@ impl WebFrame {
         timeout_ms: u64,
         cancel_it: bool,
     ) -> OpenPageResult<Option<DownloadMission>> {
-        match self {
-            Self::Browser(frame) => frame.wait_for_download_begin(timeout_ms, cancel_it),
-        }
+        self.frame().wait_for_download_begin(timeout_ms, cancel_it)
     }
 
     pub fn wait_for_downloads_done(
@@ -487,9 +430,8 @@ impl WebFrame {
         timeout_ms: u64,
         cancel_if_timeout: bool,
     ) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_for_downloads_done(timeout_ms, cancel_if_timeout),
-        }
+        self.frame()
+            .wait_for_downloads_done(timeout_ms, cancel_if_timeout)
     }
 
     pub fn click_to_download(
@@ -503,18 +445,16 @@ impl WebFrame {
         by_js: bool,
         new_tab: bool,
     ) -> OpenPageResult<Option<DownloadMission>> {
-        match self {
-            Self::Browser(frame) => frame.click_to_download(
-                locator,
-                save_path,
-                rename,
-                suffix,
-                suffix_specified,
-                timeout_ms,
-                by_js,
-                new_tab,
-            ),
-        }
+        self.frame().click_to_download(
+            locator,
+            save_path,
+            rename,
+            suffix,
+            suffix_specified,
+            timeout_ms,
+            by_js,
+            new_tab,
+        )
     }
 
     pub fn click_to_upload(
@@ -524,9 +464,8 @@ impl WebFrame {
         timeout_ms: Option<u64>,
         by_js: bool,
     ) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.click_to_upload(locator, files, timeout_ms, by_js),
-        }
+        self.frame()
+            .click_to_upload(locator, files, timeout_ms, by_js)
     }
 
     pub fn click_for_new_tab(
@@ -534,10 +473,10 @@ impl WebFrame {
         locator: &str,
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<Option<Page>> {
-        match self {
-            Self::Browser(frame) => frame.click_for_new_tab(locator, timeout_ms, by_js),
-        }
+    ) -> OpenPageResult<Option<BrowserTabReference>> {
+        self.frame()
+            .click_for_new_tab(locator, timeout_ms, by_js)
+            .map(|page| page.map(|page| self.wrap_page(page)))
     }
 
     pub fn click_middle(
@@ -545,28 +484,22 @@ impl WebFrame {
         locator: &str,
         timeout_ms: Option<u64>,
         get_tab: bool,
-    ) -> OpenPageResult<Option<Page>> {
-        match self {
-            Self::Browser(frame) => frame.click_middle(locator, timeout_ms, get_tab),
-        }
+    ) -> OpenPageResult<Option<BrowserTabReference>> {
+        self.frame()
+            .click_middle(locator, timeout_ms, get_tab)
+            .map(|page| page.map(|page| self.wrap_page(page)))
     }
 
     pub fn html(&self) -> OpenPageResult<String> {
-        match self {
-            Self::Browser(frame) => frame.html(),
-        }
+        self.frame().html()
     }
 
     pub fn inner_html(&self) -> OpenPageResult<String> {
-        match self {
-            Self::Browser(frame) => frame.inner_html(),
-        }
+        self.frame().inner_html()
     }
 
     pub fn run_js(&self, expression: &str) -> OpenPageResult<Value> {
-        match self {
-            Self::Browser(frame) => frame.run_js(expression),
-        }
+        self.frame().run_js(expression)
     }
 
     pub fn run_js_with_args(
@@ -575,9 +508,7 @@ impl WebFrame {
         args: &[Value],
         as_expr: bool,
     ) -> OpenPageResult<Value> {
-        match self {
-            Self::Browser(frame) => frame.run_js_with_args(script, args, as_expr),
-        }
+        self.frame().run_js_with_args(script, args, as_expr)
     }
 
     pub fn run_js_with_options(
@@ -587,15 +518,12 @@ impl WebFrame {
         as_expr: bool,
         timeout_ms: Option<u64>,
     ) -> OpenPageResult<Value> {
-        match self {
-            Self::Browser(frame) => frame.run_js_with_options(script, args, as_expr, timeout_ms),
-        }
+        self.frame()
+            .run_js_with_options(script, args, as_expr, timeout_ms)
     }
 
     pub fn run_js_loaded(&self, script: &str) -> OpenPageResult<Value> {
-        match self {
-            Self::Browser(frame) => frame.run_js_loaded(script),
-        }
+        self.frame().run_js_loaded(script)
     }
 
     pub fn run_js_loaded_with_args(
@@ -604,9 +532,7 @@ impl WebFrame {
         args: &[Value],
         as_expr: bool,
     ) -> OpenPageResult<Value> {
-        match self {
-            Self::Browser(frame) => frame.run_js_loaded_with_args(script, args, as_expr),
-        }
+        self.frame().run_js_loaded_with_args(script, args, as_expr)
     }
 
     pub fn run_js_loaded_with_options(
@@ -616,17 +542,12 @@ impl WebFrame {
         as_expr: bool,
         timeout_ms: Option<u64>,
     ) -> OpenPageResult<Value> {
-        match self {
-            Self::Browser(frame) => {
-                frame.run_js_loaded_with_options(script, args, as_expr, timeout_ms)
-            }
-        }
+        self.frame()
+            .run_js_loaded_with_options(script, args, as_expr, timeout_ms)
     }
 
     pub fn run_async_js(&self, script: &str) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.run_async_js(script),
-        }
+        self.frame().run_async_js(script)
     }
 
     pub fn run_async_js_with_args(
@@ -635,9 +556,7 @@ impl WebFrame {
         args: &[Value],
         as_expr: bool,
     ) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.run_async_js_with_args(script, args, as_expr),
-        }
+        self.frame().run_async_js_with_args(script, args, as_expr)
     }
 
     pub fn run_async_js_with_options(
@@ -647,91 +566,70 @@ impl WebFrame {
         as_expr: bool,
         timeout_ms: Option<u64>,
     ) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => {
-                frame.run_async_js_with_options(script, args, as_expr, timeout_ms)
-            }
-        }
+        self.frame()
+            .run_async_js_with_options(script, args, as_expr, timeout_ms)
     }
 
     pub fn add_init_js(&self, script: &str) -> OpenPageResult<String> {
-        match self {
-            Self::Browser(frame) => frame.add_init_js(script),
-        }
+        self.frame().add_init_js(script)
     }
 
     pub fn remove_init_js(&self, script_id: Option<&str>) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.remove_init_js(script_id),
-        }
+        self.frame().remove_init_js(script_id)
     }
 
     pub fn refresh(&self) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.refresh(),
-        }
+        self.frame().refresh()
     }
 
     pub fn refresh_with_options(&self, ignore_cache: bool) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.refresh_with_options(ignore_cache),
-        }
+        self.frame().refresh_with_options(ignore_cache)
     }
 
     pub fn get(&self, url: &str) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.get(url),
-        }
+        self.frame().get(url)
     }
 
     pub fn goto(&self, url: &str) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.goto(url),
-        }
+        self.frame().goto(url)
     }
 
     pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<Self> {
         match self {
             Self::Browser(frame) => frame.reconnect(wait_ms).map(Self::Browser),
+            Self::Mix { frame, page } => frame
+                .reconnect(wait_ms)
+                .map(|frame| page.with_driver_frame(frame)),
         }
     }
 
     pub fn disconnect(self) -> OpenPageResult<DisconnectedWebFrame> {
         match self {
             Self::Browser(frame) => frame.disconnect().map(DisconnectedWebFrame::Browser),
+            Self::Mix { frame, .. } => frame.disconnect().map(DisconnectedWebFrame::Browser),
         }
     }
 
     pub fn remove_attr(&self, name: &str) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.remove_attr(name),
-        }
+        self.frame().remove_attr(name)
     }
 
     pub fn set_attr(&self, name: &str, value: &str) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.set_attr(name, value),
-        }
+        self.frame().set_attr(name, value)
     }
 
     pub fn set_property(&self, name: &str, value: &Value) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.set_property(name, value),
-        }
+        self.frame().set_property(name, value)
     }
 
     pub fn set_style(&self, name: &str, value: &str) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.set_style(name, value),
-        }
+        self.frame().set_style(name, value)
     }
 
     pub fn active_element(&self) -> OpenPageResult<Option<WebElement>> {
-        match self {
-            Self::Browser(frame) => frame
-                .active_element()
-                .map(|element| element.map(WebElement::Browser)),
-        }
+        self.frame()
+            .active_element()
+            .map(|element| element.map(WebElement::Browser))
     }
 
     pub fn active_ele(&self) -> OpenPageResult<Option<WebElement>> {
@@ -743,31 +641,25 @@ impl WebFrame {
         L: Into<LocatorInput<'a>>,
     {
         let locator = Locator::from_input(locator)?;
-        match self {
-            Self::Browser(frame) => frame
-                .ele(locator.raw())
-                .map(|element| element.map(WebElement::Browser)),
-        }
+        self.frame()
+            .ele(locator.raw())
+            .map(|element| element.map(WebElement::Browser))
     }
 
     pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<WebElement>
     where
         L: Into<LocatorInput<'a>>,
     {
-        match self {
-            Self::Browser(frame) => frame.find(locator).map(WebElement::Browser),
-        }
+        self.frame().find(locator).map(WebElement::Browser)
     }
 
     pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<WebElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
-        match self {
-            Self::Browser(frame) => frame
-                .find_all(locator)
-                .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
-        }
+        self.frame()
+            .find_all(locator)
+            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
     }
 
     pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<WebElement>>
@@ -781,9 +673,9 @@ impl WebFrame {
     where
         L: Into<PageFrameTarget<'a>>,
     {
-        match self {
-            Self::Browser(frame) => frame.get_frame(target).map(WebFrame::Browser),
-        }
+        self.frame()
+            .get_frame(target)
+            .map(|frame| self.wrap_frame(frame))
     }
 
     pub fn get_frame_with_timeout<'a, L>(
@@ -794,17 +686,15 @@ impl WebFrame {
     where
         L: Into<PageFrameTarget<'a>>,
     {
-        match self {
-            Self::Browser(frame) => frame
-                .get_frame_with_timeout(target, timeout_ms)
-                .map(WebFrame::Browser),
-        }
+        self.frame()
+            .get_frame_with_timeout(target, timeout_ms)
+            .map(|frame| self.wrap_frame(frame))
     }
 
     pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
-        match self {
-            Self::Browser(frame) => frame.get_frame_by_index(index).map(WebFrame::Browser),
-        }
+        self.frame()
+            .get_frame_by_index(index)
+            .map(|frame| self.wrap_frame(frame))
     }
 
     pub fn get_frame_by_index_with_timeout(
@@ -812,20 +702,16 @@ impl WebFrame {
         index: usize,
         timeout_ms: u64,
     ) -> OpenPageResult<WebFrame> {
-        match self {
-            Self::Browser(frame) => frame
-                .get_frame_by_index_with_timeout(index, timeout_ms)
-                .map(WebFrame::Browser),
-        }
+        self.frame()
+            .get_frame_by_index_with_timeout(index, timeout_ms)
+            .map(|frame| self.wrap_frame(frame))
     }
 
     pub fn get_frame_ele<'a, L>(&self, target: L) -> OpenPageResult<WebElement>
     where
         L: Into<PageFrameTarget<'a>>,
     {
-        match self {
-            Self::Browser(frame) => frame.get_frame_ele(target).map(WebElement::Browser),
-        }
+        self.frame().get_frame_ele(target).map(WebElement::Browser)
     }
 
     pub fn get_frame_ele_with_timeout<'a, L>(
@@ -836,17 +722,15 @@ impl WebFrame {
     where
         L: Into<PageFrameTarget<'a>>,
     {
-        match self {
-            Self::Browser(frame) => frame
-                .get_frame_ele_with_timeout(target, timeout_ms)
-                .map(WebElement::Browser),
-        }
+        self.frame()
+            .get_frame_ele_with_timeout(target, timeout_ms)
+            .map(WebElement::Browser)
     }
 
     pub fn get_frame_ele_by_index(&self, index: usize) -> OpenPageResult<WebElement> {
-        match self {
-            Self::Browser(frame) => frame.get_frame_ele_by_index(index).map(WebElement::Browser),
-        }
+        self.frame()
+            .get_frame_ele_by_index(index)
+            .map(WebElement::Browser)
     }
 
     pub fn get_frame_ele_by_index_with_timeout(
@@ -854,22 +738,21 @@ impl WebFrame {
         index: usize,
         timeout_ms: u64,
     ) -> OpenPageResult<WebElement> {
-        match self {
-            Self::Browser(frame) => frame
-                .get_frame_ele_by_index_with_timeout(index, timeout_ms)
-                .map(WebElement::Browser),
-        }
+        self.frame()
+            .get_frame_ele_by_index_with_timeout(index, timeout_ms)
+            .map(WebElement::Browser)
     }
 
     pub fn get_frames<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebFrame>>
     where
         L: Into<LocatorInput<'a>>,
     {
-        match self {
-            Self::Browser(frame) => frame
-                .get_frames(locator)
-                .map(|frames| frames.into_iter().map(WebFrame::Browser).collect()),
-        }
+        self.frame().get_frames(locator).map(|frames| {
+            frames
+                .into_iter()
+                .map(|frame| self.wrap_frame(frame))
+                .collect()
+        })
     }
 
     pub fn get_frames_with_timeout<'a, L>(
@@ -880,22 +763,23 @@ impl WebFrame {
     where
         L: Into<LocatorInput<'a>>,
     {
-        match self {
-            Self::Browser(frame) => frame
-                .get_frames_with_timeout(locator, timeout_ms)
-                .map(|frames| frames.into_iter().map(WebFrame::Browser).collect()),
-        }
+        self.frame()
+            .get_frames_with_timeout(locator, timeout_ms)
+            .map(|frames| {
+                frames
+                    .into_iter()
+                    .map(|frame| self.wrap_frame(frame))
+                    .collect()
+            })
     }
 
     pub fn get_frame_eles<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
-        match self {
-            Self::Browser(frame) => frame
-                .get_frame_eles(locator)
-                .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
-        }
+        self.frame()
+            .get_frame_eles(locator)
+            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
     }
 
     pub fn get_frame_eles_with_timeout<'a, L>(
@@ -906,11 +790,9 @@ impl WebFrame {
     where
         L: Into<LocatorInput<'a>>,
     {
-        match self {
-            Self::Browser(frame) => frame
-                .get_frame_eles_with_timeout(locator, timeout_ms)
-                .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
-        }
+        self.frame()
+            .get_frame_eles_with_timeout(locator, timeout_ms)
+            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
     }
 
     pub fn get_frame_context<'a, L>(&self, target: L) -> OpenPageResult<WebFrame>
@@ -940,81 +822,61 @@ impl WebFrame {
     where
         L: Into<LocatorBatchInput<'a>>,
     {
-        match self {
-            Self::Browser(frame) => frame
-                .find_locators(locators, any_one, first_match_only)
-                .map(|items| {
-                    items
-                        .into_iter()
-                        .map(|item| LocatorMatch {
-                            locator: item.locator,
-                            elements: item.elements.into_iter().map(WebElement::Browser).collect(),
-                        })
-                        .collect()
-                }),
-        }
+        self.frame()
+            .find_locators(locators, any_one, first_match_only)
+            .map(|items| {
+                items
+                    .into_iter()
+                    .map(|item| LocatorMatch {
+                        locator: item.locator,
+                        elements: item.elements.into_iter().map(WebElement::Browser).collect(),
+                    })
+                    .collect()
+            })
     }
 
     pub fn parent(&self) -> OpenPageResult<WebElement> {
-        match self {
-            Self::Browser(frame) => frame.parent().map(WebElement::Browser),
-        }
+        self.frame().parent().map(WebElement::Browser)
     }
 
     pub fn prev(&self) -> OpenPageResult<WebElement> {
-        match self {
-            Self::Browser(frame) => frame.prev().map(WebElement::Browser),
-        }
+        self.frame().prev().map(WebElement::Browser)
     }
 
     pub fn next(&self) -> OpenPageResult<WebElement> {
-        match self {
-            Self::Browser(frame) => frame.next().map(WebElement::Browser),
-        }
+        self.frame().next().map(WebElement::Browser)
     }
 
     pub fn before(&self) -> OpenPageResult<WebElement> {
-        match self {
-            Self::Browser(frame) => frame.before().map(WebElement::Browser),
-        }
+        self.frame().before().map(WebElement::Browser)
     }
 
     pub fn after(&self) -> OpenPageResult<WebElement> {
-        match self {
-            Self::Browser(frame) => frame.after().map(WebElement::Browser),
-        }
+        self.frame().after().map(WebElement::Browser)
     }
 
     pub fn prevs(&self) -> OpenPageResult<Vec<WebElement>> {
-        match self {
-            Self::Browser(frame) => frame
-                .prevs()
-                .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
-        }
+        self.frame()
+            .prevs()
+            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
     }
 
     pub fn nexts(&self) -> OpenPageResult<Vec<WebElement>> {
-        match self {
-            Self::Browser(frame) => frame
-                .nexts()
-                .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
-        }
+        self.frame()
+            .nexts()
+            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
     }
 
     pub fn befores(&self) -> OpenPageResult<Vec<WebElement>> {
-        match self {
-            Self::Browser(frame) => frame
-                .befores()
-                .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
-        }
+        self.frame()
+            .befores()
+            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
     }
 
     pub fn afters(&self) -> OpenPageResult<Vec<WebElement>> {
-        match self {
-            Self::Browser(frame) => frame
-                .afters()
-                .map(|elements| elements.into_iter().map(WebElement::Browser).collect()),
-        }
+        self.frame()
+            .afters()
+            .map(|elements| elements.into_iter().map(WebElement::Browser).collect())
     }
 
     pub fn screenshot_bytes(
@@ -1022,9 +884,7 @@ impl WebFrame {
         scroll_to_center: bool,
         timeout_ms: u64,
     ) -> OpenPageResult<Vec<u8>> {
-        match self {
-            Self::Browser(frame) => frame.screenshot_bytes(scroll_to_center, timeout_ms),
-        }
+        self.frame().screenshot_bytes(scroll_to_center, timeout_ms)
     }
 
     pub fn screenshot_base64(
@@ -1032,9 +892,7 @@ impl WebFrame {
         scroll_to_center: bool,
         timeout_ms: u64,
     ) -> OpenPageResult<String> {
-        match self {
-            Self::Browser(frame) => frame.screenshot_base64(scroll_to_center, timeout_ms),
-        }
+        self.frame().screenshot_base64(scroll_to_center, timeout_ms)
     }
 
     pub fn get_screenshot(
@@ -1044,279 +902,188 @@ impl WebFrame {
         scroll_to_center: bool,
         timeout_ms: u64,
     ) -> OpenPageResult<std::path::PathBuf> {
-        match self {
-            Self::Browser(frame) => frame.get_screenshot(path, name, scroll_to_center, timeout_ms),
-        }
+        self.frame()
+            .get_screenshot(path, name, scroll_to_center, timeout_ms)
     }
 
     pub fn scroll_to_top(&self) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.scroll_to_top(),
-        }
+        self.frame().scroll_to_top()
     }
 
     pub fn scroll_to_bottom(&self) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.scroll_to_bottom(),
-        }
+        self.frame().scroll_to_bottom()
     }
 
     pub fn scroll_to_half(&self) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.scroll_to_half(),
-        }
+        self.frame().scroll_to_half()
     }
 
     pub fn scroll_to_rightmost(&self) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.scroll_to_rightmost(),
-        }
+        self.frame().scroll_to_rightmost()
     }
 
     pub fn scroll_to_leftmost(&self) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.scroll_to_leftmost(),
-        }
+        self.frame().scroll_to_leftmost()
     }
 
     pub fn scroll_to_location(&self, x: f64, y: f64) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.scroll_to_location(x, y),
-        }
+        self.frame().scroll_to_location(x, y)
     }
 
     pub fn scroll_up(&self, pixels: f64) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.scroll_up(pixels),
-        }
+        self.frame().scroll_up(pixels)
     }
 
     pub fn scroll_down(&self, pixels: f64) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.scroll_down(pixels),
-        }
+        self.frame().scroll_down(pixels)
     }
 
     pub fn scroll_left(&self, pixels: f64) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.scroll_left(pixels),
-        }
+        self.frame().scroll_left(pixels)
     }
 
     pub fn scroll_right(&self, pixels: f64) -> OpenPageResult<()> {
-        match self {
-            Self::Browser(frame) => frame.scroll_right(pixels),
-        }
+        self.frame().scroll_right(pixels)
     }
 
     pub fn scroll_position(&self) -> OpenPageResult<(f64, f64)> {
-        match self {
-            Self::Browser(frame) => frame.scroll_position(),
-        }
+        self.frame().scroll_position()
     }
 
     pub fn location(&self) -> OpenPageResult<Option<(f64, f64)>> {
-        match self {
-            Self::Browser(frame) => frame.location(),
-        }
+        self.frame().location()
     }
 
     pub fn viewport_location(&self) -> OpenPageResult<Option<(f64, f64)>> {
-        match self {
-            Self::Browser(frame) => frame.viewport_location(),
-        }
+        self.frame().viewport_location()
     }
 
     pub fn screen_location(&self) -> OpenPageResult<Option<(f64, f64)>> {
-        match self {
-            Self::Browser(frame) => frame.screen_location(),
-        }
+        self.frame().screen_location()
     }
 
     pub fn size(&self) -> OpenPageResult<Option<(f64, f64)>> {
-        match self {
-            Self::Browser(frame) => frame.size(),
-        }
+        self.frame().size()
     }
 
     pub fn viewport_size(&self) -> OpenPageResult<Option<(f64, f64)>> {
-        match self {
-            Self::Browser(frame) => frame.viewport_size(),
-        }
+        self.frame().viewport_size()
     }
 
     pub fn corners(&self) -> OpenPageResult<Option<[(f64, f64); 4]>> {
-        match self {
-            Self::Browser(frame) => frame.corners(),
-        }
+        self.frame().corners()
     }
 
     pub fn viewport_corners(&self) -> OpenPageResult<Option<[(f64, f64); 4]>> {
-        match self {
-            Self::Browser(frame) => frame.viewport_corners(),
-        }
+        self.frame().viewport_corners()
     }
 
     pub fn ready_state(&self) -> OpenPageResult<Option<String>> {
-        match self {
-            Self::Browser(frame) => frame.ready_state(),
-        }
+        self.frame().ready_state()
     }
 
     pub fn is_loading(&self) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.is_loading(),
-        }
+        self.frame().is_loading()
     }
 
     pub fn is_alive(&self) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.is_alive(),
-        }
+        self.frame().is_alive()
     }
 
     pub fn is_displayed(&self) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.is_displayed(),
-        }
+        self.frame().is_displayed()
     }
 
     pub fn is_enabled(&self) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.is_enabled(),
-        }
+        self.frame().is_enabled()
     }
 
     pub fn has_rect(&self) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.has_rect(),
-        }
+        self.frame().has_rect()
     }
 
     pub fn is_in_viewport(&self) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.is_in_viewport(),
-        }
+        self.frame().is_in_viewport()
     }
 
     pub fn is_whole_in_viewport(&self) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.is_whole_in_viewport(),
-        }
+        self.frame().is_whole_in_viewport()
     }
 
     pub fn is_covered(&self) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.is_covered(),
-        }
+        self.frame().is_covered()
     }
 
     pub fn is_clickable(&self) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.is_clickable(),
-        }
+        self.frame().is_clickable()
     }
 
     pub fn has_alert(&self) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.has_alert(),
-        }
+        self.frame().has_alert()
     }
 
     pub fn wait_for_doc_loaded(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_for_doc_loaded(timeout_ms),
-        }
+        self.frame().wait_for_doc_loaded(timeout_ms)
     }
 
     pub fn wait_until_displayed(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_until_displayed(timeout_ms),
-        }
+        self.frame().wait_until_displayed(timeout_ms)
     }
 
     pub fn wait_until_hidden(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_until_hidden(timeout_ms),
-        }
+        self.frame().wait_until_hidden(timeout_ms)
     }
 
     pub fn wait_until_enabled(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_until_enabled(timeout_ms),
-        }
+        self.frame().wait_until_enabled(timeout_ms)
     }
 
     pub fn wait_until_disabled(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_until_disabled(timeout_ms),
-        }
+        self.frame().wait_until_disabled(timeout_ms)
     }
 
     pub fn wait_until_deleted(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_until_deleted(timeout_ms),
-        }
+        self.frame().wait_until_deleted(timeout_ms)
     }
 
     pub fn wait_until_clickable(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_until_clickable(timeout_ms),
-        }
+        self.frame().wait_until_clickable(timeout_ms)
     }
 
     pub fn wait_until_has_rect(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_until_has_rect(timeout_ms),
-        }
+        self.frame().wait_until_has_rect(timeout_ms)
     }
 
     pub fn wait_until_covered(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_until_covered(timeout_ms),
-        }
+        self.frame().wait_until_covered(timeout_ms)
     }
 
     pub fn wait_until_not_covered(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_until_not_covered(timeout_ms),
-        }
+        self.frame().wait_until_not_covered(timeout_ms)
     }
 
     pub fn wait_until_disabled_or_deleted(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_until_disabled_or_deleted(timeout_ms),
-        }
+        self.frame().wait_until_disabled_or_deleted(timeout_ms)
     }
 
     pub fn wait_until_stop_moving(&self, timeout_ms: u64) -> OpenPageResult<bool> {
-        match self {
-            Self::Browser(frame) => frame.wait_until_stop_moving(timeout_ms),
-        }
+        self.frame().wait_until_stop_moving(timeout_ms)
     }
 
     pub fn snapshot_root(&self) -> OpenPageResult<SessionElement> {
-        match self {
-            Self::Browser(frame) => frame.snapshot_root(),
-        }
+        self.frame().snapshot_root()
     }
 
     pub fn snapshot_find(&self, locator: &str) -> OpenPageResult<SessionElement> {
-        match self {
-            Self::Browser(frame) => frame.snapshot_find(locator),
-        }
+        self.frame().snapshot_find(locator)
     }
 
     pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
-        match self {
-            Self::Browser(frame) => frame.snapshot_find_all(locator),
-        }
+        self.frame().snapshot_find_all(locator)
     }
 
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
-        match self {
-            Self::Browser(frame) => frame.snapshot_find_by(by, value),
-        }
+        self.frame().snapshot_find_by(by, value)
     }
 
     pub fn snapshot_find_all_by(
@@ -1324,24 +1091,18 @@ impl WebFrame {
         by: &str,
         value: &str,
     ) -> OpenPageResult<Vec<SessionElement>> {
-        match self {
-            Self::Browser(frame) => frame.snapshot_find_all_by(by, value),
-        }
+        self.frame().snapshot_find_all_by(by, value)
     }
 
     pub fn snapshot_query_xpath(
         &self,
         expression: &str,
     ) -> OpenPageResult<Vec<SessionXPathResult>> {
-        match self {
-            Self::Browser(frame) => frame.snapshot_query_xpath(expression),
-        }
+        self.frame().snapshot_query_xpath(expression)
     }
 
     pub fn listener(&self) -> Listener {
-        match self {
-            Self::Browser(frame) => frame.listener(),
-        }
+        self.frame().listener()
     }
 
     pub fn listen(&self) -> Listener {
@@ -1349,9 +1110,7 @@ impl WebFrame {
     }
 
     pub fn console(&self) -> Console {
-        match self {
-            Self::Browser(frame) => frame.console(),
-        }
+        self.frame().console()
     }
 }
 
@@ -3364,6 +3123,13 @@ impl WebPage {
         }
     }
 
+    fn with_driver_frame(&self, frame: Frame) -> WebFrame {
+        WebFrame::Mix {
+            frame,
+            page: Box::new(self.clone()),
+        }
+    }
+
     fn mix_tab_reference(&self, reference: BrowserTabReference) -> BrowserTabReference {
         match reference {
             BrowserTabReference::Page(page) => {
@@ -5022,7 +4788,10 @@ impl WebPage {
         L: Into<PageFrameTarget<'a>>,
     {
         match self.mode()? {
-            WebMode::Driver => self.driver.get_frame(target).map(WebFrame::Browser),
+            WebMode::Driver => self
+                .driver
+                .get_frame(target)
+                .map(|frame| self.with_driver_frame(frame)),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame()"),
             )),
@@ -5041,7 +4810,7 @@ impl WebPage {
             WebMode::Driver => self
                 .driver
                 .get_frame_with_timeout(target, timeout_ms)
-                .map(WebFrame::Browser),
+                .map(|frame| self.with_driver_frame(frame)),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_with_timeout()"),
             )),
@@ -5050,7 +4819,10 @@ impl WebPage {
 
     pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
         match self.mode()? {
-            WebMode::Driver => self.driver.get_frame_by_index(index).map(WebFrame::Browser),
+            WebMode::Driver => self
+                .driver
+                .get_frame_by_index(index)
+                .map(|frame| self.with_driver_frame(frame)),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_by_index()"),
             )),
@@ -5066,7 +4838,7 @@ impl WebPage {
             WebMode::Driver => self
                 .driver
                 .get_frame_by_index_with_timeout(index, timeout_ms)
-                .map(WebFrame::Browser),
+                .map(|frame| self.with_driver_frame(frame)),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_by_index_with_timeout()"),
             )),
@@ -5137,10 +4909,12 @@ impl WebPage {
         L: Into<LocatorInput<'a>>,
     {
         match self.mode()? {
-            WebMode::Driver => self
-                .driver
-                .get_frames(locator)
-                .map(|frames| frames.into_iter().map(WebFrame::Browser).collect()),
+            WebMode::Driver => self.driver.get_frames(locator).map(|frames| {
+                frames
+                    .into_iter()
+                    .map(|frame| self.with_driver_frame(frame))
+                    .collect()
+            }),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frames()"),
             )),
@@ -5159,7 +4933,12 @@ impl WebPage {
             WebMode::Driver => self
                 .driver
                 .get_frames_with_timeout(locator, timeout_ms)
-                .map(|frames| frames.into_iter().map(WebFrame::Browser).collect()),
+                .map(|frames| {
+                    frames
+                        .into_iter()
+                        .map(|frame| self.with_driver_frame(frame))
+                        .collect()
+                }),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frames_with_timeout()"),
             )),
@@ -7844,6 +7623,92 @@ mod tests {
             panic!("close headless webpage: {err}");
         }
         result.expect("webpage new-tab click wrapper regression");
+    }
+
+    #[test]
+    fn webframe_new_tab_click_helpers_return_webpage_references() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webframe-click-new-tab-wrappers", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    const newTabUrl = 'about:blank#webframe-new-tab';
+                    const middleUrl = 'about:blank#webframe-middle-tab';
+                    document.body.innerHTML = `
+                        <a id="open-tab" href="${newTabUrl}" target="_blank">Open tab</a>
+                        <a id="middle-open-tab" href="${middleUrl}">Open by middle click</a>
+                        <iframe id="demo-frame"
+                            srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let frame = page.get_frame("css:#demo-frame")?;
+            assert!(frame.wait_for_doc_loaded(5_000)?);
+
+            let new_tab = frame
+                .click_for_new_tab("css:#open-tab", Some(5_000), false)?
+                .expect("webframe click_for_new_tab should return a tab");
+            match new_tab {
+                BrowserTabReference::WebPage(new_page) => {
+                    assert_eq!(new_page.mode()?, WebMode::Driver);
+                    assert!(new_page.wait_for_doc_loaded(5_000)?);
+                    assert_eq!(
+                        new_page.url()?,
+                        Some("about:blank#webframe-new-tab".to_string())
+                    );
+                }
+                BrowserTabReference::Page(new_page) => {
+                    panic!(
+                        "webframe click_for_new_tab should return webpage, got page {}",
+                        new_page.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("webframe click_for_new_tab should return webpage, got id {id}");
+                }
+            }
+
+            let middle_tab = frame
+                .click_middle("css:#middle-open-tab", Some(5_000), true)?
+                .expect("webframe click_middle(get_tab=true) should return a tab");
+            match middle_tab {
+                BrowserTabReference::WebPage(middle_page) => {
+                    assert_eq!(middle_page.mode()?, WebMode::Driver);
+                    assert!(middle_page.wait_for_doc_loaded(5_000)?);
+                    assert_eq!(
+                        middle_page.url()?,
+                        Some("about:blank#webframe-middle-tab".to_string())
+                    );
+                }
+                BrowserTabReference::Page(middle_page) => {
+                    panic!(
+                        "webframe click_middle should return webpage, got page {}",
+                        middle_page.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("webframe click_middle should return webpage, got id {id}");
+                }
+            }
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("webframe new-tab click wrapper regression");
     }
 
     #[test]
