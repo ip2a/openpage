@@ -1850,6 +1850,39 @@ impl Frame {
             .collect()
     }
 
+    pub fn get_frames_with_timeout<'a, L>(
+        &self,
+        locator: Option<L>,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Vec<Frame>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = optional_frame_locator_input(locator)?;
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        loop {
+            match self.get_frames(Some(locator.as_str())) {
+                Ok(frames) if !frames.is_empty() => return Ok(frames),
+                Ok(_) => {}
+                Err(err) => {
+                    if Instant::now() >= deadline {
+                        return Err(OpenPageError::Timeout(wait_for_locator_timed_out_message(
+                            &locator,
+                            &err.to_string(),
+                        )));
+                    }
+                }
+            }
+            if Instant::now() >= deadline {
+                return Err(OpenPageError::Timeout(wait_for_locator_timed_out_message(
+                    &locator,
+                    "no matching frames",
+                )));
+            }
+            sleep(Duration::from_millis(50));
+        }
+    }
+
     pub fn get_frame_eles<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
     where
         L: Into<LocatorInput<'a>>,
@@ -4397,6 +4430,39 @@ impl Page {
             .into_iter()
             .map(|element| self.frame_from_element(element))
             .collect()
+    }
+
+    pub fn get_frames_with_timeout<'a, L>(
+        &self,
+        locator: Option<L>,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Vec<Frame>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = optional_frame_locator_input(locator)?;
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        loop {
+            match self.get_frames(Some(locator.as_str())) {
+                Ok(frames) if !frames.is_empty() => return Ok(frames),
+                Ok(_) => {}
+                Err(err) => {
+                    if Instant::now() >= deadline {
+                        return Err(OpenPageError::Timeout(wait_for_locator_timed_out_message(
+                            &locator,
+                            &err.to_string(),
+                        )));
+                    }
+                }
+            }
+            if Instant::now() >= deadline {
+                return Err(OpenPageError::Timeout(wait_for_locator_timed_out_message(
+                    &locator,
+                    "no matching frames",
+                )));
+            }
+            sleep(Duration::from_millis(50));
+        }
     }
 
     pub fn get_frame_eles<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
@@ -9900,6 +9966,68 @@ mod tests {
             panic!("close headless browser: {err}");
         }
         result.expect("frame timeout lookup regression");
+    }
+
+    #[test]
+    fn get_frames_with_timeout_waits_for_delayed_iframes() {
+        let (browser, temp_dir) = launch_headless_test_browser("page-get-frames-timeout")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = '<div id="host"></div>';
+                    setTimeout(() => {
+                        const frame = document.createElement('iframe');
+                        frame.id = 'delayed-frame';
+                        frame.name = 'delayed-frame';
+                        frame.srcdoc = "<html><body><div id='outer-host'></div></body></html>";
+                        document.getElementById('host').appendChild(frame);
+                    }, 150);
+                    return true;
+                })()"#,
+            )?;
+
+            assert!(page.get_frames(Some("css:#delayed-frame"))?.is_empty());
+            let frames = page.get_frames_with_timeout(Some("css:#delayed-frame"), 2_000)?;
+            assert_eq!(frames.len(), 1);
+            assert_eq!(frames[0].attr("name")?, Some("delayed-frame".to_string()));
+
+            let outer = frames.into_iter().next().expect("frame exists");
+            assert!(outer.wait_for_doc_loaded(2_000)?);
+            outer.run_js(
+                r#"(() => {
+                    setTimeout(() => {
+                        const frame = document.createElement('iframe');
+                        frame.id = 'nested-frame';
+                        frame.name = 'nested-frame';
+                        frame.srcdoc = "<html><body><button id='inside'>inside</button></body></html>";
+                        document.getElementById('outer-host').appendChild(frame);
+                    }, 150);
+                    return true;
+                })()"#,
+            )?;
+
+            assert!(outer.get_frames(Some("css:#nested-frame"))?.is_empty());
+            let nested = outer.get_frames_with_timeout(Some("css:#nested-frame"), 2_000)?;
+            assert_eq!(nested.len(), 1);
+            assert_eq!(nested[0].attr("id")?, Some("nested-frame".to_string()));
+            assert_eq!(
+                nested[0].find("css:#inside")?.text()?,
+                Some("inside".to_string())
+            );
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("frame batch timeout lookup regression");
     }
 
     #[test]
