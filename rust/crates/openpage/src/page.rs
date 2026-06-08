@@ -6675,43 +6675,46 @@ impl Page {
 
     fn frame_name_by_id(&self, frame_id: &str) -> OpenPageResult<Option<String>> {
         self.runtime.block_on(async {
-            self.inner
-                .frame_name(FrameId::new(frame_id.to_string()))
-                .await
-                .map_err(|err| page_operation_error("read frame name", err))
+            run_page_future_with_cdp_timeout(
+                self.inner.frame_name(FrameId::new(frame_id.to_string())),
+                "read frame name",
+            )
+            .await
         })
     }
 
     fn frame_url_by_id(&self, frame_id: &str) -> OpenPageResult<Option<String>> {
         self.runtime.block_on(async {
-            self.inner
-                .frame_url(FrameId::new(frame_id.to_string()))
-                .await
-                .map_err(|err| page_operation_error("read frame url", err))
+            run_page_future_with_cdp_timeout(
+                self.inner.frame_url(FrameId::new(frame_id.to_string())),
+                "read frame url",
+            )
+            .await
         })
     }
 
     pub(crate) fn frame_parent_id(&self, frame_id: &str) -> OpenPageResult<Option<String>> {
         self.runtime.block_on(async {
-            self.inner
-                .frame_parent(FrameId::new(frame_id.to_string()))
-                .await
-                .map(|value| value.map(|frame_id| frame_id.as_ref().to_string()))
-                .map_err(|err| page_operation_error("read frame parent", err))
+            run_page_future_with_cdp_timeout(
+                self.inner.frame_parent(FrameId::new(frame_id.to_string())),
+                "read frame parent",
+            )
+            .await
+            .map(|value| value.map(|frame_id| frame_id.as_ref().to_string()))
         })
     }
 
     fn frame_context_id(&self, frame_id: &str) -> OpenPageResult<ExecutionContextId> {
         self.runtime.block_on(async {
-            self.inner
-                .frame_execution_context(FrameId::new(frame_id.to_string()))
-                .await
-                .map_err(|err| page_operation_error("read frame execution context", err))?
-                .ok_or_else(|| {
-                    OpenPageError::PageOperation(frame_execution_context_unavailable_message(
-                        frame_id,
-                    ))
-                })
+            run_page_future_with_cdp_timeout(
+                self.inner
+                    .frame_execution_context(FrameId::new(frame_id.to_string())),
+                "read frame execution context",
+            )
+            .await?
+            .ok_or_else(|| {
+                OpenPageError::PageOperation(frame_execution_context_unavailable_message(frame_id))
+            })
         })
     }
 
@@ -8060,7 +8063,7 @@ where
 mod tests {
     use chromiumoxide::cdp::browser_protocol::emulation::SetDeviceMetricsOverrideParams;
     use chromiumoxide::cdp::browser_protocol::page::PrintToPdfParams;
-    use chromiumoxide::cdp::js_protocol::runtime::EvaluateParams;
+    use chromiumoxide::cdp::js_protocol::runtime::{EvaluateParams, ExecutionContextId};
     use serde_json::{Value, json};
     use std::collections::HashMap;
     use std::fs;
@@ -12720,6 +12723,46 @@ mod tests {
         assert!(
             matches!(pdf_error, OpenPageError::Timeout(ref message) if message.contains("save pdf")),
             "unexpected page save_pdf timeout error: {pdf_error}"
+        );
+    }
+
+    #[test]
+    fn page_frame_metadata_operations_respect_global_timeout_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("create tokio runtime");
+
+        let frame_name_error = runtime
+            .block_on(run_page_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<Option<String>, &'static str>(Some("frame-a".to_string()))
+                },
+                "read frame name",
+            ))
+            .expect_err("page frame name read should time out");
+        assert!(
+            matches!(frame_name_error, OpenPageError::Timeout(ref message) if message.contains("read frame name")),
+            "unexpected page frame name timeout error: {frame_name_error}"
+        );
+
+        let frame_context_error = runtime
+            .block_on(run_page_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<Option<ExecutionContextId>, &'static str>(None)
+                },
+                "read frame execution context",
+            ))
+            .expect_err("page frame execution context read should time out");
+
+        Settings::reset();
+
+        assert!(
+            matches!(frame_context_error, OpenPageError::Timeout(ref message) if message.contains("read frame execution context")),
+            "unexpected page frame execution context timeout error: {frame_context_error}"
         );
     }
 
