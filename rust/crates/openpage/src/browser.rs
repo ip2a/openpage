@@ -1002,14 +1002,16 @@ fn attach_newest_tab_tracker(
     newest_tab_id: Arc<StdMutex<Option<String>>>,
 ) -> OpenPageResult<(tokio::task::JoinHandle<()>, tokio::task::JoinHandle<()>)> {
     let (mut created_events, mut destroyed_events) = runtime.block_on(async {
-        let created_events = browser
-            .event_listener::<EventTargetCreated>()
-            .await
-            .map_err(|err| browser_operation_error("register target created listener", err))?;
-        let destroyed_events = browser
-            .event_listener::<EventTargetDestroyed>()
-            .await
-            .map_err(|err| browser_operation_error("register target destroyed listener", err))?;
+        let created_events = run_browser_future_with_cdp_timeout(
+            browser.event_listener::<EventTargetCreated>(),
+            "Browser::attach_newest_tab_tracker().register_target_created_listener()",
+        )
+        .await?;
+        let destroyed_events = run_browser_future_with_cdp_timeout(
+            browser.event_listener::<EventTargetDestroyed>(),
+            "Browser::attach_newest_tab_tracker().register_target_destroyed_listener()",
+        )
+        .await?;
         Ok::<_, OpenPageError>((created_events, destroyed_events))
     })?;
 
@@ -4647,6 +4649,30 @@ mod tests {
             .expect_err("close wait should time out")
             .to_string();
         assert!(error.contains("Browser::close().wait()"));
+    }
+
+    #[test]
+    fn browser_listener_registration_respects_cdp_timeout() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+
+        let error = runtime
+            .block_on(run_browser_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    Ok::<(), &str>(())
+                },
+                "Browser::attach_newest_tab_tracker().register_target_created_listener()",
+            ))
+            .expect_err("listener registration should time out")
+            .to_string();
+        assert!(
+            error.contains(
+                "Browser::attach_newest_tab_tracker().register_target_created_listener()"
+            )
+        );
     }
 
     #[test]
