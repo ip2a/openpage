@@ -1423,7 +1423,8 @@ impl Browser {
             match self.get_page(target_id) {
                 Ok(page) => return Ok(page),
                 Err(OpenPageError::BrowserOperation(message))
-                    if message == "Requested value not found." && Instant::now() < deadline => {}
+                    if message.contains("Requested value not found.")
+                        && Instant::now() < deadline => {}
                 Err(err) => return Err(err),
             }
             if Instant::now() >= deadline {

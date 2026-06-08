@@ -3701,9 +3701,12 @@ impl WebPage {
         locator: &str,
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<Option<crate::page::Page>> {
+    ) -> OpenPageResult<Option<WebPage>> {
         match self.mode()? {
-            WebMode::Driver => self.driver.click_for_new_tab(locator, timeout_ms, by_js),
+            WebMode::Driver => self
+                .driver
+                .click_for_new_tab(locator, timeout_ms, by_js)
+                .map(|page| page.map(|page| self.with_driver_page(page))),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("click_for_new_tab()"),
             )),
@@ -3715,9 +3718,12 @@ impl WebPage {
         locator: &str,
         timeout_ms: Option<u64>,
         get_tab: bool,
-    ) -> OpenPageResult<Option<crate::page::Page>> {
+    ) -> OpenPageResult<Option<WebPage>> {
         match self.mode()? {
-            WebMode::Driver => self.driver.click_middle(locator, timeout_ms, get_tab),
+            WebMode::Driver => self
+                .driver
+                .click_middle(locator, timeout_ms, get_tab)
+                .map(|page| page.map(|page| self.with_driver_page(page))),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("click_middle()"),
             )),
@@ -7784,6 +7790,60 @@ mod tests {
             panic!("close headless webpage: {err}");
         }
         result.expect("webpage tab wrapper regression");
+    }
+
+    #[test]
+    fn webpage_new_tab_click_helpers_return_webpage_objects() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-click-new-tab-wrappers", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    const newTabUrl = 'about:blank#webpage-new-tab';
+                    const middleUrl = 'about:blank#webpage-middle-tab';
+                    document.body.innerHTML = `
+                        <a id="open-tab" href="${newTabUrl}" target="_blank">Open tab</a>
+                        <a id="middle-open-tab" href="${middleUrl}">Open by middle click</a>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let new_page = page
+                .click_for_new_tab("css:#open-tab", Some(5_000), false)?
+                .expect("webpage click_for_new_tab should return a tab");
+            assert_eq!(new_page.mode()?, WebMode::Driver);
+            assert!(new_page.wait_for_doc_loaded(5_000)?);
+            assert_eq!(
+                new_page.url()?,
+                Some("about:blank#webpage-new-tab".to_string())
+            );
+
+            let middle_page = page
+                .click_middle("css:#middle-open-tab", Some(5_000), true)?
+                .expect("webpage click_middle(get_tab=true) should return a tab");
+            assert_eq!(middle_page.mode()?, WebMode::Driver);
+            assert!(middle_page.wait_for_doc_loaded(5_000)?);
+            assert_eq!(
+                middle_page.url()?,
+                Some("about:blank#webpage-middle-tab".to_string())
+            );
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("webpage new-tab click wrapper regression");
     }
 
     #[test]
