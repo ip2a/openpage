@@ -8132,6 +8132,82 @@ mod tests {
     }
 
     #[test]
+    fn mix_webelement_get_frame_preserves_webframe_context() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webelement-get-frame-mix", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <section id="host">
+                            <iframe id="demo-frame"
+                                srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                            </iframe>
+                        </section>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let host = page.find("css:#host")?;
+            let frame = host.get_frame("css:#demo-frame")?;
+            assert!(frame.wait_for_doc_loaded(5_000)?);
+            assert_eq!(
+                frame.find("css:#inside")?.text()?,
+                Some("inside".to_string())
+            );
+            match frame.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                    assert_eq!(owner.mode()?, WebMode::Driver);
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "Mix WebElement get_frame should return mix WebFrame, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("Mix WebElement get_frame should return mix WebFrame, got id {id}");
+                }
+            }
+            match frame.frame_element_reference()? {
+                WebElement::Mix {
+                    element,
+                    page: owner,
+                } => {
+                    assert_eq!(element.attr("id")?, Some("demo-frame".to_string()));
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                WebElement::Browser(element) => {
+                    panic!(
+                        "Mix WebElement get_frame frame element should stay mix, got browser element {:?}",
+                        element.attr("id")?
+                    );
+                }
+                WebElement::Session(_) => {
+                    panic!("Mix WebElement get_frame frame element should stay mix");
+                }
+            }
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("mix WebElement get_frame wrapper regression");
+    }
+
+    #[test]
     fn disconnected_webframe_reconnect_preserves_mix_context() {
         let _settings = scoped_test_settings();
         Settings::reset();
