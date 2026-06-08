@@ -14,14 +14,16 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 use tokio::task::JoinHandle;
+use tokio::time::timeout as tokio_timeout;
 
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::{execute_page_command_async, execute_page_command_blocking};
 use crate::settings::{
-    component_not_active_start_message, component_not_running_message,
+    cdp_timeout_duration, component_not_active_start_message, component_not_running_message,
     component_not_running_with_error_message, component_state_lock_poisoned_message,
     component_stopped_while_waiting_message, intercepted_request_no_longer_pending_message,
-    interceptor_setup_operation_failed_message, invalid_regex_message,
+    interceptor_setup_operation_failed_message, invalid_regex_message, timeout_duration_millis,
+    timeout_error,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -449,10 +451,11 @@ impl InterceptedRequest {
 }
 
 async fn run_interceptor(page: OxPage, shared: Arc<InterceptShared>) -> OpenPageResult<()> {
-    let mut paused_events = page
-        .event_listener::<EventRequestPaused>()
-        .await
-        .map_err(|err| interceptor_setup_error("register request paused listener", err))?;
+    let mut paused_events = register_interceptor_listener_with_cdp_timeout(
+        page.event_listener::<EventRequestPaused>(),
+        "register request paused listener",
+    )
+    .await?;
 
     while let Some(event) = paused_events.next().await {
         on_request_paused(&page, &shared, &event).await?;
@@ -662,6 +665,22 @@ fn interceptor_setup_error(operation: &str, err: impl ToString) -> OpenPageError
     ))
 }
 
+async fn register_interceptor_listener_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| interceptor_setup_error(operation, err))
+}
+
 fn interceptor_not_active_error() -> OpenPageError {
     OpenPageError::BrowserOperation(component_not_active_start_message("interceptor", "拦截器"))
 }
@@ -713,12 +732,17 @@ fn resource_type_to_string(value: &ResourceType) -> String {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::time::Duration;
 
+    use tokio::runtime::Runtime;
+
+    use crate::error::OpenPageError;
     use crate::settings::{Settings, scoped_test_settings};
 
     use super::{
         InterceptFilters, InterceptShared, InterceptState, interceptor_not_running_error,
-        interceptor_setup_error, with_pending_request,
+        interceptor_setup_error, register_interceptor_listener_with_cdp_timeout,
+        with_pending_request,
     };
 
     #[test]
@@ -760,5 +784,32 @@ mod tests {
         assert!(chinese_pending.contains("被拦截请求 `req-1` 已不再等待处理"));
         let chinese_setup = interceptor_setup_error("unit test setup", "boom").to_string();
         assert!(chinese_setup.contains("拦截器初始化操作 unit test setup 失败: boom"));
+    }
+
+    #[test]
+    fn interceptor_listener_registration_respects_global_timeout_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("create tokio runtime");
+        let result = runtime.block_on(async {
+            register_interceptor_listener_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "register request paused listener",
+            )
+            .await
+        });
+
+        Settings::reset();
+
+        let error = result.expect_err("interceptor listener registration should time out");
+        assert!(
+            matches!(error, OpenPageError::Timeout(ref message) if message.contains("register request paused listener")),
+            "unexpected interceptor registration timeout error: {error}"
+        );
     }
 }
