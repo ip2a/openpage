@@ -76,7 +76,7 @@ use crate::settings::{
     value_number_required_message, value_state_bool_required_message,
     value_string_compatible_required_message, value_string_required_message,
     value_string_vec_array_required_message, value_string_vec_entry_required_message,
-    value_unavailable_message, wait_timeout_result,
+    value_unavailable_message, wait_for_locator_timed_out_message, wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::UploadTracker;
@@ -2959,8 +2959,41 @@ impl Element {
         self.page_wrapper().frame_from_element(frame_element)
     }
 
+    pub fn get_frame_with_timeout<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<Frame>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        let target = target.into();
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        loop {
+            match self
+                .resolve_backend_node_id(self.backend_node_id())
+                .and_then(|element| element.get_frame(target))
+            {
+                Ok(frame) => return Ok(frame),
+                Err(err) => {
+                    if Instant::now() >= deadline {
+                        return Err(OpenPageError::Timeout(wait_for_locator_timed_out_message(
+                            "frame",
+                            &err.to_string(),
+                        )));
+                    }
+                }
+            }
+            sleep(Duration::from_millis(50));
+        }
+    }
+
     pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<Frame> {
         self.get_frame(index)
+    }
+
+    pub fn get_frame_by_index_with_timeout(
+        &self,
+        index: usize,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Frame> {
+        self.get_frame_with_timeout(index, timeout_ms)
     }
 
     pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<Element>>

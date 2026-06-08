@@ -1440,11 +1440,44 @@ impl WebElement {
         }
     }
 
+    pub fn get_frame_with_timeout<'a, L>(
+        &self,
+        target: L,
+        timeout_ms: u64,
+    ) -> OpenPageResult<WebFrame>
+    where
+        L: Into<PageFrameTarget<'a>>,
+    {
+        match self {
+            Self::Browser(element) => element
+                .get_frame_with_timeout(target, timeout_ms)
+                .map(WebFrame::Browser),
+            Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
+                driver_mode_only_message("get_frame_with_timeout()"),
+            )),
+        }
+    }
+
     pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
         match self {
             Self::Browser(element) => element.get_frame_by_index(index).map(WebFrame::Browser),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_by_index()"),
+            )),
+        }
+    }
+
+    pub fn get_frame_by_index_with_timeout(
+        &self,
+        index: usize,
+        timeout_ms: u64,
+    ) -> OpenPageResult<WebFrame> {
+        match self {
+            Self::Browser(element) => element
+                .get_frame_by_index_with_timeout(index, timeout_ms)
+                .map(WebFrame::Browser),
+            Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
+                driver_mode_only_message("get_frame_by_index_with_timeout()"),
             )),
         }
     }
@@ -7735,7 +7768,9 @@ mod tests {
             let _ = frame.get_frame_context(1usize);
             let _ = frame.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
             let _ = element.get_frame((By::ID, "theFrame"));
+            let _ = element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = element.get_frame(1usize);
+            let _ = element.get_frame_by_index_with_timeout(1usize, 10);
             let _ = element.get_frame(frame);
             let _ = web_page.get_frame((By::ID, "theFrame"));
             let _ = web_page.get_frame_with_timeout((By::ID, "theFrame"), 10);
@@ -7769,7 +7804,9 @@ mod tests {
             let _ = web_frame.get_frame_context(1usize);
             let _ = web_frame.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
             let _ = web_element.get_frame((By::ID, "theFrame"));
+            let _ = web_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = web_element.get_frame(1usize);
+            let _ = web_element.get_frame_by_index_with_timeout(1usize, 10);
             let _ = web_element.get_frame(web_frame);
         }
 

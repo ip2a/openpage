@@ -10019,6 +10019,53 @@ mod tests {
     }
 
     #[test]
+    fn element_get_frame_with_timeout_waits_for_delayed_iframe_child() {
+        let (browser, temp_dir) = launch_headless_test_browser("element-get-frame-timeout")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = '<div id="host"></div>';
+                    setTimeout(() => {
+                        const frame = document.createElement('iframe');
+                        frame.id = 'child-frame';
+                        frame.name = 'child-frame';
+                        frame.srcdoc = "<html><body><button id='inside'>inside</button></body></html>";
+                        document.getElementById('host').appendChild(frame);
+                    }, 150);
+                    return true;
+                })()"#,
+            )?;
+
+            let host = page.find("css:#host")?;
+            assert!(host.get_frame("css:#child-frame").is_err());
+
+            let frame = host.get_frame_with_timeout("css:#child-frame", 2_000)?;
+            assert!(frame.wait_for_doc_loaded(2_000)?);
+            assert_eq!(frame.attr("name")?, Some("child-frame".to_string()));
+            assert_eq!(
+                frame.find("css:#inside")?.text()?,
+                Some("inside".to_string())
+            );
+
+            let frame_by_index = host.get_frame_by_index_with_timeout(1, 500)?;
+            assert_eq!(frame_by_index.attr("id")?, Some("child-frame".to_string()));
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("element frame timeout lookup regression");
+    }
+
+    #[test]
     fn page_save_returns_mhtml_and_pdf_content_at_runtime() {
         let (browser, temp_dir) =
             launch_headless_test_browser("page-save").expect("launch headless browser");
