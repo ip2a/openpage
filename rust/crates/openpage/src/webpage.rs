@@ -4404,6 +4404,13 @@ impl WebPage {
         }
     }
 
+    pub fn set_encoding(&self, encoding: Option<String>) -> OpenPageResult<()> {
+        match self.mode()? {
+            WebMode::Driver => Ok(()),
+            WebMode::Session => self.session.set_encoding(encoding),
+        }
+    }
+
     pub fn status_code(&self) -> OpenPageResult<Option<u16>> {
         match self.mode()? {
             WebMode::Driver => Ok(None),
@@ -6421,6 +6428,10 @@ impl WebPageSetter<'_> {
 
     pub fn user_agent(&self, user_agent: &str, platform: Option<&str>) -> OpenPageResult<()> {
         self.page.set_user_agent(user_agent, platform)
+    }
+
+    pub fn encoding(&self, encoding: Option<String>) -> OpenPageResult<()> {
+        self.page.set_encoding(encoding)
     }
 
     pub fn session_storage(&self, item: &str, value: Option<&str>) -> OpenPageResult<()> {
@@ -8992,6 +9003,7 @@ mod tests {
             let _ = web_page.timeouts();
             let _ = web_page.set_retry(Some(5), Some(0.25));
             let _ = web_page.set_timeouts(Some(1.5), Some(6.0), Some(0.75));
+            let _ = web_page.set_encoding(Some("utf-8".to_string()));
         }
 
         let _ = assert_calls as fn(&Page, &WebPage);
@@ -9055,6 +9067,7 @@ mod tests {
             let _ = web_page.set().blocked_urls(&urls);
             let _ = web_page.set().headers(&headers);
             let _ = web_page.set().user_agent("demo-agent", Some("linux"));
+            let _ = web_page.set().encoding(Some("utf-8".to_string()));
             let _ = web_page.set().session_storage("foo", Some("bar"));
             let _ = web_page.set().local_storage("foo", Some("bar"));
             let _ = web_page.set().auto_handle_alert(Some(true), Some("ok"));
