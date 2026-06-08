@@ -6437,10 +6437,7 @@ impl Page {
 
     fn navigate_via_cdp(&self, url: &str) -> OpenPageResult<()> {
         self.runtime.block_on(async {
-            self.inner
-                .goto(url.to_string())
-                .await
-                .map_err(|err| page_operation_error("navigate", err))?;
+            run_page_future_with_cdp_timeout(self.inner.goto(url.to_string()), "navigate").await?;
             Ok::<(), OpenPageError>(())
         })
     }
@@ -7901,10 +7898,7 @@ async fn page_has_cookie(
     cookie: &SessionCookieParam,
     current_url: Option<&Url>,
 ) -> OpenPageResult<bool> {
-    let cookies = page
-        .get_cookies()
-        .await
-        .map_err(|err| page_operation_error("read cookies", err))?;
+    let cookies = run_page_future_with_cdp_timeout(page.get_cookies(), "read cookies").await?;
     Ok(cookies.into_iter().any(|current| {
         current.name == cookie.name
             && current.value == cookie.value
@@ -12763,6 +12757,48 @@ mod tests {
         assert!(
             matches!(frame_context_error, OpenPageError::Timeout(ref message) if message.contains("read frame execution context")),
             "unexpected page frame execution context timeout error: {frame_context_error}"
+        );
+    }
+
+    #[test]
+    fn page_navigation_operations_respect_global_timeout_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("create tokio runtime");
+
+        let navigate_error = runtime
+            .block_on(run_page_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "navigate",
+            ))
+            .expect_err("page navigation should time out");
+        assert!(
+            matches!(navigate_error, OpenPageError::Timeout(ref message) if message.contains("navigate")),
+            "unexpected page navigation timeout error: {navigate_error}"
+        );
+
+        let cookie_helper_error = runtime
+            .block_on(run_page_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<Vec<chromiumoxide::cdp::browser_protocol::network::Cookie>, &'static str>(
+                        Vec::new(),
+                    )
+                },
+                "read cookies",
+            ))
+            .expect_err("page cookie helper read should time out");
+
+        Settings::reset();
+
+        assert!(
+            matches!(cookie_helper_error, OpenPageError::Timeout(ref message) if message.contains("read cookies")),
+            "unexpected page cookie helper timeout error: {cookie_helper_error}"
         );
     }
 
