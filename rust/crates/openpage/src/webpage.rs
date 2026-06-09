@@ -10672,6 +10672,8 @@ mod tests {
             let _ = one_element.clear_with_mode(false);
             let _ = one_element.submit();
             let _ = one_element.hover_with_offset(Some(1.0), Some(2.0));
+            let _ = one_element.set_property("value", &serde_json::json!("demo"));
+            let _ = one_element.set_checked(true);
             let _ = one_element.save(None, Some("element.jpg"), 500, true);
             let _ = one_element.save(Some(Path::new("/tmp")), None, 500, false);
             let _ = one_web_element.input_with_options("hello", true, false);
@@ -10680,6 +10682,8 @@ mod tests {
             let _ = one_web_element.clear_with_mode(false);
             let _ = one_web_element.submit();
             let _ = one_web_element.hover_with_offset(Some(1.0), Some(2.0));
+            let _ = one_web_element.set_property("value", &serde_json::json!("demo"));
+            let _ = one_web_element.set_checked(true);
             let _ = one_web_element.save(None, Some("element.jpg"), 500, true);
             let _ = one_web_element.save(Some(Path::new("/tmp")), None, 500, false);
 
@@ -10689,6 +10693,8 @@ mod tests {
             let _ = owned_element.clear_with_mode(false);
             let _ = owned_element.submit();
             let _ = owned_element.hover_with_offset(Some(1.0), Some(2.0));
+            let _ = owned_element.set_property("value", &serde_json::json!("demo"));
+            let _ = owned_element.set_checked(true);
             let _ = owned_element.save(None, Some("element.jpg"), 500, true);
             let _ = owned_element.save(Some(Path::new("/tmp")), None, 500, false);
             let _ = owned_web_element.input_with_options("hello", true, false);
@@ -10697,6 +10703,8 @@ mod tests {
             let _ = owned_web_element.clear_with_mode(false);
             let _ = owned_web_element.submit();
             let _ = owned_web_element.hover_with_offset(Some(1.0), Some(2.0));
+            let _ = owned_web_element.set_property("value", &serde_json::json!("demo"));
+            let _ = owned_web_element.set_checked(true);
             let _ = owned_web_element.save(None, Some("element.jpg"), 500, true);
             let _ = owned_web_element.save(Some(Path::new("/tmp")), None, 500, false);
         }

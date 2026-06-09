@@ -816,12 +816,20 @@ impl ElementsOneOwned<Element> {
         self.as_borrowed().set_attr(name, value)
     }
 
+    pub fn set_property(&self, name: &str, value: &Value) -> OpenPageResult<bool> {
+        self.as_borrowed().set_property(name, value)
+    }
+
     pub fn set_style(&self, name: &str, value: &str) -> OpenPageResult<bool> {
         self.as_borrowed().set_style(name, value)
     }
 
     pub fn set_inner_html(&self, html: &str) -> OpenPageResult<bool> {
         self.as_borrowed().set_inner_html(html)
+    }
+
+    pub fn set_checked(&self, checked: bool) -> OpenPageResult<bool> {
+        self.as_borrowed().set_checked(checked)
     }
 
     pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
@@ -1343,12 +1351,20 @@ impl ElementsOneOwned<WebElement> {
         self.as_borrowed().set_attr(name, value)
     }
 
+    pub fn set_property(&self, name: &str, value: &Value) -> OpenPageResult<bool> {
+        self.as_borrowed().set_property(name, value)
+    }
+
     pub fn set_style(&self, name: &str, value: &str) -> OpenPageResult<bool> {
         self.as_borrowed().set_style(name, value)
     }
 
     pub fn set_inner_html(&self, html: &str) -> OpenPageResult<bool> {
         self.as_borrowed().set_inner_html(html)
+    }
+
+    pub fn set_checked(&self, checked: bool) -> OpenPageResult<bool> {
+        self.as_borrowed().set_checked(checked)
     }
 
     pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<WebElement>>
@@ -3716,6 +3732,16 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    pub fn set_property(&self, name: &str, value: &Value) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.set().property(name, value)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     pub fn set_style(&self, name: &str, value: &str) -> OpenPageResult<bool> {
         match self.element {
             Some(element) => {
@@ -3730,6 +3756,16 @@ impl<'a> ElementsOne<'a, Element> {
         match self.element {
             Some(element) => {
                 element.set().inner_html(html)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn set_checked(&self, checked: bool) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.set_checked(checked)?;
                 Ok(true)
             }
             None => Ok(false),
@@ -5023,6 +5059,26 @@ impl<'a> ElementsOneSelector<'a, Element> {
 }
 
 impl<'a> ElementsOne<'a, WebElement> {
+    pub fn set_property(&self, name: &str, value: &Value) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.set().property(name, value)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn set_checked(&self, checked: bool) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.set_checked(checked)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     pub fn click(&self) -> OpenPageResult<bool> {
         match self.element {
             Some(element) => element.click_with_options(Some(false), None, true),
