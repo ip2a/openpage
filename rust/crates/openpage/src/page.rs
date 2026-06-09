@@ -1256,6 +1256,10 @@ impl Frame {
         &self.page
     }
 
+    pub fn page(&self) -> &Page {
+        self.owner()
+    }
+
     pub fn tab(&self) -> &Page {
         &self.page
     }

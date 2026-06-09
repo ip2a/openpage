@@ -369,6 +369,10 @@ impl WebFrame {
         self.frame().owner()
     }
 
+    pub fn page(&self) -> &crate::page::Page {
+        self.owner()
+    }
+
     pub fn owner_reference(&self) -> BrowserTabReference {
         self.wrap_page(self.frame().owner().clone())
     }
@@ -8888,6 +8892,9 @@ mod tests {
             let _ = frame.set().clear_cookies();
             let _ = frame.set().remove_cookie("sid", None, None, None);
             let _ = frame.frame_id();
+            let _ = frame.page();
+            let _ = frame.owner();
+            let _ = frame.tab();
             let _ = frame.set_upload_files(&files);
             let _ = frame.set_upload_paths(&files);
             let _ = frame.set_download_path("/tmp");
@@ -8952,6 +8959,9 @@ mod tests {
             let _ = web_frame.clear_cookies();
             let _ = web_frame.remove_cookie("sid", None, None, None);
             let _ = web_frame.frame_id();
+            let _ = web_frame.page();
+            let _ = web_frame.owner();
+            let _ = web_frame.tab();
             let _ = web_frame.set_upload_files(&files);
             let _ = web_frame.set_upload_paths(&files);
             let _ = web_frame.set_download_path("/tmp");
