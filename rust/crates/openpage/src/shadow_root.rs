@@ -47,6 +47,13 @@ where
         .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))
 }
 
+fn shadow_root_selector_error(err: OpenPageError) -> OpenPageError {
+    match err {
+        OpenPageError::Timeout(message) => OpenPageError::Timeout(message),
+        err => OpenPageError::ElementNotFound(err.to_string()),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ShadowRoot {
     runtime: Arc<Runtime>,
@@ -457,7 +464,7 @@ impl ShadowRoot {
                 "ShadowRoot::query_selector()",
             )
             .await
-            .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
+            .map_err(shadow_root_selector_error)?;
             Ok::<NodeId, OpenPageError>(response.node_id)
         })?;
         if *node_id.inner() == 0 {
@@ -476,7 +483,7 @@ impl ShadowRoot {
                 "ShadowRoot::query_selector_all()",
             )
             .await
-            .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
+            .map_err(shadow_root_selector_error)?;
             Ok::<Vec<NodeId>, OpenPageError>(response.node_ids)
         })?;
         self.resolve_node_ids(&node_ids)
@@ -766,6 +773,7 @@ mod tests {
     use super::{
         build_js_invocation, direct_child_selector, normalize_axis_xpath,
         resolve_javascript_timeout_ms, run_shadow_root_lookup_future_with_cdp_timeout,
+        shadow_root_selector_error,
     };
     use crate::{OpenPageError, Settings};
     use serde_json::json;
@@ -812,6 +820,21 @@ mod tests {
         assert!(
             matches!(lookup_error, OpenPageError::ElementNotFound(ref message) if message == "missing"),
             "unexpected shadow root lookup error: {lookup_error}"
+        );
+    }
+
+    #[test]
+    fn shadow_root_selector_errors_preserve_timeouts() {
+        let timeout = shadow_root_selector_error(OpenPageError::Timeout("slow".to_string()));
+        assert!(
+            matches!(timeout, OpenPageError::Timeout(ref message) if message == "slow"),
+            "unexpected timeout conversion: {timeout}"
+        );
+
+        let missing = shadow_root_selector_error(OpenPageError::PageOperation("boom".to_string()));
+        assert!(
+            matches!(missing, OpenPageError::ElementNotFound(ref message) if message.contains("boom")),
+            "unexpected selector conversion: {missing}"
         );
     }
 
