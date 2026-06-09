@@ -18,8 +18,8 @@ use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::{execute_page_command_async, execute_page_command_blocking};
 use crate::settings::{
     cdp_timeout_duration, component_not_running_message, component_state_lock_poisoned_message,
-    file_chooser_backend_node_missing_message, timeout_duration_millis, timeout_error,
-    upload_requires_at_least_one_file_message,
+    file_chooser_backend_node_missing_message, page_operation_failed_message,
+    timeout_duration_millis, timeout_error, upload_requires_at_least_one_file_message,
 };
 
 #[derive(Debug, Default)]
@@ -339,7 +339,9 @@ where
     tokio_timeout(timeout, future)
         .await
         .map_err(|_| timeout_error(operation, timeout_ms))?
-        .map_err(|err| OpenPageError::PageOperation(err.to_string()))
+        .map_err(|err| {
+            OpenPageError::PageOperation(page_operation_failed_message(operation, &err.to_string()))
+        })
 }
 
 async fn apply_upload_files(
@@ -515,5 +517,33 @@ mod tests {
             matches!(error, OpenPageError::Timeout(ref message) if message.contains("register upload file chooser listener")),
             "unexpected upload registration timeout error: {error}"
         );
+    }
+
+    #[test]
+    fn upload_listener_registration_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        let runtime = Runtime::new().expect("create tokio runtime");
+
+        Settings::reset();
+        let english = runtime
+            .block_on(register_upload_listener_with_cdp_timeout(
+                async { Err::<(), &'static str>("listener closed") },
+                "register upload file chooser listener",
+            ))
+            .expect_err("upload listener registration should fail")
+            .to_string();
+        assert!(english.contains("page operation register upload file chooser listener failed"));
+        assert!(english.contains("listener closed"));
+
+        Settings::set_language("cn");
+        let chinese = runtime
+            .block_on(register_upload_listener_with_cdp_timeout(
+                async { Err::<(), &'static str>("listener closed") },
+                "register upload file chooser listener",
+            ))
+            .expect_err("upload listener registration should fail in Chinese")
+            .to_string();
+        assert!(chinese.contains("页面操作 register upload file chooser listener 失败"));
+        assert!(chinese.contains("listener closed"));
     }
 }
