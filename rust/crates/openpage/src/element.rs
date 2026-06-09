@@ -226,6 +226,7 @@ pub struct ElementSelector<'a> {
 
 pub enum ElementDragTarget<'a> {
     Element(&'a Element),
+    OwnedElement(Element),
     Locator(LocatorInput<'a>),
     Coordinates(f64, f64),
 }
@@ -233,6 +234,12 @@ pub enum ElementDragTarget<'a> {
 impl<'a> From<&'a Element> for ElementDragTarget<'a> {
     fn from(value: &'a Element) -> Self {
         Self::Element(value)
+    }
+}
+
+impl From<Element> for ElementDragTarget<'_> {
+    fn from(value: Element) -> Self {
+        Self::OwnedElement(value)
     }
 }
 
@@ -1951,6 +1958,7 @@ impl Element {
     {
         let target = match target.into() {
             ElementDragTarget::Element(element) => element.clickable_point()?,
+            ElementDragTarget::OwnedElement(element) => element.clickable_point()?,
             ElementDragTarget::Locator(locator) => self.find(locator)?.clickable_point()?,
             ElementDragTarget::Coordinates(x, y) => Point::new(x, y),
         };

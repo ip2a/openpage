@@ -10857,6 +10857,12 @@ mod tests {
                 &ElementsOneOwned<Element>,
                 &ElementsOneOwned<WebElement>,
             );
+
+        fn assert_owned_element_drag_target(element: &Element, target: Element) {
+            let _ = element.drag_to(target, 0.1);
+        }
+
+        let _ = assert_owned_element_drag_target as fn(&Element, Element);
     }
 
     #[test]
