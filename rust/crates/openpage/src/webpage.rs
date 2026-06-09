@@ -5425,6 +5425,9 @@ impl WebPage {
             PageElementTarget::SessionElement(element) => {
                 Ok(format!("xpath:{}", element.xpath()?))
             }
+            PageElementTarget::OwnedSessionElement(element) => {
+                Ok(format!("xpath:{}", element.xpath()?))
+            }
             PageElementTarget::WebElement(element) => match element {
                 WebElement::Session(element) => Ok(format!("xpath:{}", element.xpath()?)),
                 WebElement::Browser(_) | WebElement::Mix { .. } => Err(OpenPageError::UnsupportedOperation(
@@ -5432,7 +5435,18 @@ impl WebPage {
                         .to_string(),
                 )),
             },
+            PageElementTarget::OwnedWebElement(element) => match element {
+                WebElement::Session(element) => Ok(format!("xpath:{}", element.xpath()?)),
+                WebElement::Browser(_) | WebElement::Mix { .. } => Err(OpenPageError::UnsupportedOperation(
+                    "browser-backed element object is not supported for session mode wait_for_ele_*()"
+                        .to_string(),
+                )),
+            },
             PageElementTarget::Element(_) => Err(OpenPageError::UnsupportedOperation(
+                "browser-backed element object is not supported for session mode wait_for_ele_*()"
+                    .to_string(),
+            )),
+            PageElementTarget::OwnedElement(_) => Err(OpenPageError::UnsupportedOperation(
                 "browser-backed element object is not supported for session mode wait_for_ele_*()"
                     .to_string(),
             )),
@@ -10403,6 +10417,41 @@ mod tests {
         }
 
         let _ = assert_calls as fn(&Page, &WebPage, &Element, &WebElement);
+
+        fn assert_owned_page_remove(page: &Page, element: Element) {
+            let _ = page.remove_element(element);
+        }
+
+        fn assert_owned_page_insert(page: &Page, parent: Element, before: Element) {
+            let _ = page.add_element_html("<div>demo</div>", Some(parent), Some(before));
+        }
+
+        fn assert_owned_page_action_move(page: &Page, element: Element) {
+            let mut actions = page.new_actions();
+            let _ = actions.move_to(element, None, None, 0.0);
+        }
+
+        fn assert_owned_webpage_remove(page: &WebPage, element: WebElement) {
+            let _ = page.remove_element(element);
+        }
+
+        fn assert_owned_webpage_insert(page: &WebPage, parent: WebElement, before: WebElement) {
+            let _ = page.add_element_html("<div>demo</div>", Some(parent), Some(before));
+        }
+
+        fn assert_owned_webpage_action_move(page: &WebPage, element: WebElement) {
+            let _ = page.new_actions().and_then(|mut actions| {
+                actions.move_to(element, None, None, 0.0)?;
+                Ok(actions)
+            });
+        }
+
+        let _ = assert_owned_page_remove as fn(&Page, Element);
+        let _ = assert_owned_page_insert as fn(&Page, Element, Element);
+        let _ = assert_owned_page_action_move as fn(&Page, Element);
+        let _ = assert_owned_webpage_remove as fn(&WebPage, WebElement);
+        let _ = assert_owned_webpage_insert as fn(&WebPage, WebElement, WebElement);
+        let _ = assert_owned_webpage_action_move as fn(&WebPage, WebElement);
     }
 
     #[test]

@@ -644,12 +644,17 @@ pub enum PageElementTarget<'a> {
     Element(&'a Element),
     SessionElement(&'a SessionElement),
     WebElement(&'a WebElement),
+    OwnedElement(Element),
+    OwnedSessionElement(SessionElement),
+    OwnedWebElement(WebElement),
 }
 
 pub enum ActionsTarget<'a> {
     Locator(LocatorInput<'a>),
     Element(&'a Element),
     WebElement(&'a WebElement),
+    OwnedElement(Element),
+    OwnedWebElement(WebElement),
     Coordinates(f64, f64),
 }
 
@@ -728,15 +733,33 @@ impl<'a> From<&'a Element> for PageElementTarget<'a> {
     }
 }
 
+impl From<Element> for PageElementTarget<'_> {
+    fn from(value: Element) -> Self {
+        Self::OwnedElement(value)
+    }
+}
+
 impl<'a> From<&'a SessionElement> for PageElementTarget<'a> {
     fn from(value: &'a SessionElement) -> Self {
         Self::SessionElement(value)
     }
 }
 
+impl From<SessionElement> for PageElementTarget<'_> {
+    fn from(value: SessionElement) -> Self {
+        Self::OwnedSessionElement(value)
+    }
+}
+
 impl<'a> From<&'a WebElement> for PageElementTarget<'a> {
     fn from(value: &'a WebElement) -> Self {
         Self::WebElement(value)
+    }
+}
+
+impl From<WebElement> for PageElementTarget<'_> {
+    fn from(value: WebElement) -> Self {
+        Self::OwnedWebElement(value)
     }
 }
 
@@ -764,9 +787,21 @@ impl<'a> From<&'a Element> for ActionsTarget<'a> {
     }
 }
 
+impl From<Element> for ActionsTarget<'_> {
+    fn from(value: Element) -> Self {
+        Self::OwnedElement(value)
+    }
+}
+
 impl<'a> From<&'a WebElement> for ActionsTarget<'a> {
     fn from(value: &'a WebElement) -> Self {
         Self::WebElement(value)
+    }
+}
+
+impl From<WebElement> for ActionsTarget<'_> {
+    fn from(value: WebElement) -> Self {
+        Self::OwnedWebElement(value)
     }
 }
 
@@ -7420,7 +7455,15 @@ fn resolve_page_element_target<'a>(
             page.find(Locator::from_input(locator)?.raw())?,
         )),
         PageElementTarget::Element(element) => Ok(ResolvedPageElementTarget::Borrowed(element)),
+        PageElementTarget::OwnedElement(element) => Ok(ResolvedPageElementTarget::Owned(element)),
         PageElementTarget::SessionElement(_) => Err(OpenPageError::UnsupportedOperation(
+            session_backed_element_driver_target_message(
+                "SessionElement",
+                "page element",
+                "页面元素定位",
+            ),
+        )),
+        PageElementTarget::OwnedSessionElement(_) => Err(OpenPageError::UnsupportedOperation(
             session_backed_element_driver_target_message(
                 "SessionElement",
                 "page element",
@@ -7430,6 +7473,18 @@ fn resolve_page_element_target<'a>(
         PageElementTarget::WebElement(element) => match element {
             WebElement::Browser(element) | WebElement::Mix { element, .. } => {
                 Ok(ResolvedPageElementTarget::Borrowed(element))
+            }
+            WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
+                session_backed_element_driver_target_message(
+                    "WebElement",
+                    "page element",
+                    "页面元素定位",
+                ),
+            )),
+        },
+        PageElementTarget::OwnedWebElement(element) => match element {
+            WebElement::Browser(element) | WebElement::Mix { element, .. } => {
+                Ok(ResolvedPageElementTarget::Owned(element))
             }
             WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 session_backed_element_driver_target_message(
@@ -7556,9 +7611,20 @@ fn resolve_actions_target_point<'a>(
         ActionsTarget::Element(element) => {
             action_point_from_element(page, element, offset_x, offset_y)
         }
+        ActionsTarget::OwnedElement(element) => {
+            action_point_from_element(page, &element, offset_x, offset_y)
+        }
         ActionsTarget::WebElement(element) => match element {
             WebElement::Browser(element) | WebElement::Mix { element, .. } => {
                 action_point_from_element(page, element, offset_x, offset_y)
+            }
+            WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
+                session_backed_web_element_driver_actions_message(),
+            )),
+        },
+        ActionsTarget::OwnedWebElement(element) => match element {
+            WebElement::Browser(element) | WebElement::Mix { element, .. } => {
+                action_point_from_element(page, &element, offset_x, offset_y)
             }
             WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 session_backed_web_element_driver_actions_message(),
