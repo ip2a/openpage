@@ -87,8 +87,8 @@ use crate::settings::{
     frame_element_missing_frame_id_message, frame_execution_context_unavailable_message,
     frame_html_unavailable_message, frame_index_must_start_message,
     frame_index_out_of_range_message, invalid_cookie_same_site_message, invalid_file_url_message,
-    invalid_url_message, launched_browser_only_message, no_new_tab_message,
-    page_connect_timed_out_message, page_operation_failed_message,
+    invalid_url_message, javascript_execution_timed_out_message, launched_browser_only_message,
+    no_new_tab_message, page_connect_timed_out_message, page_operation_failed_message,
     permission_origin_required_message, permission_origin_scheme_message,
     permission_setting_invalid_message, resolved_frame_owner_missing_object_id_message,
     screenshot_clip_complete_message, screenshot_clip_order_message,
@@ -3997,7 +3997,7 @@ impl Page {
                     .map_err(|err| OpenPageError::JavaScript(err.to_string()))
             },
             timeout_ms,
-            "javascript execution timed out",
+            javascript_execution_timed_out_message(),
         ))
     }
 
@@ -4035,7 +4035,7 @@ impl Page {
                 }
             },
             timeout_ms,
-            "javascript execution timed out",
+            javascript_execution_timed_out_message(),
         ))
     }
 
@@ -8040,14 +8040,15 @@ fn resolve_implicit_wait_timeout_ms(configured_timeout_ms: Option<u64>) -> u64 {
 async fn run_with_timeout<T, F>(
     future: F,
     timeout_ms: u64,
-    timeout_message: &'static str,
+    timeout_message: impl Into<String>,
 ) -> OpenPageResult<T>
 where
     F: Future<Output = OpenPageResult<T>>,
 {
+    let timeout_message = timeout_message.into();
     tokio::time::timeout(Duration::from_millis(timeout_ms.max(1)), future)
         .await
-        .map_err(|_| OpenPageError::Timeout(timeout_message.to_string()))?
+        .map_err(|_| OpenPageError::Timeout(timeout_message))?
 }
 
 pub(crate) async fn execute_page_command_async<T>(
@@ -8114,7 +8115,10 @@ mod tests {
     use crate::element_list::ElementsListExt;
     use crate::error::OpenPageError;
     use crate::session::SessionCookieParam;
-    use crate::settings::{cdp_timeout_duration, scoped_test_settings, timeout_duration_millis};
+    use crate::settings::{
+        cdp_timeout_duration, javascript_execution_timed_out_message, scoped_test_settings,
+        timeout_duration_millis,
+    };
     use crate::{
         Browser, BrowserTabReference, BrowserTabSelector, By, DisconnectedFrame, DisconnectedPage,
         Frame, Keys, LaunchOptions, OpenPageResult, Settings, WebElement, wait_until,
@@ -9035,6 +9039,26 @@ mod tests {
             .expect_err("future should time out");
 
         assert!(error.to_string().contains("javascript execution timed out"));
+    }
+
+    #[test]
+    fn run_with_timeout_accepts_localized_timeout_message() {
+        let _settings = scoped_test_settings();
+        Settings::set_language("cn");
+
+        let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let error = runtime
+            .block_on(run_with_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                    Ok::<_, OpenPageError>(())
+                },
+                1,
+                javascript_execution_timed_out_message(),
+            ))
+            .expect_err("future should time out");
+
+        assert!(error.to_string().contains("JavaScript 执行超时"));
     }
 
     #[test]
