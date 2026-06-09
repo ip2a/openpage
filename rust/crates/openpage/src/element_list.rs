@@ -1010,6 +1010,21 @@ impl ElementsOneOwned<Element> {
         self.eles(locator)
     }
 
+    pub fn find_locators<'a, L>(
+        &self,
+        locators: L,
+        any_one: bool,
+        first_match_only: bool,
+    ) -> OpenPageResult<Vec<crate::locator::LocatorMatch<Element>>>
+    where
+        L: Into<crate::locator::LocatorBatchInput<'a>>,
+    {
+        match self.as_option() {
+            Some(element) => element.find_locators(locators, any_one, first_match_only),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
@@ -1756,6 +1771,21 @@ impl ElementsOneOwned<WebElement> {
         self.eles(locator)
     }
 
+    pub fn find_locators<'a, L>(
+        &self,
+        locators: L,
+        any_one: bool,
+        first_match_only: bool,
+    ) -> OpenPageResult<Vec<crate::locator::LocatorMatch<WebElement>>>
+    where
+        L: Into<crate::locator::LocatorBatchInput<'a>>,
+    {
+        match self.as_option() {
+            Some(element) => element.find_locators(locators, any_one, first_match_only),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
@@ -2167,6 +2197,21 @@ impl ElementsOneOwned<SessionElement> {
 
     pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<SessionElement>> {
         self.find_all((by, value))
+    }
+
+    pub fn find_locators<'a, L>(
+        &self,
+        locators: L,
+        any_one: bool,
+        first_match_only: bool,
+    ) -> OpenPageResult<Vec<crate::locator::LocatorMatch<SessionElement>>>
+    where
+        L: Into<crate::locator::LocatorBatchInput<'a>>,
+    {
+        match self.as_option() {
+            Some(element) => element.find_locators(locators, any_one, first_match_only),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn query_xpath(&self, expression: &str) -> OpenPageResult<Vec<SessionXPathResult>> {
@@ -2838,6 +2883,21 @@ impl<'a> ElementsOne<'a, Element> {
         self.eles(locator)
     }
 
+    pub fn find_locators<'b, L>(
+        &self,
+        locators: L,
+        any_one: bool,
+        first_match_only: bool,
+    ) -> OpenPageResult<Vec<crate::locator::LocatorMatch<Element>>>
+    where
+        L: Into<crate::locator::LocatorBatchInput<'b>>,
+    {
+        match self.element {
+            Some(element) => element.find_locators(locators, any_one, first_match_only),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -3316,6 +3376,21 @@ impl<'a> ElementsOne<'a, WebElement> {
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.eles(locator)
+    }
+
+    pub fn find_locators<'b, L>(
+        &self,
+        locators: L,
+        any_one: bool,
+        first_match_only: bool,
+    ) -> OpenPageResult<Vec<crate::locator::LocatorMatch<WebElement>>>
+    where
+        L: Into<crate::locator::LocatorBatchInput<'b>>,
+    {
+        match self.element {
+            Some(element) => element.find_locators(locators, any_one, first_match_only),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
@@ -3817,6 +3892,21 @@ impl<'a> ElementsOne<'a, SessionElement> {
 
     pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<SessionElement>> {
         self.find_all((by, value))
+    }
+
+    pub fn find_locators<'b, L>(
+        &self,
+        locators: L,
+        any_one: bool,
+        first_match_only: bool,
+    ) -> OpenPageResult<Vec<crate::locator::LocatorMatch<SessionElement>>>
+    where
+        L: Into<crate::locator::LocatorBatchInput<'b>>,
+    {
+        match self.element {
+            Some(element) => element.find_locators(locators, any_one, first_match_only),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn query_xpath(&self, expression: &str) -> OpenPageResult<Vec<SessionXPathResult>> {

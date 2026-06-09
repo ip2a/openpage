@@ -9286,6 +9286,60 @@ mod tests {
     }
 
     #[test]
+    fn elements_one_find_locators_signatures_accept_locator_inputs() {
+        fn assert_calls(
+            one_element: ElementsOne<'_, Element>,
+            one_web_element: ElementsOne<'_, WebElement>,
+            one_session_element: ElementsOne<'_, SessionElement>,
+            owned_element: &ElementsOneOwned<Element>,
+            owned_web_element: &ElementsOneOwned<WebElement>,
+            owned_session_element: &ElementsOneOwned<SessionElement>,
+        ) {
+            let locators = vec!["#root".to_string(), ".item".to_string()];
+            let tuple_locators = [(By::ID, "root"), (By::CLASS_NAME, "item")];
+            let mixed_locators = [
+                LocatorInput::from("#root"),
+                LocatorInput::from((By::CLASS_NAME, "item")),
+            ];
+
+            let _ = one_element.find_locators((By::ID, "root"), true, true);
+            let _ = one_element.find_locators(&locators, false, false);
+            let _ = one_element.find_locators(&tuple_locators, false, false);
+            let _ = one_element.find_locators(&mixed_locators, false, false);
+            let _ = one_web_element.find_locators((By::ID, "root"), true, true);
+            let _ = one_web_element.find_locators(&locators, false, false);
+            let _ = one_web_element.find_locators(&tuple_locators, false, false);
+            let _ = one_web_element.find_locators(&mixed_locators, false, false);
+            let _ = one_session_element.find_locators((By::ID, "root"), true, true);
+            let _ = one_session_element.find_locators(&locators, false, false);
+            let _ = one_session_element.find_locators(&tuple_locators, false, false);
+            let _ = one_session_element.find_locators(&mixed_locators, false, false);
+            let _ = owned_element.find_locators((By::ID, "root"), true, true);
+            let _ = owned_element.find_locators(&locators, false, false);
+            let _ = owned_element.find_locators(&tuple_locators, false, false);
+            let _ = owned_element.find_locators(&mixed_locators, false, false);
+            let _ = owned_web_element.find_locators((By::ID, "root"), true, true);
+            let _ = owned_web_element.find_locators(&locators, false, false);
+            let _ = owned_web_element.find_locators(&tuple_locators, false, false);
+            let _ = owned_web_element.find_locators(&mixed_locators, false, false);
+            let _ = owned_session_element.find_locators((By::ID, "root"), true, true);
+            let _ = owned_session_element.find_locators(&locators, false, false);
+            let _ = owned_session_element.find_locators(&tuple_locators, false, false);
+            let _ = owned_session_element.find_locators(&mixed_locators, false, false);
+        }
+
+        let _ = assert_calls
+            as fn(
+                ElementsOne<'_, Element>,
+                ElementsOne<'_, WebElement>,
+                ElementsOne<'_, SessionElement>,
+                &ElementsOneOwned<Element>,
+                &ElementsOneOwned<WebElement>,
+                &ElementsOneOwned<SessionElement>,
+            );
+    }
+
+    #[test]
     fn page_and_webpage_frame_lookup_signatures_accept_by_tuples_and_object_refs() {
         fn assert_calls(
             page: &Page,
