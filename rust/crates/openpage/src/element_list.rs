@@ -661,6 +661,19 @@ impl ElementsOneOwned<Element> {
             .get_frame_with_timeout(target, timeout_ms)
     }
 
+    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<Option<crate::page::Frame>> {
+        self.as_borrowed().get_frame_by_index(index)
+    }
+
+    pub fn get_frame_by_index_with_timeout(
+        &self,
+        index: usize,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<crate::page::Frame>> {
+        self.as_borrowed()
+            .get_frame_by_index_with_timeout(index, timeout_ms)
+    }
+
     pub fn scroll(&self) -> ElementsOneScroller<'_, Element> {
         self.as_borrowed().scroll()
     }
@@ -1325,6 +1338,22 @@ impl ElementsOneOwned<WebElement> {
     {
         self.as_borrowed()
             .get_frame_with_timeout(target, timeout_ms)
+    }
+
+    pub fn get_frame_by_index(
+        &self,
+        index: usize,
+    ) -> OpenPageResult<Option<crate::webpage::WebFrame>> {
+        self.as_borrowed().get_frame_by_index(index)
+    }
+
+    pub fn get_frame_by_index_with_timeout(
+        &self,
+        index: usize,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<crate::webpage::WebFrame>> {
+        self.as_borrowed()
+            .get_frame_by_index_with_timeout(index, timeout_ms)
     }
 
     pub fn scroll(&self) -> ElementsOneScroller<'_, WebElement> {
@@ -2379,6 +2408,26 @@ impl<'a> ElementsOne<'a, Element> {
             None => Ok(None),
         }
     }
+
+    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<Option<crate::page::Frame>> {
+        match self.element {
+            Some(element) => element.get_frame_by_index(index).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_frame_by_index_with_timeout(
+        &self,
+        index: usize,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<crate::page::Frame>> {
+        match self.element {
+            Some(element) => element
+                .get_frame_by_index_with_timeout(index, timeout_ms)
+                .map(Some),
+            None => Ok(None),
+        }
+    }
 }
 
 impl<'a> ElementsOne<'a, WebElement> {
@@ -2444,6 +2493,29 @@ impl<'a> ElementsOne<'a, WebElement> {
     {
         match self.element {
             Some(element) => element.get_frame_with_timeout(target, timeout_ms).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_frame_by_index(
+        &self,
+        index: usize,
+    ) -> OpenPageResult<Option<crate::webpage::WebFrame>> {
+        match self.element {
+            Some(element) => element.get_frame_by_index(index).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_frame_by_index_with_timeout(
+        &self,
+        index: usize,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<crate::webpage::WebFrame>> {
+        match self.element {
+            Some(element) => element
+                .get_frame_by_index_with_timeout(index, timeout_ms)
+                .map(Some),
             None => Ok(None),
         }
     }

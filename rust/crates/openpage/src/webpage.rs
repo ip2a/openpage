@@ -9346,10 +9346,14 @@ mod tests {
             let _ = one_element.get_frame((By::ID, "theFrame"));
             let _ = one_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = one_element.get_frame(1usize);
+            let _ = one_element.get_frame_by_index(1usize);
+            let _ = one_element.get_frame_by_index_with_timeout(1usize, 10);
             let _ = one_element.get_frame(frame);
             let _ = owned_element.get_frame((By::ID, "theFrame"));
             let _ = owned_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = owned_element.get_frame(1usize);
+            let _ = owned_element.get_frame_by_index(1usize);
+            let _ = owned_element.get_frame_by_index_with_timeout(1usize, 10);
             let _ = owned_element.get_frame(frame);
             let _ = web_page.get_frame((By::ID, "theFrame"));
             let _ = web_page.get_frame_with_timeout((By::ID, "theFrame"), 10);
@@ -9398,10 +9402,14 @@ mod tests {
             let _ = one_web_element.get_frame((By::ID, "theFrame"));
             let _ = one_web_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = one_web_element.get_frame(1usize);
+            let _ = one_web_element.get_frame_by_index(1usize);
+            let _ = one_web_element.get_frame_by_index_with_timeout(1usize, 10);
             let _ = one_web_element.get_frame(web_frame);
             let _ = owned_web_element.get_frame((By::ID, "theFrame"));
             let _ = owned_web_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = owned_web_element.get_frame(1usize);
+            let _ = owned_web_element.get_frame_by_index(1usize);
+            let _ = owned_web_element.get_frame_by_index_with_timeout(1usize, 10);
             let _ = owned_web_element.get_frame(web_frame);
         }
 
