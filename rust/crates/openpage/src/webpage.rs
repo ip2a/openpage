@@ -11929,6 +11929,33 @@ mod tests {
     }
 
     #[test]
+    fn elements_one_snapshot_find_signatures_accept_by_tuples() {
+        fn assert_calls(
+            one_element: ElementsOne<'_, Element>,
+            one_web_element: ElementsOne<'_, WebElement>,
+            owned_element: &ElementsOneOwned<Element>,
+            owned_web_element: &ElementsOneOwned<WebElement>,
+        ) {
+            let _ = one_element.snapshot_find((By::ID, "root"));
+            let _ = one_element.snapshot_find_all((By::CLASS_NAME, "item"));
+            let _ = one_web_element.snapshot_find((By::ID, "root"));
+            let _ = one_web_element.snapshot_find_all((By::CLASS_NAME, "item"));
+            let _ = owned_element.snapshot_find((By::ID, "root"));
+            let _ = owned_element.snapshot_find_all((By::CLASS_NAME, "item"));
+            let _ = owned_web_element.snapshot_find((By::ID, "root"));
+            let _ = owned_web_element.snapshot_find_all((By::CLASS_NAME, "item"));
+        }
+
+        let _ = assert_calls
+            as fn(
+                ElementsOne<'_, Element>,
+                ElementsOne<'_, WebElement>,
+                &ElementsOneOwned<Element>,
+                &ElementsOneOwned<WebElement>,
+            );
+    }
+
+    #[test]
     fn element_shadow_root_and_webelement_parent_child_signatures_accept_by_tuples() {
         fn assert_calls(element: &Element, shadow_root: &ShadowRoot, web_element: &WebElement) {
             let _ = element.parent_with((By::ID, "root"), 1);
