@@ -2169,6 +2169,13 @@ impl ElementsOneOwned<SessionElement> {
         self.find_all((by, value))
     }
 
+    pub fn query_xpath(&self, expression: &str) -> OpenPageResult<Vec<SessionXPathResult>> {
+        match self.as_option() {
+            Some(element) => element.query_xpath(expression),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
@@ -3810,6 +3817,13 @@ impl<'a> ElementsOne<'a, SessionElement> {
 
     pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<SessionElement>> {
         self.find_all((by, value))
+    }
+
+    pub fn query_xpath(&self, expression: &str) -> OpenPageResult<Vec<SessionXPathResult>> {
+        match self.element {
+            Some(element) => element.query_xpath(expression),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
