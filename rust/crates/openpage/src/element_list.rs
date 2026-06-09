@@ -1766,6 +1766,28 @@ impl<'a> ElementsOne<'a, WebElement> {
 }
 
 impl<'a> ElementsOne<'a, SessionElement> {
+    fn relative_element<F>(&self, f: F) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        F: FnOnce(&SessionElement) -> OpenPageResult<SessionElement>,
+    {
+        match self.element {
+            Some(element) => match f(element) {
+                Ok(element) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.cloned(),
+                )),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config)? {
+                        return Err(err);
+                    }
+                    Ok(ElementsOneOwned::none_with_config(self.config.cloned()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
+        }
+    }
+
     pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -1816,6 +1838,100 @@ impl<'a> ElementsOne<'a, SessionElement> {
             Some(element) => element.s_eles(locator),
             None => Ok(Vec::new()),
         }
+    }
+
+    pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+        self.relative_element(|element| element.parent())
+    }
+
+    pub fn parent_level(&self, level: usize) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+        self.relative_element(|element| element.parent_level(level))
+    }
+
+    pub fn parent_with<'b, L>(
+        &self,
+        locator: L,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.parent_with(locator, index))
+    }
+
+    pub fn child(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+        self.relative_element(|element| element.child())
+    }
+
+    pub fn child_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.child_with(locator, index))
+    }
+
+    pub fn prev(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+        self.relative_element(|element| element.prev())
+    }
+
+    pub fn prev_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.prev_with(locator, index))
+    }
+
+    pub fn next(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+        self.relative_element(|element| element.next())
+    }
+
+    pub fn next_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.next_with(locator, index))
+    }
+
+    pub fn before(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+        self.relative_element(|element| element.before())
+    }
+
+    pub fn before_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.before_with(locator, index))
+    }
+
+    pub fn after(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+        self.relative_element(|element| element.after())
+    }
+
+    pub fn after_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.after_with(locator, index))
     }
 
     pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Option<Vec<String>>> {
@@ -6033,6 +6149,76 @@ mod tests {
                 .len(),
             0
         );
+    }
+
+    #[test]
+    fn borrowed_session_elements_one_supports_relative_navigation() {
+        let items = snapshot_find_all(
+            r#"
+            <main>
+                <article class="card" data-kind="first">
+                    <h2 class="title">Alpha</h2>
+                    <p class="summary">One</p>
+                </article>
+                <article class="card" data-kind="second">
+                    <h2 class="title">Beta</h2>
+                    <p class="summary">Two</p>
+                </article>
+                <article class="card" data-kind="third">
+                    <h2 class="title">Gamma</h2>
+                </article>
+            </main>
+            "#,
+            ".card",
+        )
+        .expect("snapshot elements");
+
+        let second = items
+            .filter_one()
+            .attr("data-kind", "second", true)
+            .expect("second card");
+        assert_eq!(
+            second
+                .child_with(Some(".title"), 1)
+                .expect("title child")
+                .text()
+                .expect("title text"),
+            Some("Beta".to_string())
+        );
+        assert_eq!(
+            second.parent().expect("parent").tag().expect("parent tag"),
+            Some("main".to_string())
+        );
+        assert_eq!(
+            second
+                .prev()
+                .expect("previous card")
+                .attr("data-kind")
+                .expect("previous kind"),
+            Some("first".to_string())
+        );
+        assert_eq!(
+            second
+                .next()
+                .expect("next card")
+                .attr("data-kind")
+                .expect("next kind"),
+            Some("third".to_string())
+        );
+        assert!(
+            second
+                .child_with(Some(".missing"), 1)
+                .expect("missing child")
+                .is_none()
+        );
+
+        let missing = items
+            .filter_one()
+            .attr("data-kind", "missing", true)
+            .expect("missing card");
+        assert!(missing.child().expect("missing child owner").is_none());
+        assert!(missing.parent().expect("missing parent owner").is_none());
+        assert!(missing.next().expect("missing next owner").is_none());
     }
 
     #[test]
