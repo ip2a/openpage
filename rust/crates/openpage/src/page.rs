@@ -4111,16 +4111,20 @@ impl Page {
         let javascript_timeout_ms = self.javascript_timeout_ms()?;
         self.runtime.block_on(async {
             let elements = match locator.kind() {
-                LocatorKind::Css => self
-                    .inner
-                    .find_elements(locator.query().to_string())
-                    .await
-                    .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?,
-                LocatorKind::XPath => self
-                    .inner
-                    .find_xpaths(locator.query().to_string())
-                    .await
-                    .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?,
+                LocatorKind::Css => {
+                    run_page_lookup_future_with_cdp_timeout(
+                        self.inner.find_elements(locator.query().to_string()),
+                        "find elements",
+                    )
+                    .await?
+                }
+                LocatorKind::XPath => {
+                    run_page_lookup_future_with_cdp_timeout(
+                        self.inner.find_xpaths(locator.query().to_string()),
+                        "find elements by xpath",
+                    )
+                    .await?
+                }
             };
             Ok(elements
                 .into_iter()
