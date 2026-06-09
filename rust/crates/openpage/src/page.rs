@@ -3977,6 +3977,10 @@ impl Actions {
     }
 }
 
+fn browser_backed_page_method_message(method_name: &str) -> String {
+    browser_backed_page_only_message(&format!("{method_name}()"))
+}
+
 impl Page {
     pub(crate) fn new(runtime: Arc<Runtime>, inner: OxPage) -> Self {
         Self::new_with_load_mode(runtime, inner, LoadMode::Normal)
@@ -4045,9 +4049,7 @@ impl Page {
 
     fn browser_backed_ref(&self, method_name: &str) -> OpenPageResult<&Browser> {
         self.browser.as_ref().ok_or_else(|| {
-            OpenPageError::UnsupportedOperation(format!(
-                "{method_name}() is only available on browser-backed pages"
-            ))
+            OpenPageError::UnsupportedOperation(browser_backed_page_method_message(method_name))
         })
     }
 
@@ -9819,6 +9821,24 @@ mod tests {
             OpenPageError::JavaScript(ref message)
                 if message.contains("demo second 条目不是数字")
         ));
+    }
+
+    #[test]
+    fn browser_backed_page_method_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        assert_eq!(
+            super::browser_backed_page_method_message("tabs_count"),
+            "tabs_count() is only available on browser-backed pages"
+        );
+
+        Settings::set_language("cn");
+
+        assert_eq!(
+            super::browser_backed_page_method_message("tabs_count"),
+            "tabs_count() 仅适用于 browser-backed 页面"
+        );
     }
 
     #[test]
