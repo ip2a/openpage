@@ -2123,6 +2123,16 @@ impl<'a> ElementsOne<'a, WebElement> {
         }
     }
 
+    fn relative_elements<F>(&self, f: F) -> OpenPageResult<Vec<WebElement>>
+    where
+        F: FnOnce(&WebElement) -> OpenPageResult<Vec<WebElement>>,
+    {
+        match self.element {
+            Some(element) => f(element),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<WebElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -2209,6 +2219,17 @@ impl<'a> ElementsOne<'a, WebElement> {
         self.relative_element(|element| element.child_with(locator, index))
     }
 
+    pub fn children(&self) -> OpenPageResult<Vec<WebElement>> {
+        self.relative_elements(|element| element.children())
+    }
+
+    pub fn children_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_elements(|element| element.children_with(locator))
+    }
+
     pub fn prev(&self) -> OpenPageResult<ElementsOneOwned<WebElement>> {
         self.relative_element(|element| element.prev())
     }
@@ -2222,6 +2243,17 @@ impl<'a> ElementsOne<'a, WebElement> {
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.relative_element(|element| element.prev_with(locator, index))
+    }
+
+    pub fn prevs(&self) -> OpenPageResult<Vec<WebElement>> {
+        self.relative_elements(|element| element.prevs())
+    }
+
+    pub fn prevs_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_elements(|element| element.prevs_with(locator))
     }
 
     pub fn next(&self) -> OpenPageResult<ElementsOneOwned<WebElement>> {
@@ -2239,6 +2271,17 @@ impl<'a> ElementsOne<'a, WebElement> {
         self.relative_element(|element| element.next_with(locator, index))
     }
 
+    pub fn nexts(&self) -> OpenPageResult<Vec<WebElement>> {
+        self.relative_elements(|element| element.nexts())
+    }
+
+    pub fn nexts_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_elements(|element| element.nexts_with(locator))
+    }
+
     pub fn before(&self) -> OpenPageResult<ElementsOneOwned<WebElement>> {
         self.relative_element(|element| element.before())
     }
@@ -2254,6 +2297,17 @@ impl<'a> ElementsOne<'a, WebElement> {
         self.relative_element(|element| element.before_with(locator, index))
     }
 
+    pub fn befores(&self) -> OpenPageResult<Vec<WebElement>> {
+        self.relative_elements(|element| element.befores())
+    }
+
+    pub fn befores_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_elements(|element| element.befores_with(locator))
+    }
+
     pub fn after(&self) -> OpenPageResult<ElementsOneOwned<WebElement>> {
         self.relative_element(|element| element.after())
     }
@@ -2267,6 +2321,17 @@ impl<'a> ElementsOne<'a, WebElement> {
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.relative_element(|element| element.after_with(locator, index))
+    }
+
+    pub fn afters(&self) -> OpenPageResult<Vec<WebElement>> {
+        self.relative_elements(|element| element.afters())
+    }
+
+    pub fn afters_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_elements(|element| element.afters_with(locator))
     }
 
     pub fn over(&self) -> OpenPageResult<ElementsOneOwned<WebElement>> {
@@ -7068,6 +7133,71 @@ mod tests {
         assert!(missing.child().expect("missing child owner").is_none());
         assert!(missing.parent().expect("missing parent owner").is_none());
         assert!(missing.next().expect("missing next owner").is_none());
+    }
+
+    #[test]
+    fn borrowed_web_elements_one_supports_session_multi_relative_navigation() {
+        let items: Vec<WebElement> = snapshot_find_all(
+            r#"
+            <main>
+                <article class="card" data-kind="first">
+                    <h2 class="title">Alpha</h2>
+                    <p class="summary">One</p>
+                </article>
+                <article class="card" data-kind="second">
+                    <h2 class="title">Beta</h2>
+                    <p class="summary">Two</p>
+                </article>
+                <article class="card" data-kind="third">
+                    <h2 class="title">Gamma</h2>
+                </article>
+            </main>
+            "#,
+            ".card",
+        )
+        .expect("snapshot elements")
+        .into_iter()
+        .map(WebElement::Session)
+        .collect();
+
+        let second = items
+            .filter_one()
+            .attr("data-kind", "second", true)
+            .expect("second card");
+        assert_eq!(second.children().expect("children").len(), 2);
+        assert_eq!(
+            second
+                .children_with(Some(".title"))
+                .expect("title children")
+                .len(),
+            1
+        );
+        assert_eq!(second.prevs().expect("previous siblings").len(), 1);
+        assert_eq!(second.nexts().expect("next siblings").len(), 1);
+        assert_eq!(
+            second
+                .befores_with(Some(".title"))
+                .expect("before title elements")
+                .len(),
+            1
+        );
+        assert_eq!(
+            second
+                .afters_with(Some(".title"))
+                .expect("after title elements")
+                .len(),
+            1
+        );
+
+        let missing = items
+            .filter_one()
+            .attr("data-kind", "missing", true)
+            .expect("missing card");
+        assert_eq!(missing.children().expect("missing children").len(), 0);
+        assert_eq!(missing.prevs().expect("missing previous siblings").len(), 0);
+        assert_eq!(missing.nexts().expect("missing next siblings").len(), 0);
+        assert_eq!(missing.befores().expect("missing before elements").len(), 0);
+        assert_eq!(missing.afters().expect("missing after elements").len(), 0);
     }
 
     #[test]
