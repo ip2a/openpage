@@ -3778,7 +3778,10 @@ impl WebPage {
         self.set_current_tab_download_path(path)
     }
 
-    pub fn set_blocked_urls(&self, patterns: &[String]) -> OpenPageResult<()> {
+    pub fn set_blocked_urls<'a, I>(&self, patterns: I) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
         self.driver.set_blocked_urls(patterns)
     }
 
@@ -6646,7 +6649,10 @@ impl WebPageSetter<'_> {
         WebPageLoadModeSetter { page: self.page }
     }
 
-    pub fn blocked_urls(&self, patterns: &[String]) -> OpenPageResult<()> {
+    pub fn blocked_urls<'a, I>(&self, patterns: I) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
         self.page.set_blocked_urls(patterns)
     }
 
@@ -9453,7 +9459,10 @@ mod tests {
             let _ = page.set().load_mode().normal();
             let _ = page.set().load_mode().eager();
             let _ = page.set().load_mode().none();
+            let _ = page.set_blocked_urls("*.png*");
             let _ = page.set().blocked_urls(&urls);
+            let _ = page.set().blocked_urls("*.css*");
+            let _ = page.set().blocked_urls(["*.css*", "*.js*"]);
             let _ = page.set().headers(&headers);
             let _ = page.set().user_agent("demo-agent", Some("linux"));
             let _ = page.set().session_storage("foo", Some("bar"));
@@ -9494,7 +9503,10 @@ mod tests {
             let _ = web_page.set().load_mode().normal();
             let _ = web_page.set().load_mode().eager();
             let _ = web_page.set().load_mode().none();
+            let _ = web_page.set_blocked_urls("*.png*");
             let _ = web_page.set().blocked_urls(&urls);
+            let _ = web_page.set().blocked_urls("*.css*");
+            let _ = web_page.set().blocked_urls(["*.css*", "*.js*"]);
             let _ = web_page.set().headers(&headers);
             let _ = web_page.set().user_agent("demo-agent", Some("linux"));
             let _ = web_page.set().encoding(Some("utf-8".to_string()));

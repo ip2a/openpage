@@ -2655,7 +2655,10 @@ impl PageSetter<'_> {
         PageLoadModeSetter { page: self.page }
     }
 
-    pub fn blocked_urls(&self, patterns: &[String]) -> OpenPageResult<()> {
+    pub fn blocked_urls<'a, I>(&self, patterns: I) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
         self.page.set_blocked_urls(patterns)
     }
 
@@ -4827,7 +4830,11 @@ impl Page {
         self.get_frames(locator)
     }
 
-    pub fn set_blocked_urls(&self, patterns: &[String]) -> OpenPageResult<()> {
+    pub fn set_blocked_urls<'a, I>(&self, patterns: I) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
+        let patterns = actions_input_values(patterns.into());
         execute_page_command_blocking(
             self.runtime.as_ref(),
             &self.inner,
