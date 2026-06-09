@@ -642,6 +642,25 @@ impl ElementsOneOwned<Element> {
         }
     }
 
+    pub fn get_frame<'a, L>(&self, target: L) -> OpenPageResult<Option<crate::page::Frame>>
+    where
+        L: Into<crate::page::PageFrameTarget<'a>>,
+    {
+        self.as_borrowed().get_frame(target)
+    }
+
+    pub fn get_frame_with_timeout<'a, L>(
+        &self,
+        target: L,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<crate::page::Frame>>
+    where
+        L: Into<crate::page::PageFrameTarget<'a>>,
+    {
+        self.as_borrowed()
+            .get_frame_with_timeout(target, timeout_ms)
+    }
+
     pub fn scroll(&self) -> ElementsOneScroller<'_, Element> {
         self.as_borrowed().scroll()
     }
@@ -1287,6 +1306,25 @@ impl ElementsOneOwned<WebElement> {
             Some(element) => element.shadow_root(),
             None => self.missing_optional_result("shadow_root()"),
         }
+    }
+
+    pub fn get_frame<'a, L>(&self, target: L) -> OpenPageResult<Option<crate::webpage::WebFrame>>
+    where
+        L: Into<crate::page::PageFrameTarget<'a>>,
+    {
+        self.as_borrowed().get_frame(target)
+    }
+
+    pub fn get_frame_with_timeout<'a, L>(
+        &self,
+        target: L,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<crate::webpage::WebFrame>>
+    where
+        L: Into<crate::page::PageFrameTarget<'a>>,
+    {
+        self.as_borrowed()
+            .get_frame_with_timeout(target, timeout_ms)
     }
 
     pub fn scroll(&self) -> ElementsOneScroller<'_, WebElement> {
@@ -2317,6 +2355,30 @@ impl<'a> ElementsOne<'a, Element> {
             element: self.element,
         }
     }
+
+    pub fn get_frame<'b, L>(&self, target: L) -> OpenPageResult<Option<crate::page::Frame>>
+    where
+        L: Into<crate::page::PageFrameTarget<'b>>,
+    {
+        match self.element {
+            Some(element) => element.get_frame(target).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_frame_with_timeout<'b, L>(
+        &self,
+        target: L,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<crate::page::Frame>>
+    where
+        L: Into<crate::page::PageFrameTarget<'b>>,
+    {
+        match self.element {
+            Some(element) => element.get_frame_with_timeout(target, timeout_ms).map(Some),
+            None => Ok(None),
+        }
+    }
 }
 
 impl<'a> ElementsOne<'a, WebElement> {
@@ -2359,6 +2421,30 @@ impl<'a> ElementsOne<'a, WebElement> {
     pub fn select(&self) -> ElementsOneSelector<'a, WebElement> {
         ElementsOneSelector {
             element: self.element,
+        }
+    }
+
+    pub fn get_frame<'b, L>(&self, target: L) -> OpenPageResult<Option<crate::webpage::WebFrame>>
+    where
+        L: Into<crate::page::PageFrameTarget<'b>>,
+    {
+        match self.element {
+            Some(element) => element.get_frame(target).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_frame_with_timeout<'b, L>(
+        &self,
+        target: L,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<crate::webpage::WebFrame>>
+    where
+        L: Into<crate::page::PageFrameTarget<'b>>,
+    {
+        match self.element {
+            Some(element) => element.get_frame_with_timeout(target, timeout_ms).map(Some),
+            None => Ok(None),
         }
     }
 }

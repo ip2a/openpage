@@ -9294,6 +9294,10 @@ mod tests {
             web_page: &WebPage,
             web_frame: &WebFrame,
             web_element: &WebElement,
+            one_element: ElementsOne<'_, Element>,
+            one_web_element: ElementsOne<'_, WebElement>,
+            owned_element: &ElementsOneOwned<Element>,
+            owned_web_element: &ElementsOneOwned<WebElement>,
         ) {
             let _ = page.get_frame((By::ID, "theFrame"));
             let _ = page.get_frame_with_timeout((By::ID, "theFrame"), 10);
@@ -9339,6 +9343,14 @@ mod tests {
             let _ = element.get_frame(1usize);
             let _ = element.get_frame_by_index_with_timeout(1usize, 10);
             let _ = element.get_frame(frame);
+            let _ = one_element.get_frame((By::ID, "theFrame"));
+            let _ = one_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
+            let _ = one_element.get_frame(1usize);
+            let _ = one_element.get_frame(frame);
+            let _ = owned_element.get_frame((By::ID, "theFrame"));
+            let _ = owned_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
+            let _ = owned_element.get_frame(1usize);
+            let _ = owned_element.get_frame(frame);
             let _ = web_page.get_frame((By::ID, "theFrame"));
             let _ = web_page.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = web_page.get_frame_ele((By::ID, "theFrame"));
@@ -9383,9 +9395,29 @@ mod tests {
             let _ = web_element.get_frame(1usize);
             let _ = web_element.get_frame_by_index_with_timeout(1usize, 10);
             let _ = web_element.get_frame(web_frame);
+            let _ = one_web_element.get_frame((By::ID, "theFrame"));
+            let _ = one_web_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
+            let _ = one_web_element.get_frame(1usize);
+            let _ = one_web_element.get_frame(web_frame);
+            let _ = owned_web_element.get_frame((By::ID, "theFrame"));
+            let _ = owned_web_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
+            let _ = owned_web_element.get_frame(1usize);
+            let _ = owned_web_element.get_frame(web_frame);
         }
 
-        let _ = assert_calls as fn(&Page, &Frame, &Element, &WebPage, &WebFrame, &WebElement);
+        let _ = assert_calls
+            as fn(
+                &Page,
+                &Frame,
+                &Element,
+                &WebPage,
+                &WebFrame,
+                &WebElement,
+                ElementsOne<'_, Element>,
+                ElementsOne<'_, WebElement>,
+                &ElementsOneOwned<Element>,
+                &ElementsOneOwned<WebElement>,
+            );
     }
 
     #[test]
