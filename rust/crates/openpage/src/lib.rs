@@ -36,8 +36,8 @@ pub use config::{
 pub use console::{Console, ConsoleMessage, ConsoleSteps};
 pub use download::{DownloadInfo, DownloadMission, DownloadState};
 pub use element::{
-    Element, ElementClicker, ElementDragTarget, ElementResource, ElementScroller, ElementSelector,
-    ElementSetter,
+    Element, ElementClicker, ElementDragTarget, ElementRect, ElementResource, ElementScroller,
+    ElementSelector, ElementSetter, ElementStates, ElementWait,
 };
 pub use element_list::{
     ElementListDriverItem, ElementListItem, ElementListSearchItem, ElementListStateItem,
@@ -80,9 +80,9 @@ pub use tools::{
 pub use upload::{UploadFilesInput, UploadTracker};
 pub use webpage::{
     DisconnectedWebFrame, DisconnectedWebPage, WebElement, WebElementClicker, WebElementDragTarget,
-    WebElementScroller, WebElementSelector, WebElementSetter, WebFrame, WebMode, WebPage,
-    WebPageCookieSetter, WebPageLoadModeSetter, WebPageScroller, WebPageSetter,
-    WebPageWindowSetter,
+    WebElementRect, WebElementScroller, WebElementSelector, WebElementSetter, WebElementStates,
+    WebElementWait, WebFrame, WebMode, WebPage, WebPageCookieSetter, WebPageLoadModeSetter,
+    WebPageScroller, WebPageSetter, WebPageWindowSetter,
 };
 pub use window::{activate_app, set_app_visibility};
 
@@ -101,8 +101,9 @@ pub type WebNoneElement = ElementsOneOwned<WebElement>;
 mod tests {
     use super::{
         Browser, Chromium, ChromiumElement, ChromiumFrame, ChromiumOptions, ChromiumPage,
-        ChromiumTab, Element, ElementsOneOwned, Frame, LaunchOptions, MixTab, NoneElement, Page,
-        SessionElement, SessionNoneElement, WebElement, WebNoneElement, WebPage,
+        ChromiumTab, Element, ElementRect, ElementStates, ElementWait, ElementsOneOwned, Frame,
+        LaunchOptions, MixTab, NoneElement, Page, SessionElement, SessionNoneElement, WebElement,
+        WebElementRect, WebElementStates, WebElementWait, WebNoneElement, WebPage,
     };
 
     #[test]
@@ -121,5 +122,23 @@ mod tests {
             as fn(&SessionNoneElement, &ElementsOneOwned<SessionElement>);
         let _ = (|_: &WebNoneElement, _: &ElementsOneOwned<WebElement>| {})
             as fn(&WebNoneElement, &ElementsOneOwned<WebElement>);
+    }
+
+    #[test]
+    fn element_object_wrapper_types_are_exported() {
+        let _ = (|_: &ElementStates<'_>,
+                  _: &ElementRect<'_>,
+                  _: &ElementWait<'_>,
+                  _: &WebElementStates<'_>,
+                  _: &WebElementRect<'_>,
+                  _: &WebElementWait<'_>| {})
+            as fn(
+                &ElementStates<'_>,
+                &ElementRect<'_>,
+                &ElementWait<'_>,
+                &WebElementStates<'_>,
+                &WebElementRect<'_>,
+                &WebElementWait<'_>,
+            );
     }
 }
