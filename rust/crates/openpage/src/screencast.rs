@@ -431,6 +431,22 @@ where
         .map_err(|err| screencast_setup_error(operation, err))
 }
 
+async fn run_screencast_capture_future_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| screencast_capture_error(operation, err))
+}
+
 async fn run_imgs_screencast(
     page: OxPage,
     shared: Arc<ScreencastShared>,
@@ -442,10 +458,11 @@ async fn run_imgs_screencast(
         let params = ScreenshotParams::builder()
             .format(CaptureScreenshotFormat::Jpeg)
             .build();
-        let bytes = page
-            .screenshot(params)
-            .await
-            .map_err(|err| screencast_capture_error("capture screenshot frame", err))?;
+        let bytes = run_screencast_capture_future_with_cdp_timeout(
+            page.screenshot(params),
+            "capture screenshot frame",
+        )
+        .await?;
         fs::write(frame_output_path(&capture_dir, index), bytes)?;
         index += 1;
         tokio::time::sleep(Duration::from_millis(40)).await;
@@ -751,7 +768,8 @@ mod tests {
     use super::{
         ScreencastMode, build_video_output_path, decode_data_url, encode_frames_output,
         frame_output_path, image_error, prepare_output_dir,
-        register_screencast_listener_with_cdp_timeout, screencast_capture_error,
+        register_screencast_listener_with_cdp_timeout,
+        run_screencast_capture_future_with_cdp_timeout, screencast_capture_error,
         screencast_setup_error,
     };
     use crate::settings::{Settings, scoped_test_settings};
@@ -848,6 +866,26 @@ mod tests {
             .expect_err("screencast listener registration should time out")
             .to_string();
         assert!(error.contains("register screencast frame listener"));
+    }
+
+    #[test]
+    fn screencast_capture_respects_cdp_timeout() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+        let runtime = Runtime::new().expect("runtime");
+
+        let error = runtime
+            .block_on(run_screencast_capture_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    Ok::<(), &str>(())
+                },
+                "capture screenshot frame",
+            ))
+            .expect_err("screencast capture should time out")
+            .to_string();
+        assert!(error.contains("capture screenshot frame"));
     }
 
     #[test]
