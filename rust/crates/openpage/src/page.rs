@@ -1692,9 +1692,9 @@ impl Frame {
         self.set_download_filename(rename, suffix, suffix_specified)
     }
 
-    pub fn click_to_download(
+    pub fn click_to_download<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         save_path: Option<&str>,
         rename: Option<&str>,
         suffix: Option<&str>,
@@ -1702,7 +1702,10 @@ impl Frame {
         timeout_ms: Option<u64>,
         by_js: bool,
         new_tab: bool,
-    ) -> OpenPageResult<Option<DownloadMission>> {
+    ) -> OpenPageResult<Option<DownloadMission>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.page.click_to_download(
             locator,
             save_path,
@@ -1715,31 +1718,40 @@ impl Frame {
         )
     }
 
-    pub fn click_to_upload(
+    pub fn click_to_upload<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         files: &[String],
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<bool>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.page.click_to_upload(locator, files, timeout_ms, by_js)
     }
 
-    pub fn click_for_new_tab(
+    pub fn click_for_new_tab<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<Option<Page>> {
+    ) -> OpenPageResult<Option<Page>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.page.click_for_new_tab(locator, timeout_ms, by_js)
     }
 
-    pub fn click_middle(
+    pub fn click_middle<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         timeout_ms: Option<u64>,
         get_tab: bool,
-    ) -> OpenPageResult<Option<Page>> {
+    ) -> OpenPageResult<Option<Page>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.page.click_middle(locator, timeout_ms, get_tab)
     }
 
@@ -5279,9 +5291,9 @@ impl Page {
         self.set_download_filename(rename, suffix, suffix_specified)
     }
 
-    pub fn click_to_download(
+    pub fn click_to_download<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         save_path: Option<&str>,
         rename: Option<&str>,
         suffix: Option<&str>,
@@ -5289,7 +5301,10 @@ impl Page {
         timeout_ms: Option<u64>,
         by_js: bool,
         new_tab: bool,
-    ) -> OpenPageResult<Option<DownloadMission>> {
+    ) -> OpenPageResult<Option<DownloadMission>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         let browser = self.browser.as_ref().ok_or_else(|| {
             OpenPageError::UnsupportedOperation(browser_backed_page_only_message(
                 "click_to_download()",
@@ -5367,13 +5382,16 @@ impl Page {
         }
     }
 
-    pub fn click_to_upload(
+    pub fn click_to_upload<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         files: &[String],
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<bool>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         let timeout_ms = match timeout_ms {
             Some(timeout_ms) => timeout_ms,
             None => self.implicit_wait_timeout_ms()?,
@@ -5386,12 +5404,15 @@ impl Page {
         self.wait_for_upload_paths_inputted(timeout_ms)
     }
 
-    pub fn click_for_new_tab(
+    pub fn click_for_new_tab<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<Option<Page>> {
+    ) -> OpenPageResult<Option<Page>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         let browser = self.browser.as_ref().ok_or_else(|| {
             OpenPageError::UnsupportedOperation(browser_backed_page_only_message(
                 "click_for_new_tab()",
@@ -5408,12 +5429,15 @@ impl Page {
         browser.wait_for_page(&target_id, timeout_ms).map(Some)
     }
 
-    pub fn click_middle(
+    pub fn click_middle<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         timeout_ms: Option<u64>,
         get_tab: bool,
-    ) -> OpenPageResult<Option<Page>> {
+    ) -> OpenPageResult<Option<Page>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         if get_tab && self.browser.is_none() {
             return Err(OpenPageError::UnsupportedOperation(
                 browser_backed_page_only_message("click_middle(get_tab=True)"),

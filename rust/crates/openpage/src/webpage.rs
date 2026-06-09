@@ -490,9 +490,9 @@ impl WebFrame {
             .wait_for_downloads_done(timeout_ms, cancel_if_timeout)
     }
 
-    pub fn click_to_download(
+    pub fn click_to_download<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         save_path: Option<&str>,
         rename: Option<&str>,
         suffix: Option<&str>,
@@ -500,7 +500,10 @@ impl WebFrame {
         timeout_ms: Option<u64>,
         by_js: bool,
         new_tab: bool,
-    ) -> OpenPageResult<Option<DownloadMission>> {
+    ) -> OpenPageResult<Option<DownloadMission>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.frame().click_to_download(
             locator,
             save_path,
@@ -513,34 +516,43 @@ impl WebFrame {
         )
     }
 
-    pub fn click_to_upload(
+    pub fn click_to_upload<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         files: &[String],
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<bool>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.frame()
             .click_to_upload(locator, files, timeout_ms, by_js)
     }
 
-    pub fn click_for_new_tab(
+    pub fn click_for_new_tab<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<Option<BrowserTabReference>> {
+    ) -> OpenPageResult<Option<BrowserTabReference>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.frame()
             .click_for_new_tab(locator, timeout_ms, by_js)
             .map(|page| page.map(|page| self.wrap_page(page)))
     }
 
-    pub fn click_middle(
+    pub fn click_middle<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         timeout_ms: Option<u64>,
         get_tab: bool,
-    ) -> OpenPageResult<Option<BrowserTabReference>> {
+    ) -> OpenPageResult<Option<BrowserTabReference>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.frame()
             .click_middle(locator, timeout_ms, get_tab)
             .map(|page| page.map(|page| self.wrap_page(page)))
@@ -3777,9 +3789,9 @@ impl WebPage {
         self.set_current_tab_download_file_name(rename, suffix, suffix_specified)
     }
 
-    pub fn click_to_download(
+    pub fn click_to_download<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         save_path: Option<&str>,
         rename: Option<&str>,
         suffix: Option<&str>,
@@ -3787,7 +3799,10 @@ impl WebPage {
         timeout_ms: Option<u64>,
         by_js: bool,
         new_tab: bool,
-    ) -> OpenPageResult<Option<DownloadMission>> {
+    ) -> OpenPageResult<Option<DownloadMission>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         match self.mode()? {
             WebMode::Driver => self.driver.click_to_download(
                 locator,
@@ -3805,13 +3820,16 @@ impl WebPage {
         }
     }
 
-    pub fn click_to_upload(
+    pub fn click_to_upload<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         files: &[String],
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<bool>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         match self.mode()? {
             WebMode::Driver => self
                 .driver
@@ -3822,12 +3840,15 @@ impl WebPage {
         }
     }
 
-    pub fn click_for_new_tab(
+    pub fn click_for_new_tab<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<Option<WebPage>> {
+    ) -> OpenPageResult<Option<WebPage>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         match self.mode()? {
             WebMode::Driver => self
                 .driver
@@ -3839,12 +3860,15 @@ impl WebPage {
         }
     }
 
-    pub fn click_middle(
+    pub fn click_middle<'a, L>(
         &self,
-        locator: &str,
+        locator: L,
         timeout_ms: Option<u64>,
         get_tab: bool,
-    ) -> OpenPageResult<Option<WebPage>> {
+    ) -> OpenPageResult<Option<WebPage>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         match self.mode()? {
             WebMode::Driver => self
                 .driver
@@ -9125,9 +9149,22 @@ mod tests {
                 false,
                 false,
             );
+            let _ = frame.click_to_download(
+                (By::ID, "download"),
+                None,
+                Some("demo"),
+                Some(".txt"),
+                true,
+                Some(1_000),
+                false,
+                false,
+            );
             let _ = frame.click_to_upload("css:#upload", &files, Some(1_000), false);
+            let _ = frame.click_to_upload((By::ID, "upload"), &files, Some(1_000), false);
             let _ = frame.click_for_new_tab("css:#open", Some(1_000), false);
+            let _ = frame.click_for_new_tab((By::ID, "open"), Some(1_000), false);
             let _ = frame.click_middle("css:#open", Some(1_000), true);
+            let _ = frame.click_middle((By::ID, "open"), Some(1_000), true);
             let _ = frame.get("https://example.test/frame");
             let _ = frame.goto("https://example.test/frame");
             let _ = frame.refresh_with_options(true);
@@ -9159,9 +9196,22 @@ mod tests {
                 false,
                 false,
             );
+            let _ = web_page.click_to_download(
+                (By::ID, "download"),
+                None,
+                Some("demo"),
+                Some(".txt"),
+                true,
+                Some(1_000),
+                false,
+                false,
+            );
             let _ = web_page.click_to_upload("css:#upload", &files, Some(1_000), false);
+            let _ = web_page.click_to_upload((By::ID, "upload"), &files, Some(1_000), false);
             let _ = web_page.click_for_new_tab("css:#open", Some(1_000), false);
+            let _ = web_page.click_for_new_tab((By::ID, "open"), Some(1_000), false);
             let _ = web_page.click_middle("css:#open", Some(1_000), true);
+            let _ = web_page.click_middle((By::ID, "open"), Some(1_000), true);
 
             let _ = web_frame.set().cookie().set(&cookies);
             let _ = web_frame.set().cookie().clear();
@@ -9193,9 +9243,22 @@ mod tests {
                 false,
                 false,
             );
+            let _ = web_frame.click_to_download(
+                (By::ID, "download"),
+                None,
+                Some("demo"),
+                Some(".txt"),
+                true,
+                Some(1_000),
+                false,
+                false,
+            );
             let _ = web_frame.click_to_upload("css:#upload", &files, Some(1_000), false);
+            let _ = web_frame.click_to_upload((By::ID, "upload"), &files, Some(1_000), false);
             let _ = web_frame.click_for_new_tab("css:#open", Some(1_000), false);
+            let _ = web_frame.click_for_new_tab((By::ID, "open"), Some(1_000), false);
             let _ = web_frame.click_middle("css:#open", Some(1_000), true);
+            let _ = web_frame.click_middle((By::ID, "open"), Some(1_000), true);
             let _ = web_frame.get("https://example.test/frame");
             let _ = web_frame.goto("https://example.test/frame");
             let _ = web_frame.refresh_with_options(true);
@@ -10413,6 +10476,7 @@ mod tests {
                 ("tabIndex", serde_json::json!(3)),
                 ("draggable", serde_json::json!(false)),
             ];
+            let files = vec!["/tmp/demo.txt".to_string()];
 
             let _ = page.remove_element((By::ID, "root"));
             let _ = page.remove_element(element);
@@ -10431,6 +10495,19 @@ mod tests {
             let _ = page.add_element_info(("a", &info), None::<&str>, None::<&str>);
             let _ = page.add_element_info(("a", &info), Some(element), Some(element));
             let _ = page.add_element_info(("button", &value_info), Some(element), Some(element));
+            let _ = page.click_to_download(
+                (By::ID, "download"),
+                None,
+                Some("demo"),
+                Some(".txt"),
+                true,
+                Some(1_000),
+                false,
+                false,
+            );
+            let _ = page.click_to_upload((By::ID, "upload"), &files, Some(1_000), false);
+            let _ = page.click_for_new_tab((By::ID, "open"), Some(1_000), false);
+            let _ = page.click_middle((By::ID, "open"), Some(1_000), true);
             let _ = web_page.remove_element((By::ID, "root"));
             let _ = web_page.remove_element(web_element);
             let _ = web_page.remove_ele((By::ID, "root"));
