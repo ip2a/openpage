@@ -799,6 +799,13 @@ pub(crate) fn value_state_bool_required_message(name: &str, value: &str) -> Stri
     }
 }
 
+pub(crate) fn value_bool_required_message(name: &str, value: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{name} 未返回布尔值: {value}"),
+        _ => format!("{name} did not return a bool: {value}"),
+    }
+}
+
 pub(crate) fn value_coordinate_pair_parse_failed_message(name: &str, detail: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("解析 {name} 坐标对失败: {detail}"),
@@ -1971,19 +1978,19 @@ mod tests {
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
         unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
         unterminated_session_ini_python_string_message, upload_requires_at_least_one_file_message,
-        value_coordinate_not_numeric_message, value_coordinate_pair_exactly_two_message,
-        value_coordinate_pair_parse_failed_message, value_coordinate_pair_required_message,
-        value_did_not_return_message, value_non_negative_integer_required_message,
-        value_number_required_message, value_pair_entry_not_number_message,
-        value_returned_non_string_entry_message, value_state_bool_required_message,
-        value_string_compatible_required_message, value_string_required_message,
-        value_string_vec_array_required_message, value_string_vec_entry_required_message,
-        value_unavailable_message, wait_for_locator_timed_out_message,
-        web_browser_backed_option_required_message, web_driver_element_required_message,
-        web_element_list_driver_filter_message, web_mode_invalid_message,
-        web_timeout_base_non_negative_message, xpath_node_no_longer_exists_message,
-        xpath_path_not_found_message, xpath_segment_not_found_message,
-        zoom_factor_must_be_positive_message,
+        value_bool_required_message, value_coordinate_not_numeric_message,
+        value_coordinate_pair_exactly_two_message, value_coordinate_pair_parse_failed_message,
+        value_coordinate_pair_required_message, value_did_not_return_message,
+        value_non_negative_integer_required_message, value_number_required_message,
+        value_pair_entry_not_number_message, value_returned_non_string_entry_message,
+        value_state_bool_required_message, value_string_compatible_required_message,
+        value_string_required_message, value_string_vec_array_required_message,
+        value_string_vec_entry_required_message, value_unavailable_message,
+        wait_for_locator_timed_out_message, web_browser_backed_option_required_message,
+        web_driver_element_required_message, web_element_list_driver_filter_message,
+        web_mode_invalid_message, web_timeout_base_non_negative_message,
+        xpath_node_no_longer_exists_message, xpath_path_not_found_message,
+        xpath_segment_not_found_message, zoom_factor_must_be_positive_message,
     };
     use crate::error::OpenPageError;
     use std::path::Path;
@@ -2324,6 +2331,10 @@ mod tests {
         assert_eq!(
             value_state_bool_required_message("visible", "null"),
             "visible state script did not return a bool: null"
+        );
+        assert_eq!(
+            value_bool_required_message("enabled", "null"),
+            "enabled did not return a bool: null"
         );
         assert_eq!(
             value_coordinate_pair_parse_failed_message("rect", "parse error"),
@@ -2849,6 +2860,10 @@ mod tests {
         assert_eq!(
             value_state_bool_required_message("visible", "null"),
             "visible 状态脚本未返回布尔值: null"
+        );
+        assert_eq!(
+            value_bool_required_message("enabled", "null"),
+            "enabled 未返回布尔值: null"
         );
         assert_eq!(
             value_coordinate_pair_parse_failed_message("rect", "parse error"),

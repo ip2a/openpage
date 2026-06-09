@@ -27,6 +27,8 @@ use crate::session::{
 use crate::settings::{
     cdp_timeout_duration, javascript_execution_timed_out_message,
     shadow_root_object_id_unavailable_message, timeout_duration_millis, timeout_error,
+    value_bool_required_message, value_string_compatible_required_message,
+    value_string_required_message, value_unavailable_message,
 };
 
 const MARKER_ATTRIBUTE: &str = "data-openpage-marker";
@@ -692,11 +694,12 @@ fn resolve_javascript_timeout_ms(requested: Option<u64>, default_timeout_ms: u64
 fn value_as_bool(value: Value, name: &str) -> OpenPageResult<bool> {
     match value {
         Value::Bool(value) => Ok(value),
-        Value::Null => Err(OpenPageError::ElementNotFound(format!(
-            "{name} is unavailable"
+        Value::Null => Err(OpenPageError::ElementNotFound(value_unavailable_message(
+            name,
         ))),
-        other => Err(OpenPageError::JavaScript(format!(
-            "{name} did not return a bool: {other}"
+        other => Err(OpenPageError::JavaScript(value_bool_required_message(
+            name,
+            &other.to_string(),
         ))),
     }
 }
@@ -707,20 +710,21 @@ fn value_as_optional_string(value: Value, name: &str) -> OpenPageResult<Option<S
         Value::String(value) => Ok(Some(value)),
         Value::Bool(value) => Ok(Some(value.to_string())),
         Value::Number(value) => Ok(Some(value.to_string())),
-        other => Err(OpenPageError::JavaScript(format!(
-            "{name} did not return a string-compatible value: {other}"
-        ))),
+        other => Err(OpenPageError::JavaScript(
+            value_string_compatible_required_message(name, &other.to_string()),
+        )),
     }
 }
 
 fn value_as_string(value: Value, name: &str) -> OpenPageResult<String> {
     match value {
         Value::String(value) => Ok(value),
-        Value::Null => Err(OpenPageError::ElementNotFound(format!(
-            "{name} is unavailable"
+        Value::Null => Err(OpenPageError::ElementNotFound(value_unavailable_message(
+            name,
         ))),
-        other => Err(OpenPageError::JavaScript(format!(
-            "{name} did not return a string: {other}"
+        other => Err(OpenPageError::JavaScript(value_string_required_message(
+            name,
+            &other.to_string(),
         ))),
     }
 }
