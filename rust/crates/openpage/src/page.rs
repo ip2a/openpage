@@ -60,7 +60,9 @@ use crate::browser::{
 };
 use crate::console::Console;
 use crate::download::DownloadMission;
-use crate::element::{Element, load_javascript_source, resolve_javascript_timeout_ms};
+use crate::element::{
+    Element, ElementResource, load_javascript_source, resolve_javascript_timeout_ms,
+};
 use crate::element_list::{
     ElementsOneOwned, ElementsOneRuntimeConfigHandle, elements_one_should_raise_when_missing,
 };
@@ -1307,6 +1309,34 @@ impl Frame {
 
     pub fn property(&self, name: &str) -> OpenPageResult<Option<Value>> {
         self.frame_element.property(name)
+    }
+
+    pub fn text(&self) -> OpenPageResult<Option<String>> {
+        self.frame_element.text()
+    }
+
+    pub fn raw_text(&self) -> OpenPageResult<Option<String>> {
+        self.frame_element.raw_text()
+    }
+
+    pub fn value(&self) -> OpenPageResult<Option<String>> {
+        self.frame_element.value()
+    }
+
+    pub fn comments(&self) -> OpenPageResult<Vec<String>> {
+        self.frame_element.comments()
+    }
+
+    pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Vec<String>> {
+        self.frame_element.texts(text_node_only)
+    }
+
+    pub fn src(
+        &self,
+        timeout_ms: u64,
+        base64_to_bytes: bool,
+    ) -> OpenPageResult<Option<ElementResource>> {
+        self.frame_element.src(timeout_ms, base64_to_bytes)
     }
 
     pub fn style(&self, name: &str, pseudo: Option<&str>) -> OpenPageResult<String> {

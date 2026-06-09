@@ -482,6 +482,34 @@ impl WebFrame {
         self.frame().property(name)
     }
 
+    pub fn text(&self) -> OpenPageResult<Option<String>> {
+        self.frame().text()
+    }
+
+    pub fn raw_text(&self) -> OpenPageResult<Option<String>> {
+        self.frame().raw_text()
+    }
+
+    pub fn value(&self) -> OpenPageResult<Option<String>> {
+        self.frame().value()
+    }
+
+    pub fn comments(&self) -> OpenPageResult<Vec<String>> {
+        self.frame().comments()
+    }
+
+    pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Vec<String>> {
+        self.frame().texts(text_node_only)
+    }
+
+    pub fn src(
+        &self,
+        timeout_ms: u64,
+        base64_to_bytes: bool,
+    ) -> OpenPageResult<Option<ElementResource>> {
+        self.frame().src(timeout_ms, base64_to_bytes)
+    }
+
     pub fn style(&self, name: &str, pseudo: Option<&str>) -> OpenPageResult<String> {
         self.frame().style(name, pseudo)
     }
@@ -9245,6 +9273,31 @@ mod tests {
         }
 
         let _ = assert_calls as fn(&Page, &Frame, &WebPage, &WebFrame);
+    }
+
+    #[test]
+    fn frame_and_webframe_element_reader_signatures_accept_common_inputs() {
+        fn assert_calls(frame: &Frame, web_frame: &WebFrame) {
+            let _ = frame.text();
+            let _ = frame.raw_text();
+            let _ = frame.value();
+            let _ = frame.comments();
+            let _ = frame.texts(false);
+            let _ = frame.texts(true);
+            let _ = frame.src(500, false);
+            let _ = frame.src(500, true);
+
+            let _ = web_frame.text();
+            let _ = web_frame.raw_text();
+            let _ = web_frame.value();
+            let _ = web_frame.comments();
+            let _ = web_frame.texts(false);
+            let _ = web_frame.texts(true);
+            let _ = web_frame.src(500, false);
+            let _ = web_frame.src(500, true);
+        }
+
+        let _ = assert_calls as fn(&Frame, &WebFrame);
     }
 
     #[test]
