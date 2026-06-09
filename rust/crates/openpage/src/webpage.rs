@@ -1135,9 +1135,69 @@ impl WebFrame {
             .map(|element| self.wrap_element(element))
     }
 
+    pub fn parent_level(&self, level: usize) -> OpenPageResult<WebElement> {
+        self.frame()
+            .parent_level(level)
+            .map(|element| self.wrap_element(element))
+    }
+
+    pub fn parent_with<'a, L>(&self, locator: L, index: usize) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame()
+            .parent_with(locator, index)
+            .map(|element| self.wrap_element(element))
+    }
+
+    pub fn child(&self) -> OpenPageResult<WebElement> {
+        self.frame()
+            .child()
+            .map(|element| self.wrap_element(element))
+    }
+
+    pub fn child_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame()
+            .child_with(locator, index)
+            .map(|element| self.wrap_element(element))
+    }
+
+    pub fn children(&self) -> OpenPageResult<Vec<WebElement>> {
+        self.frame().children().map(|elements| {
+            elements
+                .into_iter()
+                .map(|element| self.wrap_element(element))
+                .collect()
+        })
+    }
+
+    pub fn children_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame().children_with(locator).map(|elements| {
+            elements
+                .into_iter()
+                .map(|element| self.wrap_element(element))
+                .collect()
+        })
+    }
+
     pub fn prev(&self) -> OpenPageResult<WebElement> {
         self.frame()
             .prev()
+            .map(|element| self.wrap_element(element))
+    }
+
+    pub fn prev_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame()
+            .prev_with(locator, index)
             .map(|element| self.wrap_element(element))
     }
 
@@ -1147,9 +1207,27 @@ impl WebFrame {
             .map(|element| self.wrap_element(element))
     }
 
+    pub fn next_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame()
+            .next_with(locator, index)
+            .map(|element| self.wrap_element(element))
+    }
+
     pub fn before(&self) -> OpenPageResult<WebElement> {
         self.frame()
             .before()
+            .map(|element| self.wrap_element(element))
+    }
+
+    pub fn before_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame()
+            .before_with(locator, index)
             .map(|element| self.wrap_element(element))
     }
 
@@ -1159,8 +1237,29 @@ impl WebFrame {
             .map(|element| self.wrap_element(element))
     }
 
+    pub fn after_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame()
+            .after_with(locator, index)
+            .map(|element| self.wrap_element(element))
+    }
+
     pub fn prevs(&self) -> OpenPageResult<Vec<WebElement>> {
         self.frame().prevs().map(|elements| {
+            elements
+                .into_iter()
+                .map(|element| self.wrap_element(element))
+                .collect()
+        })
+    }
+
+    pub fn prevs_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame().prevs_with(locator).map(|elements| {
             elements
                 .into_iter()
                 .map(|element| self.wrap_element(element))
@@ -1177,8 +1276,32 @@ impl WebFrame {
         })
     }
 
+    pub fn nexts_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame().nexts_with(locator).map(|elements| {
+            elements
+                .into_iter()
+                .map(|element| self.wrap_element(element))
+                .collect()
+        })
+    }
+
     pub fn befores(&self) -> OpenPageResult<Vec<WebElement>> {
         self.frame().befores().map(|elements| {
+            elements
+                .into_iter()
+                .map(|element| self.wrap_element(element))
+                .collect()
+        })
+    }
+
+    pub fn befores_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame().befores_with(locator).map(|elements| {
             elements
                 .into_iter()
                 .map(|element| self.wrap_element(element))
@@ -1193,6 +1316,45 @@ impl WebFrame {
                 .map(|element| self.wrap_element(element))
                 .collect()
         })
+    }
+
+    pub fn afters_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame().afters_with(locator).map(|elements| {
+            elements
+                .into_iter()
+                .map(|element| self.wrap_element(element))
+                .collect()
+        })
+    }
+
+    pub fn over(&self) -> OpenPageResult<Option<WebElement>> {
+        self.frame()
+            .over()
+            .map(|value| value.map(|element| self.wrap_element(element)))
+    }
+
+    pub fn over_with_timeout(&self, timeout_ms: u64) -> OpenPageResult<Option<WebElement>> {
+        self.frame()
+            .over_with_timeout(timeout_ms)
+            .map(|value| value.map(|element| self.wrap_element(element)))
+    }
+
+    pub fn offset<'a, L>(
+        &self,
+        locator: Option<L>,
+        x: Option<f64>,
+        y: Option<f64>,
+        timeout_ms: u64,
+    ) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame()
+            .offset(locator, x, y, timeout_ms)
+            .map(|element| self.wrap_element(element))
     }
 
     pub fn screenshot_bytes(
@@ -9464,6 +9626,73 @@ mod tests {
             let _ = web_frame.set_checked(true);
             let _ = web_frame.check(false, true);
             let _ = web_frame.uncheck(true);
+        }
+
+        let _ = assert_calls as fn(&Frame, &WebFrame);
+    }
+
+    #[test]
+    fn frame_and_webframe_relative_signatures_accept_common_inputs() {
+        fn assert_calls(frame: &Frame, web_frame: &WebFrame) {
+            let _ = frame.parent();
+            let _ = frame.parent_level(2);
+            let _ = frame.parent_with((By::ID, "root"), 1);
+            let _ = frame.child();
+            let _ = frame.child_with(Some((By::CLASS_NAME, "item")), 1);
+            let _ = frame.child_with(None::<&str>, 1);
+            let _ = frame.children();
+            let _ = frame.children_with(Some((By::CLASS_NAME, "item")));
+            let _ = frame.children_with(None::<&str>);
+            let _ = frame.prev();
+            let _ = frame.prev_with(Some((By::CLASS_NAME, "item")), 1);
+            let _ = frame.prevs();
+            let _ = frame.prevs_with(Some((By::CLASS_NAME, "item")));
+            let _ = frame.next();
+            let _ = frame.next_with(Some((By::CLASS_NAME, "item")), 1);
+            let _ = frame.nexts();
+            let _ = frame.nexts_with(Some((By::CLASS_NAME, "item")));
+            let _ = frame.before();
+            let _ = frame.before_with(Some((By::CLASS_NAME, "item")), 1);
+            let _ = frame.befores();
+            let _ = frame.befores_with(Some((By::CLASS_NAME, "item")));
+            let _ = frame.after();
+            let _ = frame.after_with(Some((By::CLASS_NAME, "item")), 1);
+            let _ = frame.afters();
+            let _ = frame.afters_with(Some((By::CLASS_NAME, "item")));
+            let _ = frame.over();
+            let _ = frame.over_with_timeout(100);
+            let _ = frame.offset(Some((By::CLASS_NAME, "item")), Some(1.0), Some(2.0), 100);
+            let _ = frame.offset(None::<&str>, None, None, 100);
+
+            let _ = web_frame.parent();
+            let _ = web_frame.parent_level(2);
+            let _ = web_frame.parent_with((By::ID, "root"), 1);
+            let _ = web_frame.child();
+            let _ = web_frame.child_with(Some((By::CLASS_NAME, "item")), 1);
+            let _ = web_frame.child_with(None::<&str>, 1);
+            let _ = web_frame.children();
+            let _ = web_frame.children_with(Some((By::CLASS_NAME, "item")));
+            let _ = web_frame.children_with(None::<&str>);
+            let _ = web_frame.prev();
+            let _ = web_frame.prev_with(Some((By::CLASS_NAME, "item")), 1);
+            let _ = web_frame.prevs();
+            let _ = web_frame.prevs_with(Some((By::CLASS_NAME, "item")));
+            let _ = web_frame.next();
+            let _ = web_frame.next_with(Some((By::CLASS_NAME, "item")), 1);
+            let _ = web_frame.nexts();
+            let _ = web_frame.nexts_with(Some((By::CLASS_NAME, "item")));
+            let _ = web_frame.before();
+            let _ = web_frame.before_with(Some((By::CLASS_NAME, "item")), 1);
+            let _ = web_frame.befores();
+            let _ = web_frame.befores_with(Some((By::CLASS_NAME, "item")));
+            let _ = web_frame.after();
+            let _ = web_frame.after_with(Some((By::CLASS_NAME, "item")), 1);
+            let _ = web_frame.afters();
+            let _ = web_frame.afters_with(Some((By::CLASS_NAME, "item")));
+            let _ = web_frame.over();
+            let _ = web_frame.over_with_timeout(100);
+            let _ = web_frame.offset(Some((By::CLASS_NAME, "item")), Some(1.0), Some(2.0), 100);
+            let _ = web_frame.offset(None::<&str>, None, None, 100);
         }
 
         let _ = assert_calls as fn(&Frame, &WebFrame);

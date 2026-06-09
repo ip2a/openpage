@@ -2224,36 +2224,146 @@ impl Frame {
         self.frame_element.parent()
     }
 
+    pub fn parent_level(&self, level: usize) -> OpenPageResult<Element> {
+        self.frame_element.parent_level(level)
+    }
+
+    pub fn parent_with<'a, L>(&self, locator: L, index: usize) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.parent_with(locator, index)
+    }
+
+    pub fn child(&self) -> OpenPageResult<Element> {
+        self.frame_element.child()
+    }
+
+    pub fn child_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.child_with(locator, index)
+    }
+
+    pub fn children(&self) -> OpenPageResult<Vec<Element>> {
+        self.frame_element.children()
+    }
+
+    pub fn children_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.children_with(locator)
+    }
+
     pub fn prev(&self) -> OpenPageResult<Element> {
         self.frame_element.prev()
+    }
+
+    pub fn prev_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.prev_with(locator, index)
     }
 
     pub fn next(&self) -> OpenPageResult<Element> {
         self.frame_element.next()
     }
 
+    pub fn next_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.next_with(locator, index)
+    }
+
     pub fn before(&self) -> OpenPageResult<Element> {
         self.frame_element.before()
+    }
+
+    pub fn before_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.before_with(locator, index)
     }
 
     pub fn after(&self) -> OpenPageResult<Element> {
         self.frame_element.after()
     }
 
+    pub fn after_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.after_with(locator, index)
+    }
+
     pub fn prevs(&self) -> OpenPageResult<Vec<Element>> {
         self.frame_element.prevs()
+    }
+
+    pub fn prevs_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.prevs_with(locator)
     }
 
     pub fn nexts(&self) -> OpenPageResult<Vec<Element>> {
         self.frame_element.nexts()
     }
 
+    pub fn nexts_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.nexts_with(locator)
+    }
+
     pub fn befores(&self) -> OpenPageResult<Vec<Element>> {
         self.frame_element.befores()
     }
 
+    pub fn befores_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.befores_with(locator)
+    }
+
     pub fn afters(&self) -> OpenPageResult<Vec<Element>> {
         self.frame_element.afters()
+    }
+
+    pub fn afters_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.afters_with(locator)
+    }
+
+    pub fn over(&self) -> OpenPageResult<Option<Element>> {
+        self.frame_element.over()
+    }
+
+    pub fn over_with_timeout(&self, timeout_ms: u64) -> OpenPageResult<Option<Element>> {
+        self.frame_element.over_with_timeout(timeout_ms)
+    }
+
+    pub fn offset<'a, L>(
+        &self,
+        locator: Option<L>,
+        x: Option<f64>,
+        y: Option<f64>,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.offset(locator, x, y, timeout_ms)
     }
 
     pub fn screenshot_bytes(
