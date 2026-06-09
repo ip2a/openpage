@@ -140,6 +140,8 @@ pub trait ElementListStateItem {
 
 pub trait ElementListDriverItem {
     fn list_style(&self, name: &str) -> OpenPageResult<String>;
+    fn list_pseudo_before(&self) -> OpenPageResult<String>;
+    fn list_pseudo_after(&self) -> OpenPageResult<String>;
     fn list_property(&self, name: &str) -> OpenPageResult<Option<Value>>;
 }
 
@@ -550,6 +552,14 @@ where
 {
     pub fn style(&self, name: &str) -> OpenPageResult<Option<String>> {
         self.as_borrowed().style(name)
+    }
+
+    pub fn pseudo_before(&self) -> OpenPageResult<Option<String>> {
+        self.as_borrowed().pseudo_before()
+    }
+
+    pub fn pseudo_after(&self) -> OpenPageResult<Option<String>> {
+        self.as_borrowed().pseudo_after()
     }
 
     pub fn property(&self, name: &str) -> OpenPageResult<Option<Value>> {
@@ -1663,6 +1673,20 @@ where
     pub fn style(&self, name: &str) -> OpenPageResult<Option<String>> {
         match self.element {
             Some(element) => element.list_style(name).map(Some),
+            None => self.missing_string_value(),
+        }
+    }
+
+    pub fn pseudo_before(&self) -> OpenPageResult<Option<String>> {
+        match self.element {
+            Some(element) => element.list_pseudo_before().map(Some),
+            None => self.missing_string_value(),
+        }
+    }
+
+    pub fn pseudo_after(&self) -> OpenPageResult<Option<String>> {
+        match self.element {
+            Some(element) => element.list_pseudo_after().map(Some),
             None => self.missing_string_value(),
         }
     }
@@ -5022,6 +5046,14 @@ impl ElementListDriverItem for Element {
         self.style(name, None)
     }
 
+    fn list_pseudo_before(&self) -> OpenPageResult<String> {
+        self.pseudo_before()
+    }
+
+    fn list_pseudo_after(&self) -> OpenPageResult<String> {
+        self.pseudo_after()
+    }
+
     fn list_property(&self, name: &str) -> OpenPageResult<Option<Value>> {
         self.property(name)
     }
@@ -5149,6 +5181,24 @@ impl ElementListDriverItem for WebElement {
             Self::Browser(element) | Self::Mix { element, .. } => element.style(name, None),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 web_element_list_driver_filter_message("style()"),
+            )),
+        }
+    }
+
+    fn list_pseudo_before(&self) -> OpenPageResult<String> {
+        match self {
+            Self::Browser(element) | Self::Mix { element, .. } => element.pseudo_before(),
+            Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
+                web_element_list_driver_filter_message("pseudo_before()"),
+            )),
+        }
+    }
+
+    fn list_pseudo_after(&self) -> OpenPageResult<String> {
+        match self {
+            Self::Browser(element) | Self::Mix { element, .. } => element.pseudo_after(),
+            Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
+                web_element_list_driver_filter_message("pseudo_after()"),
             )),
         }
     }
@@ -5435,6 +5485,14 @@ mod tests {
     impl super::ElementListDriverItem for FakeItem {
         fn list_style(&self, _name: &str) -> OpenPageResult<String> {
             Ok(self.style.clone())
+        }
+
+        fn list_pseudo_before(&self) -> OpenPageResult<String> {
+            Ok("before".to_string())
+        }
+
+        fn list_pseudo_after(&self) -> OpenPageResult<String> {
+            Ok("after".to_string())
         }
 
         fn list_property(&self, _name: &str) -> OpenPageResult<Option<serde_json::Value>> {
@@ -5728,6 +5786,14 @@ mod tests {
             found.style("display").expect("style"),
             Some("block".to_string())
         );
+        assert_eq!(
+            found.pseudo_before().expect("pseudo before"),
+            Some("before".to_string())
+        );
+        assert_eq!(
+            found.pseudo_after().expect("pseudo after"),
+            Some("after".to_string())
+        );
         assert_eq!(found.property("id").expect("property"), Some(json!("root")));
 
         let missing = items
@@ -5748,6 +5814,11 @@ mod tests {
         assert_eq!(missing.comments().expect("missing comments"), None);
         assert_eq!(missing.is_displayed().expect("missing displayed"), None);
         assert_eq!(missing.style("display").expect("missing style"), None);
+        assert_eq!(
+            missing.pseudo_before().expect("missing pseudo before"),
+            None
+        );
+        assert_eq!(missing.pseudo_after().expect("missing pseudo after"), None);
         assert_eq!(missing.property("id").expect("missing property"), None);
     }
 
@@ -5815,6 +5886,14 @@ mod tests {
         assert_eq!(
             missing.comments().expect("missing comments"),
             Some(vec!["missing".to_string()])
+        );
+        assert_eq!(
+            missing.pseudo_before().expect("missing pseudo before"),
+            Some("missing".to_string())
+        );
+        assert_eq!(
+            missing.pseudo_after().expect("missing pseudo after"),
+            Some("missing".to_string())
         );
         assert_eq!(
             missing.property("id").expect("missing property"),
