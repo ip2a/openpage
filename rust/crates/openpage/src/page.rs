@@ -1340,6 +1340,16 @@ impl Frame {
         self.frame_element.src(timeout_ms, base64_to_bytes)
     }
 
+    pub fn save(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        timeout_ms: u64,
+        rename: bool,
+    ) -> OpenPageResult<PathBuf> {
+        self.frame_element.save(path, name, timeout_ms, rename)
+    }
+
     pub fn style(&self, name: &str, pseudo: Option<&str>) -> OpenPageResult<String> {
         self.frame_element.style(name, pseudo)
     }

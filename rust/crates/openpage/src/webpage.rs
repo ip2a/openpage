@@ -510,6 +510,16 @@ impl WebFrame {
         self.frame().src(timeout_ms, base64_to_bytes)
     }
 
+    pub fn save(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        timeout_ms: u64,
+        rename: bool,
+    ) -> OpenPageResult<std::path::PathBuf> {
+        self.frame().save(path, name, timeout_ms, rename)
+    }
+
     pub fn style(&self, name: &str, pseudo: Option<&str>) -> OpenPageResult<String> {
         self.frame().style(name, pseudo)
     }
@@ -9673,6 +9683,8 @@ mod tests {
             let _ = frame.texts(true);
             let _ = frame.src(500, false);
             let _ = frame.src(500, true);
+            let _ = frame.save(None, Some("frame.jpg"), 500, true);
+            let _ = frame.save(Some(Path::new("/tmp")), None, 500, false);
             let _ = frame.pseudo_before();
             let _ = frame.pseudo_after();
             let _ = frame.scroll_to_see(Some(true));
@@ -9686,6 +9698,8 @@ mod tests {
             let _ = web_frame.texts(true);
             let _ = web_frame.src(500, false);
             let _ = web_frame.src(500, true);
+            let _ = web_frame.save(None, Some("frame.jpg"), 500, true);
+            let _ = web_frame.save(Some(Path::new("/tmp")), None, 500, false);
             let _ = web_frame.pseudo_before();
             let _ = web_frame.pseudo_after();
             let _ = web_frame.scroll_to_see(Some(true));
