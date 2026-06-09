@@ -401,8 +401,16 @@ pub fn from_selenium_debugger_address(debugger_url: &str) -> OpenPageResult<Page
     from_debugger_address(debugger_url)
 }
 
+pub fn from_selenium(debugger_url: &str) -> OpenPageResult<Page> {
+    from_selenium_debugger_address(debugger_url)
+}
+
 pub fn from_playwright_debugger_address(debugger_url: &str) -> OpenPageResult<Page> {
     from_debugger_address(debugger_url)
+}
+
+pub fn from_playwright(debugger_url: &str) -> OpenPageResult<Page> {
+    from_playwright_debugger_address(debugger_url)
 }
 
 pub fn get_blob<'a, S>(source: S, url: &str, as_bytes: bool) -> OpenPageResult<ElementResource>
@@ -745,10 +753,10 @@ mod tests {
     use super::{
         By, DEFAULT_PROJECT_CONFIGS_NAME, Keys, MakeSessionEleResult, TreeTextInput,
         build_blob_fetch_script, configs_to_here, decode_blob_fetch_result, format_tree_label,
-        from_debugger_address, from_playwright_debugger_address, from_selenium_debugger_address,
-        get_blob_bytes_with_runner, get_blob_text_with_runner, get_blob_with_runner,
-        make_session_ele, make_session_ele_by, print_tree, resolve_configs_to_here_target, tree,
-        tree_text_output, wait_until,
+        from_debugger_address, from_playwright, from_playwright_debugger_address, from_selenium,
+        from_selenium_debugger_address, get_blob_bytes_with_runner, get_blob_text_with_runner,
+        get_blob_with_runner, make_session_ele, make_session_ele_by, print_tree,
+        resolve_configs_to_here_target, tree, tree_text_output, wait_until,
     };
     use serde_json::Value;
     use std::fs;
@@ -767,6 +775,8 @@ mod tests {
         let _ = from_debugger_address as fn(&str) -> crate::OpenPageResult<Page>;
         let _ = from_selenium_debugger_address as fn(&str) -> crate::OpenPageResult<Page>;
         let _ = from_playwright_debugger_address as fn(&str) -> crate::OpenPageResult<Page>;
+        let _ = from_selenium as fn(&str) -> crate::OpenPageResult<Page>;
+        let _ = from_playwright as fn(&str) -> crate::OpenPageResult<Page>;
     }
 
     const HTML: &str = r#"
