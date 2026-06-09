@@ -71,7 +71,8 @@ use crate::settings::{
     scan_frame_marker_failed_message, scan_frame_marker_javascript_failed_message,
     select_element_required_message, session_backed_element_driver_target_message,
     set_file_input_requires_at_least_one_file_message, shadow_root_object_id_unavailable_message,
-    timeout_duration_millis, timeout_error, top_window_device_pixel_ratio_not_numeric_message,
+    timeout_duration_millis, timeout_error, top_window_device_pixel_ratio_lookup_failed_message,
+    top_window_device_pixel_ratio_not_numeric_message,
     top_window_viewport_size_lookup_failed_message, unsupported_key_message,
     unsupported_mouse_button_message, value_coordinate_not_numeric_message,
     value_coordinate_pair_exactly_two_message, value_coordinate_pair_parse_failed_message,
@@ -3932,8 +3933,8 @@ impl Element {
         let page = self.page_wrapper();
         page.run_js("window.devicePixelRatio || 1")
             .map_err(|err| {
-                OpenPageError::PageOperation(format!(
-                    "top window devicePixelRatio lookup failed: {err}"
+                OpenPageError::PageOperation(top_window_device_pixel_ratio_lookup_failed_message(
+                    &err.to_string(),
                 ))
             })?
             .as_f64()

@@ -953,6 +953,14 @@ pub(crate) fn top_window_device_pixel_ratio_not_numeric_message() -> String {
     )
 }
 
+pub(crate) fn top_window_device_pixel_ratio_lookup_failed_message(detail: &str) -> String {
+    localized_error_with_detail(
+        "top window devicePixelRatio lookup failed",
+        "查询顶层窗口 devicePixelRatio 失败",
+        detail,
+    )
+}
+
 pub(crate) fn data_url_missing_comma_message() -> String {
     localized_message(
         "data URL did not contain a comma separator",
@@ -2126,6 +2134,7 @@ mod tests {
         shadow_root_object_id_unavailable_message, snapshot_fragment_root_not_found_message,
         snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
         target_tab_not_found_message, timeout_error, timeout_must_be_non_negative_message,
+        top_window_device_pixel_ratio_lookup_failed_message,
         top_window_device_pixel_ratio_not_numeric_message,
         top_window_viewport_size_lookup_failed_message, unsupported_key_message,
         unsupported_mouse_button_message, unsupported_screencast_output_suffix_message,
@@ -2553,6 +2562,10 @@ mod tests {
         assert_eq!(
             top_window_device_pixel_ratio_not_numeric_message(),
             "top window devicePixelRatio was not numeric"
+        );
+        assert_eq!(
+            top_window_device_pixel_ratio_lookup_failed_message("detail"),
+            "top window devicePixelRatio lookup failed: detail"
         );
         assert_eq!(
             data_url_missing_comma_message(),
@@ -3082,6 +3095,10 @@ mod tests {
         assert_eq!(
             top_window_device_pixel_ratio_not_numeric_message(),
             "顶层窗口 devicePixelRatio 不是数字"
+        );
+        assert_eq!(
+            top_window_device_pixel_ratio_lookup_failed_message("detail"),
+            "查询顶层窗口 devicePixelRatio 失败: detail"
         );
         assert_eq!(
             data_url_missing_comma_message(),
