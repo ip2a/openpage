@@ -710,6 +710,17 @@ impl ElementsOneOwned<Element> {
             .screenshot_base64(scroll_to_center, timeout_ms)
     }
 
+    pub fn get_screenshot(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        scroll_to_center: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<PathBuf>> {
+        self.as_borrowed()
+            .get_screenshot(path, name, scroll_to_center, timeout_ms)
+    }
+
     pub fn save_screenshot(&self, path: impl AsRef<Path>) -> OpenPageResult<bool> {
         self.as_borrowed().save_screenshot(path)
     }
@@ -1344,6 +1355,17 @@ impl ElementsOneOwned<WebElement> {
     ) -> OpenPageResult<Option<String>> {
         self.as_borrowed()
             .screenshot_base64(scroll_to_center, timeout_ms)
+    }
+
+    pub fn get_screenshot(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        scroll_to_center: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<PathBuf>> {
+        self.as_borrowed()
+            .get_screenshot(path, name, scroll_to_center, timeout_ms)
     }
 
     pub fn save_screenshot(&self, path: impl AsRef<Path>) -> OpenPageResult<bool> {
@@ -2797,6 +2819,21 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    pub fn get_screenshot(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        scroll_to_center: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<PathBuf>> {
+        match self.element {
+            Some(element) => element
+                .get_screenshot(path, name, scroll_to_center, timeout_ms)
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
     pub fn save_screenshot(&self, path: impl AsRef<Path>) -> OpenPageResult<bool> {
         match self.element {
             Some(element) => {
@@ -3196,6 +3233,21 @@ impl<'a> ElementsOne<'a, WebElement> {
         match self.element {
             Some(element) => element
                 .screenshot_base64(scroll_to_center, timeout_ms)
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_screenshot(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        scroll_to_center: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<PathBuf>> {
+        match self.element {
+            Some(element) => element
+                .get_screenshot(path, name, scroll_to_center, timeout_ms)
                 .map(Some),
             None => Ok(None),
         }

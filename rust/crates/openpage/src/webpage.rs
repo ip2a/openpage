@@ -10712,6 +10712,8 @@ mod tests {
             let _ = one_element.save(Some(Path::new("/tmp")), None, 500, false);
             let _ = one_element.screenshot_bytes(true, 500);
             let _ = one_element.screenshot_base64(false, 500);
+            let _ =
+                one_element.get_screenshot(Some(Path::new("/tmp")), Some("element.png"), true, 500);
             let _ = one_element.save_screenshot("/tmp/element.png");
             let _ = one_web_element.input_with_options("hello", true, false);
             let _ = one_web_element.input_keys_with_options(&key_sequence, true, false);
@@ -10746,6 +10748,12 @@ mod tests {
             let _ = one_web_element.save(Some(Path::new("/tmp")), None, 500, false);
             let _ = one_web_element.screenshot_bytes(true, 500);
             let _ = one_web_element.screenshot_base64(false, 500);
+            let _ = one_web_element.get_screenshot(
+                Some(Path::new("/tmp")),
+                Some("web-element.png"),
+                true,
+                500,
+            );
             let _ = one_web_element.save_screenshot("/tmp/web-element.png");
 
             let _ = owned_element.input_with_options("hello", true, false);
@@ -10781,6 +10789,12 @@ mod tests {
             let _ = owned_element.save(Some(Path::new("/tmp")), None, 500, false);
             let _ = owned_element.screenshot_bytes(true, 500);
             let _ = owned_element.screenshot_base64(false, 500);
+            let _ = owned_element.get_screenshot(
+                Some(Path::new("/tmp")),
+                Some("owned-element.png"),
+                true,
+                500,
+            );
             let _ = owned_element.save_screenshot("/tmp/owned-element.png");
             let _ = owned_web_element.input_with_options("hello", true, false);
             let _ = owned_web_element.input_keys_with_options(&key_sequence, true, false);
@@ -10816,6 +10830,12 @@ mod tests {
             let _ = owned_web_element.save(Some(Path::new("/tmp")), None, 500, false);
             let _ = owned_web_element.screenshot_bytes(true, 500);
             let _ = owned_web_element.screenshot_base64(false, 500);
+            let _ = owned_web_element.get_screenshot(
+                Some(Path::new("/tmp")),
+                Some("owned-web-element.png"),
+                true,
+                500,
+            );
             let _ = owned_web_element.save_screenshot("/tmp/owned-web-element.png");
         }
 
