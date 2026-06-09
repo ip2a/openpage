@@ -11937,13 +11937,21 @@ mod tests {
             owned_web_element: &ElementsOneOwned<WebElement>,
         ) {
             let _ = one_element.snapshot_find((By::ID, "root"));
+            let _ = one_element.snapshot_find_by(By::ID, "root");
             let _ = one_element.snapshot_find_all((By::CLASS_NAME, "item"));
+            let _ = one_element.snapshot_find_all_by(By::CLASS_NAME, "item");
             let _ = one_web_element.snapshot_find((By::ID, "root"));
+            let _ = one_web_element.snapshot_find_by(By::ID, "root");
             let _ = one_web_element.snapshot_find_all((By::CLASS_NAME, "item"));
+            let _ = one_web_element.snapshot_find_all_by(By::CLASS_NAME, "item");
             let _ = owned_element.snapshot_find((By::ID, "root"));
+            let _ = owned_element.snapshot_find_by(By::ID, "root");
             let _ = owned_element.snapshot_find_all((By::CLASS_NAME, "item"));
+            let _ = owned_element.snapshot_find_all_by(By::CLASS_NAME, "item");
             let _ = owned_web_element.snapshot_find((By::ID, "root"));
+            let _ = owned_web_element.snapshot_find_by(By::ID, "root");
             let _ = owned_web_element.snapshot_find_all((By::CLASS_NAME, "item"));
+            let _ = owned_web_element.snapshot_find_all_by(By::CLASS_NAME, "item");
         }
 
         let _ = assert_calls

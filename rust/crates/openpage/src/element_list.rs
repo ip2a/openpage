@@ -1042,6 +1042,14 @@ impl ElementsOneOwned<Element> {
         self.s_ele(locator)
     }
 
+    pub fn snapshot_find_by(
+        &self,
+        by: &str,
+        value: &str,
+    ) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+        self.snapshot_find((by, value))
+    }
+
     pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
@@ -1057,6 +1065,14 @@ impl ElementsOneOwned<Element> {
         L: Into<crate::locator::LocatorInput<'a>>,
     {
         self.s_eles(locator)
+    }
+
+    pub fn snapshot_find_all_by(
+        &self,
+        by: &str,
+        value: &str,
+    ) -> OpenPageResult<Vec<SessionElement>> {
+        self.snapshot_find_all((by, value))
     }
 
     pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
@@ -1755,6 +1771,14 @@ impl ElementsOneOwned<WebElement> {
         self.s_ele(locator)
     }
 
+    pub fn snapshot_find_by(
+        &self,
+        by: &str,
+        value: &str,
+    ) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+        self.snapshot_find((by, value))
+    }
+
     pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
@@ -1770,6 +1794,14 @@ impl ElementsOneOwned<WebElement> {
         L: Into<crate::locator::LocatorInput<'a>>,
     {
         self.s_eles(locator)
+    }
+
+    pub fn snapshot_find_all_by(
+        &self,
+        by: &str,
+        value: &str,
+    ) -> OpenPageResult<Vec<SessionElement>> {
+        self.snapshot_find_all((by, value))
     }
 
     pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<WebElement>> {
@@ -2785,6 +2817,14 @@ impl<'a> ElementsOne<'a, Element> {
         self.s_ele(locator)
     }
 
+    pub fn snapshot_find_by(
+        &self,
+        by: &str,
+        value: &str,
+    ) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+        self.snapshot_find((by, value))
+    }
+
     pub fn s_eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -2800,6 +2840,14 @@ impl<'a> ElementsOne<'a, Element> {
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.s_eles(locator)
+    }
+
+    pub fn snapshot_find_all_by(
+        &self,
+        by: &str,
+        value: &str,
+    ) -> OpenPageResult<Vec<SessionElement>> {
+        self.snapshot_find_all((by, value))
     }
 
     pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
@@ -3232,6 +3280,14 @@ impl<'a> ElementsOne<'a, WebElement> {
         self.s_ele(locator)
     }
 
+    pub fn snapshot_find_by(
+        &self,
+        by: &str,
+        value: &str,
+    ) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+        self.snapshot_find((by, value))
+    }
+
     pub fn s_eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -3247,6 +3303,14 @@ impl<'a> ElementsOne<'a, WebElement> {
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.s_eles(locator)
+    }
+
+    pub fn snapshot_find_all_by(
+        &self,
+        by: &str,
+        value: &str,
+    ) -> OpenPageResult<Vec<SessionElement>> {
+        self.snapshot_find_all((by, value))
     }
 
     pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<WebElement>> {
