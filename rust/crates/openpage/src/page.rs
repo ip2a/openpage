@@ -192,10 +192,11 @@ pub struct Page {
         Arc<std::sync::Mutex<HashMap<String, ElementsOneRuntimeConfigHandle>>>,
 }
 
+#[derive(Clone)]
 pub struct Frame {
     page: Page,
     frame_id: String,
-    frame_element: Element,
+    frame_element: Arc<Element>,
     none_element_config: ElementsOneRuntimeConfigHandle,
 }
 
@@ -1241,7 +1242,7 @@ impl Frame {
         Self {
             page,
             frame_id,
-            frame_element,
+            frame_element: Arc::new(frame_element),
             none_element_config,
         }
     }
@@ -2087,6 +2088,11 @@ impl Frame {
     where
         L: Into<PageFrameTarget<'a>>,
     {
+        let target = target.into();
+        if let PageFrameTarget::Frame(frame) = target {
+            self.resolve_frame_target(target)?;
+            return Ok(frame.clone());
+        }
         self.page.frame_from_element(self.get_frame_ele(target)?)
     }
 
@@ -4997,6 +5003,11 @@ impl Page {
     where
         L: Into<PageFrameTarget<'a>>,
     {
+        let target = target.into();
+        if let PageFrameTarget::Frame(frame) = target {
+            resolve_page_frame_target(self, target)?;
+            return Ok(frame.clone());
+        }
         self.frame_from_element(self.get_frame_ele(target)?)
     }
 
@@ -12498,6 +12509,12 @@ mod tests {
             let frame = page.get_frame_context("css:#demo-frame")?;
             assert!(frame.wait_for_doc_loaded(5_000)?);
             frame.set_none_element_value(Some("missing"), true)?;
+
+            let same_handle = page.get_frame_context(&frame)?;
+            assert_eq!(
+                same_handle.ele(".does-not-exist")?.text()?,
+                Some("missing".to_string())
+            );
 
             let fresh_frame = page.get_frame_context("css:#demo-frame")?;
             assert_eq!(fresh_frame.ele(".does-not-exist")?.text()?, None);
