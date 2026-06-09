@@ -1534,39 +1534,51 @@ impl Element {
         }
     }
 
-    pub fn east(
+    pub fn east<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<Element> {
+    ) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.find_relative_element(RelativeDirection::East, locator, pixels, index)
     }
 
-    pub fn south(
+    pub fn south<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<Element> {
+    ) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.find_relative_element(RelativeDirection::South, locator, pixels, index)
     }
 
-    pub fn west(
+    pub fn west<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<Element> {
+    ) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.find_relative_element(RelativeDirection::West, locator, pixels, index)
     }
 
-    pub fn north(
+    pub fn north<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<Element> {
+    ) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.find_relative_element(RelativeDirection::North, locator, pixels, index)
     }
 
@@ -3239,20 +3251,23 @@ impl Element {
             .next())
     }
 
-    fn find_relative_element(
+    fn find_relative_element<'a, L>(
         &self,
         direction: RelativeDirection,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<Element> {
+    ) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         if index == 0 {
             return Err(OpenPageError::ElementNotFound(
                 relative_direction_index_must_start_message(),
             ));
         }
 
-        let locator = parse_optional_locator(locator)?;
+        let locator = parse_optional_locator_input(locator)?;
         let corners = self
             .rect_corners()?
             .ok_or_else(|| OpenPageError::PageOperation(element_no_visible_rect_message()))?;
@@ -4963,13 +4978,6 @@ fn should_fallback_frame_id_lookup(error: &OpenPageError) -> bool {
         }
         _ => false,
     }
-}
-
-fn parse_optional_locator(locator: Option<&str>) -> OpenPageResult<Option<Locator>> {
-    let Some(locator) = locator.map(str::trim).filter(|locator| !locator.is_empty()) else {
-        return Ok(None);
-    };
-    Locator::parse(locator).map(Some)
 }
 
 pub(crate) fn resolve_javascript_timeout_ms(

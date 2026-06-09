@@ -13109,7 +13109,7 @@ mod tests {
                 Some("missing".to_string())
             );
             assert_eq!(
-                missing.east(None, None, 1)?.text()?,
+                missing.east(None::<&str>, None, 1)?.text()?,
                 Some("missing".to_string())
             );
             assert_eq!(

@@ -951,39 +951,51 @@ impl ElementsOneOwned<Element> {
         self.relative_element(|element| element.offset(locator, x, y, timeout_ms))
     }
 
-    pub fn east(
+    pub fn east<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<Element>> {
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
         self.relative_element(|element| element.east(locator, pixels, index))
     }
 
-    pub fn south(
+    pub fn south<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<Element>> {
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
         self.relative_element(|element| element.south(locator, pixels, index))
     }
 
-    pub fn west(
+    pub fn west<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<Element>> {
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
         self.relative_element(|element| element.west(locator, pixels, index))
     }
 
-    pub fn north(
+    pub fn north<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<Element>> {
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
         self.relative_element(|element| element.north(locator, pixels, index))
     }
 }
@@ -1375,39 +1387,51 @@ impl ElementsOneOwned<WebElement> {
         self.relative_element(|element| element.offset(locator, x, y, timeout_ms))
     }
 
-    pub fn east(
+    pub fn east<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
         self.relative_element(|element| element.east(locator, pixels, index))
     }
 
-    pub fn south(
+    pub fn south<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
         self.relative_element(|element| element.south(locator, pixels, index))
     }
 
-    pub fn west(
+    pub fn west<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
         self.relative_element(|element| element.west(locator, pixels, index))
     }
 
-    pub fn north(
+    pub fn north<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
         self.relative_element(|element| element.north(locator, pixels, index))
     }
 }
@@ -2254,39 +2278,51 @@ impl<'a> ElementsOne<'a, Element> {
         self.relative_element(|element| element.offset(locator, x, y, timeout_ms))
     }
 
-    pub fn east(
+    pub fn east<'b, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<Element>> {
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
         self.relative_element(|element| element.east(locator, pixels, index))
     }
 
-    pub fn south(
+    pub fn south<'b, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<Element>> {
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
         self.relative_element(|element| element.south(locator, pixels, index))
     }
 
-    pub fn west(
+    pub fn west<'b, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<Element>> {
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
         self.relative_element(|element| element.west(locator, pixels, index))
     }
 
-    pub fn north(
+    pub fn north<'b, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<Element>> {
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
         self.relative_element(|element| element.north(locator, pixels, index))
     }
 
@@ -2597,39 +2633,51 @@ impl<'a> ElementsOne<'a, WebElement> {
         self.relative_element(|element| element.offset(locator, x, y, timeout_ms))
     }
 
-    pub fn east(
+    pub fn east<'b, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
         self.relative_element(|element| element.east(locator, pixels, index))
     }
 
-    pub fn south(
+    pub fn south<'b, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
         self.relative_element(|element| element.south(locator, pixels, index))
     }
 
-    pub fn west(
+    pub fn west<'b, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
         self.relative_element(|element| element.west(locator, pixels, index))
     }
 
-    pub fn north(
+    pub fn north<'b, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
         self.relative_element(|element| element.north(locator, pixels, index))
     }
 
@@ -7326,28 +7374,64 @@ mod tests {
         );
         assert!(
             missing
-                .east(None, None, 1)
+                .east(None::<&str>, None, 1)
                 .expect("missing east owner")
                 .is_none()
         );
         assert!(
             missing
-                .south(None, None, 1)
+                .south(None::<&str>, None, 1)
                 .expect("missing south owner")
                 .is_none()
         );
         assert!(
             missing
-                .west(None, None, 1)
+                .west(None::<&str>, None, 1)
                 .expect("missing west owner")
                 .is_none()
         );
         assert!(
             missing
-                .north(None, None, 1)
+                .north(None::<&str>, None, 1)
                 .expect("missing north owner")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn elements_one_visual_direction_signatures_accept_by_tuples() {
+        fn assert_browser_owned(element: &super::ElementsOneOwned<crate::Element>) {
+            let _ = element.east(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.south(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.west(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.north(Some((By::CLASS_NAME, "item")), None, 1);
+        }
+
+        fn assert_web_owned(element: &super::ElementsOneOwned<WebElement>) {
+            let _ = element.east(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.south(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.west(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.north(Some((By::CLASS_NAME, "item")), None, 1);
+        }
+
+        fn assert_browser_borrowed(element: &super::ElementsOne<'_, crate::Element>) {
+            let _ = element.east(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.south(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.west(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.north(Some((By::CLASS_NAME, "item")), None, 1);
+        }
+
+        fn assert_web_borrowed(element: &super::ElementsOne<'_, WebElement>) {
+            let _ = element.east(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.south(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.west(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.north(Some((By::CLASS_NAME, "item")), None, 1);
+        }
+
+        let _ = assert_browser_owned as fn(&super::ElementsOneOwned<crate::Element>);
+        let _ = assert_web_owned as fn(&super::ElementsOneOwned<WebElement>);
+        let _ = assert_browser_borrowed as fn(&super::ElementsOne<'_, crate::Element>);
+        let _ = assert_web_borrowed as fn(&super::ElementsOne<'_, WebElement>);
     }
 
     #[test]
@@ -7834,25 +7918,25 @@ mod tests {
         );
         assert!(
             missing
-                .east(None, None, 1)
+                .east(None::<&str>, None, 1)
                 .expect("missing east owner")
                 .is_none()
         );
         assert!(
             missing
-                .south(None, None, 1)
+                .south(None::<&str>, None, 1)
                 .expect("missing south owner")
                 .is_none()
         );
         assert!(
             missing
-                .west(None, None, 1)
+                .west(None::<&str>, None, 1)
                 .expect("missing west owner")
                 .is_none()
         );
         assert!(
             missing
-                .north(None, None, 1)
+                .north(None::<&str>, None, 1)
                 .expect("missing north owner")
                 .is_none()
         );

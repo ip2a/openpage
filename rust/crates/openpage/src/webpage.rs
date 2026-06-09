@@ -2180,12 +2180,15 @@ impl WebElement {
         }
     }
 
-    pub fn east(
+    pub fn east<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<WebElement> {
+    ) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => element
                 .east(locator, pixels, index)
@@ -2196,12 +2199,15 @@ impl WebElement {
         }
     }
 
-    pub fn south(
+    pub fn south<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<WebElement> {
+    ) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => element
                 .south(locator, pixels, index)
@@ -2212,12 +2218,15 @@ impl WebElement {
         }
     }
 
-    pub fn west(
+    pub fn west<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<WebElement> {
+    ) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => element
                 .west(locator, pixels, index)
@@ -2228,12 +2237,15 @@ impl WebElement {
         }
     }
 
-    pub fn north(
+    pub fn north<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         pixels: Option<i64>,
         index: usize,
-    ) -> OpenPageResult<WebElement> {
+    ) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => element
                 .north(locator, pixels, index)
@@ -10704,6 +10716,22 @@ mod tests {
         fn assert_calls(element: &Element, web_element: &WebElement) {
             let _ = element.offset(Some((By::CLASS_NAME, "item")), Some(1.0), Some(2.0), 100);
             let _ = web_element.offset(Some((By::CLASS_NAME, "item")), Some(1.0), Some(2.0), 100);
+        }
+
+        let _ = assert_calls as fn(&Element, &WebElement);
+    }
+
+    #[test]
+    fn element_and_webelement_visual_direction_signatures_accept_by_tuples() {
+        fn assert_calls(element: &Element, web_element: &WebElement) {
+            let _ = element.east(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.south(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.west(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = element.north(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = web_element.east(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = web_element.south(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = web_element.west(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = web_element.north(Some((By::CLASS_NAME, "item")), None, 1);
         }
 
         let _ = assert_calls as fn(&Element, &WebElement);
