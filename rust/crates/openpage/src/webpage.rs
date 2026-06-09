@@ -84,6 +84,7 @@ pub enum WebElement {
 
 pub enum WebElementDragTarget<'a> {
     Element(&'a WebElement),
+    OwnedElement(WebElement),
     Locator(LocatorInput<'a>),
     Coordinates(f64, f64),
 }
@@ -91,6 +92,12 @@ pub enum WebElementDragTarget<'a> {
 impl<'a> From<&'a WebElement> for WebElementDragTarget<'a> {
     fn from(value: &'a WebElement) -> Self {
         Self::Element(value)
+    }
+}
+
+impl From<WebElement> for WebElementDragTarget<'_> {
+    fn from(value: WebElement) -> Self {
+        Self::OwnedElement(value)
     }
 }
 
@@ -929,6 +936,9 @@ impl WebFrame {
         let target = match target.into() {
             WebElementDragTarget::Element(target) => {
                 return self.drag_to_browser_element(target, duration_secs);
+            }
+            WebElementDragTarget::OwnedElement(target) => {
+                return self.drag_to_browser_element(&target, duration_secs);
             }
             WebElementDragTarget::Locator(locator) => self.find(locator)?,
             WebElementDragTarget::Coordinates(x, y) => {
@@ -3162,6 +3172,9 @@ impl WebElement {
         let target = match target.into() {
             WebElementDragTarget::Element(target) => {
                 return self.drag_to_browser_element(target, duration_secs);
+            }
+            WebElementDragTarget::OwnedElement(target) => {
+                return self.drag_to_browser_element(&target, duration_secs);
             }
             WebElementDragTarget::Locator(locator) => self.find(locator)?,
             WebElementDragTarget::Coordinates(x, y) => {
@@ -10709,6 +10722,17 @@ mod tests {
         }
 
         let _ = assert_calls as fn(&Element, &WebElement);
+
+        fn assert_owned_webframe_drag_target(frame: &WebFrame, target: WebElement) {
+            let _ = frame.drag_to(target, 0.1);
+        }
+
+        fn assert_owned_webelement_drag_target(element: &WebElement, target: WebElement) {
+            let _ = element.drag_to(target, 0.1);
+        }
+
+        let _ = assert_owned_webframe_drag_target as fn(&WebFrame, WebElement);
+        let _ = assert_owned_webelement_drag_target as fn(&WebElement, WebElement);
     }
 
     #[test]
