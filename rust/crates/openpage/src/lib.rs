@@ -23,7 +23,8 @@ pub mod window;
 pub use alert::AlertTracker;
 pub use browser::{
     Browser, BrowserPageUrlInput, BrowserTabReference, BrowserTabSelector, BrowserTabTargetsInput,
-    BrowserTabTypeInput, DownloadFileExistsMode, LaunchOptions, LoadMode, TabInfo, TimeoutConfig,
+    BrowserTabTypeInput, DownloadFileExistsMode, LaunchOptions, LoadMode,
+    OPENPAGE_BROWSER_PATH_ENV, TabInfo, TimeoutConfig,
 };
 pub use config::{
     ConfigValueSource, OPENPAGE_BROWSER_HEADLESS_ENV, OPENPAGE_BROWSER_HEIGHT_ENV,
@@ -109,9 +110,10 @@ mod tests {
         ElementRect, ElementStates, ElementWait, ElementsOneClicker, ElementsOneOwned,
         ElementsOneRect, ElementsOneScroller, ElementsOneSelector, ElementsOneSetter,
         ElementsOneStates, ElementsOneWait, Frame, LaunchOptions, LocatorBatchInput, MixTab,
-        NoneElement, Page, PageNavigationSnapshot, SelectIndexInput, SelectOptionInput,
-        SessionElement, SessionNoneElement, TimeoutConfig, WebElement, WebElementRect,
-        WebElementStates, WebElementWait, WebNoneElement, WebPage, WebSelectOptionInput,
+        NoneElement, OPENPAGE_BROWSER_PATH_ENV, Page, PageNavigationSnapshot, SelectIndexInput,
+        SelectOptionInput, SessionElement, SessionNoneElement, TimeoutConfig, WebElement,
+        WebElementRect, WebElementStates, WebElementWait, WebNoneElement, WebPage,
+        WebSelectOptionInput,
     };
 
     #[test]
@@ -197,5 +199,10 @@ mod tests {
                 &WebSelectOptionInput<'_>,
                 &PageNavigationSnapshot,
             );
+    }
+
+    #[test]
+    fn browser_path_env_constant_is_exported() {
+        assert_eq!(OPENPAGE_BROWSER_PATH_ENV, "OPENPAGE_BROWSER_PATH");
     }
 }
