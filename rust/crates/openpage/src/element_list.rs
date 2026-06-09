@@ -772,6 +772,10 @@ impl ElementsOneOwned<Element> {
             .input_keys_with_options(values, clear, by_js)
     }
 
+    pub fn press_key(&self, key: &str) -> OpenPageResult<bool> {
+        self.as_borrowed().press_key(key)
+    }
+
     pub fn clear(&self) -> OpenPageResult<bool> {
         self.as_borrowed().clear()
     }
@@ -1309,6 +1313,10 @@ impl ElementsOneOwned<WebElement> {
     {
         self.as_borrowed()
             .input_keys_with_options(values, clear, by_js)
+    }
+
+    pub fn press_key(&self, key: &str) -> OpenPageResult<bool> {
+        self.as_borrowed().press_key(key)
     }
 
     pub fn clear(&self) -> OpenPageResult<bool> {
@@ -3636,6 +3644,16 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    pub fn press_key(&self, key: &str) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.press_key(key)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     pub fn clear(&self) -> OpenPageResult<bool> {
         match self.element {
             Some(element) => {
@@ -5224,6 +5242,16 @@ impl<'a> ElementsOne<'a, WebElement> {
         match self.element {
             Some(element) => {
                 element.input_keys_with_options(values, clear, by_js)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn press_key(&self, key: &str) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.press_key(key)?;
                 Ok(true)
             }
             None => Ok(false),

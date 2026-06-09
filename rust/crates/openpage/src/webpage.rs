@@ -10673,6 +10673,7 @@ mod tests {
             let _ = one_element.input_with_options("hello", true, false);
             let _ = one_element.input_keys_with_options(&key_sequence, true, false);
             let _ = one_element.input_keys_with_options(Keys::CTRL_A, true, false);
+            let _ = one_element.press_key("Enter");
             let _ = one_element.clear_with_mode(false);
             let _ = one_element.submit();
             let _ = one_element.hover_with_offset(Some(1.0), Some(2.0));
@@ -10683,6 +10684,7 @@ mod tests {
             let _ = one_web_element.input_with_options("hello", true, false);
             let _ = one_web_element.input_keys_with_options(&key_sequence, true, false);
             let _ = one_web_element.input_keys_with_options(Keys::CTRL_A, true, false);
+            let _ = one_web_element.press_key("Enter");
             let _ = one_web_element.clear_with_mode(false);
             let _ = one_web_element.submit();
             let _ = one_web_element.hover_with_offset(Some(1.0), Some(2.0));
@@ -10694,6 +10696,7 @@ mod tests {
             let _ = owned_element.input_with_options("hello", true, false);
             let _ = owned_element.input_keys_with_options(&key_sequence, true, false);
             let _ = owned_element.input_keys_with_options(Keys::CTRL_A, true, false);
+            let _ = owned_element.press_key("Enter");
             let _ = owned_element.clear_with_mode(false);
             let _ = owned_element.submit();
             let _ = owned_element.hover_with_offset(Some(1.0), Some(2.0));
@@ -10704,6 +10707,7 @@ mod tests {
             let _ = owned_web_element.input_with_options("hello", true, false);
             let _ = owned_web_element.input_keys_with_options(&key_sequence, true, false);
             let _ = owned_web_element.input_keys_with_options(Keys::CTRL_A, true, false);
+            let _ = owned_web_element.press_key("Enter");
             let _ = owned_web_element.clear_with_mode(false);
             let _ = owned_web_element.submit();
             let _ = owned_web_element.hover_with_offset(Some(1.0), Some(2.0));
