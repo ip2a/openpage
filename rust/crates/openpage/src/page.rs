@@ -61,7 +61,8 @@ use crate::browser::{
 use crate::console::Console;
 use crate::download::DownloadMission;
 use crate::element::{
-    Element, ElementResource, load_javascript_source, resolve_javascript_timeout_ms,
+    Element, ElementDragTarget, ElementResource, load_javascript_source,
+    resolve_javascript_timeout_ms,
 };
 use crate::element_list::{
     ElementsOneOwned, ElementsOneRuntimeConfigHandle, elements_one_should_raise_when_missing,
@@ -1661,6 +1662,16 @@ impl Frame {
             .click_with_options(by_js, timeout_ms, wait_stop)
     }
 
+    pub fn click_left_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        self.frame_element
+            .click_left_with_options(by_js, timeout_ms, wait_stop)
+    }
+
     pub fn click_at(
         &self,
         offset_x: Option<f64>,
@@ -1745,6 +1756,13 @@ impl Frame {
 
     pub fn drag(&self, offset_x: f64, offset_y: f64, duration_secs: f64) -> OpenPageResult<()> {
         self.frame_element.drag(offset_x, offset_y, duration_secs)
+    }
+
+    pub fn drag_to<'a, T>(&self, target: T, duration_secs: f64) -> OpenPageResult<()>
+    where
+        T: Into<ElementDragTarget<'a>>,
+    {
+        self.frame_element.drag_to(target, duration_secs)
     }
 
     pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<()> {

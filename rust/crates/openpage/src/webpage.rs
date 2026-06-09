@@ -817,6 +817,16 @@ impl WebFrame {
             .click_with_options(by_js, timeout_ms, wait_stop)
     }
 
+    pub fn click_left_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        self.frame()
+            .click_left_with_options(by_js, timeout_ms, wait_stop)
+    }
+
     pub fn click_at(
         &self,
         offset_x: Option<f64>,
@@ -899,6 +909,35 @@ impl WebFrame {
 
     pub fn drag(&self, offset_x: f64, offset_y: f64, duration_secs: f64) -> OpenPageResult<()> {
         self.frame().drag(offset_x, offset_y, duration_secs)
+    }
+
+    pub fn drag_to<'a, T>(&self, target: T, duration_secs: f64) -> OpenPageResult<()>
+    where
+        T: Into<WebElementDragTarget<'a>>,
+    {
+        let target = match target.into() {
+            WebElementDragTarget::Element(target) => {
+                return self.drag_to_browser_element(target, duration_secs);
+            }
+            WebElementDragTarget::Locator(locator) => self.find(locator)?,
+            WebElementDragTarget::Coordinates(x, y) => {
+                return self.frame().drag_to_point(x, y, duration_secs);
+            }
+        };
+        self.drag_to_browser_element(&target, duration_secs)
+    }
+
+    fn drag_to_browser_element(
+        &self,
+        target: &WebElement,
+        duration_secs: f64,
+    ) -> OpenPageResult<()> {
+        let Some(target) = target.browser_element() else {
+            return Err(OpenPageError::UnsupportedOperation(
+                web_driver_element_required_message("drag_to() target"),
+            ));
+        };
+        self.frame().drag_to(target, duration_secs)
     }
 
     pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<()> {
@@ -9666,6 +9705,7 @@ mod tests {
             let _ = frame.click_at(Some(1.0), Some(2.0), "left", 1);
             let _ = frame.click_multi(2);
             let _ = frame.click_left();
+            let _ = frame.click_left_with_options(Some(false), Some(500), true);
             let _ = frame.click_right();
             let _ = frame.input("hello");
             let _ = frame.input_with_options("hello", true, false);
@@ -9679,6 +9719,8 @@ mod tests {
             let _ = frame.hover();
             let _ = frame.hover_with_offset(Some(1.0), Some(2.0));
             let _ = frame.drag(1.0, 2.0, 0.1);
+            let _ = frame.drag_to((10.0, 20.0), 0.1);
+            let _ = frame.drag_to("css:#target", 0.1);
             let _ = frame.drag_to_point(10.0, 20.0, 0.1);
             let _ = frame.set_checked(true);
             let _ = frame.check(false, true);
@@ -9689,6 +9731,7 @@ mod tests {
             let _ = web_frame.click_at(Some(1.0), Some(2.0), "left", 1);
             let _ = web_frame.click_multi(2);
             let _ = web_frame.click_left();
+            let _ = web_frame.click_left_with_options(Some(false), Some(500), true);
             let _ = web_frame.click_right();
             let _ = web_frame.input("hello");
             let _ = web_frame.input_with_options("hello", true, false);
@@ -9702,6 +9745,8 @@ mod tests {
             let _ = web_frame.hover();
             let _ = web_frame.hover_with_offset(Some(1.0), Some(2.0));
             let _ = web_frame.drag(1.0, 2.0, 0.1);
+            let _ = web_frame.drag_to((10.0, 20.0), 0.1);
+            let _ = web_frame.drag_to("css:#target", 0.1);
             let _ = web_frame.drag_to_point(10.0, 20.0, 0.1);
             let _ = web_frame.set_checked(true);
             let _ = web_frame.check(false, true);
