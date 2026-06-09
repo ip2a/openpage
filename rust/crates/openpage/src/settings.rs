@@ -1370,6 +1370,13 @@ pub(crate) fn invalid_session_proxy_message(kind: &str, proxy: &str, err: &str) 
     }
 }
 
+pub(crate) fn session_client_build_failed_message(err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("构建 session client 失败: {err}"),
+        _ => format!("failed to build session client: {err}"),
+    }
+}
+
 pub(crate) fn session_identity_parse_failed_message(err: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("解析 session identity 失败: {err}"),
@@ -1952,8 +1959,9 @@ mod tests {
         screenshot_clip_order_message, select_element_required_message,
         session_backed_element_driver_target_message,
         session_backed_web_element_driver_actions_message, session_cert_read_failed_message,
-        session_download_retry_loop_exited_message, session_page_no_current_url_message,
-        session_page_no_loaded_document_message, session_request_retry_loop_exited_message,
+        session_client_build_failed_message, session_download_retry_loop_exited_message,
+        session_page_no_current_url_message, session_page_no_loaded_document_message,
+        session_request_retry_loop_exited_message,
         set_file_input_requires_at_least_one_file_message,
         shadow_root_object_id_unavailable_message, snapshot_fragment_root_not_found_message,
         snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
@@ -2199,6 +2207,10 @@ mod tests {
         assert_eq!(
             session_cert_read_failed_message("cert", "/tmp/client.pem", "not found"),
             "failed to read cert /tmp/client.pem: not found"
+        );
+        assert_eq!(
+            session_client_build_failed_message("bad tls config"),
+            "failed to build session client: bad tls config"
         );
         assert_eq!(
             session_request_retry_loop_exited_message(),
@@ -2723,6 +2735,10 @@ mod tests {
         assert_eq!(
             session_cert_read_failed_message("cert", "/tmp/client.pem", "not found"),
             "读取 session 证书 /tmp/client.pem 失败: not found"
+        );
+        assert_eq!(
+            session_client_build_failed_message("bad tls config"),
+            "构建 session client 失败: bad tls config"
         );
         assert_eq!(
             session_request_retry_loop_exited_message(),
