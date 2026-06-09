@@ -304,6 +304,7 @@ pub enum SelectIndexInput {
 
 pub enum SelectOptionInput<'a> {
     Single(&'a Element),
+    OwnedSingle(Element),
     Many(Vec<&'a Element>),
 }
 
@@ -346,6 +347,12 @@ impl<'a, const N: usize> From<&'a [usize; N]> for SelectIndexInput {
 impl<'a> From<&'a Element> for SelectOptionInput<'a> {
     fn from(value: &'a Element) -> Self {
         Self::Single(value)
+    }
+}
+
+impl From<Element> for SelectOptionInput<'_> {
+    fn from(value: Element) -> Self {
+        Self::OwnedSingle(value)
     }
 }
 
@@ -2466,6 +2473,7 @@ impl Element {
     {
         match option.into() {
             SelectOptionInput::Single(option) => self.select_by_option_value(option),
+            SelectOptionInput::OwnedSingle(option) => self.select_by_option_value(&option),
             SelectOptionInput::Many(options) => self.select_by_options(&options),
         }
     }
@@ -2501,6 +2509,7 @@ impl Element {
     {
         match option.into() {
             SelectOptionInput::Single(option) => self.cancel_by_option_value(option),
+            SelectOptionInput::OwnedSingle(option) => self.cancel_by_option_value(&option),
             SelectOptionInput::Many(options) => self.cancel_by_options(&options),
         }
     }

@@ -208,12 +208,19 @@ pub struct WebPageLoadModeSetter<'a> {
 
 pub enum WebSelectOptionInput<'a> {
     Single(&'a WebElement),
+    OwnedSingle(WebElement),
     Many(Vec<&'a WebElement>),
 }
 
 impl<'a> From<&'a WebElement> for WebSelectOptionInput<'a> {
     fn from(value: &'a WebElement) -> Self {
         Self::Single(value)
+    }
+}
+
+impl From<WebElement> for WebSelectOptionInput<'_> {
+    fn from(value: WebElement) -> Self {
+        Self::OwnedSingle(value)
     }
 }
 
@@ -3505,6 +3512,7 @@ impl WebElement {
     {
         match option.into() {
             WebSelectOptionInput::Single(option) => self.select_by_option_value(option),
+            WebSelectOptionInput::OwnedSingle(option) => self.select_by_option_value(&option),
             WebSelectOptionInput::Many(options) => self.select_by_options(&options),
         }
     }
@@ -3685,6 +3693,7 @@ impl WebElement {
     {
         match option.into() {
             WebSelectOptionInput::Single(option) => self.cancel_by_option_value(option),
+            WebSelectOptionInput::OwnedSingle(option) => self.cancel_by_option_value(&option),
             WebSelectOptionInput::Many(options) => self.cancel_by_options(&options),
         }
     }
@@ -10862,7 +10871,27 @@ mod tests {
             let _ = element.drag_to(target, 0.1);
         }
 
+        fn assert_owned_element_option_select(element: &Element, option: Element) {
+            let _ = element.select().by_option(option);
+        }
+
+        fn assert_owned_element_option_cancel(element: &Element, option: Element) {
+            let _ = element.select().cancel_by_option(option);
+        }
+
+        fn assert_owned_webelement_option_select(element: &WebElement, option: WebElement) {
+            let _ = element.select().by_option(option);
+        }
+
+        fn assert_owned_webelement_option_cancel(element: &WebElement, option: WebElement) {
+            let _ = element.select().cancel_by_option(option);
+        }
+
         let _ = assert_owned_element_drag_target as fn(&Element, Element);
+        let _ = assert_owned_element_option_select as fn(&Element, Element);
+        let _ = assert_owned_element_option_cancel as fn(&Element, Element);
+        let _ = assert_owned_webelement_option_select as fn(&WebElement, WebElement);
+        let _ = assert_owned_webelement_option_cancel as fn(&WebElement, WebElement);
     }
 
     #[test]
