@@ -84,11 +84,12 @@ use crate::settings::{
     cdp_timeout_duration, clipboard_secure_context_required_message,
     component_state_lock_poisoned_message, default_none_element_runtime_config,
     drag_in_file_path_empty_message, drag_in_requires_file_path_message,
-    frame_element_missing_frame_id_message, frame_execution_context_unavailable_message,
-    frame_html_unavailable_message, frame_index_must_start_message,
-    frame_index_out_of_range_message, invalid_cookie_same_site_message, invalid_file_url_message,
-    invalid_url_message, javascript_execution_timed_out_message, launched_browser_only_message,
-    no_new_tab_message, page_connect_timed_out_message, page_operation_failed_message,
+    frame_element_missing_frame_id_message, frame_element_not_found_message,
+    frame_execution_context_unavailable_message, frame_html_unavailable_message,
+    frame_index_must_start_message, frame_index_out_of_range_message,
+    invalid_cookie_same_site_message, invalid_file_url_message, invalid_url_message,
+    javascript_execution_timed_out_message, launched_browser_only_message, no_new_tab_message,
+    page_connect_timed_out_message, page_operation_failed_message,
     permission_origin_required_message, permission_origin_scheme_message,
     permission_setting_invalid_message, resolved_frame_owner_missing_object_id_message,
     screenshot_clip_complete_message, screenshot_clip_order_message,
@@ -1778,8 +1779,11 @@ impl Frame {
                 let _ = element.remove_attr(PAGE_MARKER_ATTRIBUTE);
                 Ok(Some(element))
             }
-            other => Err(OpenPageError::JavaScript(format!(
-                "frame active element returned unexpected value: {other}"
+            other => Err(OpenPageError::JavaScript(value_did_not_return_message(
+                "frame active element",
+                "a string or null",
+                "字符串或 null",
+                &other.to_string(),
             ))),
         }
     }
@@ -1825,17 +1829,19 @@ impl Frame {
         let marker = next_page_marker();
         let script = frame_find_script(&locator, &marker)?;
         match self.run_js(&script)? {
-            Value::Null => Err(OpenPageError::ElementNotFound(format!(
-                "frame element not found: {}",
-                locator.raw()
-            ))),
+            Value::Null => Err(OpenPageError::ElementNotFound(
+                frame_element_not_found_message(locator.raw()),
+            )),
             Value::String(_) => {
                 let element = self.page.find(&marker_xpath(&marker))?;
                 let _ = element.remove_attr(PAGE_MARKER_ATTRIBUTE);
                 Ok(element)
             }
-            other => Err(OpenPageError::JavaScript(format!(
-                "frame find() returned unexpected value: {other}"
+            other => Err(OpenPageError::JavaScript(value_did_not_return_message(
+                "frame find()",
+                "a string or null",
+                "字符串或 null",
+                &other.to_string(),
             ))),
         }
     }

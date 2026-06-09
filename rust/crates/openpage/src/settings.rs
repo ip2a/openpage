@@ -1485,6 +1485,13 @@ pub(crate) fn frame_index_out_of_range_message(index: isize) -> String {
     }
 }
 
+pub(crate) fn frame_element_not_found_message(locator: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("frame 元素未找到: {locator}"),
+        _ => format!("frame element not found: {locator}"),
+    }
+}
+
 pub(crate) fn component_state_lock_poisoned_message(
     component_en: &str,
     component_zh_cn: &str,
@@ -1912,19 +1919,19 @@ mod tests {
         element_rect_corners_unexpected_value_message, element_resource_unavailable_message,
         element_tag_name_unavailable_message, element_top_frame_check_failed_message,
         file_chooser_backend_node_missing_message, frame_element_missing_frame_id_message,
-        frame_execution_context_unavailable_message, frame_html_unavailable_message,
-        frame_index_must_start_message, frame_index_out_of_range_message,
-        invalid_auto_port_scope_message, invalid_cookie_same_site_message,
-        invalid_download_file_exists_mode_message, invalid_file_url_message,
-        invalid_load_mode_message, invalid_options_manager_ini_literal_message,
-        invalid_regex_message, invalid_screencast_data_url_message,
-        invalid_session_ini_boolean_message, invalid_session_ini_field_expected_message,
-        invalid_session_ini_field_message, invalid_session_ini_python_string_message,
-        invalid_tab_index_message, invalid_url_message, invalid_xpath_html_message,
-        invalid_xpath_query_message, invalid_xpath_segment_index_message,
-        javascript_execution_timed_out_message, launched_browser_only_message,
-        missing_session_ini_field_message, multi_select_action_required_message,
-        no_new_tab_message, page_connect_timed_out_message,
+        frame_element_not_found_message, frame_execution_context_unavailable_message,
+        frame_html_unavailable_message, frame_index_must_start_message,
+        frame_index_out_of_range_message, invalid_auto_port_scope_message,
+        invalid_cookie_same_site_message, invalid_download_file_exists_mode_message,
+        invalid_file_url_message, invalid_load_mode_message,
+        invalid_options_manager_ini_literal_message, invalid_regex_message,
+        invalid_screencast_data_url_message, invalid_session_ini_boolean_message,
+        invalid_session_ini_field_expected_message, invalid_session_ini_field_message,
+        invalid_session_ini_python_string_message, invalid_tab_index_message, invalid_url_message,
+        invalid_xpath_html_message, invalid_xpath_query_message,
+        invalid_xpath_segment_index_message, javascript_execution_timed_out_message,
+        launched_browser_only_message, missing_session_ini_field_message,
+        multi_select_action_required_message, no_new_tab_message, page_connect_timed_out_message,
         parent_element_index_must_start_message, parent_element_level_must_start_message,
         parent_element_not_found_message, permission_origin_required_message,
         permission_origin_scheme_message, permission_setting_invalid_message,
@@ -3152,6 +3159,10 @@ mod tests {
             "frame index out of range: 3"
         );
         assert_eq!(
+            frame_element_not_found_message("css:#missing"),
+            "frame element not found: css:#missing"
+        );
+        assert_eq!(
             frame_html_unavailable_message(),
             "frame html is unavailable"
         );
@@ -3187,6 +3198,10 @@ mod tests {
             "frame 序号必须从 1 开始，或使用从 -1 开始的负序号"
         );
         assert_eq!(frame_index_out_of_range_message(3), "frame 序号超出范围: 3");
+        assert_eq!(
+            frame_element_not_found_message("css:#missing"),
+            "frame 元素未找到: css:#missing"
+        );
         assert_eq!(frame_html_unavailable_message(), "frame html 不可用");
         assert_eq!(element_html_unavailable_message(), "element html 不可用");
         assert_eq!(
