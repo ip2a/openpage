@@ -28,8 +28,8 @@ use crate::page::{
 };
 use crate::screencast::Screencast;
 use crate::session::{
-    CookieEntry, CookieInput, HeadersInput, SessionDownload, SessionElement, SessionOptions,
-    SessionPage, SessionXPathResult,
+    CookieEntry, CookieInput, HeadersInput, SessionDownload, SessionElement, SessionEncodingInput,
+    SessionOptions, SessionPage, SessionXPathResult,
 };
 use crate::settings::{
     component_state_lock_poisoned_message, driver_mode_only_message,
@@ -4601,7 +4601,10 @@ impl WebPage {
         }
     }
 
-    pub fn set_encoding(&self, encoding: Option<String>) -> OpenPageResult<()> {
+    pub fn set_encoding<E>(&self, encoding: E) -> OpenPageResult<()>
+    where
+        E: Into<SessionEncodingInput>,
+    {
         match self.mode()? {
             WebMode::Driver => Ok(()),
             WebMode::Session => self.session.set_encoding(encoding),
@@ -6673,7 +6676,10 @@ impl WebPageSetter<'_> {
         self.page.set_user_agent(user_agent, platform)
     }
 
-    pub fn encoding(&self, encoding: Option<String>) -> OpenPageResult<()> {
+    pub fn encoding<E>(&self, encoding: E) -> OpenPageResult<()>
+    where
+        E: Into<SessionEncodingInput>,
+    {
         self.page.set_encoding(encoding)
     }
 
@@ -9441,7 +9447,8 @@ mod tests {
             let _ = web_page.timeouts();
             let _ = web_page.set_retry(Some(5), Some(0.25));
             let _ = web_page.set_timeouts(Some(1.5), Some(6.0), Some(0.75));
-            let _ = web_page.set_encoding(Some("utf-8".to_string()));
+            let _ = web_page.set_encoding("utf-8");
+            let _ = web_page.set_encoding(None);
         }
 
         let _ = assert_calls as fn(&Page, &WebPage);
@@ -9528,7 +9535,8 @@ mod tests {
                 .set()
                 .headers([("Accept", "text/html"), ("X-Test", "1")]);
             let _ = web_page.set().user_agent("demo-agent", Some("linux"));
-            let _ = web_page.set().encoding(Some("utf-8".to_string()));
+            let _ = web_page.set().encoding("utf-8");
+            let _ = web_page.set().encoding(None);
             let _ = web_page.set().session_storage("foo", Some("bar"));
             let _ = web_page.set().local_storage("foo", Some("bar"));
             let _ = web_page.set().auto_handle_alert(Some(true), Some("ok"));

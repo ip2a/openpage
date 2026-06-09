@@ -63,10 +63,10 @@ pub use screencast::{Screencast, ScreencastMode};
 pub use session::{
     CookieEntry, CookieInput, HeadersInput, ParamsInput, SessionAdapter, SessionAdapterMount,
     SessionAuthInput, SessionCert, SessionCertInput, SessionCookie, SessionCookieParam,
-    SessionDownload, SessionElement, SessionHandle, SessionHookEvent, SessionHooks,
-    SessionMaxRedirectsInput, SessionOptions, SessionPage, SessionPageSetter, SessionProxyInput,
-    SessionRequestOptions, SessionResponseHook, SessionResponseInfo, SessionRuntimeInfo,
-    SessionUserAgentInput, SessionXPathResult,
+    SessionDownload, SessionElement, SessionEncodingInput, SessionHandle, SessionHookEvent,
+    SessionHooks, SessionMaxRedirectsInput, SessionOptions, SessionPage, SessionPageSetter,
+    SessionProxyInput, SessionRequestOptions, SessionResponseHook, SessionResponseInfo,
+    SessionRuntimeInfo, SessionUserAgentInput, SessionXPathResult,
 };
 pub use settings::{Settings, SettingsChain, SettingsSnapshot};
 pub use shadow_root::ShadowRoot;

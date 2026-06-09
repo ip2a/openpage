@@ -106,6 +106,12 @@ pub enum SessionMaxRedirectsInput {
     Max(usize),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionEncodingInput {
+    None,
+    Encoding(String),
+}
+
 impl<'a> From<&'a str> for HeadersInput<'a> {
     fn from(value: &'a str) -> Self {
         Self::Text(Cow::Borrowed(value))
@@ -365,6 +371,27 @@ impl From<Option<usize>> for SessionMaxRedirectsInput {
     fn from(value: Option<usize>) -> Self {
         match value {
             Some(max_redirects) => Self::Max(max_redirects),
+            None => Self::None,
+        }
+    }
+}
+
+impl From<&str> for SessionEncodingInput {
+    fn from(value: &str) -> Self {
+        Self::Encoding(value.to_string())
+    }
+}
+
+impl From<String> for SessionEncodingInput {
+    fn from(value: String) -> Self {
+        Self::Encoding(value)
+    }
+}
+
+impl From<Option<String>> for SessionEncodingInput {
+    fn from(value: Option<String>) -> Self {
+        match value {
+            Some(encoding) => Self::Encoding(encoding),
             None => Self::None,
         }
     }
@@ -1398,6 +1425,16 @@ where
     }
 }
 
+fn session_encoding_input<E>(encoding: E) -> Option<String>
+where
+    E: Into<SessionEncodingInput>,
+{
+    match encoding.into() {
+        SessionEncodingInput::None => None,
+        SessionEncodingInput::Encoding(encoding) => Some(encoding),
+    }
+}
+
 fn parse_session_params(value: &str) -> OpenPageResult<Vec<(String, String)>> {
     match parse_ini_json_like_value(value, "params")? {
         Value::Null => Ok(Vec::new()),
@@ -2314,7 +2351,10 @@ impl SessionPageSetter<'_> {
         self.page.set_download_path(path)
     }
 
-    pub fn encoding(&self, encoding: Option<String>) -> OpenPageResult<()> {
+    pub fn encoding<E>(&self, encoding: E) -> OpenPageResult<()>
+    where
+        E: Into<SessionEncodingInput>,
+    {
         self.page.set_encoding(encoding)
     }
 
@@ -3387,9 +3427,12 @@ impl SessionPage {
         rebuild_session_client(&mut state)
     }
 
-    pub fn set_encoding(&self, encoding: Option<String>) -> OpenPageResult<()> {
+    pub fn set_encoding<E>(&self, encoding: E) -> OpenPageResult<()>
+    where
+        E: Into<SessionEncodingInput>,
+    {
         let mut state = self.lock_state()?;
-        state.forced_encoding = encoding;
+        state.forced_encoding = session_encoding_input(encoding);
         refresh_state_body_encoding(&mut state);
         Ok(())
     }
@@ -10271,7 +10314,9 @@ mod tests {
             let _ = setter.retry_times(4);
             let _ = setter.retry_interval(500);
             let _ = setter.download_path(std::path::Path::new("/tmp/openpage-downloads"));
-            let _ = setter.encoding(Some("utf-8".to_string()));
+            let _ = page.set_encoding("utf-8");
+            let _ = setter.encoding("utf-8");
+            let _ = setter.encoding(None);
             let _ = page.set_params([("q", "openpage"), ("page", "1")]);
             let _ = setter.params(&params);
             let _ = setter.params([("q", "openpage"), ("page", "1")]);
