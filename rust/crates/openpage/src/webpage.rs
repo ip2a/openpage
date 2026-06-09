@@ -1182,16 +1182,24 @@ impl WebFrame {
         self.frame().snapshot_find(locator)
     }
 
-    pub fn s_ele(&self, locator: &str) -> OpenPageResult<SessionElement> {
-        self.snapshot_find(locator)
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        self.snapshot_find(locator.raw())
     }
 
     pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
         self.frame().snapshot_find_all(locator)
     }
 
-    pub fn s_eles(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
-        self.snapshot_find_all(locator)
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        self.snapshot_find_all(locator.raw())
     }
 
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
@@ -1341,8 +1349,12 @@ impl WebElement {
         }
     }
 
-    pub fn s_ele(&self, locator: &str) -> OpenPageResult<SessionElement> {
-        self.snapshot_find(locator)
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        self.snapshot_find(locator.raw())
     }
 
     pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
@@ -1354,8 +1366,12 @@ impl WebElement {
         }
     }
 
-    pub fn s_eles(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
-        self.snapshot_find_all(locator)
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        self.snapshot_find_all(locator.raw())
     }
 
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
@@ -5373,8 +5389,12 @@ impl WebPage {
         }
     }
 
-    pub fn s_ele(&self, locator: &str) -> OpenPageResult<SessionElement> {
-        self.snapshot_find(locator)
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        self.snapshot_find(locator.raw())
     }
 
     pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
@@ -5384,8 +5404,12 @@ impl WebPage {
         }
     }
 
-    pub fn s_eles(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
-        self.snapshot_find_all(locator)
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        self.snapshot_find_all(locator.raw())
     }
 
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
@@ -6853,7 +6877,7 @@ mod tests {
 
         assert_eq!(
             element
-                .s_ele("#root")
+                .s_ele((By::ID, "root"))
                 .expect("s_ele should find session element")
                 .attr("id")
                 .expect("id attr should read"),
@@ -6861,7 +6885,7 @@ mod tests {
         );
         assert_eq!(
             element
-                .s_eles(".item")
+                .s_eles((By::CLASS_NAME, "item"))
                 .expect("s_eles should find session elements")
                 .len(),
             2
@@ -8498,22 +8522,54 @@ mod tests {
             web_page: &WebPage,
             web_frame: &WebFrame,
             web_element: &WebElement,
+            session_page: &SessionPage,
+            session_element: &SessionElement,
         ) {
             let _ = page.s_ele("#root");
+            let _ = page.s_ele((By::ID, "root"));
             let _ = page.s_eles(".item");
+            let _ = page.s_eles((By::CLASS_NAME, "item"));
             let _ = frame.s_ele("#root");
+            let _ = frame.s_ele((By::ID, "root"));
             let _ = frame.s_eles(".item");
+            let _ = frame.s_eles((By::CLASS_NAME, "item"));
             let _ = element.s_ele("#root");
+            let _ = element.s_ele((By::ID, "root"));
             let _ = element.s_eles(".item");
+            let _ = element.s_eles((By::CLASS_NAME, "item"));
             let _ = web_page.s_ele("#root");
+            let _ = web_page.s_ele((By::ID, "root"));
             let _ = web_page.s_eles(".item");
+            let _ = web_page.s_eles((By::CLASS_NAME, "item"));
             let _ = web_frame.s_ele("#root");
+            let _ = web_frame.s_ele((By::ID, "root"));
             let _ = web_frame.s_eles(".item");
+            let _ = web_frame.s_eles((By::CLASS_NAME, "item"));
             let _ = web_element.s_ele("#root");
+            let _ = web_element.s_ele((By::ID, "root"));
             let _ = web_element.s_eles(".item");
+            let _ = web_element.s_eles((By::CLASS_NAME, "item"));
+            let _ = session_page.s_ele("#root");
+            let _ = session_page.s_ele((By::ID, "root"));
+            let _ = session_page.s_eles(".item");
+            let _ = session_page.s_eles((By::CLASS_NAME, "item"));
+            let _ = session_element.s_ele("#root");
+            let _ = session_element.s_ele((By::ID, "root"));
+            let _ = session_element.s_eles(".item");
+            let _ = session_element.s_eles((By::CLASS_NAME, "item"));
         }
 
-        let _ = assert_calls as fn(&Page, &Frame, &Element, &WebPage, &WebFrame, &WebElement);
+        let _ = assert_calls
+            as fn(
+                &Page,
+                &Frame,
+                &Element,
+                &WebPage,
+                &WebFrame,
+                &WebElement,
+                &SessionPage,
+                &SessionElement,
+            );
     }
 
     #[test]
