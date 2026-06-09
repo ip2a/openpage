@@ -2120,6 +2120,10 @@ impl Frame {
             .get_screenshot(path, name, scroll_to_center, timeout_ms)
     }
 
+    pub fn save_screenshot(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
+        self.frame_element.save_screenshot(path)
+    }
+
     pub fn scroll_to_top(&self) -> OpenPageResult<()> {
         self.run_js(
             "(document.scrollingElement.scrollTo(document.scrollingElement.scrollLeft, 0), true)",

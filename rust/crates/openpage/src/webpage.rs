@@ -1006,6 +1006,10 @@ impl WebFrame {
             .get_screenshot(path, name, scroll_to_center, timeout_ms)
     }
 
+    pub fn save_screenshot(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
+        self.frame().save_screenshot(path)
+    }
+
     pub fn scroll_to_top(&self) -> OpenPageResult<()> {
         self.frame().scroll_to_top()
     }
@@ -8921,6 +8925,7 @@ mod tests {
             let _ = frame.get("https://example.test/frame");
             let _ = frame.goto("https://example.test/frame");
             let _ = frame.refresh_with_options(true);
+            let _ = frame.save_screenshot("/tmp/frame.png");
 
             let _ = web_page.set_upload_files(&files);
             let _ = web_page.set_upload_paths(&files);
@@ -8988,6 +8993,7 @@ mod tests {
             let _ = web_frame.get("https://example.test/frame");
             let _ = web_frame.goto("https://example.test/frame");
             let _ = web_frame.refresh_with_options(true);
+            let _ = web_frame.save_screenshot("/tmp/web-frame.png");
         }
 
         let _ = assert_calls as fn(&Frame, &WebPage, &WebFrame);
