@@ -77,6 +77,11 @@ pub enum HeadersInput<'a> {
     Pairs(Vec<(Cow<'a, str>, Cow<'a, str>)>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParamsInput<'a> {
+    Pairs(Vec<(Cow<'a, str>, Cow<'a, str>)>),
+}
+
 impl<'a> From<&'a str> for HeadersInput<'a> {
     fn from(value: &'a str) -> Self {
         Self::Text(Cow::Borrowed(value))
@@ -169,6 +174,90 @@ impl<'a> From<&'a HashMap<String, String>> for HeadersInput<'a> {
 }
 
 impl From<HashMap<String, String>> for HeadersInput<'_> {
+    fn from(value: HashMap<String, String>) -> Self {
+        Self::Pairs(
+            value
+                .into_iter()
+                .map(|(name, value)| (Cow::Owned(name), Cow::Owned(value)))
+                .collect(),
+        )
+    }
+}
+
+impl<'a> From<&'a [(String, String)]> for ParamsInput<'a> {
+    fn from(value: &'a [(String, String)]) -> Self {
+        Self::Pairs(
+            value
+                .iter()
+                .map(|(name, value)| (Cow::Borrowed(name.as_str()), Cow::Borrowed(value.as_str())))
+                .collect(),
+        )
+    }
+}
+
+impl<'a, const N: usize> From<&'a [(String, String); N]> for ParamsInput<'a> {
+    fn from(value: &'a [(String, String); N]) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl<'a> From<&'a Vec<(String, String)>> for ParamsInput<'a> {
+    fn from(value: &'a Vec<(String, String)>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl From<Vec<(String, String)>> for ParamsInput<'_> {
+    fn from(value: Vec<(String, String)>) -> Self {
+        Self::Pairs(
+            value
+                .into_iter()
+                .map(|(name, value)| (Cow::Owned(name), Cow::Owned(value)))
+                .collect(),
+        )
+    }
+}
+
+impl<'a> From<&'a [(&'a str, &'a str)]> for ParamsInput<'a> {
+    fn from(value: &'a [(&'a str, &'a str)]) -> Self {
+        Self::Pairs(
+            value
+                .iter()
+                .map(|(name, value)| (Cow::Borrowed(*name), Cow::Borrowed(*value)))
+                .collect(),
+        )
+    }
+}
+
+impl<'a, const N: usize> From<&'a [(&'a str, &'a str); N]> for ParamsInput<'a> {
+    fn from(value: &'a [(&'a str, &'a str); N]) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl<'a, const N: usize> From<[(&'a str, &'a str); N]> for ParamsInput<'a> {
+    fn from(value: [(&'a str, &'a str); N]) -> Self {
+        Self::Pairs(
+            value
+                .into_iter()
+                .map(|(name, value)| (Cow::Borrowed(name), Cow::Borrowed(value)))
+                .collect(),
+        )
+    }
+}
+
+impl<'a> From<&'a HashMap<String, String>> for ParamsInput<'a> {
+    fn from(value: &'a HashMap<String, String>) -> Self {
+        Self::Pairs(
+            value
+                .iter()
+                .map(|(name, value)| (Cow::Borrowed(name.as_str()), Cow::Borrowed(value.as_str())))
+                .collect(),
+        )
+    }
+}
+
+impl From<HashMap<String, String>> for ParamsInput<'_> {
     fn from(value: HashMap<String, String>) -> Self {
         Self::Pairs(
             value
@@ -558,8 +647,11 @@ impl SessionOptions {
         self
     }
 
-    pub fn set_params(&mut self, params: &[(String, String)]) -> &mut Self {
-        self.params = params.to_vec();
+    pub fn set_params<'a, P>(&mut self, params: P) -> &mut Self
+    where
+        P: Into<ParamsInput<'a>>,
+    {
+        self.params = params_input_pairs(params);
         self
     }
 
@@ -1031,6 +1123,18 @@ fn parse_header_line(line: &str) -> OpenPageResult<(String, String)> {
         return Err(OpenPageError::Http(invalid_header_line_message(line)));
     }
     Ok((name.to_string(), value.trim_start().to_string()))
+}
+
+fn params_input_pairs<'a, P>(params: P) -> Vec<(String, String)>
+where
+    P: Into<ParamsInput<'a>>,
+{
+    match params.into() {
+        ParamsInput::Pairs(pairs) => pairs
+            .into_iter()
+            .map(|(name, value)| (name.into_owned(), value.into_owned()))
+            .collect(),
+    }
 }
 
 fn parse_session_params(value: &str) -> OpenPageResult<Vec<(String, String)>> {
@@ -1950,7 +2054,10 @@ impl SessionPageSetter<'_> {
         self.page.set_encoding(encoding)
     }
 
-    pub fn params(&self, params: &[(String, String)]) -> OpenPageResult<()> {
+    pub fn params<'a, P>(&self, params: P) -> OpenPageResult<()>
+    where
+        P: Into<ParamsInput<'a>>,
+    {
         self.page.set_params(params)
     }
 
@@ -2929,8 +3036,11 @@ impl SessionPage {
         Ok(())
     }
 
-    pub fn set_params(&self, params: &[(String, String)]) -> OpenPageResult<()> {
-        self.lock_state()?.params = params.to_vec();
+    pub fn set_params<'a, P>(&self, params: P) -> OpenPageResult<()>
+    where
+        P: Into<ParamsInput<'a>>,
+    {
+        self.lock_state()?.params = params_input_pairs(params);
         Ok(())
     }
 
@@ -7208,7 +7318,7 @@ mod tests {
             .set_proxies(Some("http://127.0.0.1:8080".to_string()), None)
             .set_download_path("downloads")
             .set_auth(Some(("alice".to_string(), "secret".to_string())))
-            .set_params(&[("page".to_string(), "2".to_string())])
+            .set_params([("page", "2")])
             .set_cert(Some(SessionCert::Pem(std::path::PathBuf::from(
                 "client.pem",
             ))))
@@ -9853,6 +9963,8 @@ mod tests {
             let setter = page.set();
             let headers = [("Accept".to_string(), "text/html".to_string())];
             let params = [("q".to_string(), "openpage".to_string())];
+            let mut param_map = std::collections::HashMap::new();
+            param_map.insert("q".to_string(), "openpage".to_string());
             let cookie = SessionCookieParam {
                 name: "sid".to_string(),
                 value: "1".to_string(),
@@ -9873,7 +9985,10 @@ mod tests {
             let _ = setter.retry_interval(500);
             let _ = setter.download_path(std::path::Path::new("/tmp/openpage-downloads"));
             let _ = setter.encoding(Some("utf-8".to_string()));
+            let _ = page.set_params([("q", "openpage"), ("page", "1")]);
             let _ = setter.params(&params);
+            let _ = setter.params([("q", "openpage"), ("page", "1")]);
+            let _ = setter.params(&param_map);
             let _ = setter.auth(Some(("user".to_string(), "pass".to_string())));
             let _ = setter.hooks(SessionHooks::default());
             let _ = setter.stream(true);

@@ -61,8 +61,8 @@ pub use page::{
 };
 pub use screencast::{Screencast, ScreencastMode};
 pub use session::{
-    CookieEntry, CookieInput, HeadersInput, SessionAdapter, SessionAdapterMount, SessionCert,
-    SessionCookie, SessionCookieParam, SessionDownload, SessionElement, SessionHandle,
+    CookieEntry, CookieInput, HeadersInput, ParamsInput, SessionAdapter, SessionAdapterMount,
+    SessionCert, SessionCookie, SessionCookieParam, SessionDownload, SessionElement, SessionHandle,
     SessionHookEvent, SessionHooks, SessionOptions, SessionPage, SessionPageSetter,
     SessionRequestOptions, SessionResponseHook, SessionResponseInfo, SessionRuntimeInfo,
     SessionXPathResult,
