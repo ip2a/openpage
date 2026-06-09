@@ -23,7 +23,7 @@ pub mod window;
 pub use alert::AlertTracker;
 pub use browser::{
     Browser, BrowserPageUrlInput, BrowserTabReference, BrowserTabSelector, BrowserTabTargetsInput,
-    BrowserTabTypeInput, DownloadFileExistsMode, LaunchOptions, LoadMode, TabInfo,
+    BrowserTabTypeInput, DownloadFileExistsMode, LaunchOptions, LoadMode, TabInfo, TimeoutConfig,
 };
 pub use config::{
     ConfigValueSource, OPENPAGE_BROWSER_HEADLESS_ENV, OPENPAGE_BROWSER_HEIGHT_ENV,
@@ -37,7 +37,8 @@ pub use console::{Console, ConsoleMessage, ConsoleSteps};
 pub use download::{DownloadInfo, DownloadMission, DownloadState};
 pub use element::{
     Element, ElementClicker, ElementDragTarget, ElementRect, ElementResource, ElementScroller,
-    ElementSelector, ElementSetter, ElementStates, ElementWait,
+    ElementSelector, ElementSetter, ElementStates, ElementWait, SelectIndexInput,
+    SelectOptionInput,
 };
 pub use element_list::{
     ElementListAttrsItem, ElementListContentItem, ElementListDriverItem, ElementListItem,
@@ -53,13 +54,14 @@ pub use listener::{
     ListenerFailInfo, ListenerPacket, ListenerRequest, ListenerRequestExtraInfo, ListenerResponse,
     ListenerResponseExtraInfo, ListenerSteps,
 };
-pub use locator::{Locator, LocatorInput, LocatorKind, LocatorMatch};
+pub use locator::{Locator, LocatorBatchInput, LocatorInput, LocatorKind, LocatorMatch};
 pub use options_manager::OptionsManager;
 pub use page::{
     Actions, ActionsDragData, ActionsInput, ActionsTarget, DisconnectedFrame, DisconnectedPage,
     Frame, FrameCookieSetter, FrameRect, FrameScroller, FrameSetter, FrameStates, FrameWait, Page,
     PageCookieSetter, PageElementContent, PageElementInfo, PageElementTarget, PageFrameTarget,
-    PageLoadModeSetter, PageSaveContent, PageScroller, PageSetter, PageWindowSetter,
+    PageLoadModeSetter, PageNavigationSnapshot, PageSaveContent, PageScroller, PageSetter,
+    PageWindowSetter,
 };
 pub use screencast::{Screencast, ScreencastMode};
 pub use session::{
@@ -84,7 +86,7 @@ pub use webpage::{
     DisconnectedWebFrame, DisconnectedWebPage, WebElement, WebElementClicker, WebElementDragTarget,
     WebElementRect, WebElementScroller, WebElementSelector, WebElementSetter, WebElementStates,
     WebElementWait, WebFrame, WebMode, WebPage, WebPageCookieSetter, WebPageLoadModeSetter,
-    WebPageScroller, WebPageSetter, WebPageWindowSetter,
+    WebPageScroller, WebPageSetter, WebPageWindowSetter, WebSelectOptionInput,
 };
 pub use window::{activate_app, set_app_visibility};
 
@@ -106,9 +108,10 @@ mod tests {
         ChromiumTab, Element, ElementListAttrsItem, ElementListContentItem, ElementListMetaItem,
         ElementRect, ElementStates, ElementWait, ElementsOneClicker, ElementsOneOwned,
         ElementsOneRect, ElementsOneScroller, ElementsOneSelector, ElementsOneSetter,
-        ElementsOneStates, ElementsOneWait, Frame, LaunchOptions, MixTab, NoneElement, Page,
-        SessionElement, SessionNoneElement, WebElement, WebElementRect, WebElementStates,
-        WebElementWait, WebNoneElement, WebPage,
+        ElementsOneStates, ElementsOneWait, Frame, LaunchOptions, LocatorBatchInput, MixTab,
+        NoneElement, Page, PageNavigationSnapshot, SelectIndexInput, SelectOptionInput,
+        SessionElement, SessionNoneElement, TimeoutConfig, WebElement, WebElementRect,
+        WebElementStates, WebElementWait, WebNoneElement, WebPage, WebSelectOptionInput,
     };
 
     #[test]
@@ -176,5 +179,23 @@ mod tests {
         assert_content_item::<Element>();
         assert_attrs_item::<Element>();
         assert_meta_item::<Element>();
+    }
+
+    #[test]
+    fn public_input_and_snapshot_types_are_exported() {
+        let _ = (|_: &TimeoutConfig,
+                  _: &LocatorBatchInput<'_>,
+                  _: &SelectIndexInput,
+                  _: &SelectOptionInput<'_>,
+                  _: &WebSelectOptionInput<'_>,
+                  _: &PageNavigationSnapshot| {})
+            as fn(
+                &TimeoutConfig,
+                &LocatorBatchInput<'_>,
+                &SelectIndexInput,
+                &SelectOptionInput<'_>,
+                &WebSelectOptionInput<'_>,
+                &PageNavigationSnapshot,
+            );
     }
 }
