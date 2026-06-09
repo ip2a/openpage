@@ -12523,6 +12523,12 @@ mod tests {
                 same_handle.ele(".does-not-exist")?.text()?,
                 Some("missing".to_string())
             );
+            let host = page.find("css:body")?;
+            let same_handle_from_element = host.get_frame(&frame)?;
+            assert_eq!(
+                same_handle_from_element.ele(".does-not-exist")?.text()?,
+                Some("missing".to_string())
+            );
 
             let fresh_frame = page.get_frame_context("css:#demo-frame")?;
             assert_eq!(fresh_frame.ele(".does-not-exist")?.text()?, None);

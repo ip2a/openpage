@@ -3104,7 +3104,16 @@ impl Element {
     where
         L: Into<PageFrameTarget<'a>>,
     {
-        let frame_element = self.resolve_frame_target(target.into())?;
+        let target = target.into();
+        if let PageFrameTarget::Frame(frame) = target {
+            self.resolve_frame_target(target)?;
+            return Ok(frame.clone());
+        }
+        if let PageFrameTarget::WebFrame(frame) = target {
+            self.resolve_frame_target(target)?;
+            return Ok(frame.frame().clone());
+        }
+        let frame_element = self.resolve_frame_target(target)?;
         self.page_wrapper().frame_from_element(frame_element)
     }
 
