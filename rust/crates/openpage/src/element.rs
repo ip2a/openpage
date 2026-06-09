@@ -3812,13 +3812,13 @@ impl Element {
 
     fn clickable_point(&self) -> OpenPageResult<Point> {
         self.runtime.block_on(async {
-            self.inner
-                .scroll_into_view()
-                .await
-                .map_err(|err| element_operation_error("scroll into view", err))?
-                .clickable_point()
-                .await
-                .map_err(|err| element_operation_error("resolve clickable point", err))
+            run_element_future_with_cdp_timeout(self.inner.scroll_into_view(), "scroll into view")
+                .await?;
+            run_element_future_with_cdp_timeout(
+                self.inner.clickable_point(),
+                "resolve clickable point",
+            )
+            .await
         })
     }
 
@@ -5578,6 +5578,32 @@ mod tests {
         assert!(
             matches!(move_error, crate::OpenPageError::Timeout(ref message) if message.contains("move mouse")),
             "unexpected move mouse timeout error: {move_error}"
+        );
+    }
+
+    #[test]
+    fn element_clickable_point_operations_respect_global_timeout_setting() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+        crate::Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("runtime");
+
+        let point_error = runtime
+            .block_on(run_element_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "resolve clickable point",
+            ))
+            .expect_err("element clickable point resolution should time out");
+
+        crate::Settings::reset();
+
+        assert!(
+            matches!(point_error, crate::OpenPageError::Timeout(ref message) if message.contains("resolve clickable point")),
+            "unexpected clickable point timeout error: {point_error}"
         );
     }
 
