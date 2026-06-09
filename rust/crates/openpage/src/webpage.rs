@@ -279,7 +279,7 @@ impl DisconnectedWebFrame {
 }
 
 impl WebFrame {
-    fn frame(&self) -> &Frame {
+    pub(crate) fn frame(&self) -> &Frame {
         match self {
             Self::Browser(frame) | Self::Mix { frame, .. } => frame,
         }
@@ -9632,6 +9632,12 @@ mod tests {
             let frame = page.get_frame("css:#demo-frame")?;
             assert!(frame.wait_for_doc_loaded(5_000)?);
             frame.set_none_element_value(Some("missing"), true)?;
+
+            let same_handle = page.get_frame(&frame)?;
+            assert_eq!(
+                same_handle.ele(".does-not-exist")?.text()?,
+                Some("missing".to_string())
+            );
 
             let fresh_frame = page.get_frame("css:#demo-frame")?;
             assert_eq!(fresh_frame.ele(".does-not-exist")?.text()?, None);

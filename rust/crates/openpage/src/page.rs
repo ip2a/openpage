@@ -2093,6 +2093,10 @@ impl Frame {
             self.resolve_frame_target(target)?;
             return Ok(frame.clone());
         }
+        if let PageFrameTarget::WebFrame(frame) = target {
+            self.resolve_frame_target(target)?;
+            return Ok(frame.frame().clone());
+        }
         self.page.frame_from_element(self.get_frame_ele(target)?)
     }
 
@@ -5007,6 +5011,10 @@ impl Page {
         if let PageFrameTarget::Frame(frame) = target {
             resolve_page_frame_target(self, target)?;
             return Ok(frame.clone());
+        }
+        if let PageFrameTarget::WebFrame(frame) = target {
+            resolve_page_frame_target(self, target)?;
+            return Ok(frame.frame().clone());
         }
         self.frame_from_element(self.get_frame_ele(target)?)
     }
