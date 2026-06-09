@@ -22,7 +22,7 @@ use chromiumoxide::cdp::browser_protocol::target::{
 };
 use futures::StreamExt;
 use tokio::runtime::Runtime;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, MutexGuard};
 use tokio::time::timeout as tokio_timeout;
 use url::Url;
 
@@ -1722,7 +1722,8 @@ impl Browser {
 
     pub fn version(&self) -> OpenPageResult<String> {
         self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
+            let browser =
+                lock_with_cdp_timeout(&self.inner.browser, "Browser::version().lock()").await?;
             let version =
                 run_browser_future_with_cdp_timeout(browser.version(), "Browser::version()")
                     .await?;
@@ -1854,7 +1855,9 @@ impl Browser {
 
     pub fn is_incognito(&self) -> OpenPageResult<bool> {
         self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
+            let browser =
+                lock_with_cdp_timeout(&self.inner.browser, "Browser::is_incognito().lock()")
+                    .await?;
             Ok(browser.is_incognito())
         })
     }
@@ -3960,6 +3963,17 @@ where
     })
 }
 
+async fn lock_with_cdp_timeout<'a, T>(
+    mutex: &'a Mutex<T>,
+    operation: &str,
+) -> OpenPageResult<MutexGuard<'a, T>> {
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, mutex.lock())
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))
+}
+
 async fn run_browser_future_with_cdp_timeout<Fut, T, E>(
     future: Fut,
     operation: &str,
@@ -4337,7 +4351,7 @@ mod tests {
         browser_tab_info_matches, browser_timeouts_lock_poisoned_error, create_download_directory,
         default_launch_options_ini_path, download_source_path, finalize_download_path,
         find_free_port, find_new_tab_id, is_tab_like_type, isolated_context_lock_poisoned_error,
-        make_temp_download_dir, make_temp_user_data_dir,
+        lock_with_cdp_timeout, make_temp_download_dir, make_temp_user_data_dir,
         mission_download_settings_lock_poisoned_error, normalize_browser_tab_types,
         page_download_settings_lock_poisoned_error, parse_browser_cookie_header_url,
         reset_browser_user_data_dir, resolve_browser_tab_target_id, resolve_browser_tab_target_ids,
@@ -4630,6 +4644,29 @@ mod tests {
             .expect_err("future error should fail in Chinese")
             .to_string();
         assert!(chinese.contains("浏览器命令 Browser::unit_test() 执行失败: boom"));
+    }
+
+    #[test]
+    fn browser_lock_wait_respects_cdp_timeout() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+
+        let error = runtime.block_on(async {
+            let mutex = tokio::sync::Mutex::new(());
+            let _guard = mutex.lock().await;
+            lock_with_cdp_timeout(&mutex, "Browser::unit_test().lock()")
+                .await
+                .expect_err("locked mutex should time out")
+        });
+
+        Settings::reset();
+
+        assert!(
+            matches!(error, crate::OpenPageError::Timeout(ref message) if message.contains("Browser::unit_test().lock()")),
+            "unexpected browser lock timeout error: {error}"
+        );
     }
 
     #[test]
