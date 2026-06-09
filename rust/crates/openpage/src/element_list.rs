@@ -739,6 +739,38 @@ impl ElementsOneOwned<Element> {
         }
     }
 
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        match self.as_option() {
+            Some(element) => match element.s_ele(locator) {
+                Ok(element) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.clone(),
+                )),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config.as_ref())? {
+                        return Err(err);
+                    }
+                    Ok(ElementsOneOwned::none_with_config(self.config.clone()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(ElementsOneOwned::none_with_config(self.config.clone())),
+        }
+    }
+
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        match self.as_option() {
+            Some(element) => element.s_eles(locator),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
         self.relative_element(|element| element.parent())
     }
@@ -1063,6 +1095,38 @@ impl ElementsOneOwned<WebElement> {
         }
     }
 
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        match self.as_option() {
+            Some(element) => match element.s_ele(locator) {
+                Ok(element) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.clone(),
+                )),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config.as_ref())? {
+                        return Err(err);
+                    }
+                    Ok(ElementsOneOwned::none_with_config(self.config.clone()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(ElementsOneOwned::none_with_config(self.config.clone())),
+        }
+    }
+
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        match self.as_option() {
+            Some(element) => element.s_eles(locator),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<WebElement>> {
         self.relative_element(|element| element.parent())
     }
@@ -1258,6 +1322,38 @@ impl ElementsOneOwned<SessionElement> {
     {
         match self.as_option() {
             Some(element) => element.eles(locator),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        match self.as_option() {
+            Some(element) => match element.s_ele(locator) {
+                Ok(element) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.clone(),
+                )),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config.as_ref())? {
+                        return Err(err);
+                    }
+                    Ok(Self::none_with_config(self.config.clone()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(Self::none_with_config(self.config.clone())),
+        }
+    }
+
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        match self.as_option() {
+            Some(element) => element.s_eles(locator),
             None => Ok(Vec::new()),
         }
     }
@@ -5411,9 +5507,9 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::thread;
 
-    use crate::session::snapshot_find_all;
+    use crate::session::{snapshot_find, snapshot_find_all};
     use crate::settings::scoped_test_settings;
-    use crate::{OpenPageError, OpenPageResult, Settings, WebElement};
+    use crate::{By, OpenPageError, OpenPageResult, Settings, WebElement};
 
     #[derive(Debug)]
     struct FakeItem {
@@ -5860,6 +5956,59 @@ mod tests {
             .attr("id", "missing", true)
             .expect("missing text block");
         assert_eq!(missing.texts(false).expect("missing texts"), None);
+    }
+
+    #[test]
+    fn session_elements_one_owned_supports_static_find_aliases() {
+        let root = snapshot_find(
+            r#"
+            <section id="root">
+                <span class="item">alpha</span>
+                <span class="item">beta</span>
+            </section>
+            "#,
+            "#root",
+        )
+        .expect("root element");
+        let found = super::ElementsOneOwned::some_with_config(root, None);
+
+        assert_eq!(
+            found
+                .s_ele((By::CLASS_NAME, "item"))
+                .expect("static child")
+                .text()
+                .expect("static child text"),
+            Some("alpha".to_string())
+        );
+        assert_eq!(
+            found
+                .s_eles((By::CLASS_NAME, "item"))
+                .expect("static children")
+                .len(),
+            2
+        );
+        assert!(
+            found
+                .s_ele("#missing")
+                .expect("missing static child")
+                .is_none()
+        );
+
+        let missing_owner: super::ElementsOneOwned<crate::SessionElement> =
+            super::ElementsOneOwned::none_with_config(None);
+        assert!(
+            missing_owner
+                .s_ele("#root")
+                .expect("missing owner static child")
+                .is_none()
+        );
+        assert_eq!(
+            missing_owner
+                .s_eles("#root")
+                .expect("missing owner static children")
+                .len(),
+            0
+        );
     }
 
     #[test]
