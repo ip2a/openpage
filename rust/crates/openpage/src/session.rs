@@ -88,6 +88,12 @@ pub enum SessionAuthInput {
     Auth(String, String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionProxyInput {
+    None,
+    Proxy(String),
+}
+
 impl<'a> From<&'a str> for HeadersInput<'a> {
     fn from(value: &'a str) -> Self {
         Self::Text(Cow::Borrowed(value))
@@ -295,6 +301,27 @@ impl From<Option<(String, String)>> for SessionAuthInput {
     }
 }
 
+impl From<&str> for SessionProxyInput {
+    fn from(value: &str) -> Self {
+        Self::Proxy(value.to_string())
+    }
+}
+
+impl From<String> for SessionProxyInput {
+    fn from(value: String) -> Self {
+        Self::Proxy(value)
+    }
+}
+
+impl From<Option<String>> for SessionProxyInput {
+    fn from(value: Option<String>) -> Self {
+        match value {
+            Some(proxy) => Self::Proxy(proxy),
+            None => Self::None,
+        }
+    }
+}
+
 fn session_cookie_header_decode_error(err: impl ToString) -> OpenPageError {
     OpenPageError::Http(session_cookie_header_decode_failed_message(
         &err.to_string(),
@@ -465,13 +492,13 @@ impl SessionAdapter {
         self
     }
 
-    pub fn set_proxies(
-        &mut self,
-        http_proxy: Option<String>,
-        https_proxy: Option<String>,
-    ) -> &mut Self {
-        self.http_proxy = Some(http_proxy);
-        self.https_proxy = Some(https_proxy);
+    pub fn set_proxies<H, S>(&mut self, http_proxy: H, https_proxy: S) -> &mut Self
+    where
+        H: Into<SessionProxyInput>,
+        S: Into<SessionProxyInput>,
+    {
+        self.http_proxy = Some(session_proxy_input(http_proxy));
+        self.https_proxy = Some(session_proxy_input(https_proxy));
         self
     }
 
@@ -734,13 +761,13 @@ impl SessionOptions {
         self
     }
 
-    pub fn set_proxies(
-        &mut self,
-        http_proxy: Option<String>,
-        https_proxy: Option<String>,
-    ) -> &mut Self {
-        self.http_proxy = http_proxy;
-        self.https_proxy = https_proxy;
+    pub fn set_proxies<H, S>(&mut self, http_proxy: H, https_proxy: S) -> &mut Self
+    where
+        H: Into<SessionProxyInput>,
+        S: Into<SessionProxyInput>,
+    {
+        self.http_proxy = session_proxy_input(http_proxy);
+        self.https_proxy = session_proxy_input(https_proxy);
         self
     }
 
@@ -1281,6 +1308,16 @@ where
     match auth.into() {
         SessionAuthInput::None => None,
         SessionAuthInput::Auth(username, password) => Some((username, password)),
+    }
+}
+
+fn session_proxy_input<P>(proxy: P) -> Option<String>
+where
+    P: Into<SessionProxyInput>,
+{
+    match proxy.into() {
+        SessionProxyInput::None => None,
+        SessionProxyInput::Proxy(proxy) => Some(proxy),
     }
 }
 
@@ -2223,11 +2260,11 @@ impl SessionPageSetter<'_> {
         self.page.set_stream(stream)
     }
 
-    pub fn proxies(
-        &self,
-        http_proxy: Option<String>,
-        https_proxy: Option<String>,
-    ) -> OpenPageResult<()> {
+    pub fn proxies<H, S>(&self, http_proxy: H, https_proxy: S) -> OpenPageResult<()>
+    where
+        H: Into<SessionProxyInput>,
+        S: Into<SessionProxyInput>,
+    {
         self.page.set_proxies(http_proxy, https_proxy)
     }
 
@@ -3223,14 +3260,14 @@ impl SessionPage {
         Ok(self.lock_state()?.stream)
     }
 
-    pub fn set_proxies(
-        &self,
-        http_proxy: Option<String>,
-        https_proxy: Option<String>,
-    ) -> OpenPageResult<()> {
+    pub fn set_proxies<H, S>(&self, http_proxy: H, https_proxy: S) -> OpenPageResult<()>
+    where
+        H: Into<SessionProxyInput>,
+        S: Into<SessionProxyInput>,
+    {
         let mut state = self.lock_state()?;
-        state.http_proxy = http_proxy;
-        state.https_proxy = https_proxy;
+        state.http_proxy = session_proxy_input(http_proxy);
+        state.https_proxy = session_proxy_input(https_proxy);
         rebuild_session_client(&mut state)
     }
 
@@ -7449,6 +7486,7 @@ mod tests {
         let mut adapter = SessionAdapter::new();
         adapter
             .set_timeout(17)
+            .set_proxies("http://adapter.test:8080", None)
             .set_verify(false)
             .set_cert(("adapter-cert.pem", "adapter-key.pem"))
             .set_max_redirects(Some(1));
@@ -7477,7 +7515,7 @@ mod tests {
             .expect("set session option cookies");
         options
             .set_retry(Some(6), Some(125))
-            .set_proxies(Some("http://127.0.0.1:8080".to_string()), None)
+            .set_proxies("http://127.0.0.1:8080", None)
             .set_download_path("downloads")
             .set_auth(("alice", "secret"))
             .set_params([("page", "2")])
@@ -10154,7 +10192,8 @@ mod tests {
             let _ = setter.auth(None);
             let _ = setter.hooks(SessionHooks::default());
             let _ = setter.stream(true);
-            let _ = setter.proxies(Some("http://127.0.0.1:8080".to_string()), None);
+            let _ = page.set_proxies("http://127.0.0.1:8080", None);
+            let _ = setter.proxies("http://127.0.0.1:8080", None);
             let _ = setter.verify(false);
             let _ = page.set_cert("client.pem");
             let _ = page.set_cert(("client.pem", "client.key"));
