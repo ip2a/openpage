@@ -1279,6 +1279,15 @@ pub(crate) fn shadow_root_following_element_not_found_message() -> String {
     )
 }
 
+pub(crate) fn shadow_root_xpath_css_path_unresolved_message(css_path: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => {
+            format!("ShadowRoot xpath css path `{css_path}` 无法解析: {err}")
+        }
+        _ => format!("shadow root xpath css path `{css_path}` could not be resolved: {err}"),
+    }
+}
+
 pub(crate) fn element_index_must_start_message(context: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("{context}: index 必须 >= 1"),

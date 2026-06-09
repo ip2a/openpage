@@ -35,9 +35,9 @@ use crate::settings::{
     shadow_root_parent_element_index_must_start_message,
     shadow_root_parent_element_level_must_start_message,
     shadow_root_parent_element_not_found_message, shadow_root_preceding_element_not_found_message,
-    timeout_duration_millis, timeout_error, value_bool_required_message,
-    value_string_compatible_required_message, value_string_required_message,
-    value_unavailable_message,
+    shadow_root_xpath_css_path_unresolved_message, timeout_duration_millis, timeout_error,
+    value_bool_required_message, value_string_compatible_required_message,
+    value_string_required_message, value_unavailable_message,
 };
 
 const MARKER_ATTRIBUTE: &str = "data-openpage-marker";
@@ -607,8 +607,9 @@ impl ShadowRoot {
                 continue;
             }
             node_ids.push(self.query_selector(&css_path).map_err(|err| {
-                OpenPageError::ElementNotFound(format!(
-                    "shadow root xpath css path `{css_path}` could not be resolved: {err}"
+                OpenPageError::ElementNotFound(shadow_root_xpath_css_path_unresolved_message(
+                    &css_path,
+                    &err.to_string(),
                 ))
             })?);
         }
@@ -958,6 +959,30 @@ mod tests {
         .expect_err("zero preceding index should localize")
         .to_string();
         assert!(chinese.contains("没有找到 ShadowRoot 前方元素: index 必须 >= 1"));
+    }
+
+    #[test]
+    fn shadow_root_xpath_css_path_errors_follow_language_setting() {
+        let _guard = crate::settings::scoped_test_settings();
+        Settings::reset();
+
+        assert_eq!(
+            crate::settings::shadow_root_xpath_css_path_unresolved_message(
+                "body > span",
+                "missing"
+            ),
+            "shadow root xpath css path `body > span` could not be resolved: missing"
+        );
+
+        Settings::set_language("cn");
+
+        assert_eq!(
+            crate::settings::shadow_root_xpath_css_path_unresolved_message(
+                "body > span",
+                "missing"
+            ),
+            "ShadowRoot xpath css path `body > span` 无法解析: missing"
+        );
     }
 
     #[test]
