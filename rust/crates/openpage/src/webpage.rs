@@ -11894,6 +11894,41 @@ mod tests {
     }
 
     #[test]
+    fn elements_one_find_alias_signatures_accept_by_tuples() {
+        fn assert_calls(
+            one_element: ElementsOne<'_, Element>,
+            one_web_element: ElementsOne<'_, WebElement>,
+            one_session_element: ElementsOne<'_, SessionElement>,
+            owned_element: &ElementsOneOwned<Element>,
+            owned_web_element: &ElementsOneOwned<WebElement>,
+            owned_session_element: &ElementsOneOwned<SessionElement>,
+        ) {
+            let _ = one_element.find((By::ID, "root"));
+            let _ = one_element.find_all((By::CLASS_NAME, "item"));
+            let _ = one_web_element.find((By::ID, "root"));
+            let _ = one_web_element.find_all((By::CLASS_NAME, "item"));
+            let _ = one_session_element.find((By::ID, "root"));
+            let _ = one_session_element.find_all((By::CLASS_NAME, "item"));
+            let _ = owned_element.find((By::ID, "root"));
+            let _ = owned_element.find_all((By::CLASS_NAME, "item"));
+            let _ = owned_web_element.find((By::ID, "root"));
+            let _ = owned_web_element.find_all((By::CLASS_NAME, "item"));
+            let _ = owned_session_element.find((By::ID, "root"));
+            let _ = owned_session_element.find_all((By::CLASS_NAME, "item"));
+        }
+
+        let _ = assert_calls
+            as fn(
+                ElementsOne<'_, Element>,
+                ElementsOne<'_, WebElement>,
+                ElementsOne<'_, SessionElement>,
+                &ElementsOneOwned<Element>,
+                &ElementsOneOwned<WebElement>,
+                &ElementsOneOwned<SessionElement>,
+            );
+    }
+
+    #[test]
     fn element_shadow_root_and_webelement_parent_child_signatures_accept_by_tuples() {
         fn assert_calls(element: &Element, shadow_root: &ShadowRoot, web_element: &WebElement) {
             let _ = element.parent_with((By::ID, "root"), 1);

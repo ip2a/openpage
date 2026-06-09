@@ -986,6 +986,13 @@ impl ElementsOneOwned<Element> {
         }
     }
 
+    pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.ele(locator)
+    }
+
     pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<Element>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
@@ -994,6 +1001,13 @@ impl ElementsOneOwned<Element> {
             Some(element) => element.eles(locator),
             None => Ok(Vec::new()),
         }
+    }
+
+    pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.eles(locator)
     }
 
     pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
@@ -1668,6 +1682,13 @@ impl ElementsOneOwned<WebElement> {
         }
     }
 
+    pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.ele(locator)
+    }
+
     pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<WebElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
@@ -1676,6 +1697,13 @@ impl ElementsOneOwned<WebElement> {
             Some(element) => element.eles(locator),
             None => Ok(Vec::new()),
         }
+    }
+
+    pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.eles(locator)
     }
 
     pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
@@ -2005,6 +2033,13 @@ impl ElementsOneOwned<SessionElement> {
         }
     }
 
+    pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.ele(locator)
+    }
+
     pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
@@ -2013,6 +2048,13 @@ impl ElementsOneOwned<SessionElement> {
             Some(element) => element.eles(locator),
             None => Ok(Vec::new()),
         }
+    }
+
+    pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.eles(locator)
     }
 
     pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
@@ -2653,6 +2695,13 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    pub fn find<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.ele(locator)
+    }
+
     pub fn eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<Element>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -2661,6 +2710,13 @@ impl<'a> ElementsOne<'a, Element> {
             Some(element) => element.eles(locator),
             None => Ok(Vec::new()),
         }
+    }
+
+    pub fn find_all<'b, L>(&self, locator: L) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.eles(locator)
     }
 
     pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
@@ -3069,6 +3125,13 @@ impl<'a> ElementsOne<'a, WebElement> {
         }
     }
 
+    pub fn find<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.ele(locator)
+    }
+
     pub fn eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<WebElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -3077,6 +3140,13 @@ impl<'a> ElementsOne<'a, WebElement> {
             Some(element) => element.eles(locator),
             None => Ok(Vec::new()),
         }
+    }
+
+    pub fn find_all<'b, L>(&self, locator: L) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.eles(locator)
     }
 
     pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
@@ -3494,6 +3564,13 @@ impl<'a> ElementsOne<'a, SessionElement> {
         }
     }
 
+    pub fn find<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.ele(locator)
+    }
+
     pub fn eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -3502,6 +3579,13 @@ impl<'a> ElementsOne<'a, SessionElement> {
             Some(element) => element.eles(locator),
             None => Ok(Vec::new()),
         }
+    }
+
+    pub fn find_all<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.eles(locator)
     }
 
     pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
