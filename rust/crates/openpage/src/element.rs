@@ -3024,11 +3024,11 @@ impl Element {
         let locator = Locator::from_input(locator)?;
         match locator.kind() {
             LocatorKind::Css => self.runtime.block_on(async {
-                let elements = self
-                    .inner
-                    .find_elements(locator.query().to_string())
-                    .await
-                    .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
+                let elements = run_element_lookup_future_with_cdp_timeout(
+                    self.inner.find_elements(locator.query().to_string()),
+                    "find elements",
+                )
+                .await?;
                 Ok(elements
                     .into_iter()
                     .map(|element| {
