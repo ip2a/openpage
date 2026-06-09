@@ -136,6 +136,7 @@ impl From<(f64, f64)> for WebElementDragTarget<'_> {
     }
 }
 
+#[derive(Clone)]
 pub enum WebFrame {
     Browser(Frame),
     Mix { frame: Frame, page: Box<WebPage> },
@@ -9353,6 +9354,9 @@ mod tests {
             owned_element: &ElementsOneOwned<Element>,
             owned_web_element: &ElementsOneOwned<WebElement>,
         ) {
+            let _cloned_frame: Frame = frame.clone();
+            let _cloned_web_frame: WebFrame = web_frame.clone();
+
             let _ = page.get_frame((By::ID, "theFrame"));
             let _ = page.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = page.get_frame_ele((By::ID, "theFrame"));
