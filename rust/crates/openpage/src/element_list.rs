@@ -692,6 +692,28 @@ impl ElementsOneOwned<Element> {
         self.as_borrowed().save(path, name, timeout_ms, rename)
     }
 
+    pub fn screenshot_bytes(
+        &self,
+        scroll_to_center: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<Vec<u8>>> {
+        self.as_borrowed()
+            .screenshot_bytes(scroll_to_center, timeout_ms)
+    }
+
+    pub fn screenshot_base64(
+        &self,
+        scroll_to_center: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<String>> {
+        self.as_borrowed()
+            .screenshot_base64(scroll_to_center, timeout_ms)
+    }
+
+    pub fn save_screenshot(&self, path: impl AsRef<Path>) -> OpenPageResult<bool> {
+        self.as_borrowed().save_screenshot(path)
+    }
+
     pub fn click(&self) -> OpenPageResult<bool> {
         self.as_borrowed().click()
     }
@@ -1304,6 +1326,28 @@ impl ElementsOneOwned<WebElement> {
         rename: bool,
     ) -> OpenPageResult<Option<PathBuf>> {
         self.as_borrowed().save(path, name, timeout_ms, rename)
+    }
+
+    pub fn screenshot_bytes(
+        &self,
+        scroll_to_center: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<Vec<u8>>> {
+        self.as_borrowed()
+            .screenshot_bytes(scroll_to_center, timeout_ms)
+    }
+
+    pub fn screenshot_base64(
+        &self,
+        scroll_to_center: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<String>> {
+        self.as_borrowed()
+            .screenshot_base64(scroll_to_center, timeout_ms)
+    }
+
+    pub fn save_screenshot(&self, path: impl AsRef<Path>) -> OpenPageResult<bool> {
+        self.as_borrowed().save_screenshot(path)
     }
 
     pub fn click(&self) -> OpenPageResult<bool> {
@@ -2726,6 +2770,42 @@ impl<'a> ElementsOne<'a, Element> {
             None => Ok(None),
         }
     }
+
+    pub fn screenshot_bytes(
+        &self,
+        scroll_to_center: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<Vec<u8>>> {
+        match self.element {
+            Some(element) => element
+                .screenshot_bytes(scroll_to_center, timeout_ms)
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn screenshot_base64(
+        &self,
+        scroll_to_center: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<String>> {
+        match self.element {
+            Some(element) => element
+                .screenshot_base64(scroll_to_center, timeout_ms)
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn save_screenshot(&self, path: impl AsRef<Path>) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.save_screenshot(path)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
 }
 
 impl<'a> ElementsOne<'a, WebElement> {
@@ -3092,6 +3172,42 @@ impl<'a> ElementsOne<'a, WebElement> {
         match self.element {
             Some(element) => element.save(path, name, timeout_ms, rename).map(Some),
             None => Ok(None),
+        }
+    }
+
+    pub fn screenshot_bytes(
+        &self,
+        scroll_to_center: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<Vec<u8>>> {
+        match self.element {
+            Some(element) => element
+                .screenshot_bytes(scroll_to_center, timeout_ms)
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn screenshot_base64(
+        &self,
+        scroll_to_center: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<String>> {
+        match self.element {
+            Some(element) => element
+                .screenshot_base64(scroll_to_center, timeout_ms)
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn save_screenshot(&self, path: impl AsRef<Path>) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.save_screenshot(path)?;
+                Ok(true)
+            }
+            None => Ok(false),
         }
     }
 }
