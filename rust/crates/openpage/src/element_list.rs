@@ -689,6 +689,31 @@ impl ElementsOneOwned<Element> {
         self.as_borrowed().input(text)
     }
 
+    pub fn input_with_options<'a, I>(
+        &self,
+        text: I,
+        clear: bool,
+        by_js: bool,
+    ) -> OpenPageResult<bool>
+    where
+        I: Into<crate::page::ActionsInput<'a>>,
+    {
+        self.as_borrowed().input_with_options(text, clear, by_js)
+    }
+
+    pub fn input_keys_with_options<'a, I>(
+        &self,
+        values: I,
+        clear: bool,
+        by_js: bool,
+    ) -> OpenPageResult<bool>
+    where
+        I: Into<crate::page::ActionsInput<'a>>,
+    {
+        self.as_borrowed()
+            .input_keys_with_options(values, clear, by_js)
+    }
+
     pub fn clear(&self) -> OpenPageResult<bool> {
         self.as_borrowed().clear()
     }
@@ -1120,6 +1145,31 @@ impl ElementsOneOwned<WebElement> {
 
     pub fn input(&self, text: &str) -> OpenPageResult<bool> {
         self.as_borrowed().input(text)
+    }
+
+    pub fn input_with_options<'a, I>(
+        &self,
+        text: I,
+        clear: bool,
+        by_js: bool,
+    ) -> OpenPageResult<bool>
+    where
+        I: Into<crate::page::ActionsInput<'a>>,
+    {
+        self.as_borrowed().input_with_options(text, clear, by_js)
+    }
+
+    pub fn input_keys_with_options<'a, I>(
+        &self,
+        values: I,
+        clear: bool,
+        by_js: bool,
+    ) -> OpenPageResult<bool>
+    where
+        I: Into<crate::page::ActionsInput<'a>>,
+    {
+        self.as_borrowed()
+            .input_keys_with_options(values, clear, by_js)
     }
 
     pub fn clear(&self) -> OpenPageResult<bool> {
@@ -3281,6 +3331,42 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    pub fn input_with_options<'b, I>(
+        &self,
+        text: I,
+        clear: bool,
+        by_js: bool,
+    ) -> OpenPageResult<bool>
+    where
+        I: Into<crate::page::ActionsInput<'b>>,
+    {
+        match self.element {
+            Some(element) => {
+                element.input_with_options(text, clear, by_js)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn input_keys_with_options<'b, I>(
+        &self,
+        values: I,
+        clear: bool,
+        by_js: bool,
+    ) -> OpenPageResult<bool>
+    where
+        I: Into<crate::page::ActionsInput<'b>>,
+    {
+        match self.element {
+            Some(element) => {
+                element.input_keys_with_options(values, clear, by_js)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     pub fn clear(&self) -> OpenPageResult<bool> {
         match self.element {
             Some(element) => {
@@ -4679,6 +4765,42 @@ impl<'a> ElementsOne<'a, WebElement> {
         match self.element {
             Some(element) => {
                 element.input(text)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn input_with_options<'b, I>(
+        &self,
+        text: I,
+        clear: bool,
+        by_js: bool,
+    ) -> OpenPageResult<bool>
+    where
+        I: Into<crate::page::ActionsInput<'b>>,
+    {
+        match self.element {
+            Some(element) => {
+                element.input_with_options(text, clear, by_js)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn input_keys_with_options<'b, I>(
+        &self,
+        values: I,
+        clear: bool,
+        by_js: bool,
+    ) -> OpenPageResult<bool>
+    where
+        I: Into<crate::page::ActionsInput<'b>>,
+    {
+        match self.element {
+            Some(element) => {
+                element.input_keys_with_options(values, clear, by_js)?;
                 Ok(true)
             }
             None => Ok(false),

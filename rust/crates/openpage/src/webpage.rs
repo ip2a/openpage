@@ -7309,7 +7309,7 @@ mod tests {
 
     use super::{WebElement, WebFrame, WebMode, WebPage, webpage_timeout_seconds_to_millis};
     use crate::browser::{BrowserTabReference, LaunchOptions};
-    use crate::element_list::ElementsListExt;
+    use crate::element_list::{ElementsListExt, ElementsOne, ElementsOneOwned};
     use crate::session::snapshot_root;
     use crate::settings::scoped_test_settings;
     use crate::{
@@ -10599,7 +10599,14 @@ mod tests {
 
     #[test]
     fn element_and_webelement_input_expose_sequence_signatures() {
-        fn assert_calls(element: &Element, web_element: &WebElement) {
+        fn assert_calls(
+            element: &Element,
+            web_element: &WebElement,
+            one_element: ElementsOne<'_, Element>,
+            one_web_element: ElementsOne<'_, WebElement>,
+            owned_element: &ElementsOneOwned<Element>,
+            owned_web_element: &ElementsOneOwned<WebElement>,
+        ) {
             let key_sequence = vec!["Control".to_string(), "a".to_string()];
 
             let _ = element.input("hello");
@@ -10617,9 +10624,31 @@ mod tests {
             let _ = web_element.input_with_options(["hello", "world"], true, false);
             let _ = web_element.input_keys_with_options(&key_sequence, true, false);
             let _ = web_element.input_keys_with_options(Keys::CTRL_A, true, false);
+
+            let _ = one_element.input_with_options("hello", true, false);
+            let _ = one_element.input_keys_with_options(&key_sequence, true, false);
+            let _ = one_element.input_keys_with_options(Keys::CTRL_A, true, false);
+            let _ = one_web_element.input_with_options("hello", true, false);
+            let _ = one_web_element.input_keys_with_options(&key_sequence, true, false);
+            let _ = one_web_element.input_keys_with_options(Keys::CTRL_A, true, false);
+
+            let _ = owned_element.input_with_options("hello", true, false);
+            let _ = owned_element.input_keys_with_options(&key_sequence, true, false);
+            let _ = owned_element.input_keys_with_options(Keys::CTRL_A, true, false);
+            let _ = owned_web_element.input_with_options("hello", true, false);
+            let _ = owned_web_element.input_keys_with_options(&key_sequence, true, false);
+            let _ = owned_web_element.input_keys_with_options(Keys::CTRL_A, true, false);
         }
 
-        let _ = assert_calls as fn(&Element, &WebElement);
+        let _ = assert_calls
+            as fn(
+                &Element,
+                &WebElement,
+                ElementsOne<'_, Element>,
+                ElementsOne<'_, WebElement>,
+                &ElementsOneOwned<Element>,
+                &ElementsOneOwned<WebElement>,
+            );
     }
 
     #[test]
