@@ -514,6 +514,22 @@ impl WebFrame {
         self.frame().style(name, pseudo)
     }
 
+    pub fn pseudo_before(&self) -> OpenPageResult<String> {
+        self.frame().pseudo_before()
+    }
+
+    pub fn pseudo_after(&self) -> OpenPageResult<String> {
+        self.frame().pseudo_after()
+    }
+
+    pub fn scroll_to_see(&self, center: Option<bool>) -> OpenPageResult<()> {
+        self.frame().scroll_to_see(center)
+    }
+
+    pub fn scroll_to_center(&self) -> OpenPageResult<()> {
+        self.frame().scroll_to_center()
+    }
+
     pub fn css_path(&self) -> OpenPageResult<String> {
         self.frame().css_path()
     }
@@ -9384,6 +9400,10 @@ mod tests {
             let _ = frame.texts(true);
             let _ = frame.src(500, false);
             let _ = frame.src(500, true);
+            let _ = frame.pseudo_before();
+            let _ = frame.pseudo_after();
+            let _ = frame.scroll_to_see(Some(true));
+            let _ = frame.scroll_to_center();
 
             let _ = web_frame.text();
             let _ = web_frame.raw_text();
@@ -9393,6 +9413,10 @@ mod tests {
             let _ = web_frame.texts(true);
             let _ = web_frame.src(500, false);
             let _ = web_frame.src(500, true);
+            let _ = web_frame.pseudo_before();
+            let _ = web_frame.pseudo_after();
+            let _ = web_frame.scroll_to_see(Some(true));
+            let _ = web_frame.scroll_to_center();
         }
 
         let _ = assert_calls as fn(&Frame, &WebFrame);

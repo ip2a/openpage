@@ -1343,6 +1343,22 @@ impl Frame {
         self.frame_element.style(name, pseudo)
     }
 
+    pub fn pseudo_before(&self) -> OpenPageResult<String> {
+        self.frame_element.pseudo_before()
+    }
+
+    pub fn pseudo_after(&self) -> OpenPageResult<String> {
+        self.frame_element.pseudo_after()
+    }
+
+    pub fn scroll_to_see(&self, center: Option<bool>) -> OpenPageResult<()> {
+        self.frame_element.scroll_to_see(center)
+    }
+
+    pub fn scroll_to_center(&self) -> OpenPageResult<()> {
+        self.frame_element.scroll_to_center()
+    }
+
     pub fn css_path(&self) -> OpenPageResult<String> {
         self.frame_element.css_path()
     }
