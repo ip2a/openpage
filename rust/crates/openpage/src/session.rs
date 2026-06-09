@@ -94,6 +94,12 @@ pub enum SessionProxyInput {
     Proxy(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionUserAgentInput {
+    None,
+    UserAgent(String),
+}
+
 impl<'a> From<&'a str> for HeadersInput<'a> {
     fn from(value: &'a str) -> Self {
         Self::Text(Cow::Borrowed(value))
@@ -317,6 +323,27 @@ impl From<Option<String>> for SessionProxyInput {
     fn from(value: Option<String>) -> Self {
         match value {
             Some(proxy) => Self::Proxy(proxy),
+            None => Self::None,
+        }
+    }
+}
+
+impl From<&str> for SessionUserAgentInput {
+    fn from(value: &str) -> Self {
+        Self::UserAgent(value.to_string())
+    }
+}
+
+impl From<String> for SessionUserAgentInput {
+    fn from(value: String) -> Self {
+        Self::UserAgent(value)
+    }
+}
+
+impl From<Option<String>> for SessionUserAgentInput {
+    fn from(value: Option<String>) -> Self {
+        match value {
+            Some(user_agent) => Self::UserAgent(user_agent),
             None => Self::None,
         }
     }
@@ -702,8 +729,11 @@ impl SessionOptions {
         self
     }
 
-    pub fn set_user_agent(&mut self, user_agent: Option<String>) -> &mut Self {
-        self.user_agent = user_agent;
+    pub fn set_user_agent<U>(&mut self, user_agent: U) -> &mut Self
+    where
+        U: Into<SessionUserAgentInput>,
+    {
+        self.user_agent = session_user_agent_input(user_agent);
         self
     }
 
@@ -1318,6 +1348,16 @@ where
     match proxy.into() {
         SessionProxyInput::None => None,
         SessionProxyInput::Proxy(proxy) => Some(proxy),
+    }
+}
+
+fn session_user_agent_input<U>(user_agent: U) -> Option<String>
+where
+    U: Into<SessionUserAgentInput>,
+{
+    match user_agent.into() {
+        SessionUserAgentInput::None => None,
+        SessionUserAgentInput::UserAgent(user_agent) => Some(user_agent),
     }
 }
 
@@ -2195,7 +2235,10 @@ impl SessionHandle {
 }
 
 impl SessionPageSetter<'_> {
-    pub fn user_agent(&self, user_agent: Option<String>) -> OpenPageResult<()> {
+    pub fn user_agent<U>(&self, user_agent: U) -> OpenPageResult<()>
+    where
+        U: Into<SessionUserAgentInput>,
+    {
         self.page.set_user_agent(user_agent)
     }
 
@@ -3176,8 +3219,11 @@ impl SessionPage {
         snapshot_root_arc(body, self.base_url_arc()?, Some(&self.none_element_config))
     }
 
-    pub fn set_user_agent(&self, user_agent: Option<String>) -> OpenPageResult<()> {
-        self.lock_state()?.user_agent = user_agent;
+    pub fn set_user_agent<U>(&self, user_agent: U) -> OpenPageResult<()>
+    where
+        U: Into<SessionUserAgentInput>,
+    {
+        self.lock_state()?.user_agent = session_user_agent_input(user_agent);
         Ok(())
     }
 
@@ -7501,9 +7547,7 @@ mod tests {
             same_site: Some("Lax".to_string()),
         }];
 
-        options
-            .set_timeout(21)
-            .set_user_agent(Some("OpenPage/Test".to_string()));
+        options.set_timeout(21).set_user_agent("OpenPage/Test");
         options
             .set_headers("Accept: text/html\nX-Test: remove")
             .expect("set session option headers")
@@ -10174,7 +10218,9 @@ mod tests {
                 same_site: None,
             };
 
-            let _ = setter.user_agent(Some("OpenPage/Test".to_string()));
+            let _ = page.set_user_agent("OpenPage/Test");
+            let _ = setter.user_agent("OpenPage/Test");
+            let _ = setter.user_agent(None);
             let _ = setter.headers(&headers);
             let _ = setter.header("Accept", "application/json");
             let _ = setter.timeout(10);
