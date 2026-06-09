@@ -1690,6 +1690,10 @@ impl Frame {
         self.frame_element.clear_with_mode(by_js)
     }
 
+    pub fn submit(&self) -> OpenPageResult<()> {
+        self.frame_element.submit()
+    }
+
     pub fn focus(&self) -> OpenPageResult<()> {
         self.frame_element.focus()
     }
@@ -1704,6 +1708,18 @@ impl Frame {
         offset_y: Option<f64>,
     ) -> OpenPageResult<()> {
         self.frame_element.hover_with_offset(offset_x, offset_y)
+    }
+
+    pub fn drag(&self, offset_x: f64, offset_y: f64, duration_secs: f64) -> OpenPageResult<()> {
+        self.frame_element.drag(offset_x, offset_y, duration_secs)
+    }
+
+    pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<()> {
+        self.frame_element.drag_to_point(x, y, duration_secs)
+    }
+
+    pub fn set_checked(&self, checked: bool) -> OpenPageResult<()> {
+        self.frame_element.set_checked(checked)
     }
 
     pub fn check(&self, uncheck: bool, by_js: bool) -> OpenPageResult<()> {

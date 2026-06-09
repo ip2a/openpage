@@ -845,6 +845,10 @@ impl WebFrame {
         self.frame().clear_with_mode(by_js)
     }
 
+    pub fn submit(&self) -> OpenPageResult<()> {
+        self.frame().submit()
+    }
+
     pub fn focus(&self) -> OpenPageResult<()> {
         self.frame().focus()
     }
@@ -859,6 +863,18 @@ impl WebFrame {
         offset_y: Option<f64>,
     ) -> OpenPageResult<()> {
         self.frame().hover_with_offset(offset_x, offset_y)
+    }
+
+    pub fn drag(&self, offset_x: f64, offset_y: f64, duration_secs: f64) -> OpenPageResult<()> {
+        self.frame().drag(offset_x, offset_y, duration_secs)
+    }
+
+    pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<()> {
+        self.frame().drag_to_point(x, y, duration_secs)
+    }
+
+    pub fn set_checked(&self, checked: bool) -> OpenPageResult<()> {
+        self.frame().set_checked(checked)
     }
 
     pub fn check(&self, uncheck: bool, by_js: bool) -> OpenPageResult<()> {
@@ -9395,9 +9411,13 @@ mod tests {
             let _ = frame.input_with_options("hello", true, false);
             let _ = frame.clear();
             let _ = frame.clear_with_mode(true);
+            let _ = frame.submit();
             let _ = frame.focus();
             let _ = frame.hover();
             let _ = frame.hover_with_offset(Some(1.0), Some(2.0));
+            let _ = frame.drag(1.0, 2.0, 0.1);
+            let _ = frame.drag_to_point(10.0, 20.0, 0.1);
+            let _ = frame.set_checked(true);
             let _ = frame.check(false, true);
             let _ = frame.uncheck(true);
 
@@ -9411,9 +9431,13 @@ mod tests {
             let _ = web_frame.input_with_options("hello", true, false);
             let _ = web_frame.clear();
             let _ = web_frame.clear_with_mode(true);
+            let _ = web_frame.submit();
             let _ = web_frame.focus();
             let _ = web_frame.hover();
             let _ = web_frame.hover_with_offset(Some(1.0), Some(2.0));
+            let _ = web_frame.drag(1.0, 2.0, 0.1);
+            let _ = web_frame.drag_to_point(10.0, 20.0, 0.1);
+            let _ = web_frame.set_checked(true);
             let _ = web_frame.check(false, true);
             let _ = web_frame.uncheck(true);
         }
