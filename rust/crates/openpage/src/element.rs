@@ -80,7 +80,7 @@ use crate::settings::{
     value_unavailable_message, wait_for_locator_timed_out_message, wait_timeout_result,
 };
 use crate::shadow_root::ShadowRoot;
-use crate::upload::UploadTracker;
+use crate::upload::{UploadFilesInput, UploadTracker};
 
 const MARKER_ATTRIBUTE: &str = "data-openpage-marker";
 static NEXT_MARKER_BATCH: AtomicU64 = AtomicU64::new(1);
@@ -4308,12 +4308,15 @@ impl<'a> ElementClicker<'a> {
         self.element.click_at(offset_x, offset_y, button, count)
     }
 
-    pub fn to_upload(
+    pub fn to_upload<'b, F>(
         &self,
-        files: &[String],
+        files: F,
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<bool>
+    where
+        F: Into<UploadFilesInput<'b>>,
+    {
         let timeout_ms = self.timeout_ms(timeout_ms)?;
         let uploader = self.element.uploader.as_ref().ok_or_else(|| {
             OpenPageError::UnsupportedOperation(browser_backed_element_only_message(

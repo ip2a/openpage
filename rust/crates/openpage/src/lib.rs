@@ -74,7 +74,7 @@ pub use tools::{
     from_playwright_debugger_address, from_selenium_debugger_address, get_blob, get_blob_bytes,
     get_blob_text, make_session_ele, make_session_ele_by, print_tree, tree, wait_until,
 };
-pub use upload::UploadTracker;
+pub use upload::{UploadFilesInput, UploadTracker};
 pub use webpage::{
     DisconnectedWebFrame, DisconnectedWebPage, WebElement, WebElementClicker, WebElementDragTarget,
     WebElementScroller, WebElementSelector, WebElementSetter, WebFrame, WebMode, WebPage,

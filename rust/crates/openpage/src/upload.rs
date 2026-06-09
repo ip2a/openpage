@@ -1,5 +1,6 @@
+use std::borrow::Cow;
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex as StdMutex};
 use std::time::Duration;
 
@@ -51,6 +52,129 @@ pub struct UploadTracker {
     runtime: Arc<Runtime>,
     page: OxPage,
     shared: Arc<UploadShared>,
+}
+
+#[derive(Debug)]
+pub enum UploadFilesInput<'a> {
+    Text(Cow<'a, str>),
+    Paths(Vec<Cow<'a, Path>>),
+}
+
+impl<'a> From<&'a str> for UploadFilesInput<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::Text(Cow::Borrowed(value))
+    }
+}
+
+impl<'a> From<&'a String> for UploadFilesInput<'a> {
+    fn from(value: &'a String) -> Self {
+        Self::Text(Cow::Borrowed(value.as_str()))
+    }
+}
+
+impl From<String> for UploadFilesInput<'_> {
+    fn from(value: String) -> Self {
+        Self::Text(Cow::Owned(value))
+    }
+}
+
+impl<'a> From<&'a Path> for UploadFilesInput<'a> {
+    fn from(value: &'a Path) -> Self {
+        Self::Paths(vec![Cow::Borrowed(value)])
+    }
+}
+
+impl<'a> From<&'a PathBuf> for UploadFilesInput<'a> {
+    fn from(value: &'a PathBuf) -> Self {
+        Self::Paths(vec![Cow::Borrowed(value.as_path())])
+    }
+}
+
+impl From<PathBuf> for UploadFilesInput<'_> {
+    fn from(value: PathBuf) -> Self {
+        Self::Paths(vec![Cow::Owned(value)])
+    }
+}
+
+impl<'a> From<&'a [String]> for UploadFilesInput<'a> {
+    fn from(value: &'a [String]) -> Self {
+        Self::Paths(
+            value
+                .iter()
+                .map(|path| Cow::Borrowed(Path::new(path.as_str())))
+                .collect(),
+        )
+    }
+}
+
+impl<'a> From<&'a Vec<String>> for UploadFilesInput<'a> {
+    fn from(value: &'a Vec<String>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl From<Vec<String>> for UploadFilesInput<'_> {
+    fn from(value: Vec<String>) -> Self {
+        Self::Paths(
+            value
+                .into_iter()
+                .map(PathBuf::from)
+                .map(Cow::Owned)
+                .collect(),
+        )
+    }
+}
+
+impl<'a> From<&'a [&'a str]> for UploadFilesInput<'a> {
+    fn from(value: &'a [&'a str]) -> Self {
+        Self::Paths(
+            value
+                .iter()
+                .map(|path| Cow::Borrowed(Path::new(*path)))
+                .collect(),
+        )
+    }
+}
+
+impl<'a, const N: usize> From<&'a [&'a str; N]> for UploadFilesInput<'a> {
+    fn from(value: &'a [&'a str; N]) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl<'a> From<Vec<&'a str>> for UploadFilesInput<'a> {
+    fn from(value: Vec<&'a str>) -> Self {
+        Self::Paths(
+            value
+                .into_iter()
+                .map(Path::new)
+                .map(Cow::Borrowed)
+                .collect(),
+        )
+    }
+}
+
+impl<'a> From<&'a [PathBuf]> for UploadFilesInput<'a> {
+    fn from(value: &'a [PathBuf]) -> Self {
+        Self::Paths(
+            value
+                .iter()
+                .map(|path| Cow::Borrowed(path.as_path()))
+                .collect(),
+        )
+    }
+}
+
+impl<'a> From<&'a Vec<PathBuf>> for UploadFilesInput<'a> {
+    fn from(value: &'a Vec<PathBuf>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl From<Vec<PathBuf>> for UploadFilesInput<'_> {
+    fn from(value: Vec<PathBuf>) -> Self {
+        Self::Paths(value.into_iter().map(Cow::Owned).collect())
+    }
 }
 
 impl UploadTracker {
@@ -115,7 +239,10 @@ impl UploadTracker {
         tracker
     }
 
-    pub fn set_files(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn set_files<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         let normalized = prepare_upload_file_paths(files)?;
 
         {
@@ -222,23 +349,35 @@ async fn apply_upload_files(
     Ok(())
 }
 
-fn normalize_file_paths(files: &[String]) -> OpenPageResult<Vec<String>> {
-    files
-        .iter()
-        .map(|file| {
-            let path = PathBuf::from(file);
-            let absolute = if path.is_absolute() {
-                path
-            } else {
-                env::current_dir()?.join(path)
-            };
-            Ok(absolute.to_string_lossy().into_owned())
-        })
-        .collect()
+fn normalize_upload_path(path: &Path) -> OpenPageResult<String> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        env::current_dir()?.join(path)
+    };
+    Ok(absolute.to_string_lossy().into_owned())
 }
 
-fn prepare_upload_file_paths(files: &[String]) -> OpenPageResult<Vec<String>> {
-    let normalized = normalize_file_paths(files)?;
+fn prepare_upload_file_paths<'a, F>(files: F) -> OpenPageResult<Vec<String>>
+where
+    F: Into<UploadFilesInput<'a>>,
+{
+    let paths = match files.into() {
+        UploadFilesInput::Text(text) => text
+            .lines()
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+            .map(PathBuf::from)
+            .collect::<Vec<_>>(),
+        UploadFilesInput::Paths(paths) => paths
+            .into_iter()
+            .map(|path| path.into_owned())
+            .collect::<Vec<_>>(),
+    };
+    let normalized = paths
+        .iter()
+        .map(|path| normalize_upload_path(path))
+        .collect::<OpenPageResult<Vec<_>>>()?;
     if normalized.is_empty() {
         return Err(OpenPageError::PageOperation(
             upload_requires_at_least_one_file_message(),
@@ -285,6 +424,7 @@ fn finish_request(shared: &Arc<UploadShared>, request_id: u64, error: Option<Str
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
     use std::time::Duration;
 
     use tokio::runtime::Runtime;
@@ -299,17 +439,37 @@ mod tests {
         let _settings = scoped_test_settings();
         Settings::reset();
 
-        let english = prepare_upload_file_paths(&[])
+        let english = prepare_upload_file_paths(Vec::<String>::new())
             .expect_err("empty upload list should fail")
             .to_string();
         assert!(english.contains("upload_files() requires at least one file"));
 
         Settings::set_language("cn");
 
-        let chinese = prepare_upload_file_paths(&[])
+        let chinese = prepare_upload_file_paths(Vec::<String>::new())
             .expect_err("empty upload list should fail in Chinese")
             .to_string();
         assert!(chinese.contains("upload_files() 至少需要一个文件"));
+    }
+
+    #[test]
+    fn upload_file_input_accepts_text_paths_and_path_lists() {
+        let text_paths =
+            prepare_upload_file_paths("fixtures/a.txt\nfixtures/b.txt").expect("text paths");
+        assert_eq!(text_paths.len(), 2);
+        assert!(text_paths[0].ends_with("fixtures/a.txt"));
+        assert!(text_paths[1].ends_with("fixtures/b.txt"));
+
+        let path = PathBuf::from("fixtures/c.txt");
+        let single_path = prepare_upload_file_paths(&path).expect("single path");
+        assert_eq!(single_path.len(), 1);
+        assert!(single_path[0].ends_with("fixtures/c.txt"));
+
+        let borrowed_paths = ["fixtures/d.txt", "fixtures/e.txt"];
+        let list_paths = prepare_upload_file_paths(&borrowed_paths).expect("borrowed paths");
+        assert_eq!(list_paths.len(), 2);
+        assert!(list_paths[0].ends_with("fixtures/d.txt"));
+        assert!(list_paths[1].ends_with("fixtures/e.txt"));
     }
 
     #[test]

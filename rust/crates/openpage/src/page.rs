@@ -101,7 +101,7 @@ use crate::settings::{
     wait_for_locator_timed_out_message, wait_timeout_result, zoom_factor_must_be_positive_message,
 };
 use crate::shadow_root::ShadowRoot;
-use crate::upload::UploadTracker;
+use crate::upload::{UploadFilesInput, UploadTracker};
 use crate::webpage::{WebElement, WebFrame};
 use crate::window::{activate_app, set_app_visibility};
 
@@ -1600,11 +1600,17 @@ impl Frame {
         self.frame_element.set_style(name, value)
     }
 
-    pub fn set_upload_files(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn set_upload_files<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.page.set_upload_files(files)
     }
 
-    pub fn set_upload_paths(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn set_upload_paths<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.set_upload_files(files)
     }
 
@@ -1718,15 +1724,16 @@ impl Frame {
         )
     }
 
-    pub fn click_to_upload<'a, L>(
+    pub fn click_to_upload<'a, 'b, L, F>(
         &self,
         locator: L,
-        files: &[String],
+        files: F,
         timeout_ms: Option<u64>,
         by_js: bool,
     ) -> OpenPageResult<bool>
     where
         L: Into<LocatorInput<'a>>,
+        F: Into<UploadFilesInput<'b>>,
     {
         self.page.click_to_upload(locator, files, timeout_ms, by_js)
     }
@@ -2718,11 +2725,17 @@ impl PageSetter<'_> {
             .set_download_file_name(rename, suffix, suffix.is_some())
     }
 
-    pub fn upload_files(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn upload_files<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.page.set_upload_files(files)
     }
 
-    pub fn upload_paths(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn upload_paths<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.page.set_upload_paths(files)
     }
 
@@ -2870,11 +2883,17 @@ impl FrameSetter<'_> {
         self.frame.set_style(name, value)
     }
 
-    pub fn upload_files(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn upload_files<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.frame.set_upload_files(files)
     }
 
-    pub fn upload_paths(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn upload_paths<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.frame.set_upload_paths(files)
     }
 
@@ -5202,11 +5221,17 @@ impl Page {
         set_app_visibility(browser_pid, true)
     }
 
-    pub fn set_upload_files(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn set_upload_files<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.uploader.set_files(files)
     }
 
-    pub fn set_upload_paths(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn set_upload_paths<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.set_upload_files(files)
     }
 
@@ -5382,15 +5407,16 @@ impl Page {
         }
     }
 
-    pub fn click_to_upload<'a, L>(
+    pub fn click_to_upload<'a, 'b, L, F>(
         &self,
         locator: L,
-        files: &[String],
+        files: F,
         timeout_ms: Option<u64>,
         by_js: bool,
     ) -> OpenPageResult<bool>
     where
         L: Into<LocatorInput<'a>>,
+        F: Into<UploadFilesInput<'b>>,
     {
         let timeout_ms = match timeout_ms {
             Some(timeout_ms) => timeout_ms,

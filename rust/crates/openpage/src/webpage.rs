@@ -38,6 +38,7 @@ use crate::settings::{
     web_mode_invalid_message, web_timeout_base_non_negative_message,
 };
 use crate::shadow_root::ShadowRoot;
+use crate::upload::UploadFilesInput;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WebMode {
@@ -336,11 +337,17 @@ impl WebFrame {
         self.frame().clear_cookies()
     }
 
-    pub fn set_upload_files(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn set_upload_files<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.frame().set_upload_files(files)
     }
 
-    pub fn set_upload_paths(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn set_upload_paths<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.frame().set_upload_paths(files)
     }
 
@@ -570,15 +577,16 @@ impl WebFrame {
         )
     }
 
-    pub fn click_to_upload<'a, L>(
+    pub fn click_to_upload<'a, 'b, L, F>(
         &self,
         locator: L,
-        files: &[String],
+        files: F,
         timeout_ms: Option<u64>,
         by_js: bool,
     ) -> OpenPageResult<bool>
     where
         L: Into<LocatorInput<'a>>,
+        F: Into<UploadFilesInput<'b>>,
     {
         self.frame()
             .click_to_upload(locator, files, timeout_ms, by_js)
@@ -3899,15 +3907,16 @@ impl WebPage {
         }
     }
 
-    pub fn click_to_upload<'a, L>(
+    pub fn click_to_upload<'a, 'b, L, F>(
         &self,
         locator: L,
-        files: &[String],
+        files: F,
         timeout_ms: Option<u64>,
         by_js: bool,
     ) -> OpenPageResult<bool>
     where
         L: Into<LocatorInput<'a>>,
+        F: Into<UploadFilesInput<'b>>,
     {
         match self.mode()? {
             WebMode::Driver => self
@@ -3959,11 +3968,17 @@ impl WebPage {
         }
     }
 
-    pub fn set_upload_files(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn set_upload_files<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.driver.set_upload_files(files)
     }
 
-    pub fn set_upload_paths(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn set_upload_paths<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.set_upload_files(files)
     }
 
@@ -6083,12 +6098,15 @@ impl<'a> WebElementClicker<'a> {
         self.element.click_at(offset_x, offset_y, button, count)
     }
 
-    pub fn to_upload(
+    pub fn to_upload<'b, F>(
         &self,
-        files: &[String],
+        files: F,
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<bool>
+    where
+        F: Into<UploadFilesInput<'b>>,
+    {
         self.browser_clicker()?.to_upload(files, timeout_ms, by_js)
     }
 
@@ -6693,11 +6711,17 @@ impl WebPageSetter<'_> {
             .set_current_tab_download_file_name(rename, suffix, suffix.is_some())
     }
 
-    pub fn upload_files(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn upload_files<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.page.set_upload_files(files)
     }
 
-    pub fn upload_paths(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn upload_paths<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         self.page.set_upload_paths(files)
     }
 
@@ -9197,6 +9221,8 @@ mod tests {
     fn webframe_transfer_helper_signatures_accept_common_inputs() {
         fn assert_calls(frame: &Frame, web_page: &WebPage, web_frame: &WebFrame) {
             let files = vec!["/tmp/demo.txt".to_string()];
+            let upload_path = PathBuf::from("/tmp/demo.txt");
+            let borrowed_files = ["/tmp/demo.txt", "/tmp/alt.txt"];
             let cookies = json!({"sid": "abc", "domain": ".example.test", "path": "/"});
 
             let _ = frame.set().cookie().set(&cookies);
@@ -9209,7 +9235,10 @@ mod tests {
             let _ = frame.owner();
             let _ = frame.tab();
             let _ = frame.set_upload_files(&files);
+            let _ = frame.set_upload_files("/tmp/demo.txt");
+            let _ = frame.set_upload_files(&upload_path);
             let _ = frame.set_upload_paths(&files);
+            let _ = frame.set_upload_paths(&borrowed_files);
             let _ = frame.set_download_path("/tmp");
             let _ = frame.set_download_file_exists_mode(DownloadFileExistsMode::Overwrite);
             let _ = frame.set_when_download_file_exists("overwrite");
@@ -9240,6 +9269,7 @@ mod tests {
             );
             let _ = frame.click_to_upload("css:#upload", &files, Some(1_000), false);
             let _ = frame.click_to_upload((By::ID, "upload"), &files, Some(1_000), false);
+            let _ = frame.click_to_upload("css:#upload", "/tmp/demo.txt", Some(1_000), false);
             let _ = frame.click_for_new_tab("css:#open", Some(1_000), false);
             let _ = frame.click_for_new_tab((By::ID, "open"), Some(1_000), false);
             let _ = frame.click_middle("css:#open", Some(1_000), true);
@@ -9250,7 +9280,10 @@ mod tests {
             let _ = frame.save_screenshot("/tmp/frame.png");
 
             let _ = web_page.set_upload_files(&files);
+            let _ = web_page.set_upload_files("/tmp/demo.txt");
+            let _ = web_page.set_upload_files(&upload_path);
             let _ = web_page.set_upload_paths(&files);
+            let _ = web_page.set_upload_paths(&borrowed_files);
             let _ = web_page.set_download_path("/tmp");
             let _ = web_page.set_download_file_exists_mode(DownloadFileExistsMode::Overwrite);
             let _ = web_page.when_download_file_exists("overwrite");
@@ -9287,6 +9320,7 @@ mod tests {
             );
             let _ = web_page.click_to_upload("css:#upload", &files, Some(1_000), false);
             let _ = web_page.click_to_upload((By::ID, "upload"), &files, Some(1_000), false);
+            let _ = web_page.click_to_upload("css:#upload", &upload_path, Some(1_000), false);
             let _ = web_page.click_for_new_tab("css:#open", Some(1_000), false);
             let _ = web_page.click_for_new_tab((By::ID, "open"), Some(1_000), false);
             let _ = web_page.click_middle("css:#open", Some(1_000), true);
@@ -9303,7 +9337,10 @@ mod tests {
             let _ = web_frame.owner();
             let _ = web_frame.tab();
             let _ = web_frame.set_upload_files(&files);
+            let _ = web_frame.set_upload_files("/tmp/demo.txt");
+            let _ = web_frame.set_upload_files(&upload_path);
             let _ = web_frame.set_upload_paths(&files);
+            let _ = web_frame.set_upload_paths(&borrowed_files);
             let _ = web_frame.set_download_path("/tmp");
             let _ = web_frame.set_download_file_exists_mode(DownloadFileExistsMode::Overwrite);
             let _ = web_frame.set_when_download_file_exists("overwrite");
@@ -9334,6 +9371,7 @@ mod tests {
             );
             let _ = web_frame.click_to_upload("css:#upload", &files, Some(1_000), false);
             let _ = web_frame.click_to_upload((By::ID, "upload"), &files, Some(1_000), false);
+            let _ = web_frame.click_to_upload("css:#upload", &borrowed_files, Some(1_000), false);
             let _ = web_frame.click_for_new_tab("css:#open", Some(1_000), false);
             let _ = web_frame.click_for_new_tab((By::ID, "open"), Some(1_000), false);
             let _ = web_frame.click_middle("css:#open", Some(1_000), true);
@@ -9391,6 +9429,8 @@ mod tests {
             let headers = [("Accept".to_string(), "text/html".to_string())];
             let urls = vec!["*.css*".to_string()];
             let files = vec!["/tmp/demo.txt".to_string()];
+            let upload_path = PathBuf::from("/tmp/demo.txt");
+            let borrowed_files = ["/tmp/demo.txt", "/tmp/alt.txt"];
             let cookies = json!({"sid": "abc", "domain": ".example.test", "path": "/"});
 
             let _ = page.set().window().max();
@@ -9423,7 +9463,10 @@ mod tests {
             let _ = page.set().when_download_file_exists("rename");
             let _ = page.set().download_file_name(Some("file"), Some(".txt"));
             let _ = page.set().upload_files(&files);
+            let _ = page.set().upload_files("/tmp/demo.txt");
+            let _ = page.set().upload_files(&upload_path);
             let _ = page.set().upload_paths(&files);
+            let _ = page.set().upload_paths(&borrowed_files);
             let _ = page.set().activate();
             let _ = page.set().retry(Some(5), Some(0.25));
             let _ = page.set().retry_times(5);
@@ -9464,7 +9507,10 @@ mod tests {
                 .set()
                 .download_file_name(Some("file"), Some(".txt"));
             let _ = web_page.set().upload_files(&files);
+            let _ = web_page.set().upload_files("/tmp/demo.txt");
+            let _ = web_page.set().upload_files(&upload_path);
             let _ = web_page.set().upload_paths(&files);
+            let _ = web_page.set().upload_paths(&borrowed_files);
             let _ = web_page.set().activate();
             let _ = web_page.set().retry(Some(5), Some(0.25));
             let _ = web_page.set().retry_times(5);
@@ -9842,6 +9888,8 @@ mod tests {
     fn element_and_webelement_clicker_expose_signatures() {
         fn assert_calls(element: &Element, web_element: &WebElement) {
             let files = vec!["./fixtures/demo.txt".to_string()];
+            let upload_path = PathBuf::from("./fixtures/demo.txt");
+            let borrowed_files = ["./fixtures/demo.txt", "./fixtures/alt.txt"];
 
             let _ = element.click_with_options(None, Some(1_000), true);
             let _ = element.click_left_with_options(Some(false), Some(1_000), false);
@@ -9854,6 +9902,12 @@ mod tests {
             let _ = element.clicker().multi(2);
             let _ = element.clicker().at(Some(5.0), Some(6.0), "left", 1);
             let _ = element.clicker().to_upload(&files, Some(1_000), false);
+            let _ = element
+                .clicker()
+                .to_upload("./fixtures/demo.txt", Some(1_000), false);
+            let _ = element
+                .clicker()
+                .to_upload(&upload_path, Some(1_000), false);
             let _ =
                 element
                     .clicker()
@@ -9871,6 +9925,9 @@ mod tests {
             let _ = web_element.clicker().multi(2);
             let _ = web_element.clicker().at(Some(5.0), Some(6.0), "left", 1);
             let _ = web_element.clicker().to_upload(&files, Some(1_000), false);
+            let _ = web_element
+                .clicker()
+                .to_upload(&borrowed_files, Some(1_000), false);
             let _ = web_element.clicker().to_download(
                 None,
                 None,
