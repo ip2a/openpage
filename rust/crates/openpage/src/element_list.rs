@@ -1848,6 +1848,16 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    fn relative_elements<F>(&self, f: F) -> OpenPageResult<Vec<Element>>
+    where
+        F: FnOnce(&Element) -> OpenPageResult<Vec<Element>>,
+    {
+        match self.element {
+            Some(element) => f(element),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -1934,6 +1944,17 @@ impl<'a> ElementsOne<'a, Element> {
         self.relative_element(|element| element.child_with(locator, index))
     }
 
+    pub fn children(&self) -> OpenPageResult<Vec<Element>> {
+        self.relative_elements(|element| element.children())
+    }
+
+    pub fn children_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_elements(|element| element.children_with(locator))
+    }
+
     pub fn prev(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
         self.relative_element(|element| element.prev())
     }
@@ -1947,6 +1968,17 @@ impl<'a> ElementsOne<'a, Element> {
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.relative_element(|element| element.prev_with(locator, index))
+    }
+
+    pub fn prevs(&self) -> OpenPageResult<Vec<Element>> {
+        self.relative_elements(|element| element.prevs())
+    }
+
+    pub fn prevs_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_elements(|element| element.prevs_with(locator))
     }
 
     pub fn next(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
@@ -1964,6 +1996,17 @@ impl<'a> ElementsOne<'a, Element> {
         self.relative_element(|element| element.next_with(locator, index))
     }
 
+    pub fn nexts(&self) -> OpenPageResult<Vec<Element>> {
+        self.relative_elements(|element| element.nexts())
+    }
+
+    pub fn nexts_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_elements(|element| element.nexts_with(locator))
+    }
+
     pub fn before(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
         self.relative_element(|element| element.before())
     }
@@ -1979,6 +2022,17 @@ impl<'a> ElementsOne<'a, Element> {
         self.relative_element(|element| element.before_with(locator, index))
     }
 
+    pub fn befores(&self) -> OpenPageResult<Vec<Element>> {
+        self.relative_elements(|element| element.befores())
+    }
+
+    pub fn befores_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_elements(|element| element.befores_with(locator))
+    }
+
     pub fn after(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
         self.relative_element(|element| element.after())
     }
@@ -1992,6 +2046,17 @@ impl<'a> ElementsOne<'a, Element> {
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.relative_element(|element| element.after_with(locator, index))
+    }
+
+    pub fn afters(&self) -> OpenPageResult<Vec<Element>> {
+        self.relative_elements(|element| element.afters())
+    }
+
+    pub fn afters_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_elements(|element| element.afters_with(locator))
     }
 
     pub fn over(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
@@ -6881,6 +6946,17 @@ mod tests {
         assert!(missing.next().expect("missing next owner").is_none());
         assert!(missing.before().expect("missing before owner").is_none());
         assert!(missing.after().expect("missing after owner").is_none());
+    }
+
+    #[test]
+    fn borrowed_browser_elements_one_multi_relative_navigation_handles_missing_owner() {
+        let missing = super::ElementsOne::<crate::Element>::none();
+
+        assert_eq!(missing.children().expect("missing children").len(), 0);
+        assert_eq!(missing.prevs().expect("missing previous siblings").len(), 0);
+        assert_eq!(missing.nexts().expect("missing next siblings").len(), 0);
+        assert_eq!(missing.befores().expect("missing before elements").len(), 0);
+        assert_eq!(missing.afters().expect("missing after elements").len(), 0);
     }
 
     #[test]
