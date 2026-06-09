@@ -213,6 +213,22 @@ impl ShadowRoot {
         snapshot_fragment_find_all_with_base_url(&html, locator.raw(), base_url.as_deref())
     }
 
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        self.snapshot_find(locator.raw())
+    }
+
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        self.snapshot_find_all(locator.raw())
+    }
+
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
         let locator = Locator::from_by(by, value)?;
         self.snapshot_find(locator.raw())
@@ -225,6 +241,18 @@ impl ShadowRoot {
     ) -> OpenPageResult<Vec<SessionElement>> {
         let locator = Locator::from_by(by, value)?;
         self.snapshot_find_all(locator.raw())
+    }
+
+    pub fn snapshot_query_xpath(
+        &self,
+        expression: &str,
+    ) -> OpenPageResult<Vec<SessionXPathResult>> {
+        let html = self.inner_html()?;
+        let base_url = value_as_optional_string(
+            self.run_js("return this.baseURI || (this.host && this.host.baseURI) || document.baseURI || null;")?,
+            "baseURI",
+        )?;
+        snapshot_fragment_query_xpath_with_base_url(&html, expression, base_url.as_deref())
     }
 
     pub fn is_enabled(&self) -> OpenPageResult<bool> {
@@ -783,11 +811,11 @@ fn next_marker_batch() -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_js_invocation, direct_child_selector, normalize_axis_xpath,
+        ShadowRoot, build_js_invocation, direct_child_selector, normalize_axis_xpath,
         resolve_javascript_timeout_ms, run_shadow_root_lookup_future_with_cdp_timeout,
         shadow_root_selector_error,
     };
-    use crate::{OpenPageError, Settings};
+    use crate::{OpenPageError, OpenPageResult, SessionElement, SessionXPathResult, Settings};
     use serde_json::json;
     use std::time::Duration;
     use tokio::runtime::Runtime;
@@ -848,6 +876,18 @@ mod tests {
             matches!(missing, OpenPageError::ElementNotFound(ref message) if message.contains("boom")),
             "unexpected selector conversion: {missing}"
         );
+    }
+
+    #[test]
+    fn shadow_root_static_query_aliases_are_typechecked() {
+        fn assert_methods(root: &ShadowRoot) -> OpenPageResult<()> {
+            let _: SessionElement = root.s_ele("css:.item")?;
+            let _: Vec<SessionElement> = root.s_eles("css:.item")?;
+            let _: Vec<SessionXPathResult> = root.snapshot_query_xpath(".//*")?;
+            Ok(())
+        }
+
+        let _ = assert_methods as fn(&ShadowRoot) -> OpenPageResult<()>;
     }
 
     #[test]
