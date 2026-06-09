@@ -1452,6 +1452,25 @@ impl ElementsOneOwned<SessionElement> {
         }
     }
 
+    fn relative_node<F>(&self, f: F) -> OpenPageResult<Option<SessionXPathResult>>
+    where
+        F: FnOnce(&SessionElement) -> OpenPageResult<SessionXPathResult>,
+    {
+        match self.as_option() {
+            Some(element) => match f(element) {
+                Ok(node) => Ok(Some(node)),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config.as_ref())? {
+                        return Err(err);
+                    }
+                    Ok(None)
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(None),
+        }
+    }
+
     pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Option<Vec<String>>> {
         self.as_borrowed().texts(text_node_only)
     }
@@ -1542,6 +1561,18 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_element(|element| element.child_with(locator, index))
     }
 
+    pub fn child_node(&self) -> OpenPageResult<Option<SessionXPathResult>> {
+        self.relative_node(|element| element.child_node())
+    }
+
+    pub fn child_node_with(
+        &self,
+        locator: Option<&str>,
+        index: usize,
+    ) -> OpenPageResult<Option<SessionXPathResult>> {
+        self.relative_node(|element| element.child_node_with(locator, index))
+    }
+
     pub fn children(&self) -> OpenPageResult<Vec<SessionElement>> {
         self.relative_elements(|element| element.children())
     }
@@ -1577,6 +1608,21 @@ impl ElementsOneOwned<SessionElement> {
         L: Into<crate::locator::LocatorInput<'a>>,
     {
         self.relative_element(|element| element.prev_with(locator, index))
+    }
+
+    pub fn prev_node(&self) -> OpenPageResult<Option<SessionXPathResult>> {
+        self.relative_node(|element| element.prev_node())
+    }
+
+    pub fn prev_node_with<'a, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<Option<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.relative_node(|element| element.prev_node_with(locator, index))
     }
 
     pub fn prevs(&self) -> OpenPageResult<Vec<SessionElement>> {
@@ -1619,6 +1665,21 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_element(|element| element.next_with(locator, index))
     }
 
+    pub fn next_node(&self) -> OpenPageResult<Option<SessionXPathResult>> {
+        self.relative_node(|element| element.next_node())
+    }
+
+    pub fn next_node_with<'a, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<Option<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.relative_node(|element| element.next_node_with(locator, index))
+    }
+
     pub fn nexts(&self) -> OpenPageResult<Vec<SessionElement>> {
         self.relative_elements(|element| element.nexts())
     }
@@ -1659,6 +1720,21 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_element(|element| element.before_with(locator, index))
     }
 
+    pub fn before_node(&self) -> OpenPageResult<Option<SessionXPathResult>> {
+        self.relative_node(|element| element.before_node())
+    }
+
+    pub fn before_node_with<'a, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<Option<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.relative_node(|element| element.before_node_with(locator, index))
+    }
+
     pub fn befores(&self) -> OpenPageResult<Vec<SessionElement>> {
         self.relative_elements(|element| element.befores())
     }
@@ -1697,6 +1773,21 @@ impl ElementsOneOwned<SessionElement> {
         L: Into<crate::locator::LocatorInput<'a>>,
     {
         self.relative_element(|element| element.after_with(locator, index))
+    }
+
+    pub fn after_node(&self) -> OpenPageResult<Option<SessionXPathResult>> {
+        self.relative_node(|element| element.after_node())
+    }
+
+    pub fn after_node_with<'a, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<Option<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.relative_node(|element| element.after_node_with(locator, index))
     }
 
     pub fn afters(&self) -> OpenPageResult<Vec<SessionElement>> {
@@ -2605,6 +2696,25 @@ impl<'a> ElementsOne<'a, SessionElement> {
         }
     }
 
+    fn relative_node<F>(&self, f: F) -> OpenPageResult<Option<SessionXPathResult>>
+    where
+        F: FnOnce(&SessionElement) -> OpenPageResult<SessionXPathResult>,
+    {
+        match self.element {
+            Some(element) => match f(element) {
+                Ok(node) => Ok(Some(node)),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config)? {
+                        return Err(err);
+                    }
+                    Ok(None)
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(None),
+        }
+    }
+
     pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -2691,6 +2801,18 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_element(|element| element.child_with(locator, index))
     }
 
+    pub fn child_node(&self) -> OpenPageResult<Option<SessionXPathResult>> {
+        self.relative_node(|element| element.child_node())
+    }
+
+    pub fn child_node_with(
+        &self,
+        locator: Option<&str>,
+        index: usize,
+    ) -> OpenPageResult<Option<SessionXPathResult>> {
+        self.relative_node(|element| element.child_node_with(locator, index))
+    }
+
     pub fn children(&self) -> OpenPageResult<Vec<SessionElement>> {
         self.relative_elements(|element| element.children())
     }
@@ -2726,6 +2848,21 @@ impl<'a> ElementsOne<'a, SessionElement> {
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.relative_element(|element| element.prev_with(locator, index))
+    }
+
+    pub fn prev_node(&self) -> OpenPageResult<Option<SessionXPathResult>> {
+        self.relative_node(|element| element.prev_node())
+    }
+
+    pub fn prev_node_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<Option<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_node(|element| element.prev_node_with(locator, index))
     }
 
     pub fn prevs(&self) -> OpenPageResult<Vec<SessionElement>> {
@@ -2768,6 +2905,21 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_element(|element| element.next_with(locator, index))
     }
 
+    pub fn next_node(&self) -> OpenPageResult<Option<SessionXPathResult>> {
+        self.relative_node(|element| element.next_node())
+    }
+
+    pub fn next_node_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<Option<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_node(|element| element.next_node_with(locator, index))
+    }
+
     pub fn nexts(&self) -> OpenPageResult<Vec<SessionElement>> {
         self.relative_elements(|element| element.nexts())
     }
@@ -2808,6 +2960,21 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_element(|element| element.before_with(locator, index))
     }
 
+    pub fn before_node(&self) -> OpenPageResult<Option<SessionXPathResult>> {
+        self.relative_node(|element| element.before_node())
+    }
+
+    pub fn before_node_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<Option<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_node(|element| element.before_node_with(locator, index))
+    }
+
     pub fn befores(&self) -> OpenPageResult<Vec<SessionElement>> {
         self.relative_elements(|element| element.befores())
     }
@@ -2846,6 +3013,21 @@ impl<'a> ElementsOne<'a, SessionElement> {
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.relative_element(|element| element.after_with(locator, index))
+    }
+
+    pub fn after_node(&self) -> OpenPageResult<Option<SessionXPathResult>> {
+        self.relative_node(|element| element.after_node())
+    }
+
+    pub fn after_node_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<Option<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_node(|element| element.after_node_with(locator, index))
     }
 
     pub fn afters(&self) -> OpenPageResult<Vec<SessionElement>> {
@@ -7378,6 +7560,106 @@ mod tests {
     }
 
     #[test]
+    fn borrowed_session_elements_one_supports_single_node_navigation() {
+        let items = snapshot_find_all(
+            r#"<div id="root">alpha<!--note--><span id="a">a</span><span id="b">b</span><strong id="c">c</strong>tail</div>"#,
+            "#root, #b",
+        )
+        .expect("snapshot elements");
+        let root = items
+            .filter_one()
+            .attr("id", "root", true)
+            .expect("root element");
+        let second = items
+            .filter_one()
+            .attr("id", "b", true)
+            .expect("second element");
+
+        match root
+            .child_node()
+            .expect("child node")
+            .expect("first child node")
+        {
+            SessionXPathResult::Text(value) => assert_eq!(value, "alpha"),
+            other => panic!("expected text child node, got {other:?}"),
+        }
+        match root
+            .child_node_with(Some("xpath:comment()"), 1)
+            .expect("comment child node")
+            .expect("comment child node")
+        {
+            SessionXPathResult::Comment(value) => assert_eq!(value, "note"),
+            other => panic!("expected comment child node, got {other:?}"),
+        }
+        match second
+            .prev_node_with(Some("xpath:comment()"), 1)
+            .expect("previous comment node")
+            .expect("previous comment node")
+        {
+            SessionXPathResult::Comment(value) => assert_eq!(value, "note"),
+            other => panic!("expected previous comment node, got {other:?}"),
+        }
+        match second.next_node().expect("next node").expect("next node") {
+            SessionXPathResult::Element(element) => assert_eq!(
+                element.attr("id").expect("next element id"),
+                Some("c".to_string())
+            ),
+            other => panic!("expected next element node, got {other:?}"),
+        }
+        assert!(
+            second
+                .before_node_with(Some("xpath:span[@id='a']"), 1)
+                .expect("before span node")
+                .is_some()
+        );
+        assert!(
+            second
+                .after_node_with(Some("xpath:strong[@id='c']"), 1)
+                .expect("after strong node")
+                .is_some()
+        );
+        assert!(
+            second
+                .prev_node_with(Some("xpath:strong[@id='missing']"), 1)
+                .expect("missing previous node")
+                .is_none()
+        );
+
+        let missing = items
+            .filter_one()
+            .attr("id", "missing", true)
+            .expect("missing element");
+        assert!(missing.child_node().expect("missing child node").is_none());
+        assert!(
+            missing
+                .prev_node()
+                .expect("missing previous node")
+                .is_none()
+        );
+        assert!(missing.next_node().expect("missing next node").is_none());
+        assert!(
+            missing
+                .before_node()
+                .expect("missing before node")
+                .is_none()
+        );
+        assert!(missing.after_node().expect("missing after node").is_none());
+
+        let config = Arc::new(Mutex::new(super::ElementsOneRuntimeConfig {
+            raise_when_not_found: true,
+            ..super::ElementsOneRuntimeConfig::default()
+        }));
+        let raising = super::ElementsOne::some_with_config(
+            second.as_option().expect("second element"),
+            Some(&config),
+        );
+        let error = raising
+            .prev_node_with(Some("xpath:strong[@id='missing']"), 1)
+            .expect_err("missing previous node should raise");
+        assert!(matches!(error, crate::OpenPageError::ElementNotFound(_)));
+    }
+
+    #[test]
     fn borrowed_web_elements_one_supports_session_relative_navigation() {
         let items: Vec<WebElement> = snapshot_find_all(
             r#"
@@ -7875,6 +8157,99 @@ mod tests {
             0
         );
         assert_eq!(missing.after_nodes().expect("missing after nodes").len(), 0);
+    }
+
+    #[test]
+    fn session_elements_one_owned_supports_single_node_navigation() {
+        let root = snapshot_find(
+            r#"<div id="root">alpha<!--note--><span id="a">a</span><span id="b">b</span><strong id="c">c</strong>tail</div>"#,
+            "#root",
+        )
+        .expect("root element");
+        let second = root.find("#b").expect("second element");
+        let root = super::ElementsOneOwned::some_with_config(root, None);
+        let second = super::ElementsOneOwned::some_with_config(second, None);
+
+        match root
+            .child_node()
+            .expect("child node")
+            .expect("first child node")
+        {
+            SessionXPathResult::Text(value) => assert_eq!(value, "alpha"),
+            other => panic!("expected text child node, got {other:?}"),
+        }
+        match root
+            .child_node_with(Some("xpath:comment()"), 1)
+            .expect("comment child node")
+            .expect("comment child node")
+        {
+            SessionXPathResult::Comment(value) => assert_eq!(value, "note"),
+            other => panic!("expected comment child node, got {other:?}"),
+        }
+        match second
+            .prev_node_with(Some("xpath:comment()"), 1)
+            .expect("previous comment node")
+            .expect("previous comment node")
+        {
+            SessionXPathResult::Comment(value) => assert_eq!(value, "note"),
+            other => panic!("expected previous comment node, got {other:?}"),
+        }
+        match second.next_node().expect("next node").expect("next node") {
+            SessionXPathResult::Element(element) => assert_eq!(
+                element.attr("id").expect("next element id"),
+                Some("c".to_string())
+            ),
+            other => panic!("expected next element node, got {other:?}"),
+        }
+        assert!(
+            second
+                .before_node_with(Some("xpath:span[@id='a']"), 1)
+                .expect("before span node")
+                .is_some()
+        );
+        assert!(
+            second
+                .after_node_with(Some("xpath:strong[@id='c']"), 1)
+                .expect("after strong node")
+                .is_some()
+        );
+        assert!(
+            second
+                .prev_node_with(Some("xpath:strong[@id='missing']"), 1)
+                .expect("missing previous node")
+                .is_none()
+        );
+
+        let missing: super::ElementsOneOwned<crate::SessionElement> =
+            super::ElementsOneOwned::none_with_config(None);
+        assert!(missing.child_node().expect("missing child node").is_none());
+        assert!(
+            missing
+                .prev_node()
+                .expect("missing previous node")
+                .is_none()
+        );
+        assert!(missing.next_node().expect("missing next node").is_none());
+        assert!(
+            missing
+                .before_node()
+                .expect("missing before node")
+                .is_none()
+        );
+        assert!(missing.after_node().expect("missing after node").is_none());
+
+        let config = Arc::new(Mutex::new(super::ElementsOneRuntimeConfig {
+            raise_when_not_found: true,
+            ..super::ElementsOneRuntimeConfig::default()
+        }));
+        let raising = super::ElementsOneOwned::some_with_config(
+            second.as_option().expect("second element").clone(),
+            Some(config),
+        );
+        let error = raising
+            .prev_node_with(Some("xpath:strong[@id='missing']"), 1)
+            .expect_err("missing previous node should raise");
+        assert!(matches!(error, crate::OpenPageError::ElementNotFound(_)));
     }
 
     #[test]
