@@ -42,7 +42,8 @@ pub use element::{
 pub use element_list::{
     ElementListDriverItem, ElementListItem, ElementListSearchItem, ElementListStateItem,
     ElementsFilter, ElementsFilterOne, ElementsGetter, ElementsListExt, ElementsOne,
-    ElementsOneOwned, ElementsSearch,
+    ElementsOneClicker, ElementsOneOwned, ElementsOneRect, ElementsOneScroller,
+    ElementsOneSelector, ElementsOneSetter, ElementsOneStates, ElementsOneWait, ElementsSearch,
 };
 pub use error::{OpenPageError, OpenPageResult};
 pub use intercept::{InterceptedRequest, InterceptedRequestInfo, Interceptor};
@@ -101,9 +102,11 @@ pub type WebNoneElement = ElementsOneOwned<WebElement>;
 mod tests {
     use super::{
         Browser, Chromium, ChromiumElement, ChromiumFrame, ChromiumOptions, ChromiumPage,
-        ChromiumTab, Element, ElementRect, ElementStates, ElementWait, ElementsOneOwned, Frame,
-        LaunchOptions, MixTab, NoneElement, Page, SessionElement, SessionNoneElement, WebElement,
-        WebElementRect, WebElementStates, WebElementWait, WebNoneElement, WebPage,
+        ChromiumTab, Element, ElementRect, ElementStates, ElementWait, ElementsOneClicker,
+        ElementsOneOwned, ElementsOneRect, ElementsOneScroller, ElementsOneSelector,
+        ElementsOneSetter, ElementsOneStates, ElementsOneWait, Frame, LaunchOptions, MixTab,
+        NoneElement, Page, SessionElement, SessionNoneElement, WebElement, WebElementRect,
+        WebElementStates, WebElementWait, WebNoneElement, WebPage,
     };
 
     #[test]
@@ -139,6 +142,26 @@ mod tests {
                 &WebElementStates<'_>,
                 &WebElementRect<'_>,
                 &WebElementWait<'_>,
+            );
+    }
+
+    #[test]
+    fn elements_one_wrapper_types_are_exported() {
+        let _ = (|_: &ElementsOneClicker<'_, Element>,
+                  _: &ElementsOneScroller<'_, Element>,
+                  _: &ElementsOneSetter<'_, Element>,
+                  _: &ElementsOneStates<'_, Element>,
+                  _: &ElementsOneRect<'_, Element>,
+                  _: &ElementsOneWait<'_, Element>,
+                  _: &ElementsOneSelector<'_, Element>| {})
+            as fn(
+                &ElementsOneClicker<'_, Element>,
+                &ElementsOneScroller<'_, Element>,
+                &ElementsOneSetter<'_, Element>,
+                &ElementsOneStates<'_, Element>,
+                &ElementsOneRect<'_, Element>,
+                &ElementsOneWait<'_, Element>,
+                &ElementsOneSelector<'_, Element>,
             );
     }
 }
