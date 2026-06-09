@@ -153,7 +153,12 @@ where
     tokio_timeout(timeout, future)
         .await
         .map_err(|_| timeout_error(operation, timeout_ms))?
-        .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))
+        .map_err(|err| {
+            OpenPageError::ElementNotFound(page_operation_failed_message(
+                operation,
+                &err.to_string(),
+            ))
+        })
 }
 
 async fn register_navigation_listener_with_cdp_timeout<Fut, T, E>(
@@ -13247,8 +13252,21 @@ mod tests {
             ))
             .expect_err("page lookup failure should remain ElementNotFound");
         assert!(
-            matches!(lookup_error, OpenPageError::ElementNotFound(ref message) if message == "missing"),
+            matches!(lookup_error, OpenPageError::ElementNotFound(ref message) if message == "page operation find element failed: missing"),
             "unexpected page lookup error: {lookup_error}"
+        );
+
+        Settings::set_language("cn");
+
+        let lookup_error = runtime
+            .block_on(run_page_lookup_future_with_cdp_timeout(
+                async { Err::<(), &'static str>("missing") },
+                "find element",
+            ))
+            .expect_err("page lookup failure should localize");
+        assert!(
+            matches!(lookup_error, OpenPageError::ElementNotFound(ref message) if message == "页面操作 find element 失败: missing"),
+            "unexpected localized page lookup error: {lookup_error}"
         );
     }
 

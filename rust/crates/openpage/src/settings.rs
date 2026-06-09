@@ -715,6 +715,13 @@ pub(crate) fn element_operation_failed_message(operation: &str, err: &str) -> St
     }
 }
 
+pub(crate) fn shadow_root_operation_failed_message(operation: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("ShadowRoot 操作 {operation} 失败: {err}"),
+        _ => format!("ShadowRoot operation {operation} failed: {err}"),
+    }
+}
+
 pub(crate) fn zoom_factor_must_be_positive_message(factor: f64) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("zoom factor 必须是有限正数，当前为 {factor}"),

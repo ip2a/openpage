@@ -29,9 +29,10 @@ use crate::session::{
 };
 use crate::settings::{
     cdp_timeout_duration, javascript_execution_timed_out_message,
-    shadow_root_object_id_unavailable_message, timeout_duration_millis, timeout_error,
-    value_bool_required_message, value_string_compatible_required_message,
-    value_string_required_message, value_unavailable_message,
+    shadow_root_object_id_unavailable_message, shadow_root_operation_failed_message,
+    timeout_duration_millis, timeout_error, value_bool_required_message,
+    value_string_compatible_required_message, value_string_required_message,
+    value_unavailable_message,
 };
 
 const MARKER_ATTRIBUTE: &str = "data-openpage-marker";
@@ -49,7 +50,12 @@ where
     tokio_timeout(timeout, future)
         .await
         .map_err(|_| timeout_error(operation, timeout_ms))?
-        .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))
+        .map_err(|err| {
+            OpenPageError::ElementNotFound(shadow_root_operation_failed_message(
+                operation,
+                &err.to_string(),
+            ))
+        })
 }
 
 fn shadow_root_selector_error(err: OpenPageError) -> OpenPageError {
@@ -879,8 +885,21 @@ mod tests {
             ))
             .expect_err("shadow root lookup failure should remain ElementNotFound");
         assert!(
-            matches!(lookup_error, OpenPageError::ElementNotFound(ref message) if message == "missing"),
+            matches!(lookup_error, OpenPageError::ElementNotFound(ref message) if message == "ShadowRoot operation resolve shadow root element failed: missing"),
             "unexpected shadow root lookup error: {lookup_error}"
+        );
+
+        Settings::set_language("cn");
+
+        let lookup_error = runtime
+            .block_on(run_shadow_root_lookup_future_with_cdp_timeout(
+                async { Err::<(), &'static str>("missing") },
+                "resolve shadow root element",
+            ))
+            .expect_err("shadow root lookup failure should localize");
+        assert!(
+            matches!(lookup_error, OpenPageError::ElementNotFound(ref message) if message == "ShadowRoot 操作 resolve shadow root element 失败: missing"),
+            "unexpected localized shadow root lookup error: {lookup_error}"
         );
     }
 

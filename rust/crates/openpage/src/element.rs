@@ -142,7 +142,12 @@ where
     tokio_timeout(timeout, future)
         .await
         .map_err(|_| timeout_error(operation, timeout_ms))?
-        .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))
+        .map_err(|err| {
+            OpenPageError::ElementNotFound(element_operation_failed_message(
+                operation,
+                &err.to_string(),
+            ))
+        })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -5801,8 +5806,21 @@ mod tests {
             ))
             .expect_err("element lookup failure should remain ElementNotFound");
         assert!(
-            matches!(lookup_error, crate::OpenPageError::ElementNotFound(ref message) if message == "missing"),
+            matches!(lookup_error, crate::OpenPageError::ElementNotFound(ref message) if message == "element operation find element failed: missing"),
             "unexpected lookup error: {lookup_error}"
+        );
+
+        crate::Settings::set_language("cn");
+
+        let lookup_error = runtime
+            .block_on(run_element_lookup_future_with_cdp_timeout(
+                async { Err::<(), &'static str>("missing") },
+                "find element",
+            ))
+            .expect_err("element lookup failure should localize");
+        assert!(
+            matches!(lookup_error, crate::OpenPageError::ElementNotFound(ref message) if message == "元素操作 find element 失败: missing"),
+            "unexpected localized lookup error: {lookup_error}"
         );
     }
 
