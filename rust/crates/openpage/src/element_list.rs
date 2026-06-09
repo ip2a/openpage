@@ -815,6 +815,13 @@ impl ElementsOneOwned<Element> {
         self.as_borrowed().drag(offset_x, offset_y, duration_secs)
     }
 
+    pub fn drag_to<'a, T>(&self, target: T, duration_secs: f64) -> OpenPageResult<bool>
+    where
+        T: Into<crate::element::ElementDragTarget<'a>>,
+    {
+        self.as_borrowed().drag_to(target, duration_secs)
+    }
+
     pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<bool> {
         self.as_borrowed().drag_to_point(x, y, duration_secs)
     }
@@ -1420,6 +1427,13 @@ impl ElementsOneOwned<WebElement> {
 
     pub fn drag(&self, offset_x: f64, offset_y: f64, duration_secs: f64) -> OpenPageResult<bool> {
         self.as_borrowed().drag(offset_x, offset_y, duration_secs)
+    }
+
+    pub fn drag_to<'a, T>(&self, target: T, duration_secs: f64) -> OpenPageResult<bool>
+    where
+        T: Into<crate::webpage::WebElementDragTarget<'a>>,
+    {
+        self.as_borrowed().drag_to(target, duration_secs)
     }
 
     pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<bool> {
@@ -3869,6 +3883,19 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    pub fn drag_to<'b, T>(&self, target: T, duration_secs: f64) -> OpenPageResult<bool>
+    where
+        T: Into<crate::element::ElementDragTarget<'b>>,
+    {
+        match self.element {
+            Some(element) => {
+                element.drag_to(target, duration_secs)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<bool> {
         match self.element {
             Some(element) => {
@@ -5575,6 +5602,19 @@ impl<'a> ElementsOne<'a, WebElement> {
         match self.element {
             Some(element) => {
                 element.drag(offset_x, offset_y, duration_secs)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn drag_to<'b, T>(&self, target: T, duration_secs: f64) -> OpenPageResult<bool>
+    where
+        T: Into<crate::webpage::WebElementDragTarget<'b>>,
+    {
+        match self.element {
+            Some(element) => {
+                element.drag_to(target, duration_secs)?;
                 Ok(true)
             }
             None => Ok(false),

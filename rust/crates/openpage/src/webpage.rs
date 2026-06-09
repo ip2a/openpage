@@ -10691,6 +10691,8 @@ mod tests {
             let _ = one_element.submit();
             let _ = one_element.hover_with_offset(Some(1.0), Some(2.0));
             let _ = one_element.drag(5.0, 6.0, 0.1);
+            let _ = one_element.drag_to(element, 0.1);
+            let _ = one_element.drag_to((50.0, 60.0), 0.1);
             let _ = one_element.drag_to_point(50.0, 60.0, 0.1);
             let _ = one_element.set_property("value", &serde_json::json!("demo"));
             let _ = one_element.set_checked(true);
@@ -10716,6 +10718,8 @@ mod tests {
             let _ = one_web_element.submit();
             let _ = one_web_element.hover_with_offset(Some(1.0), Some(2.0));
             let _ = one_web_element.drag(5.0, 6.0, 0.1);
+            let _ = one_web_element.drag_to(web_element, 0.1);
+            let _ = one_web_element.drag_to((50.0, 60.0), 0.1);
             let _ = one_web_element.drag_to_point(50.0, 60.0, 0.1);
             let _ = one_web_element.set_property("value", &serde_json::json!("demo"));
             let _ = one_web_element.set_checked(true);
@@ -10746,6 +10750,8 @@ mod tests {
             let _ = owned_element.submit();
             let _ = owned_element.hover_with_offset(Some(1.0), Some(2.0));
             let _ = owned_element.drag(5.0, 6.0, 0.1);
+            let _ = owned_element.drag_to(element, 0.1);
+            let _ = owned_element.drag_to((50.0, 60.0), 0.1);
             let _ = owned_element.drag_to_point(50.0, 60.0, 0.1);
             let _ = owned_element.set_property("value", &serde_json::json!("demo"));
             let _ = owned_element.set_checked(true);
@@ -10775,6 +10781,8 @@ mod tests {
             let _ = owned_web_element.submit();
             let _ = owned_web_element.hover_with_offset(Some(1.0), Some(2.0));
             let _ = owned_web_element.drag(5.0, 6.0, 0.1);
+            let _ = owned_web_element.drag_to(web_element, 0.1);
+            let _ = owned_web_element.drag_to((50.0, 60.0), 0.1);
             let _ = owned_web_element.drag_to_point(50.0, 60.0, 0.1);
             let _ = owned_web_element.set_property("value", &serde_json::json!("demo"));
             let _ = owned_web_element.set_checked(true);
