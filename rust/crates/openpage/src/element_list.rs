@@ -1565,11 +1565,14 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_node(|element| element.child_node())
     }
 
-    pub fn child_node_with(
+    pub fn child_node_with<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<Option<SessionXPathResult>> {
+    ) -> OpenPageResult<Option<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
         self.relative_node(|element| element.child_node_with(locator, index))
     }
 
@@ -1588,10 +1591,13 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_nodes(|element| element.children_nodes())
     }
 
-    pub fn children_nodes_with(
+    pub fn children_nodes_with<'a, L>(
         &self,
-        locator: Option<&str>,
-    ) -> OpenPageResult<Vec<SessionXPathResult>> {
+        locator: Option<L>,
+    ) -> OpenPageResult<Vec<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
         self.relative_nodes(|element| element.children_nodes_with(locator))
     }
 
@@ -2805,11 +2811,14 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_node(|element| element.child_node())
     }
 
-    pub fn child_node_with(
+    pub fn child_node_with<'b, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<Option<SessionXPathResult>> {
+    ) -> OpenPageResult<Option<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
         self.relative_node(|element| element.child_node_with(locator, index))
     }
 
@@ -2828,10 +2837,13 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_nodes(|element| element.children_nodes())
     }
 
-    pub fn children_nodes_with(
+    pub fn children_nodes_with<'b, L>(
         &self,
-        locator: Option<&str>,
-    ) -> OpenPageResult<Vec<SessionXPathResult>> {
+        locator: Option<L>,
+    ) -> OpenPageResult<Vec<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
         self.relative_nodes(|element| element.children_nodes_with(locator))
     }
 
@@ -7591,6 +7603,20 @@ mod tests {
             SessionXPathResult::Comment(value) => assert_eq!(value, "note"),
             other => panic!("expected comment child node, got {other:?}"),
         }
+        assert_eq!(
+            root.children_nodes_with(Some((By::XPATH, "span")))
+                .expect("span child nodes")
+                .len(),
+            2
+        );
+        match root
+            .child_node_with(Some((By::XPATH, "comment()")), 1)
+            .expect("tuple comment child node")
+            .expect("tuple comment child node")
+        {
+            SessionXPathResult::Comment(value) => assert_eq!(value, "note"),
+            other => panic!("expected tuple comment child node, got {other:?}"),
+        }
         match second
             .prev_node_with(Some("xpath:comment()"), 1)
             .expect("previous comment node")
@@ -8185,6 +8211,20 @@ mod tests {
         {
             SessionXPathResult::Comment(value) => assert_eq!(value, "note"),
             other => panic!("expected comment child node, got {other:?}"),
+        }
+        assert_eq!(
+            root.children_nodes_with(Some((By::XPATH, "span")))
+                .expect("span child nodes")
+                .len(),
+            2
+        );
+        match root
+            .child_node_with(Some((By::XPATH, "comment()")), 1)
+            .expect("tuple comment child node")
+            .expect("tuple comment child node")
+        {
+            SessionXPathResult::Comment(value) => assert_eq!(value, "note"),
+            other => panic!("expected tuple comment child node, got {other:?}"),
         }
         match second
             .prev_node_with(Some("xpath:comment()"), 1)

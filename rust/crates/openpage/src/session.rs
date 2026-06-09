@@ -4042,7 +4042,7 @@ impl SessionElement {
     }
 
     pub fn child_node(&self) -> OpenPageResult<SessionXPathResult> {
-        self.child_node_with(None, 1)
+        self.child_node_with(None::<&str>, 1)
     }
 
     pub fn child_with<'a, L>(
@@ -4060,11 +4060,14 @@ impl SessionElement {
         )
     }
 
-    pub fn child_node_with(
+    pub fn child_node_with<'a, L>(
         &self,
-        locator: Option<&str>,
+        locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<SessionXPathResult> {
+    ) -> OpenPageResult<SessionXPathResult>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         nth_from_start(
             self.children_nodes_with(locator)?,
             index,
@@ -4077,7 +4080,7 @@ impl SessionElement {
     }
 
     pub fn children_nodes(&self) -> OpenPageResult<Vec<SessionXPathResult>> {
-        self.children_nodes_with(None)
+        self.children_nodes_with(None::<&str>)
     }
 
     pub fn children_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
@@ -4105,16 +4108,20 @@ impl SessionElement {
         })
     }
 
-    pub fn children_nodes_with(
+    pub fn children_nodes_with<'a, L>(
         &self,
-        locator: Option<&str>,
-    ) -> OpenPageResult<Vec<SessionXPathResult>> {
+        locator: Option<L>,
+    ) -> OpenPageResult<Vec<SessionXPathResult>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = parse_optional_xpath_locator_input(locator)?;
         self.with_element(|element| {
-            relative_node_xpath_query(
+            relative_node_xpath_query_with_locator(
                 &self.html,
                 self.base_url.as_ref(),
                 element,
-                locator,
+                locator.as_ref(),
                 "./node()",
                 direct_child_xpath_query,
                 self.none_element_config.as_ref(),
@@ -5702,16 +5709,6 @@ fn parse_optional_locator(locator: Option<&str>) -> OpenPageResult<Option<Locato
         .transpose()
 }
 
-fn parse_optional_xpath_locator(locator: Option<&str>) -> OpenPageResult<Option<Locator>> {
-    let locator = parse_optional_locator(locator)?;
-    match locator {
-        Some(locator) if locator.kind() == LocatorKind::Css => Err(
-            OpenPageError::UnsupportedLocator(css_locator_unsupported_for_node_queries_message()),
-        ),
-        other => Ok(other),
-    }
-}
-
 fn parse_optional_xpath_locator_input<'a, L>(locator: Option<L>) -> OpenPageResult<Option<Locator>>
 where
     L: Into<LocatorInput<'a>>,
@@ -5794,31 +5791,6 @@ fn xpath_query_from_scope_element(
         Some(scope_path.as_str()),
         scope_at_fragment_root,
         none_element_config,
-    )
-}
-
-fn relative_node_xpath_query<F>(
-    html: &Arc<String>,
-    base_url: Option<&Arc<String>>,
-    scope: ElementRef<'_>,
-    locator: Option<&str>,
-    default_query: &str,
-    query_builder: F,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<Vec<SessionXPathResult>>
-where
-    F: FnOnce(&str) -> String,
-{
-    let (query, keep_attributes) = match parse_optional_xpath_locator(locator)? {
-        Some(locator) => (
-            query_builder(locator.query()),
-            xpath_query_requests_attributes(locator.query()),
-        ),
-        None => (default_query.to_string(), false),
-    };
-    filter_relative_node_results(
-        xpath_query_from_scope_element(html, base_url, scope, &query, none_element_config)?,
-        keep_attributes,
     )
 }
 
@@ -9947,13 +9919,13 @@ mod tests {
         let only = root.find("#only").expect("only child should exist");
 
         let english_child = only
-            .child_node_with(None, 1)
+            .child_node_with(None::<&str>, 1)
             .expect_err("missing child node should fail")
             .to_string();
         assert!(english_child.contains("child node not found"));
 
         let english_child_index = only
-            .child_node_with(None, 0)
+            .child_node_with(None::<&str>, 0)
             .expect_err("zero child node index should fail")
             .to_string();
         assert!(english_child_index.contains("child node not found: index must be >= 1"));
@@ -9985,13 +9957,13 @@ mod tests {
         Settings::set_language("cn");
 
         let chinese_child = only
-            .child_node_with(None, 1)
+            .child_node_with(None::<&str>, 1)
             .expect_err("missing child node should localize")
             .to_string();
         assert!(chinese_child.contains("没有找到子节点"));
 
         let chinese_child_index = only
-            .child_node_with(None, 0)
+            .child_node_with(None::<&str>, 0)
             .expect_err("zero child node index should localize")
             .to_string();
         assert!(chinese_child_index.contains("没有找到子节点: index 必须 >= 1"));
@@ -10460,6 +10432,21 @@ mod tests {
         .expect("fragment root should exist");
         let second = root.find("#b").expect("second span should exist");
 
+        assert_eq!(
+            root.children_nodes_with(Some((By::XPATH, "span")))
+                .expect("span child nodes")
+                .len(),
+            2
+        );
+
+        match root
+            .child_node_with(Some((By::XPATH, "comment()")), 1)
+            .expect("comment child node")
+        {
+            SessionXPathResult::Comment(value) => assert_eq!(value, "note"),
+            other => panic!("expected comment child node, got {other:?}"),
+        }
+
         match second
             .prev_node_with(Some((By::XPATH, "comment()")), 1)
             .expect("previous comment node")
@@ -10503,6 +10490,13 @@ mod tests {
                 assert_eq!(message, "css locator is not supported for node queries")
             }
             other => panic!("expected css tuple node query rejection, got {other:?}"),
+        }
+
+        match root.children_nodes_with(Some((By::CSS_SELECTOR, "span"))) {
+            Err(OpenPageError::UnsupportedLocator(message)) => {
+                assert_eq!(message, "css locator is not supported for node queries")
+            }
+            other => panic!("expected css tuple child node rejection, got {other:?}"),
         }
     }
 
