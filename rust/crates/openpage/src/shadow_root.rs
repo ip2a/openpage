@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -9,6 +10,7 @@ use chromiumoxide::cdp::js_protocol::runtime::{CallFunctionOnParams, RemoteObjec
 use chromiumoxide::page::Page as OxPage;
 use serde_json::Value;
 use tokio::runtime::Runtime;
+use tokio::time::timeout as tokio_timeout;
 
 use crate::element::Element;
 use crate::element_list::{
@@ -23,10 +25,27 @@ use crate::session::{
     snapshot_fragment_root_with_base_url,
 };
 use crate::settings::{
-    javascript_execution_timed_out_message, shadow_root_object_id_unavailable_message,
+    cdp_timeout_duration, javascript_execution_timed_out_message,
+    shadow_root_object_id_unavailable_message, timeout_duration_millis, timeout_error,
 };
 
 const MARKER_ATTRIBUTE: &str = "data-openpage-marker";
+
+async fn run_shadow_root_lookup_future_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))
+}
 
 #[derive(Debug, Clone)]
 pub struct ShadowRoot {
@@ -577,11 +596,11 @@ impl ShadowRoot {
             let mut elements = Vec::with_capacity(markers.len());
             for (_, marker) in &markers {
                 let query = marker_search_query(marker);
-                let element = self
-                    .page
-                    .find_xpath(query)
-                    .await
-                    .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
+                let element = run_shadow_root_lookup_future_with_cdp_timeout(
+                    self.page.find_xpath(query),
+                    "resolve shadow root element",
+                )
+                .await?;
                 elements.push(Element::new(
                     Arc::clone(&self.runtime),
                     self.page.clone(),
@@ -746,15 +765,54 @@ fn next_marker_batch() -> String {
 mod tests {
     use super::{
         build_js_invocation, direct_child_selector, normalize_axis_xpath,
-        resolve_javascript_timeout_ms,
+        resolve_javascript_timeout_ms, run_shadow_root_lookup_future_with_cdp_timeout,
     };
+    use crate::{OpenPageError, Settings};
     use serde_json::json;
+    use std::time::Duration;
+    use tokio::runtime::Runtime;
 
     #[test]
     fn resolve_javascript_timeout_ms_prefers_explicit_value() {
         assert_eq!(resolve_javascript_timeout_ms(Some(250), 30_000), 250);
         assert_eq!(resolve_javascript_timeout_ms(Some(0), 30_000), 1);
         assert_eq!(resolve_javascript_timeout_ms(None, 30_000), 30_000);
+    }
+
+    #[test]
+    fn shadow_root_lookup_operations_respect_global_timeout_setting() {
+        let _guard = crate::settings::scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("runtime");
+
+        let lookup_error = runtime
+            .block_on(run_shadow_root_lookup_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "resolve shadow root element",
+            ))
+            .expect_err("shadow root lookup should time out");
+        assert!(
+            matches!(lookup_error, OpenPageError::Timeout(ref message) if message.contains("resolve shadow root element")),
+            "unexpected shadow root lookup timeout error: {lookup_error}"
+        );
+
+        Settings::reset();
+
+        let lookup_error = runtime
+            .block_on(run_shadow_root_lookup_future_with_cdp_timeout(
+                async { Err::<(), &'static str>("missing") },
+                "resolve shadow root element",
+            ))
+            .expect_err("shadow root lookup failure should remain ElementNotFound");
+        assert!(
+            matches!(lookup_error, OpenPageError::ElementNotFound(ref message) if message == "missing"),
+            "unexpected shadow root lookup error: {lookup_error}"
+        );
     }
 
     #[test]
