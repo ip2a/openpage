@@ -804,6 +804,14 @@ impl ElementsOneOwned<Element> {
         self.as_borrowed().hover_with_offset(offset_x, offset_y)
     }
 
+    pub fn drag(&self, offset_x: f64, offset_y: f64, duration_secs: f64) -> OpenPageResult<bool> {
+        self.as_borrowed().drag(offset_x, offset_y, duration_secs)
+    }
+
+    pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<bool> {
+        self.as_borrowed().drag_to_point(x, y, duration_secs)
+    }
+
     pub fn remove_attr(&self, name: &str) -> OpenPageResult<bool> {
         self.as_borrowed().remove_attr(name)
     }
@@ -1345,6 +1353,14 @@ impl ElementsOneOwned<WebElement> {
         offset_y: Option<f64>,
     ) -> OpenPageResult<bool> {
         self.as_borrowed().hover_with_offset(offset_x, offset_y)
+    }
+
+    pub fn drag(&self, offset_x: f64, offset_y: f64, duration_secs: f64) -> OpenPageResult<bool> {
+        self.as_borrowed().drag(offset_x, offset_y, duration_secs)
+    }
+
+    pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<bool> {
+        self.as_borrowed().drag_to_point(x, y, duration_secs)
     }
 
     pub fn remove_attr(&self, name: &str) -> OpenPageResult<bool> {
@@ -3718,6 +3734,26 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    pub fn drag(&self, offset_x: f64, offset_y: f64, duration_secs: f64) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.drag(offset_x, offset_y, duration_secs)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.drag_to_point(x, y, duration_secs)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     pub fn remove_attr(&self, name: &str) -> OpenPageResult<bool> {
         match self.element {
             Some(element) => {
@@ -5316,6 +5352,26 @@ impl<'a> ElementsOne<'a, WebElement> {
         match self.element {
             Some(element) => {
                 element.hover_with_offset(offset_x, offset_y)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn drag(&self, offset_x: f64, offset_y: f64, duration_secs: f64) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.drag(offset_x, offset_y, duration_secs)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.drag_to_point(x, y, duration_secs)?;
                 Ok(true)
             }
             None => Ok(false),
