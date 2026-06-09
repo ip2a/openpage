@@ -92,7 +92,8 @@ use crate::settings::{
     frame_execution_context_unavailable_message, frame_html_unavailable_message,
     frame_index_must_start_message, frame_index_out_of_range_message,
     invalid_cookie_same_site_message, invalid_file_url_message, invalid_url_message,
-    javascript_execution_timed_out_message, launched_browser_only_message, no_new_tab_message,
+    javascript_execution_timed_out_message, launched_browser_only_message,
+    navigation_history_index_out_of_bounds_message, no_new_tab_message,
     page_connect_timed_out_message, page_operation_failed_message,
     permission_origin_required_message, permission_origin_scheme_message,
     permission_setting_invalid_message, resolved_frame_owner_missing_object_id_message,
@@ -6992,8 +6993,8 @@ impl Page {
             .entries
             .get(target_index)
             .ok_or_else(|| {
-                OpenPageError::PageOperation(format!(
-                    "navigation history index {target_index} out of bounds"
+                OpenPageError::PageOperation(navigation_history_index_out_of_bounds_message(
+                    target_index,
                 ))
             })?
             .id;

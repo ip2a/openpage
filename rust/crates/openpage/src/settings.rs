@@ -1800,6 +1800,13 @@ pub(crate) fn build_file_url_failed_message(path: &str) -> String {
     }
 }
 
+pub(crate) fn navigation_history_index_out_of_bounds_message(index: usize) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("导航历史序号 {index} 超出范围"),
+        _ => format!("navigation history index {index} out of bounds"),
+    }
+}
+
 pub(crate) fn page_connect_timed_out_message(url: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("页面连接超时: {url}"),
@@ -2341,6 +2348,10 @@ mod tests {
             "failed to build file url for /tmp/index.html"
         );
         assert_eq!(
+            super::navigation_history_index_out_of_bounds_message(3),
+            "navigation history index 3 out of bounds"
+        );
+        assert_eq!(
             invalid_tab_index_message(),
             "tab index must start from 1 or use negative indices from -1"
         );
@@ -2879,6 +2890,10 @@ mod tests {
         assert_eq!(
             super::build_file_url_failed_message("/tmp/index.html"),
             "无法为 /tmp/index.html 构造 file url"
+        );
+        assert_eq!(
+            super::navigation_history_index_out_of_bounds_message(3),
+            "导航历史序号 3 超出范围"
         );
         assert_eq!(
             invalid_tab_index_message(),
