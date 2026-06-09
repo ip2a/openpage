@@ -772,12 +772,28 @@ impl ElementsOneOwned<Element> {
         self.as_borrowed().clear()
     }
 
+    pub fn clear_with_mode(&self, by_js: bool) -> OpenPageResult<bool> {
+        self.as_borrowed().clear_with_mode(by_js)
+    }
+
+    pub fn submit(&self) -> OpenPageResult<bool> {
+        self.as_borrowed().submit()
+    }
+
     pub fn focus(&self) -> OpenPageResult<bool> {
         self.as_borrowed().focus()
     }
 
     pub fn hover(&self) -> OpenPageResult<bool> {
         self.as_borrowed().hover()
+    }
+
+    pub fn hover_with_offset(
+        &self,
+        offset_x: Option<f64>,
+        offset_y: Option<f64>,
+    ) -> OpenPageResult<bool> {
+        self.as_borrowed().hover_with_offset(offset_x, offset_y)
     }
 
     pub fn remove_attr(&self, name: &str) -> OpenPageResult<bool> {
@@ -1283,12 +1299,28 @@ impl ElementsOneOwned<WebElement> {
         self.as_borrowed().clear()
     }
 
+    pub fn clear_with_mode(&self, by_js: bool) -> OpenPageResult<bool> {
+        self.as_borrowed().clear_with_mode(by_js)
+    }
+
+    pub fn submit(&self) -> OpenPageResult<bool> {
+        self.as_borrowed().submit()
+    }
+
     pub fn focus(&self) -> OpenPageResult<bool> {
         self.as_borrowed().focus()
     }
 
     pub fn hover(&self) -> OpenPageResult<bool> {
         self.as_borrowed().hover()
+    }
+
+    pub fn hover_with_offset(
+        &self,
+        offset_x: Option<f64>,
+        offset_y: Option<f64>,
+    ) -> OpenPageResult<bool> {
+        self.as_borrowed().hover_with_offset(offset_x, offset_y)
     }
 
     pub fn remove_attr(&self, name: &str) -> OpenPageResult<bool> {
@@ -3580,6 +3612,26 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    pub fn clear_with_mode(&self, by_js: bool) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.clear_with_mode(by_js)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn submit(&self) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.submit()?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     pub fn focus(&self) -> OpenPageResult<bool> {
         match self.element {
             Some(element) => {
@@ -3594,6 +3646,20 @@ impl<'a> ElementsOne<'a, Element> {
         match self.element {
             Some(element) => {
                 element.hover()?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn hover_with_offset(
+        &self,
+        offset_x: Option<f64>,
+        offset_y: Option<f64>,
+    ) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.hover_with_offset(offset_x, offset_y)?;
                 Ok(true)
             }
             None => Ok(false),
@@ -5090,6 +5156,26 @@ impl<'a> ElementsOne<'a, WebElement> {
         }
     }
 
+    pub fn clear_with_mode(&self, by_js: bool) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.clear_with_mode(by_js)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn submit(&self) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.submit()?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     pub fn focus(&self) -> OpenPageResult<bool> {
         match self.element {
             Some(element) => {
@@ -5104,6 +5190,20 @@ impl<'a> ElementsOne<'a, WebElement> {
         match self.element {
             Some(element) => {
                 element.hover()?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn hover_with_offset(
+        &self,
+        offset_x: Option<f64>,
+        offset_y: Option<f64>,
+    ) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.hover_with_offset(offset_x, offset_y)?;
                 Ok(true)
             }
             None => Ok(false),
