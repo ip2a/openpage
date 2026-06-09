@@ -97,6 +97,22 @@ fn element_operation_error(operation: &str, err: impl ToString) -> OpenPageError
     ))
 }
 
+async fn run_element_page_future_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| element_operation_error(operation, err))
+}
+
 async fn run_element_future_with_cdp_timeout<Fut, T, E>(
     future: Fut,
     operation: &str,
@@ -1778,10 +1794,11 @@ impl Element {
         })?;
         let (x, y) = self.offset_target_point(offset_x, offset_y)?;
         self.runtime.block_on(async {
-            self.page
-                .move_mouse(Point::new(x as f64, y as f64))
-                .await
-                .map_err(|err| element_operation_error("move mouse", err))?;
+            run_element_page_future_with_cdp_timeout(
+                self.page.move_mouse(Point::new(x as f64, y as f64)),
+                "move mouse",
+            )
+            .await?;
             Ok(())
         })
     }
@@ -3823,10 +3840,8 @@ impl Element {
         };
         let buttons = mouse_button_buttons(&button);
         self.runtime.block_on(async {
-            self.page
-                .move_mouse(point)
-                .await
-                .map_err(|err| element_operation_error("move mouse", err))?;
+            run_element_page_future_with_cdp_timeout(self.page.move_mouse(point), "move mouse")
+                .await?;
 
             let mut pressed = DispatchMouseEventParams::new(
                 DispatchMouseEventType::MousePressed,
@@ -3853,10 +3868,8 @@ impl Element {
 
     fn drag_between(&self, start: Point, end: Point, duration_secs: f64) -> OpenPageResult<()> {
         self.runtime.block_on(async {
-            self.page
-                .move_mouse(start)
-                .await
-                .map_err(|err| element_operation_error("move mouse", err))?;
+            run_element_page_future_with_cdp_timeout(self.page.move_mouse(start), "move mouse")
+                .await?;
             let mut pressed = DispatchMouseEventParams::new(
                 DispatchMouseEventType::MousePressed,
                 start.x,
@@ -3873,10 +3886,8 @@ impl Element {
         let path_len = path.len();
         for (index, point) in path.into_iter().enumerate() {
             self.runtime.block_on(async {
-                self.page
-                    .move_mouse(point)
-                    .await
-                    .map_err(|err| element_operation_error("move mouse", err))?;
+                run_element_page_future_with_cdp_timeout(self.page.move_mouse(point), "move mouse")
+                    .await?;
                 Ok::<(), OpenPageError>(())
             })?;
             if index + 1 < path_len {
@@ -5373,7 +5384,8 @@ fn mac_meta_commands(key: &str) -> Option<&'static [&'static str]> {
 mod tests {
     use super::{
         element_operation_error, parse_mouse_button, resolve_javascript_timeout_ms,
-        run_element_future_with_cdp_timeout, validate_click_at_count,
+        run_element_future_with_cdp_timeout, run_element_page_future_with_cdp_timeout,
+        validate_click_at_count,
     };
 
     #[test]
@@ -5540,6 +5552,32 @@ mod tests {
         assert!(
             matches!(scroll_error, crate::OpenPageError::Timeout(ref message) if message.contains("scroll into view")),
             "unexpected scroll timeout error: {scroll_error}"
+        );
+    }
+
+    #[test]
+    fn element_mouse_move_operations_respect_global_timeout_setting() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+        crate::Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("runtime");
+
+        let move_error = runtime
+            .block_on(run_element_page_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "move mouse",
+            ))
+            .expect_err("element move_mouse should time out");
+
+        crate::Settings::reset();
+
+        assert!(
+            matches!(move_error, crate::OpenPageError::Timeout(ref message) if message.contains("move mouse")),
+            "unexpected move mouse timeout error: {move_error}"
         );
     }
 
