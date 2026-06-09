@@ -36,7 +36,8 @@ pub use config::{
 pub use console::{Console, ConsoleMessage, ConsoleSteps};
 pub use download::{DownloadInfo, DownloadMission, DownloadState};
 pub use element::{
-    Element, ElementClicker, ElementResource, ElementScroller, ElementSelector, ElementSetter,
+    Element, ElementClicker, ElementDragTarget, ElementResource, ElementScroller, ElementSelector,
+    ElementSetter,
 };
 pub use element_list::{
     ElementListDriverItem, ElementListItem, ElementListSearchItem, ElementListStateItem,
@@ -75,9 +76,10 @@ pub use tools::{
 };
 pub use upload::UploadTracker;
 pub use webpage::{
-    DisconnectedWebFrame, DisconnectedWebPage, WebElement, WebElementClicker, WebElementScroller,
-    WebElementSelector, WebElementSetter, WebFrame, WebMode, WebPage, WebPageCookieSetter,
-    WebPageLoadModeSetter, WebPageScroller, WebPageSetter, WebPageWindowSetter,
+    DisconnectedWebFrame, DisconnectedWebPage, WebElement, WebElementClicker, WebElementDragTarget,
+    WebElementScroller, WebElementSelector, WebElementSetter, WebFrame, WebMode, WebPage,
+    WebPageCookieSetter, WebPageLoadModeSetter, WebPageScroller, WebPageSetter,
+    WebPageWindowSetter,
 };
 pub use window::{activate_app, set_app_visibility};
 

@@ -81,6 +81,60 @@ pub enum WebElement {
     Session(SessionElement),
 }
 
+pub enum WebElementDragTarget<'a> {
+    Element(&'a WebElement),
+    Locator(LocatorInput<'a>),
+    Coordinates(f64, f64),
+}
+
+impl<'a> From<&'a WebElement> for WebElementDragTarget<'a> {
+    fn from(value: &'a WebElement) -> Self {
+        Self::Element(value)
+    }
+}
+
+impl<'a> From<&'a str> for WebElementDragTarget<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::Locator(LocatorInput::from(value))
+    }
+}
+
+impl<'a> From<&'a String> for WebElementDragTarget<'a> {
+    fn from(value: &'a String) -> Self {
+        Self::Locator(LocatorInput::from(value))
+    }
+}
+
+impl<'a> From<(&'a str, &'a str)> for WebElementDragTarget<'a> {
+    fn from(value: (&'a str, &'a str)) -> Self {
+        Self::Locator(LocatorInput::from(value))
+    }
+}
+
+impl From<(i32, i32)> for WebElementDragTarget<'_> {
+    fn from(value: (i32, i32)) -> Self {
+        Self::Coordinates(value.0 as f64, value.1 as f64)
+    }
+}
+
+impl From<(u32, u32)> for WebElementDragTarget<'_> {
+    fn from(value: (u32, u32)) -> Self {
+        Self::Coordinates(value.0 as f64, value.1 as f64)
+    }
+}
+
+impl From<(usize, usize)> for WebElementDragTarget<'_> {
+    fn from(value: (usize, usize)) -> Self {
+        Self::Coordinates(value.0 as f64, value.1 as f64)
+    }
+}
+
+impl From<(f64, f64)> for WebElementDragTarget<'_> {
+    fn from(value: (f64, f64)) -> Self {
+        Self::Coordinates(value.0, value.1)
+    }
+}
+
 pub enum WebFrame {
     Browser(Frame),
     Mix { frame: Frame, page: Box<WebPage> },
@@ -2655,7 +2709,32 @@ impl WebElement {
         element.drag_to(target, duration_secs)
     }
 
-    pub fn drag_to(&self, target: &WebElement, duration_secs: f64) -> OpenPageResult<()> {
+    pub fn drag_to<'a, T>(&self, target: T, duration_secs: f64) -> OpenPageResult<()>
+    where
+        T: Into<WebElementDragTarget<'a>>,
+    {
+        let target = match target.into() {
+            WebElementDragTarget::Element(target) => {
+                return self.drag_to_browser_element(target, duration_secs);
+            }
+            WebElementDragTarget::Locator(locator) => self.find(locator)?,
+            WebElementDragTarget::Coordinates(x, y) => {
+                let Some(element) = self.browser_element() else {
+                    return Err(OpenPageError::UnsupportedOperation(
+                        driver_mode_only_message("drag_to()"),
+                    ));
+                };
+                return element.drag_to_point(x, y, duration_secs);
+            }
+        };
+        self.drag_to_browser_element(&target, duration_secs)
+    }
+
+    fn drag_to_browser_element(
+        &self,
+        target: &WebElement,
+        duration_secs: f64,
+    ) -> OpenPageResult<()> {
         let Some(element) = self.browser_element() else {
             return Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("drag_to()"),
@@ -9506,7 +9585,15 @@ mod tests {
     fn element_and_webelement_object_wrappers_expose_scroll_set_and_select_signatures() {
         fn assert_calls(element: &Element, web_element: &WebElement) {
             let _ = element.drag_to(element, 0.1);
+            let _ = element.drag_to("css:#target", 0.1);
+            let _ = element.drag_to((By::ID, "target"), 0.1);
+            let _ = element.drag_to((50, 50), 0.1);
+            let _ = element.drag_to((50.0, 50.0), 0.1);
             let _ = web_element.drag_to(web_element, 0.1);
+            let _ = web_element.drag_to("css:#target", 0.1);
+            let _ = web_element.drag_to((By::ID, "target"), 0.1);
+            let _ = web_element.drag_to((50, 50), 0.1);
+            let _ = web_element.drag_to((50.0, 50.0), 0.1);
             let _ = web_element.drag_to_element(web_element, 0.1);
 
             let _ = element.states().is_in_viewport();

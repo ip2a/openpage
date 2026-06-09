@@ -216,6 +216,60 @@ pub struct ElementSelector<'a> {
     element: &'a Element,
 }
 
+pub enum ElementDragTarget<'a> {
+    Element(&'a Element),
+    Locator(LocatorInput<'a>),
+    Coordinates(f64, f64),
+}
+
+impl<'a> From<&'a Element> for ElementDragTarget<'a> {
+    fn from(value: &'a Element) -> Self {
+        Self::Element(value)
+    }
+}
+
+impl<'a> From<&'a str> for ElementDragTarget<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::Locator(LocatorInput::from(value))
+    }
+}
+
+impl<'a> From<&'a String> for ElementDragTarget<'a> {
+    fn from(value: &'a String) -> Self {
+        Self::Locator(LocatorInput::from(value))
+    }
+}
+
+impl<'a> From<(&'a str, &'a str)> for ElementDragTarget<'a> {
+    fn from(value: (&'a str, &'a str)) -> Self {
+        Self::Locator(LocatorInput::from(value))
+    }
+}
+
+impl From<(i32, i32)> for ElementDragTarget<'_> {
+    fn from(value: (i32, i32)) -> Self {
+        Self::Coordinates(value.0 as f64, value.1 as f64)
+    }
+}
+
+impl From<(u32, u32)> for ElementDragTarget<'_> {
+    fn from(value: (u32, u32)) -> Self {
+        Self::Coordinates(value.0 as f64, value.1 as f64)
+    }
+}
+
+impl From<(usize, usize)> for ElementDragTarget<'_> {
+    fn from(value: (usize, usize)) -> Self {
+        Self::Coordinates(value.0 as f64, value.1 as f64)
+    }
+}
+
+impl From<(f64, f64)> for ElementDragTarget<'_> {
+    fn from(value: (f64, f64)) -> Self {
+        Self::Coordinates(value.0, value.1)
+    }
+}
+
 pub struct ElementStates<'a> {
     element: &'a Element,
 }
@@ -1862,8 +1916,16 @@ impl Element {
         self.drag_between(start, target, duration_secs)
     }
 
-    pub fn drag_to(&self, target: &Element, duration_secs: f64) -> OpenPageResult<()> {
-        self.drag_to_point_from_self(target.clickable_point()?, duration_secs)
+    pub fn drag_to<'a, T>(&self, target: T, duration_secs: f64) -> OpenPageResult<()>
+    where
+        T: Into<ElementDragTarget<'a>>,
+    {
+        let target = match target.into() {
+            ElementDragTarget::Element(element) => element.clickable_point()?,
+            ElementDragTarget::Locator(locator) => self.find(locator)?.clickable_point()?,
+            ElementDragTarget::Coordinates(x, y) => Point::new(x, y),
+        };
+        self.drag_to_point_from_self(target, duration_secs)
     }
 
     pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<()> {
