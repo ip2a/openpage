@@ -563,12 +563,16 @@ impl SessionOptions {
         self
     }
 
-    pub fn set_headers(&mut self, headers: &[(String, String)]) -> &mut Self {
+    pub fn set_headers<'a, H>(&mut self, headers: H) -> OpenPageResult<&mut Self>
+    where
+        H: Into<HeadersInput<'a>>,
+    {
+        let headers = parse_headers_input(headers)?;
         self.headers.clear();
         for (name, value) in headers {
-            upsert_header_pair(&mut self.headers, name.clone(), value.clone());
+            upsert_header_pair(&mut self.headers, name, value);
         }
-        self
+        Ok(self)
     }
 
     pub fn set_a_header(&mut self, name: impl Into<String>, value: impl Into<String>) -> &mut Self {
@@ -781,7 +785,7 @@ fn parse_session_options_ini(content: &str) -> OpenPageResult<SessionOptions> {
     }
 
     if let Some(headers) = ini_section_value(&ini, "session_options", "headers") {
-        options.set_headers(&parse_session_headers(headers)?);
+        options.set_headers(parse_session_headers(headers)?)?;
     }
     if let Some(cookies) = ini_section_value(&ini, "session_options", "cookies") {
         options.set_cookies(&parse_session_cookies(cookies)?)?;
@@ -7305,8 +7309,10 @@ mod tests {
 
         options
             .set_timeout(21)
-            .set_user_agent(Some("OpenPage/Test".to_string()))
-            .set_headers(&[("Accept".to_string(), "text/html".to_string())])
+            .set_user_agent(Some("OpenPage/Test".to_string()));
+        options
+            .set_headers("Accept: text/html\nX-Test: remove")
+            .expect("set session option headers")
             .set_a_header("accept", "application/json")
             .set_a_header("X-Test", "1")
             .remove_a_header("x-test");
