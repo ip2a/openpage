@@ -73,9 +73,10 @@ use crate::locator::{
 };
 use crate::screencast::Screencast;
 use crate::session::{
-    CookieEntry, CookieInput, SessionCookieParam, SessionElement, SessionOptions, SessionPage,
-    SessionXPathResult, cookie_input_to_params_allow_missing_scope, cookies_from_header,
-    snapshot_find, snapshot_find_all, snapshot_query_xpath, snapshot_root,
+    CookieEntry, CookieInput, HeadersInput, SessionCookieParam, SessionElement, SessionOptions,
+    SessionPage, SessionXPathResult, cookie_input_to_params_allow_missing_scope,
+    cookies_from_header, parse_headers_input, snapshot_find, snapshot_find_all,
+    snapshot_query_xpath, snapshot_root,
 };
 use crate::settings::{
     action_click_times_positive_message, action_element_missing_clickable_rect_message,
@@ -2662,7 +2663,10 @@ impl PageSetter<'_> {
         self.page.set_blocked_urls(patterns)
     }
 
-    pub fn headers(&self, headers: &[(String, String)]) -> OpenPageResult<()> {
+    pub fn headers<'a, H>(&self, headers: H) -> OpenPageResult<()>
+    where
+        H: Into<HeadersInput<'a>>,
+    {
         self.page.set_headers(headers)
     }
 
@@ -6031,10 +6035,14 @@ impl Page {
         Ok(())
     }
 
-    pub fn set_headers(&self, headers: &[(String, String)]) -> OpenPageResult<()> {
+    pub fn set_headers<'a, H>(&self, headers: H) -> OpenPageResult<()>
+    where
+        H: Into<HeadersInput<'a>>,
+    {
+        let headers = parse_headers_input(headers)?;
         let header_map = headers
-            .iter()
-            .map(|(name, value)| (name.clone(), serde_json::Value::String(value.clone())))
+            .into_iter()
+            .map(|(name, value)| (name, serde_json::Value::String(value)))
             .collect::<serde_json::Map<_, _>>();
         let params =
             SetExtraHttpHeadersParams::new(Headers::new(serde_json::Value::Object(header_map)));

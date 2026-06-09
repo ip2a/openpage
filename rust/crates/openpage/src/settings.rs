@@ -883,6 +883,13 @@ pub(crate) fn value_string_vec_array_required_message(name: &str, value: &str) -
     }
 }
 
+pub(crate) fn invalid_header_line_message(line: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("无效请求头行，应为 '名称: 值' 格式: {line}"),
+        _ => format!("invalid header line, expected 'name: value': {line}"),
+    }
+}
+
 pub(crate) fn blob_src_data_url_required_message(value: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("blob src 未返回 data URL 字符串: {value}"),

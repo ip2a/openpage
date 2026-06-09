@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Component, Path, PathBuf};
@@ -43,7 +44,7 @@ use crate::settings::{
     default_none_element_runtime_config, following_element_not_found_message,
     following_node_not_found_message, invalid_cookie_field_boolean_message,
     invalid_cookie_text_missing_value_message, invalid_css_selector_message,
-    invalid_file_url_message, invalid_session_ini_boolean_message,
+    invalid_file_url_message, invalid_header_line_message, invalid_session_ini_boolean_message,
     invalid_session_ini_field_expected_message, invalid_session_ini_field_message,
     invalid_session_ini_python_string_message, invalid_session_proxy_message, invalid_url_message,
     invalid_xpath_html_message, invalid_xpath_query_message, invalid_xpath_segment_index_message,
@@ -69,6 +70,114 @@ use crate::settings::{
 const FRAGMENT_WRAPPER_ATTR: &str = "data-openpage-fragment-root";
 
 pub type SessionResponseHook = Arc<dyn Fn(SessionHookEvent) + Send + Sync + 'static>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HeadersInput<'a> {
+    Text(Cow<'a, str>),
+    Pairs(Vec<(Cow<'a, str>, Cow<'a, str>)>),
+}
+
+impl<'a> From<&'a str> for HeadersInput<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::Text(Cow::Borrowed(value))
+    }
+}
+
+impl<'a> From<&'a String> for HeadersInput<'a> {
+    fn from(value: &'a String) -> Self {
+        Self::Text(Cow::Borrowed(value.as_str()))
+    }
+}
+
+impl From<String> for HeadersInput<'_> {
+    fn from(value: String) -> Self {
+        Self::Text(Cow::Owned(value))
+    }
+}
+
+impl<'a> From<&'a [(String, String)]> for HeadersInput<'a> {
+    fn from(value: &'a [(String, String)]) -> Self {
+        Self::Pairs(
+            value
+                .iter()
+                .map(|(name, value)| (Cow::Borrowed(name.as_str()), Cow::Borrowed(value.as_str())))
+                .collect(),
+        )
+    }
+}
+
+impl<'a, const N: usize> From<&'a [(String, String); N]> for HeadersInput<'a> {
+    fn from(value: &'a [(String, String); N]) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl<'a> From<&'a Vec<(String, String)>> for HeadersInput<'a> {
+    fn from(value: &'a Vec<(String, String)>) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl From<Vec<(String, String)>> for HeadersInput<'_> {
+    fn from(value: Vec<(String, String)>) -> Self {
+        Self::Pairs(
+            value
+                .into_iter()
+                .map(|(name, value)| (Cow::Owned(name), Cow::Owned(value)))
+                .collect(),
+        )
+    }
+}
+
+impl<'a> From<&'a [(&'a str, &'a str)]> for HeadersInput<'a> {
+    fn from(value: &'a [(&'a str, &'a str)]) -> Self {
+        Self::Pairs(
+            value
+                .iter()
+                .map(|(name, value)| (Cow::Borrowed(*name), Cow::Borrowed(*value)))
+                .collect(),
+        )
+    }
+}
+
+impl<'a, const N: usize> From<&'a [(&'a str, &'a str); N]> for HeadersInput<'a> {
+    fn from(value: &'a [(&'a str, &'a str); N]) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
+impl<'a, const N: usize> From<[(&'a str, &'a str); N]> for HeadersInput<'a> {
+    fn from(value: [(&'a str, &'a str); N]) -> Self {
+        Self::Pairs(
+            value
+                .into_iter()
+                .map(|(name, value)| (Cow::Borrowed(name), Cow::Borrowed(value)))
+                .collect(),
+        )
+    }
+}
+
+impl<'a> From<&'a HashMap<String, String>> for HeadersInput<'a> {
+    fn from(value: &'a HashMap<String, String>) -> Self {
+        Self::Pairs(
+            value
+                .iter()
+                .map(|(name, value)| (Cow::Borrowed(name.as_str()), Cow::Borrowed(value.as_str())))
+                .collect(),
+        )
+    }
+}
+
+impl From<HashMap<String, String>> for HeadersInput<'_> {
+    fn from(value: HashMap<String, String>) -> Self {
+        Self::Pairs(
+            value
+                .into_iter()
+                .map(|(name, value)| (Cow::Owned(name), Cow::Owned(value)))
+                .collect(),
+        )
+    }
+}
 
 fn session_cookie_header_decode_error(err: impl ToString) -> OpenPageError {
     OpenPageError::Http(session_cookie_header_decode_failed_message(
@@ -890,6 +999,38 @@ fn parse_session_headers(value: &str) -> OpenPageResult<Vec<(String, String)>> {
             invalid_session_ini_field_expected_message("headers", "object"),
         )),
     }
+}
+
+pub(crate) fn parse_headers_input<'a, H>(headers: H) -> OpenPageResult<Vec<(String, String)>>
+where
+    H: Into<HeadersInput<'a>>,
+{
+    match headers.into() {
+        HeadersInput::Text(text) => parse_headers_text(&text),
+        HeadersInput::Pairs(pairs) => Ok(pairs
+            .into_iter()
+            .map(|(name, value)| (name.into_owned(), value.into_owned()))
+            .collect()),
+    }
+}
+
+fn parse_headers_text(text: &str) -> OpenPageResult<Vec<(String, String)>> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(parse_header_line)
+        .collect()
+}
+
+fn parse_header_line(line: &str) -> OpenPageResult<(String, String)> {
+    let Some((name, value)) = line.split_once(':') else {
+        return Err(OpenPageError::Http(invalid_header_line_message(line)));
+    };
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(OpenPageError::Http(invalid_header_line_message(line)));
+    }
+    Ok((name.to_string(), value.trim_start().to_string()))
 }
 
 fn parse_session_params(value: &str) -> OpenPageResult<Vec<(String, String)>> {
@@ -1770,7 +1911,10 @@ impl SessionPageSetter<'_> {
         self.page.set_user_agent(user_agent)
     }
 
-    pub fn headers(&self, headers: &[(String, String)]) -> OpenPageResult<()> {
+    pub fn headers<'a, H>(&self, headers: H) -> OpenPageResult<()>
+    where
+        H: Into<HeadersInput<'a>>,
+    {
         self.page.set_headers(headers)
     }
 
@@ -2745,11 +2889,15 @@ impl SessionPage {
         Ok(())
     }
 
-    pub fn set_headers(&self, headers: &[(String, String)]) -> OpenPageResult<()> {
+    pub fn set_headers<'a, H>(&self, headers: H) -> OpenPageResult<()>
+    where
+        H: Into<HeadersInput<'a>>,
+    {
+        let headers = parse_headers_input(headers)?;
         let mut state = self.lock_state()?;
         state.headers.clear();
         for (name, value) in headers {
-            upsert_header_map(&mut state.headers, name.clone(), value.clone());
+            upsert_header_map(&mut state.headers, name, value);
         }
         Ok(())
     }
@@ -6306,7 +6454,7 @@ mod tests {
         SessionElement, SessionHandle, SessionHooks, SessionOptions, SessionPage,
         SessionRequestOptions, SessionXPathResult, append_query_params, cookie_assignment,
         cookie_input_to_params, cookies_from_header, default_referer_header,
-        nth_scraper_child_by_tag, parse_optional_selector, parse_xpath_path,
+        nth_scraper_child_by_tag, parse_headers_input, parse_optional_selector, parse_xpath_path,
         remove_cookie_from_header, resolve_local_file_path, resolve_session_options_ini_path,
         session_cookie_header_decode_error, snapshot_find, snapshot_find_all,
         snapshot_fragment_find, snapshot_fragment_root, snapshot_fragment_root_with_base_url,
@@ -7105,6 +7253,31 @@ mod tests {
 
         options.clear_headers();
         assert!(options.headers.is_empty());
+    }
+
+    #[test]
+    fn parse_headers_input_accepts_text_and_pairs() {
+        let text = "\nconnection: keep-alive\naccept: text/html\n";
+        let parsed = parse_headers_input(text).expect("parse headers text");
+        assert_eq!(
+            parsed,
+            vec![
+                ("connection".to_string(), "keep-alive".to_string()),
+                ("accept".to_string(), "text/html".to_string())
+            ]
+        );
+
+        let parsed = parse_headers_input([("X-Test", "1"), ("Accept", "application/json")])
+            .expect("parse header pairs");
+        assert_eq!(
+            parsed,
+            vec![
+                ("X-Test".to_string(), "1".to_string()),
+                ("Accept".to_string(), "application/json".to_string())
+            ]
+        );
+
+        assert!(parse_headers_input("missing separator").is_err());
     }
 
     #[test]

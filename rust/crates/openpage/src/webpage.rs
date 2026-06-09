@@ -28,8 +28,8 @@ use crate::page::{
 };
 use crate::screencast::Screencast;
 use crate::session::{
-    CookieEntry, CookieInput, SessionDownload, SessionElement, SessionOptions, SessionPage,
-    SessionXPathResult,
+    CookieEntry, CookieInput, HeadersInput, SessionDownload, SessionElement, SessionOptions,
+    SessionPage, SessionXPathResult,
 };
 use crate::settings::{
     component_state_lock_poisoned_message, driver_mode_only_message,
@@ -5807,7 +5807,10 @@ impl WebPage {
         self.driver.activate()
     }
 
-    pub fn set_headers(&self, headers: &[(String, String)]) -> OpenPageResult<()> {
+    pub fn set_headers<'a, H>(&self, headers: H) -> OpenPageResult<()>
+    where
+        H: Into<HeadersInput<'a>>,
+    {
         match self.mode()? {
             WebMode::Driver => self.driver.set_headers(headers),
             WebMode::Session => self.session.set_headers(headers),
@@ -6659,7 +6662,10 @@ impl WebPageSetter<'_> {
         self.page.set_blocked_urls(patterns)
     }
 
-    pub fn headers(&self, headers: &[(String, String)]) -> OpenPageResult<()> {
+    pub fn headers<'a, H>(&self, headers: H) -> OpenPageResult<()>
+    where
+        H: Into<HeadersInput<'a>>,
+    {
         self.page.set_headers(headers)
     }
 
@@ -9466,7 +9472,12 @@ mod tests {
             let _ = page.set().blocked_urls(&urls);
             let _ = page.set().blocked_urls("*.css*");
             let _ = page.set().blocked_urls(["*.css*", "*.js*"]);
+            let _ = page.set_headers("Accept: text/html\nX-Test: 1");
             let _ = page.set().headers(&headers);
+            let _ = page.set().headers("Accept: text/html\nX-Test: 1");
+            let _ = page
+                .set()
+                .headers([("Accept", "text/html"), ("X-Test", "1")]);
             let _ = page.set().user_agent("demo-agent", Some("linux"));
             let _ = page.set().session_storage("foo", Some("bar"));
             let _ = page.set().local_storage("foo", Some("bar"));
@@ -9510,7 +9521,12 @@ mod tests {
             let _ = web_page.set().blocked_urls(&urls);
             let _ = web_page.set().blocked_urls("*.css*");
             let _ = web_page.set().blocked_urls(["*.css*", "*.js*"]);
+            let _ = web_page.set_headers("Accept: text/html\nX-Test: 1");
             let _ = web_page.set().headers(&headers);
+            let _ = web_page.set().headers("Accept: text/html\nX-Test: 1");
+            let _ = web_page
+                .set()
+                .headers([("Accept", "text/html"), ("X-Test", "1")]);
             let _ = web_page.set().user_agent("demo-agent", Some("linux"));
             let _ = web_page.set().encoding(Some("utf-8".to_string()));
             let _ = web_page.set().session_storage("foo", Some("bar"));
