@@ -1276,6 +1276,13 @@ pub(crate) fn css_locator_unsupported_for_node_queries_message() -> String {
     )
 }
 
+pub(crate) fn unsupported_by_locator_message(by: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("不支持的 By 定位符: {by}"),
+        _ => format!("unsupported By locator: {by}"),
+    }
+}
+
 pub(crate) fn invalid_launch_options_ini_field_message(field: &str, detail: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("launch options ini 中的 {field} 无效: {detail}"),

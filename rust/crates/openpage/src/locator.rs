@@ -1,4 +1,5 @@
 use crate::error::{OpenPageError, OpenPageResult};
+use crate::settings::unsupported_by_locator_message;
 
 #[derive(Debug, Clone)]
 pub struct LocatorMatch<T> {
@@ -237,9 +238,9 @@ impl Locator {
                 )
             }
             _ => {
-                return Err(OpenPageError::UnsupportedLocator(format!(
-                    "unsupported By locator: {by}"
-                )));
+                return Err(OpenPageError::UnsupportedLocator(
+                    unsupported_by_locator_message(&by),
+                ));
             }
         };
         Self::parse(raw)
@@ -468,11 +469,25 @@ mod tests {
 
     #[test]
     fn from_by_rejects_unknown_values() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+
         let error = Locator::from_by("unsupported", "demo").expect_err("unsupported by");
 
         match error {
             crate::OpenPageError::UnsupportedLocator(message) => {
                 assert!(message.contains("unsupported By locator"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        crate::Settings::set_language("cn");
+
+        let error = Locator::from_by("unsupported", "demo").expect_err("unsupported by");
+
+        match error {
+            crate::OpenPageError::UnsupportedLocator(message) => {
+                assert!(message.contains("不支持的 By 定位符"));
             }
             other => panic!("unexpected error: {other:?}"),
         }
