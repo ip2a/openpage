@@ -1608,6 +1608,58 @@ where
 }
 
 impl<'a> ElementsOne<'a, Element> {
+    pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        match self.element {
+            Some(element) => element.ele(locator),
+            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
+        }
+    }
+
+    pub fn eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        match self.element {
+            Some(element) => element.eles(locator),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        match self.element {
+            Some(element) => match element.s_ele(locator) {
+                Ok(element) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.cloned(),
+                )),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config)? {
+                        return Err(err);
+                    }
+                    Ok(ElementsOneOwned::none_with_config(self.config.cloned()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
+        }
+    }
+
+    pub fn s_eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        match self.element {
+            Some(element) => element.s_eles(locator),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Option<Vec<String>>> {
         match self.element {
             Some(element) => element.texts(text_node_only).map(Some),
@@ -1635,6 +1687,58 @@ impl<'a> ElementsOne<'a, Element> {
 }
 
 impl<'a> ElementsOne<'a, WebElement> {
+    pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        match self.element {
+            Some(element) => element.ele(locator),
+            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
+        }
+    }
+
+    pub fn eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        match self.element {
+            Some(element) => element.eles(locator),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        match self.element {
+            Some(element) => match element.s_ele(locator) {
+                Ok(element) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.cloned(),
+                )),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config)? {
+                        return Err(err);
+                    }
+                    Ok(ElementsOneOwned::none_with_config(self.config.cloned()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
+        }
+    }
+
+    pub fn s_eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        match self.element {
+            Some(element) => element.s_eles(locator),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Option<Vec<String>>> {
         match self.element {
             Some(element) => element.texts(text_node_only).map(Some),
@@ -1662,6 +1766,58 @@ impl<'a> ElementsOne<'a, WebElement> {
 }
 
 impl<'a> ElementsOne<'a, SessionElement> {
+    pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        match self.element {
+            Some(element) => element.ele(locator),
+            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
+        }
+    }
+
+    pub fn eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        match self.element {
+            Some(element) => element.eles(locator),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        match self.element {
+            Some(element) => match element.s_ele(locator) {
+                Ok(element) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.cloned(),
+                )),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config)? {
+                        return Err(err);
+                    }
+                    Ok(ElementsOneOwned::none_with_config(self.config.cloned()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
+        }
+    }
+
+    pub fn s_eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        match self.element {
+            Some(element) => element.s_eles(locator),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Option<Vec<String>>> {
         match self.element {
             Some(element) => element.texts(text_node_only).map(Some),
@@ -5809,6 +5965,74 @@ mod tests {
         assert!(missing.is_none());
         let missing_option = missing.into_option();
         assert!(missing_option.is_none());
+    }
+
+    #[test]
+    fn borrowed_session_elements_one_supports_find_aliases() {
+        let items = snapshot_find_all(
+            r#"
+            <main>
+                <article class="card" data-kind="primary">
+                    <h2 class="title">Alpha</h2>
+                    <a class="link" href="/alpha">Open</a>
+                </article>
+                <article class="card" data-kind="secondary">
+                    <h2 class="title">Beta</h2>
+                </article>
+            </main>
+            "#,
+            ".card",
+        )
+        .expect("snapshot elements");
+
+        let found = items
+            .filter_one()
+            .attr("data-kind", "primary", true)
+            .expect("primary card");
+        assert_eq!(
+            found
+                .ele(".title")
+                .expect("child element")
+                .text()
+                .expect("child text"),
+            Some("Alpha".to_string())
+        );
+        assert_eq!(
+            found
+                .s_ele((By::CLASS_NAME, "link"))
+                .expect("static child")
+                .attr("href")
+                .expect("static child href"),
+            Some("/alpha".to_string())
+        );
+        assert_eq!(found.eles(".title").expect("child elements").len(), 1);
+        assert_eq!(
+            found
+                .s_eles((By::CLASS_NAME, "title"))
+                .expect("static children")
+                .len(),
+            1
+        );
+
+        let missing = items
+            .filter_one()
+            .attr("data-kind", "missing", true)
+            .expect("missing card");
+        assert!(missing.ele(".title").expect("missing child").is_none());
+        assert!(
+            missing
+                .s_ele(".title")
+                .expect("missing static child")
+                .is_none()
+        );
+        assert_eq!(missing.eles(".title").expect("missing children").len(), 0);
+        assert_eq!(
+            missing
+                .s_eles(".title")
+                .expect("missing static children")
+                .len(),
+            0
+        );
     }
 
     #[test]
