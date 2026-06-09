@@ -6685,6 +6685,7 @@ impl Page {
 
         match (element, cleanup) {
             (Ok(element), Ok(())) => Ok(element),
+            (Err(OpenPageError::Timeout(message)), _) => Err(OpenPageError::Timeout(message)),
             (Err(_), Ok(())) => Err(OpenPageError::ElementNotFound(error_message.to_string())),
             (Err(err), Err(_)) => Err(err),
             (Ok(_), Err(err)) => Err(err),
