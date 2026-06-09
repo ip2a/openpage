@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
@@ -681,6 +682,16 @@ impl ElementsOneOwned<Element> {
         self.as_borrowed().src(timeout_ms, base64_to_bytes)
     }
 
+    pub fn save(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        timeout_ms: u64,
+        rename: bool,
+    ) -> OpenPageResult<Option<PathBuf>> {
+        self.as_borrowed().save(path, name, timeout_ms, rename)
+    }
+
     pub fn click(&self) -> OpenPageResult<bool> {
         self.as_borrowed().click()
     }
@@ -1137,6 +1148,16 @@ impl ElementsOneOwned<WebElement> {
         base64_to_bytes: bool,
     ) -> OpenPageResult<Option<crate::element::ElementResource>> {
         self.as_borrowed().src(timeout_ms, base64_to_bytes)
+    }
+
+    pub fn save(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        timeout_ms: u64,
+        rename: bool,
+    ) -> OpenPageResult<Option<PathBuf>> {
+        self.as_borrowed().save(path, name, timeout_ms, rename)
     }
 
     pub fn click(&self) -> OpenPageResult<bool> {
@@ -2400,6 +2421,19 @@ impl<'a> ElementsOne<'a, Element> {
             None => self.missing_resource_value(),
         }
     }
+
+    pub fn save(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        timeout_ms: u64,
+        rename: bool,
+    ) -> OpenPageResult<Option<PathBuf>> {
+        match self.element {
+            Some(element) => element.save(path, name, timeout_ms, rename).map(Some),
+            None => Ok(None),
+        }
+    }
 }
 
 impl<'a> ElementsOne<'a, WebElement> {
@@ -2753,6 +2787,19 @@ impl<'a> ElementsOne<'a, WebElement> {
         match self.element {
             Some(element) => element.src(timeout_ms, base64_to_bytes),
             None => self.missing_resource_value(),
+        }
+    }
+
+    pub fn save(
+        &self,
+        path: Option<&Path>,
+        name: Option<&str>,
+        timeout_ms: u64,
+        rename: bool,
+    ) -> OpenPageResult<Option<PathBuf>> {
+        match self.element {
+            Some(element) => element.save(path, name, timeout_ms, rename).map(Some),
+            None => Ok(None),
         }
     }
 }
