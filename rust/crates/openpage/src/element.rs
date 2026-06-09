@@ -3105,13 +3105,24 @@ impl Element {
         L: Into<PageFrameTarget<'a>>,
     {
         let target = target.into();
-        if let PageFrameTarget::Frame(frame) = target {
-            self.resolve_frame_target(target)?;
-            return Ok(frame.clone());
-        }
-        if let PageFrameTarget::WebFrame(frame) = target {
-            self.resolve_frame_target(target)?;
-            return Ok(frame.frame().clone());
+        match &target {
+            PageFrameTarget::Frame(frame) => {
+                self.resolve_frame_target(target.clone())?;
+                return Ok((*frame).clone());
+            }
+            PageFrameTarget::WebFrame(frame) => {
+                self.resolve_frame_target(target.clone())?;
+                return Ok(frame.frame().clone());
+            }
+            PageFrameTarget::OwnedFrame(frame) => {
+                self.resolve_frame_target(target.clone())?;
+                return Ok(frame.clone());
+            }
+            PageFrameTarget::OwnedWebFrame(frame) => {
+                self.resolve_frame_target(target.clone())?;
+                return Ok(frame.frame().clone());
+            }
+            _ => {}
         }
         let frame_element = self.resolve_frame_target(target)?;
         self.page_wrapper().frame_from_element(frame_element)
@@ -3126,7 +3137,7 @@ impl Element {
         loop {
             match self
                 .resolve_backend_node_id(self.backend_node_id())
-                .and_then(|element| element.get_frame(target))
+                .and_then(|element| element.get_frame(target.clone()))
             {
                 Ok(frame) => return Ok(frame),
                 Err(err) => {
@@ -3259,6 +3270,12 @@ impl Element {
                 self.find_frame_element_from_object(frame.frame_element())
             }
             PageFrameTarget::WebFrame(frame) => {
+                self.find_frame_element_from_object(frame.frame_element())
+            }
+            PageFrameTarget::OwnedFrame(frame) => {
+                self.find_frame_element_from_object(frame.frame_element())
+            }
+            PageFrameTarget::OwnedWebFrame(frame) => {
                 self.find_frame_element_from_object(frame.frame_element())
             }
         }

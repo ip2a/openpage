@@ -669,7 +669,7 @@ pub enum ActionsDragData<'a> {
     },
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum PageFrameTarget<'a> {
     Locator(LocatorInput<'a>),
     Index(isize),
@@ -677,6 +677,8 @@ pub enum PageFrameTarget<'a> {
     WebElement(&'a WebElement),
     Frame(&'a Frame),
     WebFrame(&'a WebFrame),
+    OwnedFrame(Frame),
+    OwnedWebFrame(WebFrame),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -971,9 +973,21 @@ impl<'a> From<&'a Frame> for PageFrameTarget<'a> {
     }
 }
 
+impl From<Frame> for PageFrameTarget<'_> {
+    fn from(value: Frame) -> Self {
+        Self::OwnedFrame(value)
+    }
+}
+
 impl<'a> From<&'a WebFrame> for PageFrameTarget<'a> {
     fn from(value: &'a WebFrame) -> Self {
         Self::WebFrame(value)
+    }
+}
+
+impl From<WebFrame> for PageFrameTarget<'_> {
+    fn from(value: WebFrame) -> Self {
+        Self::OwnedWebFrame(value)
     }
 }
 
@@ -2089,13 +2103,24 @@ impl Frame {
         L: Into<PageFrameTarget<'a>>,
     {
         let target = target.into();
-        if let PageFrameTarget::Frame(frame) = target {
-            self.resolve_frame_target(target)?;
-            return Ok(frame.clone());
-        }
-        if let PageFrameTarget::WebFrame(frame) = target {
-            self.resolve_frame_target(target)?;
-            return Ok(frame.frame().clone());
+        match &target {
+            PageFrameTarget::Frame(frame) => {
+                self.resolve_frame_target(target.clone())?;
+                return Ok((*frame).clone());
+            }
+            PageFrameTarget::WebFrame(frame) => {
+                self.resolve_frame_target(target.clone())?;
+                return Ok(frame.frame().clone());
+            }
+            PageFrameTarget::OwnedFrame(frame) => {
+                self.resolve_frame_target(target.clone())?;
+                return Ok(frame.clone());
+            }
+            PageFrameTarget::OwnedWebFrame(frame) => {
+                self.resolve_frame_target(target.clone())?;
+                return Ok(frame.frame().clone());
+            }
+            _ => {}
         }
         self.page.frame_from_element(self.get_frame_ele(target)?)
     }
@@ -2107,7 +2132,7 @@ impl Frame {
         let target = target.into();
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         loop {
-            match self.get_frame(target) {
+            match self.get_frame(target.clone()) {
                 Ok(frame) => return Ok(frame),
                 Err(err) => {
                     if Instant::now() >= deadline {
@@ -2152,7 +2177,7 @@ impl Frame {
         let target = target.into();
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         loop {
-            match self.get_frame_ele(target) {
+            match self.get_frame_ele(target.clone()) {
                 Ok(element) => return Ok(element),
                 Err(err) => {
                     if Instant::now() >= deadline {
@@ -2892,6 +2917,12 @@ impl Frame {
                 find_frame_element_from_object(&self.page, frame.frame_element())
             }
             PageFrameTarget::WebFrame(frame) => {
+                find_frame_element_from_object(&self.page, frame.frame_element())
+            }
+            PageFrameTarget::OwnedFrame(frame) => {
+                find_frame_element_from_object(&self.page, frame.frame_element())
+            }
+            PageFrameTarget::OwnedWebFrame(frame) => {
                 find_frame_element_from_object(&self.page, frame.frame_element())
             }
         }
@@ -5008,13 +5039,24 @@ impl Page {
         L: Into<PageFrameTarget<'a>>,
     {
         let target = target.into();
-        if let PageFrameTarget::Frame(frame) = target {
-            resolve_page_frame_target(self, target)?;
-            return Ok(frame.clone());
-        }
-        if let PageFrameTarget::WebFrame(frame) = target {
-            resolve_page_frame_target(self, target)?;
-            return Ok(frame.frame().clone());
+        match &target {
+            PageFrameTarget::Frame(frame) => {
+                resolve_page_frame_target(self, target.clone())?;
+                return Ok((*frame).clone());
+            }
+            PageFrameTarget::WebFrame(frame) => {
+                resolve_page_frame_target(self, target.clone())?;
+                return Ok(frame.frame().clone());
+            }
+            PageFrameTarget::OwnedFrame(frame) => {
+                resolve_page_frame_target(self, target.clone())?;
+                return Ok(frame.clone());
+            }
+            PageFrameTarget::OwnedWebFrame(frame) => {
+                resolve_page_frame_target(self, target.clone())?;
+                return Ok(frame.frame().clone());
+            }
+            _ => {}
         }
         self.frame_from_element(self.get_frame_ele(target)?)
     }
@@ -5026,7 +5068,7 @@ impl Page {
         let target = target.into();
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         loop {
-            match self.get_frame(target) {
+            match self.get_frame(target.clone()) {
                 Ok(frame) => return Ok(frame),
                 Err(err) => {
                     if Instant::now() >= deadline {
@@ -5071,7 +5113,7 @@ impl Page {
         let target = target.into();
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         loop {
-            match self.get_frame_ele(target) {
+            match self.get_frame_ele(target.clone()) {
                 Ok(element) => return Ok(element),
                 Err(err) => {
                     if Instant::now() >= deadline {
@@ -7415,6 +7457,12 @@ fn resolve_page_frame_target<'a>(
             find_frame_element_from_object(page, frame.frame_element())
         }
         PageFrameTarget::WebFrame(frame) => {
+            find_frame_element_from_object(page, frame.frame_element())
+        }
+        PageFrameTarget::OwnedFrame(frame) => {
+            find_frame_element_from_object(page, frame.frame_element())
+        }
+        PageFrameTarget::OwnedWebFrame(frame) => {
             find_frame_element_from_object(page, frame.frame_element())
         }
     }

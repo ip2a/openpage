@@ -9370,7 +9370,9 @@ mod tests {
             let _ = page.get_frame(element);
             let _ = page.get_frame_ele(element);
             let _ = page.get_frame(frame);
+            let _ = page.get_frame(frame.clone());
             let _ = page.get_frame_ele(frame);
+            let _ = page.get_frame(web_frame.clone());
             let _ = page.get_frames(Some((By::TAG_NAME, "iframe")));
             let _ = page.get_frames_with_timeout(Some((By::TAG_NAME, "iframe")), 10);
             let _ = page.get_frame_eles(Some((By::TAG_NAME, "iframe")));
@@ -9380,6 +9382,7 @@ mod tests {
             let _ = page.get_frame_context(-1isize);
             let _ = page.get_frame_context(element);
             let _ = page.get_frame_context(frame);
+            let _ = page.get_frame_context(frame.clone());
             let _ = page.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
             let _ = frame.get_frame((By::ID, "childFrame"));
             let _ = frame.get_frame_with_timeout((By::ID, "childFrame"), 10);
@@ -9401,6 +9404,8 @@ mod tests {
             let _ = element.get_frame(1usize);
             let _ = element.get_frame_by_index_with_timeout(1usize, 10);
             let _ = element.get_frame(frame);
+            let _ = element.get_frame(frame.clone());
+            let _ = element.get_frame(web_frame.clone());
             let _ = one_element.get_frame((By::ID, "theFrame"));
             let _ = one_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = one_element.get_frame(1usize);
@@ -9426,6 +9431,8 @@ mod tests {
             let _ = web_page.get_frame(web_element);
             let _ = web_page.get_frame_ele(web_element);
             let _ = web_page.get_frame(web_frame);
+            let _ = web_page.get_frame(web_frame.clone());
+            let _ = web_page.get_frame(frame.clone());
             let _ = web_page.get_frame_ele(web_frame);
             let _ = web_page.get_frames(Some((By::TAG_NAME, "iframe")));
             let _ = web_page.get_frames_with_timeout(Some((By::TAG_NAME, "iframe")), 10);
@@ -9436,6 +9443,7 @@ mod tests {
             let _ = web_page.get_frame_context(-1isize);
             let _ = web_page.get_frame_context(web_element);
             let _ = web_page.get_frame_context(web_frame);
+            let _ = web_page.get_frame_context(web_frame.clone());
             let _ = web_page.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
             let _ = web_frame.get_frame((By::ID, "childFrame"));
             let _ = web_frame.get_frame_with_timeout((By::ID, "childFrame"), 10);
@@ -9457,6 +9465,8 @@ mod tests {
             let _ = web_element.get_frame(1usize);
             let _ = web_element.get_frame_by_index_with_timeout(1usize, 10);
             let _ = web_element.get_frame(web_frame);
+            let _ = web_element.get_frame(web_frame.clone());
+            let _ = web_element.get_frame(frame.clone());
             let _ = one_web_element.get_frame((By::ID, "theFrame"));
             let _ = one_web_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = one_web_element.get_frame(1usize);
