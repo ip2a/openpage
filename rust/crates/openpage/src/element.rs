@@ -591,11 +591,25 @@ impl Element {
         self.click_at(None, None, "right", 1)
     }
 
-    pub fn input(&self, text: &str) -> OpenPageResult<()> {
+    pub fn input<'a, I>(&self, text: I) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
         self.input_with_options(text, false, false)
     }
 
-    pub fn input_with_options(&self, text: &str, clear: bool, by_js: bool) -> OpenPageResult<()> {
+    pub fn input_with_options<'a, I>(&self, text: I, clear: bool, by_js: bool) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
+        let values = select_input_values(text.into());
+        if values.len() != 1 {
+            return self.input_keys_with_options(values, clear, by_js);
+        }
+        let text = values
+            .first()
+            .map(String::as_str)
+            .expect("single input value should exist");
         if self.tag()? == "input" && self.attr("type")?.as_deref() == Some("file") {
             let files = text
                 .split('\n')
@@ -626,14 +640,18 @@ impl Element {
         Ok(())
     }
 
-    pub fn input_keys_with_options(
+    pub fn input_keys_with_options<'a, I>(
         &self,
-        values: &[String],
+        values: I,
         clear: bool,
         by_js: bool,
-    ) -> OpenPageResult<()> {
+    ) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
+        let values = select_input_values(values.into());
         if self.tag()? == "input" && self.attr("type")?.as_deref() == Some("file") {
-            return self.set_file_input_files(values);
+            return self.set_file_input_files(&values);
         }
         if by_js {
             if clear {
@@ -642,12 +660,12 @@ impl Element {
             self.set_text_value(&values.concat())?;
             return Ok(());
         }
-        if clear && should_clear_before_typing_sequence(values) {
+        if clear && should_clear_before_typing_sequence(&values) {
             self.clear_with_mode(false)?;
         } else {
             self.focus_or_click()?;
         }
-        let (modifiers, keys_to_type) = split_text_or_keys_with_modifiers(values);
+        let (modifiers, keys_to_type) = split_text_or_keys_with_modifiers(&values);
         if modifiers != 0 {
             for key in keys_to_type {
                 self.press_key_with_modifiers(&key, modifiers)?;
@@ -655,7 +673,7 @@ impl Element {
             return Ok(());
         }
         for value in values {
-            self.type_or_press(value)?;
+            self.type_or_press(&value)?;
         }
         Ok(())
     }

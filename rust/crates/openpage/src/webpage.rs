@@ -2436,7 +2436,10 @@ impl WebElement {
         }
     }
 
-    pub fn input(&self, text: &str) -> OpenPageResult<()> {
+    pub fn input<'a, I>(&self, text: I) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => element.input(text),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
@@ -2445,7 +2448,10 @@ impl WebElement {
         }
     }
 
-    pub fn input_with_options(&self, text: &str, clear: bool, by_js: bool) -> OpenPageResult<()> {
+    pub fn input_with_options<'a, I>(&self, text: I, clear: bool, by_js: bool) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => {
                 element.input_with_options(text, clear, by_js)
@@ -2456,12 +2462,15 @@ impl WebElement {
         }
     }
 
-    pub fn input_keys_with_options(
+    pub fn input_keys_with_options<'a, I>(
         &self,
-        values: &[String],
+        values: I,
         clear: bool,
         by_js: bool,
-    ) -> OpenPageResult<()> {
+    ) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => {
                 element.input_keys_with_options(values, clear, by_js)
@@ -6858,9 +6867,9 @@ mod tests {
     use crate::session::snapshot_root;
     use crate::settings::scoped_test_settings;
     use crate::{
-        By, DownloadFileExistsMode, Element, Frame, LocatorInput, OpenPageError, OpenPageResult,
-        Page, SessionCookieParam, SessionElement, SessionOptions, SessionPage, Settings,
-        ShadowRoot,
+        By, DownloadFileExistsMode, Element, Frame, Keys, LocatorInput, OpenPageError,
+        OpenPageResult, Page, SessionCookieParam, SessionElement, SessionOptions, SessionPage,
+        Settings, ShadowRoot,
     };
 
     fn runtime_test_temp_dir(name: &str) -> PathBuf {
@@ -9938,6 +9947,31 @@ mod tests {
                 false,
             );
             let _ = web_element.clicker().for_new_tab(Some(1_000), false);
+        }
+
+        let _ = assert_calls as fn(&Element, &WebElement);
+    }
+
+    #[test]
+    fn element_and_webelement_input_expose_sequence_signatures() {
+        fn assert_calls(element: &Element, web_element: &WebElement) {
+            let key_sequence = vec!["Control".to_string(), "a".to_string()];
+
+            let _ = element.input("hello");
+            let _ = element.input(["hello", "world"]);
+            let _ = element.input(Keys::CTRL_A);
+            let _ = element.input_with_options("hello", true, false);
+            let _ = element.input_with_options(["hello", "world"], true, false);
+            let _ = element.input_keys_with_options(&key_sequence, true, false);
+            let _ = element.input_keys_with_options(Keys::CTRL_A, true, false);
+
+            let _ = web_element.input("hello");
+            let _ = web_element.input(["hello", "world"]);
+            let _ = web_element.input(Keys::CTRL_A);
+            let _ = web_element.input_with_options("hello", true, false);
+            let _ = web_element.input_with_options(["hello", "world"], true, false);
+            let _ = web_element.input_keys_with_options(&key_sequence, true, false);
+            let _ = web_element.input_keys_with_options(Keys::CTRL_A, true, false);
         }
 
         let _ = assert_calls as fn(&Element, &WebElement);
