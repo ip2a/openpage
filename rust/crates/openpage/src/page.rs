@@ -9662,7 +9662,7 @@ mod tests {
 
         let result = (|| -> OpenPageResult<()> {
             let url = format!("http://localhost:{port}/");
-            let page = browser.new_page(Some(&url))?;
+            let page = browser.new_page(Some(url.as_str()))?;
             assert!(page.wait_for_doc_loaded(5_000)?);
 
             page.set_cookies("sid=abc")?;
@@ -15968,7 +15968,7 @@ mod tests {
         });
 
         let result = (|| -> crate::OpenPageResult<()> {
-            let page = browser.new_page(Some(&address))?;
+            let page = browser.new_page(Some(address.as_str()))?;
             assert!(page.wait_for_doc_loaded(5_000)?);
             assert_eq!(
                 page.run_js(

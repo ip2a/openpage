@@ -22,8 +22,8 @@ pub mod window;
 
 pub use alert::AlertTracker;
 pub use browser::{
-    Browser, BrowserTabReference, BrowserTabSelector, BrowserTabTargetsInput, BrowserTabTypeInput,
-    DownloadFileExistsMode, LaunchOptions, LoadMode, TabInfo,
+    Browser, BrowserPageUrlInput, BrowserTabReference, BrowserTabSelector, BrowserTabTargetsInput,
+    BrowserTabTypeInput, DownloadFileExistsMode, LaunchOptions, LoadMode, TabInfo,
 };
 pub use config::{
     ConfigValueSource, OPENPAGE_BROWSER_HEADLESS_ENV, OPENPAGE_BROWSER_HEIGHT_ENV,

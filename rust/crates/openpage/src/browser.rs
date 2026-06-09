@@ -771,6 +771,39 @@ pub struct TabInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BrowserPageUrlInput<'a> {
+    None,
+    Url(Cow<'a, str>),
+}
+
+impl<'a> From<&'a str> for BrowserPageUrlInput<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::Url(Cow::Borrowed(value))
+    }
+}
+
+impl<'a> From<&'a String> for BrowserPageUrlInput<'a> {
+    fn from(value: &'a String) -> Self {
+        Self::Url(Cow::Borrowed(value.as_str()))
+    }
+}
+
+impl From<String> for BrowserPageUrlInput<'_> {
+    fn from(value: String) -> Self {
+        Self::Url(Cow::Owned(value))
+    }
+}
+
+impl<'a> From<Option<&'a str>> for BrowserPageUrlInput<'a> {
+    fn from(value: Option<&'a str>) -> Self {
+        match value {
+            Some(url) => Self::Url(Cow::Borrowed(url)),
+            None => Self::None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BrowserTabSelector<'a> {
     Id(Cow<'a, str>),
     Index(isize),
@@ -1303,8 +1336,14 @@ impl Browser {
         ))
     }
 
-    pub fn new_page(&self, url: Option<&str>) -> OpenPageResult<Page> {
-        let target_url = url.unwrap_or("about:blank").to_string();
+    pub fn new_page<'a, U>(&self, url: U) -> OpenPageResult<Page>
+    where
+        U: Into<BrowserPageUrlInput<'a>>,
+    {
+        let target_url = match url.into() {
+            BrowserPageUrlInput::None => "about:blank".to_string(),
+            BrowserPageUrlInput::Url(url) => url.into_owned(),
+        };
         let load_mode = self.load_mode_value()?;
         let page = self.inner.runtime.block_on(async {
             let browser =
@@ -5176,6 +5215,8 @@ mod tests {
                 false,
             );
             let _ = browser.reconnect();
+            let _ = browser.new_page(None);
+            let _ = browser.new_page("https://example.test/");
             let _ = browser.new_tab(None, false, false, false);
             let _ = browser.new_tab(None, false, false, true);
             let _ = browser.get_tabs(None, None, Some("page"), false);
