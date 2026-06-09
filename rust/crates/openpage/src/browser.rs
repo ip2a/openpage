@@ -3958,7 +3958,8 @@ where
     T: Command,
 {
     runtime.block_on(async {
-        let browser = browser.lock().await;
+        let lock_operation = format!("{operation}.lock()");
+        let browser = lock_with_cdp_timeout(browser, &lock_operation).await?;
         execute_browser_handle_command_async(&browser, command, operation).await
     })
 }
