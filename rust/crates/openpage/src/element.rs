@@ -129,6 +129,22 @@ where
         .map_err(|err| element_operation_error(operation, err))
 }
 
+async fn run_element_lookup_future_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RelativeDirection {
     East,
@@ -2911,11 +2927,11 @@ impl Element {
         let locator = Locator::from_input(locator)?;
         match locator.kind() {
             LocatorKind::Css => self.runtime.block_on(async {
-                let element = self
-                    .inner
-                    .find_element(locator.query().to_string())
-                    .await
-                    .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
+                let element = run_element_lookup_future_with_cdp_timeout(
+                    self.inner.find_element(locator.query().to_string()),
+                    "find element",
+                )
+                .await?;
                 Ok(Element::new(
                     Arc::clone(&self.runtime),
                     self.page.clone(),
@@ -3353,11 +3369,11 @@ impl Element {
 
         let element = self.runtime.block_on(async {
             let xpath = format!("//*[@{MARKER_ATTRIBUTE}='{marker}']");
-            let element = self
-                .page
-                .find_xpath(xpath)
-                .await
-                .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
+            let element = run_element_lookup_future_with_cdp_timeout(
+                self.page.find_xpath(xpath),
+                "resolve node element",
+            )
+            .await?;
             Ok::<Element, OpenPageError>(Element::new(
                 Arc::clone(&self.runtime),
                 self.page.clone(),
@@ -3381,6 +3397,7 @@ impl Element {
 
         match (element, cleanup) {
             (Ok(element), Ok(())) => Ok(element),
+            (Err(OpenPageError::Timeout(message)), _) => Err(OpenPageError::Timeout(message)),
             (Err(_), Ok(())) => Err(OpenPageError::ElementNotFound(error_message.to_string())),
             (Err(err), Err(_)) => Err(err),
             (Ok(_), Err(err)) => Err(err),
@@ -4061,11 +4078,11 @@ impl Element {
             let mut elements = Vec::with_capacity(markers.len());
             for marker in markers {
                 let selector = format!("[{MARKER_ATTRIBUTE}=\"{marker}\"]");
-                let element = self
-                    .page
-                    .find_element(selector)
-                    .await
-                    .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?;
+                let element = run_element_lookup_future_with_cdp_timeout(
+                    self.page.find_element(selector),
+                    "resolve marked element",
+                )
+                .await?;
                 elements.push(Element::new(
                     Arc::clone(&self.runtime),
                     self.page.clone(),
@@ -5384,8 +5401,8 @@ fn mac_meta_commands(key: &str) -> Option<&'static [&'static str]> {
 mod tests {
     use super::{
         element_operation_error, parse_mouse_button, resolve_javascript_timeout_ms,
-        run_element_future_with_cdp_timeout, run_element_page_future_with_cdp_timeout,
-        validate_click_at_count,
+        run_element_future_with_cdp_timeout, run_element_lookup_future_with_cdp_timeout,
+        run_element_page_future_with_cdp_timeout, validate_click_at_count,
     };
 
     #[test]
@@ -5604,6 +5621,42 @@ mod tests {
         assert!(
             matches!(point_error, crate::OpenPageError::Timeout(ref message) if message.contains("resolve clickable point")),
             "unexpected clickable point timeout error: {point_error}"
+        );
+    }
+
+    #[test]
+    fn element_lookup_operations_respect_global_timeout_setting() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+        crate::Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("runtime");
+
+        let lookup_error = runtime
+            .block_on(run_element_lookup_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "find element",
+            ))
+            .expect_err("element lookup should time out");
+        assert!(
+            matches!(lookup_error, crate::OpenPageError::Timeout(ref message) if message.contains("find element")),
+            "unexpected lookup timeout error: {lookup_error}"
+        );
+
+        crate::Settings::reset();
+
+        let lookup_error = runtime
+            .block_on(run_element_lookup_future_with_cdp_timeout(
+                async { Err::<(), &'static str>("missing") },
+                "find element",
+            ))
+            .expect_err("element lookup failure should remain ElementNotFound");
+        assert!(
+            matches!(lookup_error, crate::OpenPageError::ElementNotFound(ref message) if message == "missing"),
+            "unexpected lookup error: {lookup_error}"
         );
     }
 
