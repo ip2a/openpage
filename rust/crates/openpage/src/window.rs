@@ -5,7 +5,7 @@ use crate::error::{OpenPageError, OpenPageResult};
 #[cfg(not(target_os = "macos"))]
 use crate::settings::window_platform_unsupported_message;
 #[cfg(target_os = "macos")]
-use crate::settings::window_script_operation_failed_message;
+use crate::settings::{window_script_exit_status_message, window_script_operation_failed_message};
 
 pub fn set_app_visibility(pid: u32, visible: bool) -> OpenPageResult<()> {
     #[cfg(target_os = "macos")]
@@ -62,7 +62,7 @@ fn run_osascript(script: &str) -> OpenPageResult<()> {
     } else if !stdout.is_empty() {
         stdout
     } else {
-        format!("osascript exited with status {}", output.status)
+        window_script_exit_status_message(&output.status.to_string())
     };
     Err(window_script_error("run osascript", detail))
 }
@@ -77,7 +77,10 @@ fn window_script_error(operation: &str, err: impl ToString) -> OpenPageError {
 
 #[cfg(test)]
 mod tests {
-    use crate::settings::{Settings, scoped_test_settings, window_platform_unsupported_message};
+    use crate::settings::{
+        Settings, scoped_test_settings, window_platform_unsupported_message,
+        window_script_exit_status_message,
+    };
 
     #[test]
     fn window_errors_follow_language_setting() {
@@ -88,12 +91,20 @@ mod tests {
             window_platform_unsupported_message("hide/show", "隐藏/显示"),
             "window hide/show is only supported on macOS in this build"
         );
+        assert_eq!(
+            window_script_exit_status_message("exit status: 1"),
+            "osascript exited with status exit status: 1"
+        );
 
         Settings::set_language("cn");
 
         assert_eq!(
             window_platform_unsupported_message("hide/show", "隐藏/显示"),
             "窗口隐藏/显示在此构建中仅支持 macOS"
+        );
+        assert_eq!(
+            window_script_exit_status_message("exit status: 1"),
+            "osascript 退出状态为 exit status: 1"
         );
     }
 }

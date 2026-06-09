@@ -562,6 +562,13 @@ pub(crate) fn window_script_operation_failed_message(operation: &str, err: &str)
     }
 }
 
+pub(crate) fn window_script_exit_status_message(status: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("osascript 退出状态为 {status}"),
+        _ => format!("osascript exited with status {status}"),
+    }
+}
+
 pub(crate) fn browser_launch_operation_failed_message(operation: &str, err: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("浏览器启动操作 {operation} 失败: {err}"),
