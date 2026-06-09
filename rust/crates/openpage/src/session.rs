@@ -106,6 +106,19 @@ pub enum SessionMaxRedirectsInput {
     Max(usize),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionRetryTimesInput {
+    None,
+    Times(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SessionRetryIntervalInput {
+    None,
+    Millis(u64),
+    Seconds(f64),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SessionEncodingInput {
     None,
@@ -373,6 +386,42 @@ impl From<Option<usize>> for SessionMaxRedirectsInput {
             Some(max_redirects) => Self::Max(max_redirects),
             None => Self::None,
         }
+    }
+}
+
+impl From<usize> for SessionRetryTimesInput {
+    fn from(value: usize) -> Self {
+        Self::Times(value)
+    }
+}
+
+impl From<Option<usize>> for SessionRetryTimesInput {
+    fn from(value: Option<usize>) -> Self {
+        match value {
+            Some(times) => Self::Times(times),
+            None => Self::None,
+        }
+    }
+}
+
+impl From<u64> for SessionRetryIntervalInput {
+    fn from(value: u64) -> Self {
+        Self::Millis(value)
+    }
+}
+
+impl From<Option<u64>> for SessionRetryIntervalInput {
+    fn from(value: Option<u64>) -> Self {
+        match value {
+            Some(millis) => Self::Millis(millis),
+            None => Self::None,
+        }
+    }
+}
+
+impl From<f64> for SessionRetryIntervalInput {
+    fn from(value: f64) -> Self {
+        Self::Seconds(value)
     }
 }
 
@@ -828,15 +877,15 @@ impl SessionOptions {
         self
     }
 
-    pub fn set_retry(
-        &mut self,
-        retry_times: Option<usize>,
-        retry_interval_millis: Option<u64>,
-    ) -> &mut Self {
-        if let Some(retry_times) = retry_times {
+    pub fn set_retry<T, I>(&mut self, retry_times: T, retry_interval: I) -> &mut Self
+    where
+        T: Into<SessionRetryTimesInput>,
+        I: Into<SessionRetryIntervalInput>,
+    {
+        if let Some(retry_times) = session_retry_times_input(retry_times) {
             self.retry_times = retry_times;
         }
-        if let Some(retry_interval_millis) = retry_interval_millis {
+        if let Some(retry_interval_millis) = session_retry_interval_input(retry_interval) {
             self.retry_interval_millis = retry_interval_millis;
         }
         self
@@ -1318,6 +1367,14 @@ fn parse_ini_retry_interval_millis(value: &str) -> OpenPageResult<u64> {
     Ok((retry_interval * 1000.0).round() as u64)
 }
 
+fn session_retry_interval_seconds_to_millis(seconds: f64) -> u64 {
+    if seconds <= 0.0 || !seconds.is_finite() {
+        0
+    } else {
+        (seconds * 1000.0).round() as u64
+    }
+}
+
 fn parse_session_headers(value: &str) -> OpenPageResult<Vec<(String, String)>> {
     match parse_ini_json_like_value(value, "headers")? {
         Value::Null => Ok(Vec::new()),
@@ -1422,6 +1479,29 @@ where
     match max_redirects.into() {
         SessionMaxRedirectsInput::None => None,
         SessionMaxRedirectsInput::Max(max_redirects) => Some(max_redirects),
+    }
+}
+
+fn session_retry_times_input<T>(retry_times: T) -> Option<usize>
+where
+    T: Into<SessionRetryTimesInput>,
+{
+    match retry_times.into() {
+        SessionRetryTimesInput::None => None,
+        SessionRetryTimesInput::Times(times) => Some(times),
+    }
+}
+
+fn session_retry_interval_input<I>(retry_interval: I) -> Option<u64>
+where
+    I: Into<SessionRetryIntervalInput>,
+{
+    match retry_interval.into() {
+        SessionRetryIntervalInput::None => None,
+        SessionRetryIntervalInput::Millis(millis) => Some(millis),
+        SessionRetryIntervalInput::Seconds(seconds) => {
+            Some(session_retry_interval_seconds_to_millis(seconds))
+        }
     }
 }
 
@@ -2331,20 +2411,23 @@ impl SessionPageSetter<'_> {
         self.page.set_timeout(timeout_secs)
     }
 
-    pub fn retry(
-        &self,
-        retry_times: Option<usize>,
-        retry_interval_millis: Option<u64>,
-    ) -> OpenPageResult<()> {
-        self.page.set_retry(retry_times, retry_interval_millis)
+    pub fn retry<T, I>(&self, retry_times: T, retry_interval: I) -> OpenPageResult<()>
+    where
+        T: Into<SessionRetryTimesInput>,
+        I: Into<SessionRetryIntervalInput>,
+    {
+        self.page.set_retry(retry_times, retry_interval)
     }
 
     pub fn retry_times(&self, retry_times: usize) -> OpenPageResult<()> {
         self.page.set_retry(Some(retry_times), None)
     }
 
-    pub fn retry_interval(&self, retry_interval_millis: u64) -> OpenPageResult<()> {
-        self.page.set_retry(None, Some(retry_interval_millis))
+    pub fn retry_interval<I>(&self, retry_interval: I) -> OpenPageResult<()>
+    where
+        I: Into<SessionRetryIntervalInput>,
+    {
+        self.page.set_retry(None, retry_interval)
     }
 
     pub fn download_path(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
@@ -3247,6 +3330,10 @@ impl SessionPage {
         Ok(self.lock_state()?.retry_interval_millis)
     }
 
+    pub fn retry_interval(&self) -> OpenPageResult<f64> {
+        Ok(self.retry_interval_millis()? as f64 / 1000.0)
+    }
+
     pub fn is_alive(&self) -> OpenPageResult<bool> {
         Ok(true)
     }
@@ -3337,16 +3424,16 @@ impl SessionPage {
         rebuild_session_client(&mut state)
     }
 
-    pub fn set_retry(
-        &self,
-        retry_times: Option<usize>,
-        retry_interval_millis: Option<u64>,
-    ) -> OpenPageResult<()> {
+    pub fn set_retry<T, I>(&self, retry_times: T, retry_interval: I) -> OpenPageResult<()>
+    where
+        T: Into<SessionRetryTimesInput>,
+        I: Into<SessionRetryIntervalInput>,
+    {
         let mut state = self.lock_state()?;
-        if let Some(retry_times) = retry_times {
+        if let Some(retry_times) = session_retry_times_input(retry_times) {
             state.retry_times = retry_times;
         }
-        if let Some(retry_interval_millis) = retry_interval_millis {
+        if let Some(retry_interval_millis) = session_retry_interval_input(retry_interval) {
             state.retry_interval_millis = retry_interval_millis;
         }
         Ok(())
@@ -7644,7 +7731,7 @@ mod tests {
             .set_cookies(&cookies)
             .expect("set session option cookies");
         options
-            .set_retry(Some(6), Some(125))
+            .set_retry(6, 0.125)
             .set_proxies("http://127.0.0.1:8080", None)
             .set_download_path("downloads")
             .set_auth(("alice", "secret"))
@@ -8518,9 +8605,10 @@ mod tests {
                 .expect("default retry interval"),
             2_000
         );
+        assert_eq!(page.retry_interval().expect("default retry interval"), 2.0);
 
         page.set_timeout(7).expect("set timeout");
-        page.set_retry(Some(5), Some(250)).expect("set retry");
+        page.set_retry(5, 0.25).expect("set retry");
         page.close().expect("close session");
 
         assert_eq!(page.timeout_secs().expect("updated timeout"), 7);
@@ -8530,6 +8618,7 @@ mod tests {
                 .expect("updated retry interval"),
             250
         );
+        assert_eq!(page.retry_interval().expect("updated retry interval"), 0.25);
         assert_eq!(page.forced_encoding().expect("forced encoding"), None);
     }
 
@@ -10311,8 +10400,11 @@ mod tests {
             let _ = setter.header("Accept", "application/json");
             let _ = setter.timeout(10);
             let _ = setter.retry(Some(3), Some(250));
+            let _ = setter.retry(3, 0.25);
+            let _ = setter.retry(None, None);
             let _ = setter.retry_times(4);
             let _ = setter.retry_interval(500);
+            let _ = setter.retry_interval(0.5);
             let _ = setter.download_path(std::path::Path::new("/tmp/openpage-downloads"));
             let _ = page.set_encoding("utf-8");
             let _ = setter.encoding("utf-8");

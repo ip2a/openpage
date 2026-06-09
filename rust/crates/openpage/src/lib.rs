@@ -66,7 +66,8 @@ pub use session::{
     SessionDownload, SessionElement, SessionEncodingInput, SessionHandle, SessionHookEvent,
     SessionHooks, SessionMaxRedirectsInput, SessionOptions, SessionPage, SessionPageSetter,
     SessionProxyInput, SessionRequestOptions, SessionResponseHook, SessionResponseInfo,
-    SessionRuntimeInfo, SessionUserAgentInput, SessionXPathResult,
+    SessionRetryIntervalInput, SessionRetryTimesInput, SessionRuntimeInfo, SessionUserAgentInput,
+    SessionXPathResult,
 };
 pub use settings::{Settings, SettingsChain, SettingsSnapshot};
 pub use shadow_root::ShadowRoot;
