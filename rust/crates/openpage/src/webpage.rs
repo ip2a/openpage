@@ -10532,7 +10532,14 @@ mod tests {
 
     #[test]
     fn element_and_webelement_clicker_expose_signatures() {
-        fn assert_calls(element: &Element, web_element: &WebElement) {
+        fn assert_calls(
+            element: &Element,
+            web_element: &WebElement,
+            one_element: ElementsOne<'_, Element>,
+            one_web_element: ElementsOne<'_, WebElement>,
+            owned_element: &ElementsOneOwned<Element>,
+            owned_web_element: &ElementsOneOwned<WebElement>,
+        ) {
             let files = vec!["./fixtures/demo.txt".to_string()];
             let upload_path = PathBuf::from("./fixtures/demo.txt");
             let borrowed_files = ["./fixtures/demo.txt", "./fixtures/alt.txt"];
@@ -10592,9 +10599,35 @@ mod tests {
                 false,
             );
             let _ = web_element.clicker().for_new_tab(Some(1_000), false);
+
+            let _ = one_element.click_left_with_options(Some(false), Some(1_000), false);
+            let _ = one_element.click_at(Some(5.0), Some(6.0), "left", 1);
+            let _ = one_element.click_multi(2);
+            let _ = one_element.click_right();
+            let _ = one_web_element.click_left_with_options(Some(false), Some(1_000), false);
+            let _ = one_web_element.click_at(Some(5.0), Some(6.0), "left", 1);
+            let _ = one_web_element.click_multi(2);
+            let _ = one_web_element.click_right();
+
+            let _ = owned_element.click_left_with_options(Some(false), Some(1_000), false);
+            let _ = owned_element.click_at(Some(5.0), Some(6.0), "left", 1);
+            let _ = owned_element.click_multi(2);
+            let _ = owned_element.click_right();
+            let _ = owned_web_element.click_left_with_options(Some(false), Some(1_000), false);
+            let _ = owned_web_element.click_at(Some(5.0), Some(6.0), "left", 1);
+            let _ = owned_web_element.click_multi(2);
+            let _ = owned_web_element.click_right();
         }
 
-        let _ = assert_calls as fn(&Element, &WebElement);
+        let _ = assert_calls
+            as fn(
+                &Element,
+                &WebElement,
+                ElementsOne<'_, Element>,
+                ElementsOne<'_, WebElement>,
+                &ElementsOneOwned<Element>,
+                &ElementsOneOwned<WebElement>,
+            );
     }
 
     #[test]
