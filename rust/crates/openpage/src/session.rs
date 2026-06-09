@@ -330,6 +330,93 @@ pub enum SessionCert {
     PemPair { cert: PathBuf, key: PathBuf },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionCertInput {
+    None,
+    Cert(SessionCert),
+}
+
+impl From<SessionCert> for SessionCertInput {
+    fn from(value: SessionCert) -> Self {
+        Self::Cert(value)
+    }
+}
+
+impl From<Option<SessionCert>> for SessionCertInput {
+    fn from(value: Option<SessionCert>) -> Self {
+        match value {
+            Some(cert) => Self::Cert(cert),
+            None => Self::None,
+        }
+    }
+}
+
+impl From<&str> for SessionCertInput {
+    fn from(value: &str) -> Self {
+        Self::Cert(SessionCert::Pem(PathBuf::from(value)))
+    }
+}
+
+impl From<String> for SessionCertInput {
+    fn from(value: String) -> Self {
+        Self::Cert(SessionCert::Pem(PathBuf::from(value)))
+    }
+}
+
+impl From<&Path> for SessionCertInput {
+    fn from(value: &Path) -> Self {
+        Self::Cert(SessionCert::Pem(value.to_path_buf()))
+    }
+}
+
+impl From<&PathBuf> for SessionCertInput {
+    fn from(value: &PathBuf) -> Self {
+        Self::Cert(SessionCert::Pem(value.clone()))
+    }
+}
+
+impl From<PathBuf> for SessionCertInput {
+    fn from(value: PathBuf) -> Self {
+        Self::Cert(SessionCert::Pem(value))
+    }
+}
+
+impl From<(&str, &str)> for SessionCertInput {
+    fn from(value: (&str, &str)) -> Self {
+        Self::Cert(SessionCert::PemPair {
+            cert: PathBuf::from(value.0),
+            key: PathBuf::from(value.1),
+        })
+    }
+}
+
+impl From<(String, String)> for SessionCertInput {
+    fn from(value: (String, String)) -> Self {
+        Self::Cert(SessionCert::PemPair {
+            cert: PathBuf::from(value.0),
+            key: PathBuf::from(value.1),
+        })
+    }
+}
+
+impl From<(PathBuf, PathBuf)> for SessionCertInput {
+    fn from(value: (PathBuf, PathBuf)) -> Self {
+        Self::Cert(SessionCert::PemPair {
+            cert: value.0,
+            key: value.1,
+        })
+    }
+}
+
+impl From<(&Path, &Path)> for SessionCertInput {
+    fn from(value: (&Path, &Path)) -> Self {
+        Self::Cert(SessionCert::PemPair {
+            cert: value.0.to_path_buf(),
+            key: value.1.to_path_buf(),
+        })
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct SessionAdapter {
     pub timeout_secs: Option<u64>,
@@ -366,8 +453,11 @@ impl SessionAdapter {
         self
     }
 
-    pub fn set_cert(&mut self, cert: Option<SessionCert>) -> &mut Self {
-        self.cert = Some(cert);
+    pub fn set_cert<C>(&mut self, cert: C) -> &mut Self
+    where
+        C: Into<SessionCertInput>,
+    {
+        self.cert = Some(session_cert_input(cert));
         self
     }
 
@@ -659,8 +749,11 @@ impl SessionOptions {
         self
     }
 
-    pub fn set_cert(&mut self, cert: Option<SessionCert>) -> &mut Self {
-        self.cert = cert;
+    pub fn set_cert<C>(&mut self, cert: C) -> &mut Self
+    where
+        C: Into<SessionCertInput>,
+    {
+        self.cert = session_cert_input(cert);
         self
     }
 
@@ -1138,6 +1231,16 @@ where
             .into_iter()
             .map(|(name, value)| (name.into_owned(), value.into_owned()))
             .collect(),
+    }
+}
+
+fn session_cert_input<C>(cert: C) -> Option<SessionCert>
+where
+    C: Into<SessionCertInput>,
+{
+    match cert.into() {
+        SessionCertInput::None => None,
+        SessionCertInput::Cert(cert) => Some(cert),
     }
 }
 
@@ -2089,7 +2192,10 @@ impl SessionPageSetter<'_> {
         self.page.set_verify(verify)
     }
 
-    pub fn cert(&self, cert: Option<SessionCert>) -> OpenPageResult<()> {
+    pub fn cert<C>(&self, cert: C) -> OpenPageResult<()>
+    where
+        C: Into<SessionCertInput>,
+    {
         self.page.set_cert(cert)
     }
 
@@ -3088,9 +3194,12 @@ impl SessionPage {
         rebuild_session_client(&mut state)
     }
 
-    pub fn set_cert(&self, cert: Option<SessionCert>) -> OpenPageResult<()> {
+    pub fn set_cert<C>(&self, cert: C) -> OpenPageResult<()>
+    where
+        C: Into<SessionCertInput>,
+    {
         let mut state = self.lock_state()?;
-        state.cert = cert;
+        state.cert = session_cert_input(cert);
         rebuild_session_client(&mut state)
     }
 
@@ -7295,6 +7404,7 @@ mod tests {
         adapter
             .set_timeout(17)
             .set_verify(false)
+            .set_cert(("adapter-cert.pem", "adapter-key.pem"))
             .set_max_redirects(Some(1));
         let cookies = vec![SessionCookieParam {
             name: "sid".to_string(),
@@ -7325,9 +7435,7 @@ mod tests {
             .set_download_path("downloads")
             .set_auth(Some(("alice".to_string(), "secret".to_string())))
             .set_params([("page", "2")])
-            .set_cert(Some(SessionCert::Pem(std::path::PathBuf::from(
-                "client.pem",
-            ))))
+            .set_cert("client.pem")
             .set_verify(false)
             .set_stream(true)
             .set_trust_env(false)
@@ -10000,7 +10108,11 @@ mod tests {
             let _ = setter.stream(true);
             let _ = setter.proxies(Some("http://127.0.0.1:8080".to_string()), None);
             let _ = setter.verify(false);
+            let _ = page.set_cert("client.pem");
+            let _ = page.set_cert(("client.pem", "client.key"));
             let _ = setter.cert(None);
+            let _ = setter.cert("client.pem");
+            let _ = setter.cert(("client.pem", "client.key"));
             let _ = setter.trust_env(false);
             let _ = setter.max_redirects(Some(5));
             let _ = setter.add_adapter("https://example.test/", SessionAdapter::new());
