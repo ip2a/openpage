@@ -696,6 +696,16 @@ impl ElementsOneOwned<Element> {
         self.as_borrowed().click()
     }
 
+    pub fn click_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        self.as_borrowed()
+            .click_with_options(by_js, timeout_ms, wait_stop)
+    }
+
     pub fn click_left_with_options(
         &self,
         by_js: Option<bool>,
@@ -715,6 +725,10 @@ impl ElementsOneOwned<Element> {
     ) -> OpenPageResult<bool> {
         self.as_borrowed()
             .click_at(offset_x, offset_y, button, count)
+    }
+
+    pub fn click_left(&self) -> OpenPageResult<bool> {
+        self.as_borrowed().click_left()
     }
 
     pub fn click_multi(&self, times: u32) -> OpenPageResult<bool> {
@@ -1193,6 +1207,16 @@ impl ElementsOneOwned<WebElement> {
         self.as_borrowed().click()
     }
 
+    pub fn click_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        self.as_borrowed()
+            .click_with_options(by_js, timeout_ms, wait_stop)
+    }
+
     pub fn click_left_with_options(
         &self,
         by_js: Option<bool>,
@@ -1212,6 +1236,10 @@ impl ElementsOneOwned<WebElement> {
     ) -> OpenPageResult<bool> {
         self.as_borrowed()
             .click_at(offset_x, offset_y, button, count)
+    }
+
+    pub fn click_left(&self) -> OpenPageResult<bool> {
+        self.as_borrowed().click_left()
     }
 
     pub fn click_multi(&self, times: u32) -> OpenPageResult<bool> {
@@ -3426,6 +3454,18 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    pub fn click_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => element.click_with_options(by_js, timeout_ms, wait_stop),
+            None => Ok(false),
+        }
+    }
+
     pub fn click_left_with_options(
         &self,
         by_js: Option<bool>,
@@ -3448,6 +3488,16 @@ impl<'a> ElementsOne<'a, Element> {
         match self.element {
             Some(element) => {
                 element.click_at(offset_x, offset_y, button, count)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn click_left(&self) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.click_left()?;
                 Ok(true)
             }
             None => Ok(false),
@@ -4914,6 +4964,18 @@ impl<'a> ElementsOne<'a, WebElement> {
         }
     }
 
+    pub fn click_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => element.click_with_options(by_js, timeout_ms, wait_stop),
+            None => Ok(false),
+        }
+    }
+
     pub fn click_left_with_options(
         &self,
         by_js: Option<bool>,
@@ -4936,6 +4998,16 @@ impl<'a> ElementsOne<'a, WebElement> {
         match self.element {
             Some(element) => {
                 element.click_at(offset_x, offset_y, button, count)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn click_left(&self) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.click_left()?;
                 Ok(true)
             }
             None => Ok(false),
