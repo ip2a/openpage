@@ -731,6 +731,10 @@ impl ElementsOneOwned<Element> {
         self.as_borrowed().click_left()
     }
 
+    pub fn click_middle(&self) -> OpenPageResult<bool> {
+        self.as_borrowed().click_middle()
+    }
+
     pub fn click_multi(&self, times: u32) -> OpenPageResult<bool> {
         self.as_borrowed().click_multi(times)
     }
@@ -1264,6 +1268,10 @@ impl ElementsOneOwned<WebElement> {
 
     pub fn click_left(&self) -> OpenPageResult<bool> {
         self.as_borrowed().click_left()
+    }
+
+    pub fn click_middle(&self) -> OpenPageResult<bool> {
+        self.as_borrowed().click_middle()
     }
 
     pub fn click_multi(&self, times: u32) -> OpenPageResult<bool> {
@@ -3552,6 +3560,16 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    pub fn click_middle(&self) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.click_middle()?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     pub fn click_multi(&self, times: u32) -> OpenPageResult<bool> {
         match self.element {
             Some(element) => {
@@ -5130,6 +5148,16 @@ impl<'a> ElementsOne<'a, WebElement> {
         match self.element {
             Some(element) => {
                 element.click_left()?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn click_middle(&self) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.click_middle()?;
                 Ok(true)
             }
             None => Ok(false),
