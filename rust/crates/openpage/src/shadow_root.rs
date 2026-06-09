@@ -17,7 +17,10 @@ use crate::element_list::{
     ElementsOneOwned, ElementsOneRuntimeConfigHandle, elements_one_should_raise_when_missing,
 };
 use crate::error::{OpenPageError, OpenPageResult};
-use crate::locator::{Locator, LocatorInput, LocatorKind, parse_optional_locator_input};
+use crate::locator::{
+    Locator, LocatorBatchInput, LocatorInput, LocatorKind, LocatorMatch, collect_locator_matches,
+    parse_locator_batch_input, parse_optional_locator_input,
+};
 use crate::page::execute_page_command_async;
 use crate::session::{
     SessionElement, SessionXPathResult, snapshot_fragment_find_all_with_base_url,
@@ -322,6 +325,21 @@ impl ShadowRoot {
         L: Into<LocatorInput<'a>>,
     {
         self.find_all(locator)
+    }
+
+    pub fn find_locators<'a, L>(
+        &self,
+        locators: L,
+        any_one: bool,
+        first_match_only: bool,
+    ) -> OpenPageResult<Vec<LocatorMatch<Element>>>
+    where
+        L: Into<LocatorBatchInput<'a>>,
+    {
+        let locators = parse_locator_batch_input(locators)?;
+        collect_locator_matches(&locators, any_one, first_match_only, |locator| {
+            self.find_all(locator)
+        })
     }
 
     pub fn child(&self) -> OpenPageResult<Element> {
@@ -815,7 +833,10 @@ mod tests {
         resolve_javascript_timeout_ms, run_shadow_root_lookup_future_with_cdp_timeout,
         shadow_root_selector_error,
     };
-    use crate::{OpenPageError, OpenPageResult, SessionElement, SessionXPathResult, Settings};
+    use crate::{
+        By, Element, LocatorInput, LocatorMatch, OpenPageError, OpenPageResult, SessionElement,
+        SessionXPathResult, Settings,
+    };
     use serde_json::json;
     use std::time::Duration;
     use tokio::runtime::Runtime;
@@ -884,6 +905,27 @@ mod tests {
             let _: SessionElement = root.s_ele("css:.item")?;
             let _: Vec<SessionElement> = root.s_eles("css:.item")?;
             let _: Vec<SessionXPathResult> = root.snapshot_query_xpath(".//*")?;
+            Ok(())
+        }
+
+        let _ = assert_methods as fn(&ShadowRoot) -> OpenPageResult<()>;
+    }
+
+    #[test]
+    fn shadow_root_find_locators_accepts_batch_inputs() {
+        fn assert_methods(root: &ShadowRoot) -> OpenPageResult<()> {
+            let tuple_locators = [("id", "root"), (By::CLASS_NAME, "item")];
+            let mixed_locators = [
+                LocatorInput::from("#root"),
+                LocatorInput::from((By::CLASS_NAME, "item")),
+            ];
+
+            let _: Vec<LocatorMatch<Element>> = root.find_locators("#root", true, true)?;
+            let _: Vec<LocatorMatch<Element>> = root.find_locators((By::ID, "root"), true, true)?;
+            let _: Vec<LocatorMatch<Element>> =
+                root.find_locators(&tuple_locators, false, false)?;
+            let _: Vec<LocatorMatch<Element>> =
+                root.find_locators(&mixed_locators, false, false)?;
             Ok(())
         }
 
