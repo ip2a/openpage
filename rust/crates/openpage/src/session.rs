@@ -55,14 +55,15 @@ use crate::settings::{
     previous_node_not_found_message, relative_index_must_start_message,
     session_cert_read_failed_message, session_client_build_failed_message,
     session_cookie_header_decode_failed_message, session_cookie_requires_url_or_domain_message,
-    session_download_file_failed_message, session_download_retry_loop_exited_message,
-    session_download_status_message, session_identity_parse_failed_message,
-    session_local_file_failed_message, session_page_no_current_url_message,
-    session_page_no_loaded_document_message, session_request_failed_message,
-    session_request_retry_loop_exited_message, session_response_body_read_failed_message,
-    snapshot_fragment_root_not_found_message, snapshot_fragment_wrapper_not_found_message,
-    snapshot_node_no_longer_exists_message, unsupported_snapshot_node_kind_message,
-    unsupported_xpath_path_message, unterminated_session_ini_python_string_message,
+    session_download_file_failed_message, session_download_path_resolve_failed_message,
+    session_download_retry_loop_exited_message, session_download_status_message,
+    session_identity_parse_failed_message, session_local_file_failed_message,
+    session_page_no_current_url_message, session_page_no_loaded_document_message,
+    session_request_failed_message, session_request_retry_loop_exited_message,
+    session_response_body_read_failed_message, snapshot_fragment_root_not_found_message,
+    snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,
+    unsupported_snapshot_node_kind_message, unsupported_xpath_path_message,
+    unterminated_session_ini_python_string_message,
     xpath_locator_invalid_for_css_filtering_message, xpath_node_no_longer_exists_message,
     xpath_path_not_found_message, xpath_segment_not_found_message,
 };
@@ -4284,7 +4285,12 @@ fn normalize_session_download_path(path: &Path) -> OpenPageResult<PathBuf> {
     } else {
         env::current_dir()
             .map(|current_dir| current_dir.join(path))
-            .map_err(|err| OpenPageError::Io(err.to_string()))?
+            .map_err(|err| {
+                OpenPageError::Io(session_download_path_resolve_failed_message(
+                    &path.display().to_string(),
+                    &err.to_string(),
+                ))
+            })?
     };
     Ok(normalize_path_components(&absolute))
 }
@@ -8620,6 +8626,33 @@ mod tests {
         );
         assert_eq!(page.retry_interval().expect("updated retry interval"), 0.25);
         assert_eq!(page.forced_encoding().expect("forced encoding"), None);
+    }
+
+    #[test]
+    fn session_download_path_resolution_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let dir = make_temp_dir("session-download-path-cwd");
+        fs::create_dir_all(&dir).expect("create cwd temp dir");
+        let guard = CurrentDirGuard::change_to(&dir);
+        fs::remove_dir_all(&dir).expect("remove cwd temp dir");
+
+        let english = super::normalize_session_download_path(std::path::Path::new("downloads"))
+            .expect_err("unresolvable cwd should fail")
+            .to_string();
+        assert!(english.contains("failed to resolve session download path downloads"));
+        assert!(english.contains("io error"));
+
+        Settings::set_language("cn");
+
+        let chinese = super::normalize_session_download_path(std::path::Path::new("downloads"))
+            .expect_err("unresolvable cwd should localize")
+            .to_string();
+        assert!(chinese.contains("解析 session 下载路径 downloads 失败"));
+        assert!(chinese.contains("IO 错误"));
+
+        drop(guard);
     }
 
     #[test]

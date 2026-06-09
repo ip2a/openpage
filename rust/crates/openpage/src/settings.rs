@@ -1440,6 +1440,13 @@ pub(crate) fn session_download_file_failed_message(action: &str, path: &str, err
     }
 }
 
+pub(crate) fn session_download_path_resolve_failed_message(path: &str, err: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("解析 session 下载路径 {path} 失败: {err}"),
+        _ => format!("failed to resolve session download path {path}: {err}"),
+    }
+}
+
 pub(crate) fn session_download_retry_loop_exited_message() -> String {
     localized_message(
         "session download retry loop exited unexpectedly",
