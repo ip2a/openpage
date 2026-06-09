@@ -1357,6 +1357,62 @@ impl WebFrame {
             .map(|element| self.wrap_element(element))
     }
 
+    pub fn east<'a, L>(
+        &self,
+        locator: Option<L>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame()
+            .east(locator, pixels, index)
+            .map(|element| self.wrap_element(element))
+    }
+
+    pub fn south<'a, L>(
+        &self,
+        locator: Option<L>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame()
+            .south(locator, pixels, index)
+            .map(|element| self.wrap_element(element))
+    }
+
+    pub fn west<'a, L>(
+        &self,
+        locator: Option<L>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame()
+            .west(locator, pixels, index)
+            .map(|element| self.wrap_element(element))
+    }
+
+    pub fn north<'a, L>(
+        &self,
+        locator: Option<L>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<WebElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame()
+            .north(locator, pixels, index)
+            .map(|element| self.wrap_element(element))
+    }
+
     pub fn screenshot_bytes(
         &self,
         scroll_to_center: bool,
@@ -9663,6 +9719,10 @@ mod tests {
             let _ = frame.over_with_timeout(100);
             let _ = frame.offset(Some((By::CLASS_NAME, "item")), Some(1.0), Some(2.0), 100);
             let _ = frame.offset(None::<&str>, None, None, 100);
+            let _ = frame.east(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = frame.south(Some((By::CLASS_NAME, "item")), Some(10), 1);
+            let _ = frame.west(None::<&str>, None, 1);
+            let _ = frame.north(None::<&str>, Some(10), 1);
 
             let _ = web_frame.parent();
             let _ = web_frame.parent_level(2);
@@ -9693,6 +9753,10 @@ mod tests {
             let _ = web_frame.over_with_timeout(100);
             let _ = web_frame.offset(Some((By::CLASS_NAME, "item")), Some(1.0), Some(2.0), 100);
             let _ = web_frame.offset(None::<&str>, None, None, 100);
+            let _ = web_frame.east(Some((By::CLASS_NAME, "item")), None, 1);
+            let _ = web_frame.south(Some((By::CLASS_NAME, "item")), Some(10), 1);
+            let _ = web_frame.west(None::<&str>, None, 1);
+            let _ = web_frame.north(None::<&str>, Some(10), 1);
         }
 
         let _ = assert_calls as fn(&Frame, &WebFrame);

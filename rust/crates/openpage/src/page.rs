@@ -2366,6 +2366,54 @@ impl Frame {
         self.frame_element.offset(locator, x, y, timeout_ms)
     }
 
+    pub fn east<'a, L>(
+        &self,
+        locator: Option<L>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.east(locator, pixels, index)
+    }
+
+    pub fn south<'a, L>(
+        &self,
+        locator: Option<L>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.south(locator, pixels, index)
+    }
+
+    pub fn west<'a, L>(
+        &self,
+        locator: Option<L>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.west(locator, pixels, index)
+    }
+
+    pub fn north<'a, L>(
+        &self,
+        locator: Option<L>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<Element>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_element.north(locator, pixels, index)
+    }
+
     pub fn screenshot_bytes(
         &self,
         scroll_to_center: bool,
