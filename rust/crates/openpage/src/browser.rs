@@ -2476,7 +2476,8 @@ impl Browser {
 
     pub fn close(&self) -> OpenPageResult<()> {
         self.inner.runtime.block_on(async {
-            let mut browser = self.inner.browser.lock().await;
+            let mut browser =
+                lock_with_cdp_timeout(&self.inner.browser, "Browser::close().lock()").await?;
             run_browser_future_with_cdp_timeout(browser.close(), "Browser::close()").await?;
             run_browser_future_with_cdp_timeout(browser.wait(), "Browser::close().wait()").await?;
             Ok::<(), OpenPageError>(())
