@@ -40,10 +40,11 @@ pub use element::{
     ElementSelector, ElementSetter, ElementStates, ElementWait,
 };
 pub use element_list::{
-    ElementListDriverItem, ElementListItem, ElementListSearchItem, ElementListStateItem,
-    ElementsFilter, ElementsFilterOne, ElementsGetter, ElementsListExt, ElementsOne,
-    ElementsOneClicker, ElementsOneOwned, ElementsOneRect, ElementsOneScroller,
-    ElementsOneSelector, ElementsOneSetter, ElementsOneStates, ElementsOneWait, ElementsSearch,
+    ElementListAttrsItem, ElementListContentItem, ElementListDriverItem, ElementListItem,
+    ElementListMetaItem, ElementListSearchItem, ElementListStateItem, ElementsFilter,
+    ElementsFilterOne, ElementsGetter, ElementsListExt, ElementsOne, ElementsOneClicker,
+    ElementsOneOwned, ElementsOneRect, ElementsOneScroller, ElementsOneSelector, ElementsOneSetter,
+    ElementsOneStates, ElementsOneWait, ElementsSearch,
 };
 pub use error::{OpenPageError, OpenPageResult};
 pub use intercept::{InterceptedRequest, InterceptedRequestInfo, Interceptor};
@@ -102,11 +103,12 @@ pub type WebNoneElement = ElementsOneOwned<WebElement>;
 mod tests {
     use super::{
         Browser, Chromium, ChromiumElement, ChromiumFrame, ChromiumOptions, ChromiumPage,
-        ChromiumTab, Element, ElementRect, ElementStates, ElementWait, ElementsOneClicker,
-        ElementsOneOwned, ElementsOneRect, ElementsOneScroller, ElementsOneSelector,
-        ElementsOneSetter, ElementsOneStates, ElementsOneWait, Frame, LaunchOptions, MixTab,
-        NoneElement, Page, SessionElement, SessionNoneElement, WebElement, WebElementRect,
-        WebElementStates, WebElementWait, WebNoneElement, WebPage,
+        ChromiumTab, Element, ElementListAttrsItem, ElementListContentItem, ElementListMetaItem,
+        ElementRect, ElementStates, ElementWait, ElementsOneClicker, ElementsOneOwned,
+        ElementsOneRect, ElementsOneScroller, ElementsOneSelector, ElementsOneSetter,
+        ElementsOneStates, ElementsOneWait, Frame, LaunchOptions, MixTab, NoneElement, Page,
+        SessionElement, SessionNoneElement, WebElement, WebElementRect, WebElementStates,
+        WebElementWait, WebNoneElement, WebPage,
     };
 
     #[test]
@@ -163,5 +165,16 @@ mod tests {
                 &ElementsOneWait<'_, Element>,
                 &ElementsOneSelector<'_, Element>,
             );
+    }
+
+    #[test]
+    fn element_list_content_traits_are_exported() {
+        fn assert_content_item<T: ElementListContentItem>() {}
+        fn assert_attrs_item<T: ElementListAttrsItem>() {}
+        fn assert_meta_item<T: ElementListMetaItem>() {}
+
+        assert_content_item::<Element>();
+        assert_attrs_item::<Element>();
+        assert_meta_item::<Element>();
     }
 }
