@@ -28,8 +28,13 @@ use crate::session::{
     snapshot_fragment_root_with_base_url,
 };
 use crate::settings::{
-    cdp_timeout_duration, javascript_execution_timed_out_message,
+    cdp_timeout_duration, element_index_must_start_message, javascript_execution_timed_out_message,
+    shadow_root_child_element_not_found_message, shadow_root_following_element_not_found_message,
+    shadow_root_host_element_not_found_message, shadow_root_next_element_not_found_message,
     shadow_root_object_id_unavailable_message, shadow_root_operation_failed_message,
+    shadow_root_parent_element_index_must_start_message,
+    shadow_root_parent_element_level_must_start_message,
+    shadow_root_parent_element_not_found_message, shadow_root_preceding_element_not_found_message,
     timeout_duration_millis, timeout_error, value_bool_required_message,
     value_string_compatible_required_message, value_string_required_message,
     value_unavailable_message,
@@ -119,7 +124,7 @@ impl ShadowRoot {
         nth_element_from_start(
             self.resolve_node_ids(&[self.host_node_id])?,
             1,
-            "shadow root host element not found",
+            &shadow_root_host_element_not_found_message(),
         )
     }
 
@@ -362,7 +367,7 @@ impl ShadowRoot {
         nth_element_from_start(
             self.children_with(locator)?,
             index,
-            "shadow root child element not found",
+            &shadow_root_child_element_not_found_message(),
         )
     }
 
@@ -395,14 +400,14 @@ impl ShadowRoot {
     pub fn parent_level(&self, level: usize) -> OpenPageResult<Element> {
         if level == 0 {
             return Err(OpenPageError::ElementNotFound(
-                "shadow root parent element not found: level must be >= 1".to_string(),
+                shadow_root_parent_element_level_must_start_message(),
             ));
         }
         let host = self.host()?;
         nth_element_from_start(
             host.find_all(&format!("xpath:./ancestor-or-self::*[{level}]"))?,
             1,
-            "shadow root parent element not found",
+            &shadow_root_parent_element_not_found_message(),
         )
     }
 
@@ -412,7 +417,7 @@ impl ShadowRoot {
     {
         if index == 0 {
             return Err(OpenPageError::ElementNotFound(
-                "shadow root parent element not found: index must be >= 1".to_string(),
+                shadow_root_parent_element_index_must_start_message(),
             ));
         }
         let locator = Locator::from_input(locator)?;
@@ -433,7 +438,7 @@ impl ShadowRoot {
                     normalize_axis_xpath("ancestor-or-self", locator.query())
                 ))?,
                 1,
-                "shadow root parent element not found",
+                &shadow_root_parent_element_not_found_message(),
             ),
         }
     }
@@ -449,7 +454,7 @@ impl ShadowRoot {
         nth_element_from_start(
             self.nexts_with(locator)?,
             index,
-            "shadow root next element not found",
+            &shadow_root_next_element_not_found_message(),
         )
     }
 
@@ -475,7 +480,7 @@ impl ShadowRoot {
         nth_element_from_end(
             self.befores_with(locator)?,
             index,
-            "shadow root preceding element not found",
+            &shadow_root_preceding_element_not_found_message(),
         )
     }
 
@@ -501,7 +506,7 @@ impl ShadowRoot {
         nth_element_from_start(
             self.afters_with(locator)?,
             index,
-            "shadow root following element not found",
+            &shadow_root_following_element_not_found_message(),
         )
     }
 
@@ -798,9 +803,9 @@ fn nth_element_from_start(
     error_message: &str,
 ) -> OpenPageResult<Element> {
     if index == 0 {
-        return Err(OpenPageError::ElementNotFound(format!(
-            "{error_message}: index must be >= 1"
-        )));
+        return Err(OpenPageError::ElementNotFound(
+            element_index_must_start_message(error_message),
+        ));
     }
     elements
         .into_iter()
@@ -814,9 +819,9 @@ fn nth_element_from_end(
     error_message: &str,
 ) -> OpenPageResult<Element> {
     if index == 0 {
-        return Err(OpenPageError::ElementNotFound(format!(
-            "{error_message}: index must be >= 1"
-        )));
+        return Err(OpenPageError::ElementNotFound(
+            element_index_must_start_message(error_message),
+        ));
     }
     let len = elements.len();
     elements
@@ -839,8 +844,8 @@ fn next_marker_batch() -> String {
 mod tests {
     use super::{
         ShadowRoot, build_js_invocation, direct_child_selector, normalize_axis_xpath,
-        resolve_javascript_timeout_ms, run_shadow_root_lookup_future_with_cdp_timeout,
-        shadow_root_selector_error,
+        nth_element_from_end, nth_element_from_start, resolve_javascript_timeout_ms,
+        run_shadow_root_lookup_future_with_cdp_timeout, shadow_root_selector_error,
     };
     use crate::{
         By, Element, LocatorInput, LocatorMatch, OpenPageError, OpenPageResult, SessionElement,
@@ -927,6 +932,32 @@ mod tests {
             matches!(missing, OpenPageError::ElementNotFound(ref message) if message == "ShadowRoot 操作 selector lookup 失败: 页面操作失败: boom"),
             "unexpected localized selector conversion: {missing}"
         );
+    }
+
+    #[test]
+    fn shadow_root_relative_index_errors_follow_language_setting() {
+        let _guard = crate::settings::scoped_test_settings();
+        Settings::reset();
+
+        let english = nth_element_from_start(
+            Vec::<Element>::new(),
+            0,
+            &crate::settings::shadow_root_child_element_not_found_message(),
+        )
+        .expect_err("zero child index should fail")
+        .to_string();
+        assert!(english.contains("shadow root child element not found: index must be >= 1"));
+
+        Settings::set_language("cn");
+
+        let chinese = nth_element_from_end(
+            Vec::<Element>::new(),
+            0,
+            &crate::settings::shadow_root_preceding_element_not_found_message(),
+        )
+        .expect_err("zero preceding index should localize")
+        .to_string();
+        assert!(chinese.contains("没有找到 ShadowRoot 前方元素: index 必须 >= 1"));
     }
 
     #[test]

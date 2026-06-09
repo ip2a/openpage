@@ -1223,6 +1223,69 @@ pub(crate) fn following_element_not_found_message() -> String {
     localized_message("following element not found", "没有找到后方元素")
 }
 
+pub(crate) fn shadow_root_host_element_not_found_message() -> String {
+    localized_message(
+        "shadow root host element not found",
+        "没有找到 ShadowRoot host 元素",
+    )
+}
+
+pub(crate) fn shadow_root_parent_element_level_must_start_message() -> String {
+    localized_message(
+        "shadow root parent element not found: level must be >= 1",
+        "没有找到 ShadowRoot 父元素: level 必须 >= 1",
+    )
+}
+
+pub(crate) fn shadow_root_parent_element_index_must_start_message() -> String {
+    localized_message(
+        "shadow root parent element not found: index must be >= 1",
+        "没有找到 ShadowRoot 父元素: index 必须 >= 1",
+    )
+}
+
+pub(crate) fn shadow_root_parent_element_not_found_message() -> String {
+    localized_message(
+        "shadow root parent element not found",
+        "没有找到 ShadowRoot 父元素",
+    )
+}
+
+pub(crate) fn shadow_root_child_element_not_found_message() -> String {
+    localized_message(
+        "shadow root child element not found",
+        "没有找到 ShadowRoot 子元素",
+    )
+}
+
+pub(crate) fn shadow_root_next_element_not_found_message() -> String {
+    localized_message(
+        "shadow root next element not found",
+        "没有找到 ShadowRoot 后一个元素",
+    )
+}
+
+pub(crate) fn shadow_root_preceding_element_not_found_message() -> String {
+    localized_message(
+        "shadow root preceding element not found",
+        "没有找到 ShadowRoot 前方元素",
+    )
+}
+
+pub(crate) fn shadow_root_following_element_not_found_message() -> String {
+    localized_message(
+        "shadow root following element not found",
+        "没有找到 ShadowRoot 后方元素",
+    )
+}
+
+pub(crate) fn element_index_must_start_message(context: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{context}: index 必须 >= 1"),
+        _ => format!("{context}: index must be >= 1"),
+    }
+}
+
 pub(crate) fn child_node_not_found_message() -> String {
     localized_message("child node not found", "没有找到子节点")
 }
