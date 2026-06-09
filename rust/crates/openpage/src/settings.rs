@@ -708,6 +708,13 @@ pub(crate) fn browser_backed_element_only_message(operation: &str) -> String {
     }
 }
 
+pub(crate) fn elements_one_missing_method_message(method: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("在缺失元素上调用了 {method}"),
+        _ => format!("{method} called on missing element"),
+    }
+}
+
 pub(crate) fn element_operation_failed_message(operation: &str, err: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("元素操作 {operation} 失败: {err}"),

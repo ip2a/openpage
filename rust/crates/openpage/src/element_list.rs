@@ -9,7 +9,8 @@ use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::session::{SessionElement, SessionXPathResult};
 use crate::settings::{
-    component_state_lock_poisoned_message, web_element_list_driver_filter_message,
+    component_state_lock_poisoned_message, elements_one_missing_method_message,
+    web_element_list_driver_filter_message,
 };
 use crate::webpage::WebElement;
 
@@ -571,9 +572,9 @@ where
 impl ElementsOneOwned<Element> {
     fn missing_optional_result<U>(&self, method: &str) -> OpenPageResult<Option<U>> {
         if elements_one_should_raise_when_missing(self.config.as_ref())? {
-            return Err(OpenPageError::ElementNotFound(format!(
-                "{method} called on missing element"
-            )));
+            return Err(OpenPageError::ElementNotFound(
+                elements_one_missing_method_message(method),
+            ));
         }
         Ok(None)
     }
@@ -1329,9 +1330,9 @@ impl ElementsOneOwned<Element> {
 impl ElementsOneOwned<WebElement> {
     fn missing_optional_result<U>(&self, method: &str) -> OpenPageResult<Option<U>> {
         if elements_one_should_raise_when_missing(self.config.as_ref())? {
-            return Err(OpenPageError::ElementNotFound(format!(
-                "{method} called on missing element"
-            )));
+            return Err(OpenPageError::ElementNotFound(
+                elements_one_missing_method_message(method),
+            ));
         }
         Ok(None)
     }
@@ -10240,6 +10241,35 @@ mod tests {
             matches!(error, crate::OpenPageError::ElementNotFound(_)),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn elements_one_owned_missing_method_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let config = Arc::new(Mutex::new(super::ElementsOneRuntimeConfig {
+            raise_when_not_found: true,
+            ..super::ElementsOneRuntimeConfig::default()
+        }));
+        let missing: super::ElementsOneOwned<crate::Element> =
+            super::ElementsOneOwned::none_with_config(Some(Arc::clone(&config)));
+        let missing_web: super::ElementsOneOwned<WebElement> =
+            super::ElementsOneOwned::none_with_config(Some(config));
+
+        let english = missing
+            .shadow_root()
+            .expect_err("missing element shadow_root should raise")
+            .to_string();
+        assert!(english.contains("shadow_root() called on missing element"));
+
+        Settings::set_language("cn");
+
+        let chinese = missing_web
+            .sr()
+            .expect_err("missing web element sr should localize")
+            .to_string();
+        assert!(chinese.contains("在缺失元素上调用了 shadow_root()"));
     }
 
     #[test]
