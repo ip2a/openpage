@@ -1307,7 +1307,8 @@ impl Browser {
         let target_url = url.unwrap_or("about:blank").to_string();
         let load_mode = self.load_mode_value()?;
         let page = self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
+            let browser =
+                lock_with_cdp_timeout(&self.inner.browser, "Browser::new_page().lock()").await?;
             run_browser_future_with_cdp_timeout(browser.new_page(target_url), "Browser::new_page()")
                 .await
         })?;
@@ -1325,7 +1326,11 @@ impl Browser {
     ) -> OpenPageResult<Page> {
         let isolated_context_id = if new_context {
             Some(self.inner.runtime.block_on(async {
-                let browser = self.inner.browser.lock().await;
+                let browser = lock_with_cdp_timeout(
+                    &self.inner.browser,
+                    "Browser::new_tab().create_browser_context().lock()",
+                )
+                .await?;
                 run_browser_future_with_cdp_timeout(
                     browser.create_browser_context(CreateBrowserContextParams::default()),
                     "Browser::new_tab().create_browser_context()",
@@ -1348,7 +1353,9 @@ impl Browser {
         let params = params.build().map_err(OpenPageError::BrowserOperation)?;
         let load_mode = self.load_mode_value()?;
         let page = match self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
+            let browser =
+                lock_with_cdp_timeout(&self.inner.browser, "Browser::new_tab().new_page().lock()")
+                    .await?;
             run_browser_future_with_cdp_timeout(
                 browser.new_page(params),
                 "Browser::new_tab().new_page()",
@@ -1387,7 +1394,8 @@ impl Browser {
     pub fn pages(&self) -> OpenPageResult<Vec<Page>> {
         let load_mode = self.load_mode_value()?;
         let pages = self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
+            let browser =
+                lock_with_cdp_timeout(&self.inner.browser, "Browser::pages().lock()").await?;
             run_browser_future_with_cdp_timeout(browser.pages(), "Browser::pages()").await
         })?;
         let target_ids = pages
@@ -1404,7 +1412,8 @@ impl Browser {
     pub fn get_page(&self, target_id: &str) -> OpenPageResult<Page> {
         let load_mode = self.load_mode_value()?;
         let page = self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
+            let browser =
+                lock_with_cdp_timeout(&self.inner.browser, "Browser::get_page().lock()").await?;
             run_browser_future_with_cdp_timeout(
                 browser.get_page(TargetId::new(target_id)),
                 "Browser::get_page()",
@@ -1542,7 +1551,11 @@ impl Browser {
     fn dispose_browser_context(&self, browser_context_id: &str) -> OpenPageResult<()> {
         let browser_context_id = browser_context_id.to_string();
         self.inner.runtime.block_on(async {
-            let browser = self.inner.browser.lock().await;
+            let browser = lock_with_cdp_timeout(
+                &self.inner.browser,
+                "Browser::dispose_browser_context().lock()",
+            )
+            .await?;
             run_browser_future_with_cdp_timeout(
                 browser.dispose_browser_context(browser_context_id),
                 "Browser::dispose_browser_context()",
