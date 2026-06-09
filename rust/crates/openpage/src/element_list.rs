@@ -743,6 +743,13 @@ impl ElementsOneOwned<Element> {
         self.as_borrowed().click_right()
     }
 
+    pub fn set_file_input_files<'a, F>(&self, files: F) -> OpenPageResult<bool>
+    where
+        F: Into<crate::upload::UploadFilesInput<'a>>,
+    {
+        self.as_borrowed().set_file_input_files(files)
+    }
+
     pub fn input(&self, text: &str) -> OpenPageResult<bool> {
         self.as_borrowed().input(text)
     }
@@ -1341,6 +1348,13 @@ impl ElementsOneOwned<WebElement> {
 
     pub fn click_right(&self) -> OpenPageResult<bool> {
         self.as_borrowed().click_right()
+    }
+
+    pub fn set_file_input_files<'a, F>(&self, files: F) -> OpenPageResult<bool>
+    where
+        F: Into<crate::upload::UploadFilesInput<'a>>,
+    {
+        self.as_borrowed().set_file_input_files(files)
     }
 
     pub fn input(&self, text: &str) -> OpenPageResult<bool> {
@@ -3712,6 +3726,19 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    pub fn set_file_input_files<'b, F>(&self, files: F) -> OpenPageResult<bool>
+    where
+        F: Into<crate::upload::UploadFilesInput<'b>>,
+    {
+        match self.element {
+            Some(element) => {
+                element.set_file_input_files(files)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     pub fn input(&self, text: &str) -> OpenPageResult<bool> {
         match self.element {
             Some(element) => {
@@ -5405,6 +5432,19 @@ impl<'a> ElementsOne<'a, WebElement> {
         match self.element {
             Some(element) => {
                 element.click_right()?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn set_file_input_files<'b, F>(&self, files: F) -> OpenPageResult<bool>
+    where
+        F: Into<crate::upload::UploadFilesInput<'b>>,
+    {
+        match self.element {
+            Some(element) => {
+                element.set_file_input_files(files)?;
                 Ok(true)
             }
             None => Ok(false),

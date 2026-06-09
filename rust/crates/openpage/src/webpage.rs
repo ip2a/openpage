@@ -10607,6 +10607,9 @@ mod tests {
             let _ = one_element.click_middle();
             let _ = one_element.click_multi(2);
             let _ = one_element.click_right();
+            let _ = one_element.set_file_input_files(&files);
+            let _ = one_element.set_file_input_files("./fixtures/demo.txt");
+            let _ = one_element.set_file_input_files(&upload_path);
             let _ = one_web_element.click_with_options(Some(false), Some(1_000), false);
             let _ = one_web_element.click_left_with_options(Some(false), Some(1_000), false);
             let _ = one_web_element.click_at(Some(5.0), Some(6.0), "left", 1);
@@ -10614,6 +10617,9 @@ mod tests {
             let _ = one_web_element.click_middle();
             let _ = one_web_element.click_multi(2);
             let _ = one_web_element.click_right();
+            let _ = one_web_element.set_file_input_files(&files);
+            let _ = one_web_element.set_file_input_files("./fixtures/demo.txt");
+            let _ = one_web_element.set_file_input_files(&upload_path);
 
             let _ = owned_element.click_with_options(Some(false), Some(1_000), false);
             let _ = owned_element.click_left_with_options(Some(false), Some(1_000), false);
@@ -10622,6 +10628,9 @@ mod tests {
             let _ = owned_element.click_middle();
             let _ = owned_element.click_multi(2);
             let _ = owned_element.click_right();
+            let _ = owned_element.set_file_input_files(&files);
+            let _ = owned_element.set_file_input_files("./fixtures/demo.txt");
+            let _ = owned_element.set_file_input_files(&upload_path);
             let _ = owned_web_element.click_with_options(Some(false), Some(1_000), false);
             let _ = owned_web_element.click_left_with_options(Some(false), Some(1_000), false);
             let _ = owned_web_element.click_at(Some(5.0), Some(6.0), "left", 1);
@@ -10629,6 +10638,9 @@ mod tests {
             let _ = owned_web_element.click_middle();
             let _ = owned_web_element.click_multi(2);
             let _ = owned_web_element.click_right();
+            let _ = owned_web_element.set_file_input_files(&files);
+            let _ = owned_web_element.set_file_input_files("./fixtures/demo.txt");
+            let _ = owned_web_element.set_file_input_files(&upload_path);
         }
 
         let _ = assert_calls
