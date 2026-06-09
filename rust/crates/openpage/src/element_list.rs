@@ -1608,6 +1608,28 @@ where
 }
 
 impl<'a> ElementsOne<'a, Element> {
+    fn relative_element<F>(&self, f: F) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        F: FnOnce(&Element) -> OpenPageResult<Element>,
+    {
+        match self.element {
+            Some(element) => match f(element) {
+                Ok(element) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.cloned(),
+                )),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config)? {
+                        return Err(err);
+                    }
+                    Ok(ElementsOneOwned::none_with_config(self.config.cloned()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
+        }
+    }
+
     pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -1658,6 +1680,100 @@ impl<'a> ElementsOne<'a, Element> {
             Some(element) => element.s_eles(locator),
             None => Ok(Vec::new()),
         }
+    }
+
+    pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
+        self.relative_element(|element| element.parent())
+    }
+
+    pub fn parent_level(&self, level: usize) -> OpenPageResult<ElementsOneOwned<Element>> {
+        self.relative_element(|element| element.parent_level(level))
+    }
+
+    pub fn parent_with<'b, L>(
+        &self,
+        locator: L,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.parent_with(locator, index))
+    }
+
+    pub fn child(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
+        self.relative_element(|element| element.child())
+    }
+
+    pub fn child_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.child_with(locator, index))
+    }
+
+    pub fn prev(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
+        self.relative_element(|element| element.prev())
+    }
+
+    pub fn prev_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.prev_with(locator, index))
+    }
+
+    pub fn next(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
+        self.relative_element(|element| element.next())
+    }
+
+    pub fn next_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.next_with(locator, index))
+    }
+
+    pub fn before(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
+        self.relative_element(|element| element.before())
+    }
+
+    pub fn before_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.before_with(locator, index))
+    }
+
+    pub fn after(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
+        self.relative_element(|element| element.after())
+    }
+
+    pub fn after_with<'b, L>(
+        &self,
+        locator: Option<L>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.after_with(locator, index))
     }
 
     pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Option<Vec<String>>> {
@@ -6265,6 +6381,18 @@ mod tests {
                 .len(),
             0
         );
+    }
+
+    #[test]
+    fn borrowed_browser_elements_one_relative_navigation_handles_missing_owner() {
+        let missing = super::ElementsOne::<crate::Element>::none();
+
+        assert!(missing.child().expect("missing child owner").is_none());
+        assert!(missing.parent().expect("missing parent owner").is_none());
+        assert!(missing.prev().expect("missing prev owner").is_none());
+        assert!(missing.next().expect("missing next owner").is_none());
+        assert!(missing.before().expect("missing before owner").is_none());
+        assert!(missing.after().expect("missing after owner").is_none());
     }
 
     #[test]
