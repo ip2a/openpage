@@ -578,6 +578,14 @@ impl LaunchOptions {
         self
     }
 
+    pub fn set_argument_value(&mut self, arg: &str, value: Option<&str>) -> &mut Self {
+        self.remove_argument(arg);
+        match value {
+            Some(value) => self.set_argument(format!("{arg}={value}")),
+            None => self.set_argument(arg),
+        }
+    }
+
     pub fn set_user(&mut self, user: &str) -> &mut Self {
         self.remove_argument("--profile-directory");
         self.set_argument(format!("--profile-directory={user}"));
@@ -6565,6 +6573,23 @@ mod tests {
                 .contains(&"--user-data-dir=/tmp/openpage".to_string())
         );
         assert_eq!(options.arguments(), expected_after_remove.as_slice());
+    }
+
+    #[test]
+    fn launch_options_set_argument_value_updates_named_argument() {
+        let mut options = LaunchOptions::default();
+        options
+            .set_argument_value("--window-size", Some("800,600"))
+            .set_argument_value("--window-size", Some("1024,768"))
+            .set_argument_value("--start-maximized", None);
+
+        assert_eq!(
+            options.arguments(),
+            &[
+                "--window-size=1024,768".to_string(),
+                "--start-maximized".to_string()
+            ]
+        );
     }
 
     #[test]
