@@ -4933,22 +4933,34 @@ impl WebPage {
         }
     }
 
-    pub fn click(&self, locator: &str) -> OpenPageResult<()> {
+    pub fn click<'a, L>(&self, locator: L) -> OpenPageResult<()>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
             .click()
     }
 
-    pub fn fill(&self, locator: &str, text: &str) -> OpenPageResult<()> {
+    pub fn fill<'a, L>(&self, locator: L, text: &str) -> OpenPageResult<()>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
             .input(text)
     }
 
-    pub fn text(&self, locator: &str) -> OpenPageResult<Option<String>> {
+    pub fn text<'a, L>(&self, locator: L) -> OpenPageResult<Option<String>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
             .text()
     }
 
-    pub fn attr(&self, locator: &str, name: &str) -> OpenPageResult<Option<String>> {
+    pub fn attr<'a, L>(&self, locator: L, name: &str) -> OpenPageResult<Option<String>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
             .attr(name)
     }
@@ -10416,9 +10428,13 @@ mod tests {
 
             let _ = page.wait_for((By::ID, "root"), 1_000);
             let _ = page.click("#root");
+            let _ = page.click((By::ID, "root"));
             let _ = page.fill("#root", "demo");
+            let _ = page.fill((By::ID, "root"), "demo");
             let _ = page.text("#root");
+            let _ = page.text((By::ID, "root"));
             let _ = page.attr("#root", "href");
+            let _ = page.attr((By::ID, "root"), "href");
             let _ = page.wait_for_elements_loaded((By::ID, "root"), false, 1_000);
             let _ = page.wait_for_elements_loaded(&locators, false, 1_000);
             let _ = page.wait_for_elements_loaded(&tuple_locators, false, 1_000);
@@ -10445,9 +10461,13 @@ mod tests {
             let _ = page.wait_for_ele_clickable(&session_web_element, 1_000);
             let _ = web_page.wait_for((By::ID, "root"), 1_000);
             let _ = web_page.click("#root");
+            let _ = web_page.click((By::ID, "root"));
             let _ = web_page.fill("#root", "demo");
+            let _ = web_page.fill((By::ID, "root"), "demo");
             let _ = web_page.text("#root");
+            let _ = web_page.text((By::ID, "root"));
             let _ = web_page.attr("#root", "href");
+            let _ = web_page.attr((By::ID, "root"), "href");
             let _ = web_page.wait_for_elements_loaded((By::ID, "root"), false, 1_000);
             let _ = web_page.wait_for_elements_loaded(&locators, false, 1_000);
             let _ = web_page.wait_for_elements_loaded(&tuple_locators, false, 1_000);

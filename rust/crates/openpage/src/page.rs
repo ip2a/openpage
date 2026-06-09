@@ -4323,22 +4323,34 @@ impl Page {
         wait_fn(&element, remaining.max(1))
     }
 
-    pub fn click(&self, locator: &str) -> OpenPageResult<()> {
+    pub fn click<'a, L>(&self, locator: L) -> OpenPageResult<()>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
             .click()
     }
 
-    pub fn fill(&self, locator: &str, text: &str) -> OpenPageResult<()> {
+    pub fn fill<'a, L>(&self, locator: L, text: &str) -> OpenPageResult<()>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
             .input(text)
     }
 
-    pub fn text(&self, locator: &str) -> OpenPageResult<Option<String>> {
+    pub fn text<'a, L>(&self, locator: L) -> OpenPageResult<Option<String>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
             .text()
     }
 
-    pub fn attr(&self, locator: &str, name: &str) -> OpenPageResult<Option<String>> {
+    pub fn attr<'a, L>(&self, locator: L, name: &str) -> OpenPageResult<Option<String>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
             .attr(name)
     }
