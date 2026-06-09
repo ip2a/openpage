@@ -1577,6 +1577,20 @@ pub(crate) fn relative_direction_index_must_start_message() -> String {
     )
 }
 
+pub(crate) fn element_offset_not_found_message(method: &str, x: i64, y: i64) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{method}() 没有在 ({x}, {y}) 找到匹配元素"),
+        _ => format!("{method}() did not find a matching element at ({x}, {y})"),
+    }
+}
+
+pub(crate) fn element_relative_not_found_message(method: &str, index: usize) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{method}() 没有找到第 {index} 个元素"),
+        _ => format!("{method}() did not find element #{index}"),
+    }
+}
+
 pub(crate) fn resolve_frame_viewport_offset_failed_message(detail: &str) -> String {
     localized_error_with_detail(
         "resolve frame viewport offset failed",

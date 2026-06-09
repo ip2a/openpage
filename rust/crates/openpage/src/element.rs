@@ -55,8 +55,9 @@ use crate::settings::{
     click_failed_no_rect_message, click_failed_should_raise, data_url_missing_comma_message,
     element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
     element_index_must_start_message, element_no_visible_rect_message,
-    element_operation_failed_message, element_rect_corner_coordinate_count_message,
-    element_rect_corners_parse_failed_message, element_rect_corners_unexpected_value_message,
+    element_offset_not_found_message, element_operation_failed_message,
+    element_rect_corner_coordinate_count_message, element_rect_corners_parse_failed_message,
+    element_rect_corners_unexpected_value_message, element_relative_not_found_message,
     element_resource_attribute_missing_message, element_resource_unavailable_message,
     element_tag_name_unavailable_message, element_top_frame_check_failed_message,
     frame_index_must_start_message, frame_index_out_of_range_message,
@@ -1615,9 +1616,9 @@ impl Element {
             }
 
             if Instant::now() >= deadline {
-                return Err(OpenPageError::ElementNotFound(format!(
-                    "offset() did not find a matching element at ({target_x}, {target_y})"
-                )));
+                return Err(OpenPageError::ElementNotFound(
+                    element_offset_not_found_message("offset", target_x, target_y),
+                ));
             }
             sleep(Duration::from_millis(10));
         }
@@ -3383,10 +3384,9 @@ impl Element {
                     return Ok(element);
                 }
             }
-            return Err(OpenPageError::ElementNotFound(format!(
-                "{}() did not find a matching element at ({x}, {y})",
-                direction.method_name()
-            )));
+            return Err(OpenPageError::ElementNotFound(
+                element_offset_not_found_message(direction.method_name(), x, y),
+            ));
         }
 
         let (viewport_width, viewport_height) = self.viewport_size()?;
@@ -3415,10 +3415,9 @@ impl Element {
             }
         }
 
-        Err(OpenPageError::ElementNotFound(format!(
-            "{}() did not find element #{index}",
-            direction.method_name()
-        )))
+        Err(OpenPageError::ElementNotFound(
+            element_relative_not_found_message(direction.method_name(), index),
+        ))
     }
 
     fn viewport_size(&self) -> OpenPageResult<(i64, i64)> {
@@ -5919,6 +5918,32 @@ mod tests {
         assert_eq!(
             crate::settings::element_resource_attribute_missing_message("img", "src"),
             "元素 <img> 没有可用的 src 属性"
+        );
+    }
+
+    #[test]
+    fn element_visual_lookup_messages_follow_language_setting() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+
+        assert_eq!(
+            crate::settings::element_offset_not_found_message("offset", 12, 34),
+            "offset() did not find a matching element at (12, 34)"
+        );
+        assert_eq!(
+            crate::settings::element_relative_not_found_message("east", 2),
+            "east() did not find element #2"
+        );
+
+        crate::Settings::set_language("cn");
+
+        assert_eq!(
+            crate::settings::element_offset_not_found_message("offset", 12, 34),
+            "offset() 没有在 (12, 34) 找到匹配元素"
+        );
+        assert_eq!(
+            crate::settings::element_relative_not_found_message("east", 2),
+            "east() 没有找到第 2 个元素"
         );
     }
 
