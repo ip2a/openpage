@@ -1302,6 +1302,16 @@ impl ElementsOneOwned<SessionElement> {
         }
     }
 
+    fn relative_elements<F>(&self, f: F) -> OpenPageResult<Vec<SessionElement>>
+    where
+        F: FnOnce(&SessionElement) -> OpenPageResult<Vec<SessionElement>>,
+    {
+        match self.as_option() {
+            Some(element) => f(element),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Option<Vec<String>>> {
         self.as_borrowed().texts(text_node_only)
     }
@@ -1392,6 +1402,17 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_element(|element| element.child_with(locator, index))
     }
 
+    pub fn children(&self) -> OpenPageResult<Vec<SessionElement>> {
+        self.relative_elements(|element| element.children())
+    }
+
+    pub fn children_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.relative_elements(|element| element.children_with(locator))
+    }
+
     pub fn prev(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
         self.relative_element(|element| element.prev())
     }
@@ -1405,6 +1426,17 @@ impl ElementsOneOwned<SessionElement> {
         L: Into<crate::locator::LocatorInput<'a>>,
     {
         self.relative_element(|element| element.prev_with(locator, index))
+    }
+
+    pub fn prevs(&self) -> OpenPageResult<Vec<SessionElement>> {
+        self.relative_elements(|element| element.prevs())
+    }
+
+    pub fn prevs_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.relative_elements(|element| element.prevs_with(locator))
     }
 
     pub fn next(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
@@ -1422,6 +1454,17 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_element(|element| element.next_with(locator, index))
     }
 
+    pub fn nexts(&self) -> OpenPageResult<Vec<SessionElement>> {
+        self.relative_elements(|element| element.nexts())
+    }
+
+    pub fn nexts_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.relative_elements(|element| element.nexts_with(locator))
+    }
+
     pub fn before(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
         self.relative_element(|element| element.before())
     }
@@ -1437,6 +1480,17 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_element(|element| element.before_with(locator, index))
     }
 
+    pub fn befores(&self) -> OpenPageResult<Vec<SessionElement>> {
+        self.relative_elements(|element| element.befores())
+    }
+
+    pub fn befores_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.relative_elements(|element| element.befores_with(locator))
+    }
+
     pub fn after(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
         self.relative_element(|element| element.after())
     }
@@ -1450,6 +1504,17 @@ impl ElementsOneOwned<SessionElement> {
         L: Into<crate::locator::LocatorInput<'a>>,
     {
         self.relative_element(|element| element.after_with(locator, index))
+    }
+
+    pub fn afters(&self) -> OpenPageResult<Vec<SessionElement>> {
+        self.relative_elements(|element| element.afters())
+    }
+
+    pub fn afters_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'a>>,
+    {
+        self.relative_elements(|element| element.afters_with(locator))
     }
 }
 
@@ -6977,6 +7042,63 @@ mod tests {
                 .len(),
             0
         );
+    }
+
+    #[test]
+    fn session_elements_one_owned_supports_multi_relative_navigation() {
+        let second = snapshot_find(
+            r#"
+            <main>
+                <article class="card" data-kind="first">
+                    <h2 class="title">Alpha</h2>
+                    <p class="summary">One</p>
+                </article>
+                <article class="card" data-kind="second">
+                    <h2 class="title">Beta</h2>
+                    <p class="summary">Two</p>
+                </article>
+                <article class="card" data-kind="third">
+                    <h2 class="title">Gamma</h2>
+                </article>
+            </main>
+            "#,
+            "@data-kind=second",
+        )
+        .expect("second element");
+        let found = super::ElementsOneOwned::some_with_config(second, None);
+
+        assert_eq!(found.children().expect("children").len(), 2);
+        assert_eq!(
+            found
+                .children_with(Some(".title"))
+                .expect("title children")
+                .len(),
+            1
+        );
+        assert_eq!(found.prevs().expect("previous siblings").len(), 1);
+        assert_eq!(found.nexts().expect("next siblings").len(), 1);
+        assert_eq!(
+            found
+                .befores_with(Some(".title"))
+                .expect("before title elements")
+                .len(),
+            1
+        );
+        assert_eq!(
+            found
+                .afters_with(Some(".title"))
+                .expect("after title elements")
+                .len(),
+            1
+        );
+
+        let missing: super::ElementsOneOwned<crate::SessionElement> =
+            super::ElementsOneOwned::none_with_config(None);
+        assert_eq!(missing.children().expect("missing children").len(), 0);
+        assert_eq!(missing.prevs().expect("missing previous siblings").len(), 0);
+        assert_eq!(missing.nexts().expect("missing next siblings").len(), 0);
+        assert_eq!(missing.befores().expect("missing before elements").len(), 0);
+        assert_eq!(missing.afters().expect("missing after elements").len(), 0);
     }
 
     #[test]
