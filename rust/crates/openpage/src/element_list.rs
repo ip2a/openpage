@@ -2595,6 +2595,16 @@ impl<'a> ElementsOne<'a, SessionElement> {
         }
     }
 
+    fn relative_nodes<F>(&self, f: F) -> OpenPageResult<Vec<SessionXPathResult>>
+    where
+        F: FnOnce(&SessionElement) -> OpenPageResult<Vec<SessionXPathResult>>,
+    {
+        match self.element {
+            Some(element) => f(element),
+            None => Ok(Vec::new()),
+        }
+    }
+
     pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -2692,6 +2702,17 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_elements(|element| element.children_with(locator))
     }
 
+    pub fn children_nodes(&self) -> OpenPageResult<Vec<SessionXPathResult>> {
+        self.relative_nodes(|element| element.children_nodes())
+    }
+
+    pub fn children_nodes_with(
+        &self,
+        locator: Option<&str>,
+    ) -> OpenPageResult<Vec<SessionXPathResult>> {
+        self.relative_nodes(|element| element.children_nodes_with(locator))
+    }
+
     pub fn prev(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
         self.relative_element(|element| element.prev())
     }
@@ -2716,6 +2737,20 @@ impl<'a> ElementsOne<'a, SessionElement> {
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.relative_elements(|element| element.prevs_with(locator))
+    }
+
+    pub fn prev_nodes(&self) -> OpenPageResult<Vec<SessionXPathResult>> {
+        self.relative_nodes(|element| element.prev_nodes())
+    }
+
+    pub fn prev_nodes_with<'b, L>(
+        &self,
+        locator: Option<L>,
+    ) -> OpenPageResult<Vec<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_nodes(|element| element.prev_nodes_with(locator))
     }
 
     pub fn next(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
@@ -2744,6 +2779,20 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_elements(|element| element.nexts_with(locator))
     }
 
+    pub fn next_nodes(&self) -> OpenPageResult<Vec<SessionXPathResult>> {
+        self.relative_nodes(|element| element.next_nodes())
+    }
+
+    pub fn next_nodes_with<'b, L>(
+        &self,
+        locator: Option<L>,
+    ) -> OpenPageResult<Vec<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_nodes(|element| element.next_nodes_with(locator))
+    }
+
     pub fn before(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
         self.relative_element(|element| element.before())
     }
@@ -2770,6 +2819,20 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_elements(|element| element.befores_with(locator))
     }
 
+    pub fn before_nodes(&self) -> OpenPageResult<Vec<SessionXPathResult>> {
+        self.relative_nodes(|element| element.before_nodes())
+    }
+
+    pub fn before_nodes_with<'b, L>(
+        &self,
+        locator: Option<L>,
+    ) -> OpenPageResult<Vec<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_nodes(|element| element.before_nodes_with(locator))
+    }
+
     pub fn after(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
         self.relative_element(|element| element.after())
     }
@@ -2794,6 +2857,20 @@ impl<'a> ElementsOne<'a, SessionElement> {
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.relative_elements(|element| element.afters_with(locator))
+    }
+
+    pub fn after_nodes(&self) -> OpenPageResult<Vec<SessionXPathResult>> {
+        self.relative_nodes(|element| element.after_nodes())
+    }
+
+    pub fn after_nodes_with<'b, L>(
+        &self,
+        locator: Option<L>,
+    ) -> OpenPageResult<Vec<SessionXPathResult>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_nodes(|element| element.after_nodes_with(locator))
     }
 
     pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Option<Vec<String>>> {
@@ -7221,6 +7298,83 @@ mod tests {
         assert_eq!(missing.nexts().expect("missing next siblings").len(), 0);
         assert_eq!(missing.befores().expect("missing before elements").len(), 0);
         assert_eq!(missing.afters().expect("missing after elements").len(), 0);
+    }
+
+    #[test]
+    fn borrowed_session_elements_one_supports_node_list_navigation() {
+        let items = snapshot_find_all(
+            r#"<div id="root">alpha<!--note--><span id="a">a</span><span id="b">b</span><strong id="c">c</strong>tail</div>"#,
+            "#root, #b",
+        )
+        .expect("snapshot elements");
+        let root = items
+            .filter_one()
+            .attr("id", "root", true)
+            .expect("root element");
+        let second = items
+            .filter_one()
+            .attr("id", "b", true)
+            .expect("second element");
+
+        let children = root.children_nodes().expect("child nodes");
+        assert_eq!(children.len(), 6);
+        match &children[0] {
+            SessionXPathResult::Text(value) => assert_eq!(value, "alpha"),
+            other => panic!("expected text child, got {other:?}"),
+        }
+        match &children[1] {
+            SessionXPathResult::Comment(value) => assert_eq!(value, "note"),
+            other => panic!("expected comment child, got {other:?}"),
+        }
+        assert_eq!(
+            root.children_nodes_with(Some("xpath:span"))
+                .expect("span child nodes")
+                .len(),
+            2
+        );
+
+        let previous_comments = second
+            .prev_nodes_with(Some("xpath:comment()"))
+            .expect("previous comment nodes");
+        assert_eq!(previous_comments.len(), 1);
+        match &previous_comments[0] {
+            SessionXPathResult::Comment(value) => assert_eq!(value, "note"),
+            other => panic!("expected previous comment node, got {other:?}"),
+        }
+        assert_eq!(second.next_nodes().expect("next nodes").len(), 2);
+        assert_eq!(
+            second
+                .before_nodes_with(Some("xpath:span[@id='a']"))
+                .expect("before span nodes")
+                .len(),
+            1
+        );
+        assert_eq!(
+            second
+                .after_nodes_with(Some("xpath:strong[@id='c']"))
+                .expect("after strong nodes")
+                .len(),
+            1
+        );
+
+        let missing = items
+            .filter_one()
+            .attr("id", "missing", true)
+            .expect("missing element");
+        assert_eq!(
+            missing.children_nodes().expect("missing child nodes").len(),
+            0
+        );
+        assert_eq!(
+            missing.prev_nodes().expect("missing previous nodes").len(),
+            0
+        );
+        assert_eq!(missing.next_nodes().expect("missing next nodes").len(), 0);
+        assert_eq!(
+            missing.before_nodes().expect("missing before nodes").len(),
+            0
+        );
+        assert_eq!(missing.after_nodes().expect("missing after nodes").len(), 0);
     }
 
     #[test]
