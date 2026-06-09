@@ -85,7 +85,7 @@ use crate::settings::{
     action_click_times_positive_message, action_element_missing_clickable_rect_message,
     action_element_missing_rect_location_message, action_type_interval_non_negative_message,
     action_wait_seconds_non_negative_message, browser_backed_page_only_message,
-    cdp_timeout_duration, clipboard_secure_context_required_message,
+    build_file_url_failed_message, cdp_timeout_duration, clipboard_secure_context_required_message,
     component_state_lock_poisoned_message, default_none_element_runtime_config,
     drag_in_file_path_empty_message, drag_in_requires_file_path_message,
     frame_element_missing_frame_id_message, frame_element_not_found_message,
@@ -7290,9 +7290,8 @@ fn normalize_navigation_target(target: &str) -> OpenPageResult<String> {
     Url::from_file_path(&file_path)
         .map(|url| url.to_string())
         .map_err(|_| {
-            OpenPageError::PageOperation(format!(
-                "failed to build file url for {}",
-                file_path.display()
+            OpenPageError::PageOperation(build_file_url_failed_message(
+                &file_path.display().to_string(),
             ))
         })
 }
