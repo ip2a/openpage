@@ -1631,6 +1631,89 @@ impl Frame {
         self.frame_element.set_style(name, value)
     }
 
+    pub fn click(&self) -> OpenPageResult<()> {
+        self.frame_element.click()
+    }
+
+    pub fn click_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        self.frame_element
+            .click_with_options(by_js, timeout_ms, wait_stop)
+    }
+
+    pub fn click_at(
+        &self,
+        offset_x: Option<f64>,
+        offset_y: Option<f64>,
+        button: &str,
+        count: u32,
+    ) -> OpenPageResult<()> {
+        self.frame_element
+            .click_at(offset_x, offset_y, button, count)
+    }
+
+    pub fn click_multi(&self, times: u32) -> OpenPageResult<()> {
+        self.frame_element.click_multi(times)
+    }
+
+    pub fn click_left(&self) -> OpenPageResult<()> {
+        self.frame_element.click_left()
+    }
+
+    pub fn click_right(&self) -> OpenPageResult<()> {
+        self.frame_element.click_right()
+    }
+
+    pub fn input<'a, I>(&self, text: I) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
+        self.frame_element.input(text)
+    }
+
+    pub fn input_with_options<'a, I>(&self, text: I, clear: bool, by_js: bool) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
+        self.frame_element.input_with_options(text, clear, by_js)
+    }
+
+    pub fn clear(&self) -> OpenPageResult<()> {
+        self.frame_element.clear()
+    }
+
+    pub fn clear_with_mode(&self, by_js: bool) -> OpenPageResult<()> {
+        self.frame_element.clear_with_mode(by_js)
+    }
+
+    pub fn focus(&self) -> OpenPageResult<()> {
+        self.frame_element.focus()
+    }
+
+    pub fn hover(&self) -> OpenPageResult<()> {
+        self.frame_element.hover()
+    }
+
+    pub fn hover_with_offset(
+        &self,
+        offset_x: Option<f64>,
+        offset_y: Option<f64>,
+    ) -> OpenPageResult<()> {
+        self.frame_element.hover_with_offset(offset_x, offset_y)
+    }
+
+    pub fn check(&self, uncheck: bool, by_js: bool) -> OpenPageResult<()> {
+        self.frame_element.check(uncheck, by_js)
+    }
+
+    pub fn uncheck(&self, by_js: bool) -> OpenPageResult<()> {
+        self.frame_element.uncheck(by_js)
+    }
+
     pub fn set_upload_files<'a, F>(&self, files: F) -> OpenPageResult<()>
     where
         F: Into<UploadFilesInput<'a>>,

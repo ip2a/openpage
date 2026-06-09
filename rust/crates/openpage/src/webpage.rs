@@ -787,6 +787,88 @@ impl WebFrame {
         self.frame().set_style(name, value)
     }
 
+    pub fn click(&self) -> OpenPageResult<()> {
+        self.frame().click()
+    }
+
+    pub fn click_with_options(
+        &self,
+        by_js: Option<bool>,
+        timeout_ms: Option<u64>,
+        wait_stop: bool,
+    ) -> OpenPageResult<bool> {
+        self.frame()
+            .click_with_options(by_js, timeout_ms, wait_stop)
+    }
+
+    pub fn click_at(
+        &self,
+        offset_x: Option<f64>,
+        offset_y: Option<f64>,
+        button: &str,
+        count: u32,
+    ) -> OpenPageResult<()> {
+        self.frame().click_at(offset_x, offset_y, button, count)
+    }
+
+    pub fn click_multi(&self, times: u32) -> OpenPageResult<()> {
+        self.frame().click_multi(times)
+    }
+
+    pub fn click_left(&self) -> OpenPageResult<()> {
+        self.frame().click_left()
+    }
+
+    pub fn click_right(&self) -> OpenPageResult<()> {
+        self.frame().click_right()
+    }
+
+    pub fn input<'a, I>(&self, text: I) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
+        self.frame().input(text)
+    }
+
+    pub fn input_with_options<'a, I>(&self, text: I, clear: bool, by_js: bool) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
+        self.frame().input_with_options(text, clear, by_js)
+    }
+
+    pub fn clear(&self) -> OpenPageResult<()> {
+        self.frame().clear()
+    }
+
+    pub fn clear_with_mode(&self, by_js: bool) -> OpenPageResult<()> {
+        self.frame().clear_with_mode(by_js)
+    }
+
+    pub fn focus(&self) -> OpenPageResult<()> {
+        self.frame().focus()
+    }
+
+    pub fn hover(&self) -> OpenPageResult<()> {
+        self.frame().hover()
+    }
+
+    pub fn hover_with_offset(
+        &self,
+        offset_x: Option<f64>,
+        offset_y: Option<f64>,
+    ) -> OpenPageResult<()> {
+        self.frame().hover_with_offset(offset_x, offset_y)
+    }
+
+    pub fn check(&self, uncheck: bool, by_js: bool) -> OpenPageResult<()> {
+        self.frame().check(uncheck, by_js)
+    }
+
+    pub fn uncheck(&self, by_js: bool) -> OpenPageResult<()> {
+        self.frame().uncheck(by_js)
+    }
+
     pub fn active_element(&self) -> OpenPageResult<Option<WebElement>> {
         self.frame()
             .active_element()
@@ -9295,6 +9377,45 @@ mod tests {
             let _ = web_frame.texts(true);
             let _ = web_frame.src(500, false);
             let _ = web_frame.src(500, true);
+        }
+
+        let _ = assert_calls as fn(&Frame, &WebFrame);
+    }
+
+    #[test]
+    fn frame_and_webframe_element_interaction_signatures_accept_common_inputs() {
+        fn assert_calls(frame: &Frame, web_frame: &WebFrame) {
+            let _ = frame.click();
+            let _ = frame.click_with_options(Some(false), Some(500), true);
+            let _ = frame.click_at(Some(1.0), Some(2.0), "left", 1);
+            let _ = frame.click_multi(2);
+            let _ = frame.click_left();
+            let _ = frame.click_right();
+            let _ = frame.input("hello");
+            let _ = frame.input_with_options("hello", true, false);
+            let _ = frame.clear();
+            let _ = frame.clear_with_mode(true);
+            let _ = frame.focus();
+            let _ = frame.hover();
+            let _ = frame.hover_with_offset(Some(1.0), Some(2.0));
+            let _ = frame.check(false, true);
+            let _ = frame.uncheck(true);
+
+            let _ = web_frame.click();
+            let _ = web_frame.click_with_options(Some(false), Some(500), true);
+            let _ = web_frame.click_at(Some(1.0), Some(2.0), "left", 1);
+            let _ = web_frame.click_multi(2);
+            let _ = web_frame.click_left();
+            let _ = web_frame.click_right();
+            let _ = web_frame.input("hello");
+            let _ = web_frame.input_with_options("hello", true, false);
+            let _ = web_frame.clear();
+            let _ = web_frame.clear_with_mode(true);
+            let _ = web_frame.focus();
+            let _ = web_frame.hover();
+            let _ = web_frame.hover_with_offset(Some(1.0), Some(2.0));
+            let _ = web_frame.check(false, true);
+            let _ = web_frame.uncheck(true);
         }
 
         let _ = assert_calls as fn(&Frame, &WebFrame);
