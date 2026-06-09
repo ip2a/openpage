@@ -11908,13 +11908,17 @@ mod tests {
             let _ = one_web_element.find((By::ID, "root"));
             let _ = one_web_element.find_all((By::CLASS_NAME, "item"));
             let _ = one_session_element.find((By::ID, "root"));
+            let _ = one_session_element.find_by(By::ID, "root");
             let _ = one_session_element.find_all((By::CLASS_NAME, "item"));
+            let _ = one_session_element.find_all_by(By::CLASS_NAME, "item");
             let _ = owned_element.find((By::ID, "root"));
             let _ = owned_element.find_all((By::CLASS_NAME, "item"));
             let _ = owned_web_element.find((By::ID, "root"));
             let _ = owned_web_element.find_all((By::CLASS_NAME, "item"));
             let _ = owned_session_element.find((By::ID, "root"));
+            let _ = owned_session_element.find_by(By::ID, "root");
             let _ = owned_session_element.find_all((By::CLASS_NAME, "item"));
+            let _ = owned_session_element.find_all_by(By::CLASS_NAME, "item");
         }
 
         let _ = assert_calls

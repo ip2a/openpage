@@ -2106,6 +2106,14 @@ impl ElementsOneOwned<SessionElement> {
         self.ele(locator)
     }
 
+    pub fn find_by(
+        &self,
+        by: &str,
+        value: &str,
+    ) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+        self.find((by, value))
+    }
+
     pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
@@ -2121,6 +2129,10 @@ impl ElementsOneOwned<SessionElement> {
         L: Into<crate::locator::LocatorInput<'a>>,
     {
         self.eles(locator)
+    }
+
+    pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<SessionElement>> {
+        self.find_all((by, value))
     }
 
     pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
@@ -3703,6 +3715,14 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.ele(locator)
     }
 
+    pub fn find_by(
+        &self,
+        by: &str,
+        value: &str,
+    ) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+        self.find((by, value))
+    }
+
     pub fn eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -3718,6 +3738,10 @@ impl<'a> ElementsOne<'a, SessionElement> {
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.eles(locator)
+    }
+
+    pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<SessionElement>> {
+        self.find_all((by, value))
     }
 
     pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
