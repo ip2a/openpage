@@ -3972,8 +3972,20 @@ impl<'a> From<&'a WebPage> for BrowserTabSelector<'a> {
     }
 }
 
+impl From<WebPage> for BrowserTabSelector<'_> {
+    fn from(value: WebPage) -> Self {
+        Self::Id(std::borrow::Cow::Owned(value.target_id()))
+    }
+}
+
 impl<'a> From<&'a WebPage> for BrowserTabTargetsInput<'a> {
     fn from(value: &'a WebPage) -> Self {
+        Self::Single(BrowserTabSelector::from(value))
+    }
+}
+
+impl From<WebPage> for BrowserTabTargetsInput<'_> {
+    fn from(value: WebPage) -> Self {
         Self::Single(BrowserTabSelector::from(value))
     }
 }

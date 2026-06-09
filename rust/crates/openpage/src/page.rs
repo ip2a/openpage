@@ -997,8 +997,20 @@ impl<'a> From<&'a Page> for BrowserTabSelector<'a> {
     }
 }
 
+impl From<Page> for BrowserTabSelector<'_> {
+    fn from(value: Page) -> Self {
+        Self::Id(Cow::Owned(value.target_id()))
+    }
+}
+
 impl<'a> From<&'a Page> for BrowserTabTargetsInput<'a> {
     fn from(value: &'a Page) -> Self {
+        Self::Single(BrowserTabSelector::from(value))
+    }
+}
+
+impl From<Page> for BrowserTabTargetsInput<'_> {
+    fn from(value: Page) -> Self {
         Self::Single(BrowserTabSelector::from(value))
     }
 }
@@ -12762,9 +12774,11 @@ mod tests {
             let _ = page.activate_tab("tab-1");
             let _ = page.activate_tab(1usize);
             let _ = page.activate_tab(page);
+            let _ = page.activate_tab(page.clone());
             let _ = page.close_tabs("tab-1", false);
             let _ = page.close_tabs(1usize, false);
             let _ = page.close_tabs(page, false);
+            let _ = page.close_tabs(page.clone(), false);
             let _ = page.close_tabs(&target_ids, false);
             let _ = page.close_tabs(&indices, false);
             let _ = page.close_tabs(&pages, false);
