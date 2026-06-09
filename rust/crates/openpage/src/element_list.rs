@@ -848,6 +848,55 @@ impl ElementsOneOwned<Element> {
         self.as_borrowed().set_checked(checked)
     }
 
+    pub fn run_js(&self, script: &str) -> OpenPageResult<Option<Value>> {
+        self.as_borrowed().run_js(script)
+    }
+
+    pub fn run_js_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<Option<Value>> {
+        self.as_borrowed().run_js_with_args(script, args, as_expr)
+    }
+
+    pub fn run_js_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<Option<Value>> {
+        self.as_borrowed()
+            .run_js_with_options(script, args, as_expr, timeout_ms)
+    }
+
+    pub fn run_async_js(&self, script: &str) -> OpenPageResult<bool> {
+        self.as_borrowed().run_async_js(script)
+    }
+
+    pub fn run_async_js_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<bool> {
+        self.as_borrowed()
+            .run_async_js_with_args(script, args, as_expr)
+    }
+
+    pub fn run_async_js_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<bool> {
+        self.as_borrowed()
+            .run_async_js_with_options(script, args, as_expr, timeout_ms)
+    }
+
     pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
@@ -1397,6 +1446,55 @@ impl ElementsOneOwned<WebElement> {
 
     pub fn set_checked(&self, checked: bool) -> OpenPageResult<bool> {
         self.as_borrowed().set_checked(checked)
+    }
+
+    pub fn run_js(&self, script: &str) -> OpenPageResult<Option<Value>> {
+        self.as_borrowed().run_js(script)
+    }
+
+    pub fn run_js_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<Option<Value>> {
+        self.as_borrowed().run_js_with_args(script, args, as_expr)
+    }
+
+    pub fn run_js_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<Option<Value>> {
+        self.as_borrowed()
+            .run_js_with_options(script, args, as_expr, timeout_ms)
+    }
+
+    pub fn run_async_js(&self, script: &str) -> OpenPageResult<bool> {
+        self.as_borrowed().run_async_js(script)
+    }
+
+    pub fn run_async_js_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<bool> {
+        self.as_borrowed()
+            .run_async_js_with_args(script, args, as_expr)
+    }
+
+    pub fn run_async_js_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<bool> {
+        self.as_borrowed()
+            .run_async_js_with_options(script, args, as_expr, timeout_ms)
     }
 
     pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<WebElement>>
@@ -3844,6 +3942,81 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    pub fn run_js(&self, script: &str) -> OpenPageResult<Option<Value>> {
+        match self.element {
+            Some(element) => element.run_js(script).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn run_js_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<Option<Value>> {
+        match self.element {
+            Some(element) => element.run_js_with_args(script, args, as_expr).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn run_js_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<Option<Value>> {
+        match self.element {
+            Some(element) => element
+                .run_js_with_options(script, args, as_expr, timeout_ms)
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn run_async_js(&self, script: &str) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.run_async_js(script)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn run_async_js_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.run_async_js_with_args(script, args, as_expr)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn run_async_js_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.run_async_js_with_options(script, args, as_expr, timeout_ms)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     pub fn scroll_to_top(&self) -> OpenPageResult<bool> {
         match self.element {
             Some(element) => {
@@ -5442,6 +5615,81 @@ impl<'a> ElementsOne<'a, WebElement> {
         match self.element {
             Some(element) => {
                 element.set().inner_html(html)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn run_js(&self, script: &str) -> OpenPageResult<Option<Value>> {
+        match self.element {
+            Some(element) => element.run_js(script).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn run_js_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<Option<Value>> {
+        match self.element {
+            Some(element) => element.run_js_with_args(script, args, as_expr).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn run_js_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<Option<Value>> {
+        match self.element {
+            Some(element) => element
+                .run_js_with_options(script, args, as_expr, timeout_ms)
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    pub fn run_async_js(&self, script: &str) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.run_async_js(script)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn run_async_js_with_args(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+    ) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.run_async_js_with_args(script, args, as_expr)?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    pub fn run_async_js_with_options(
+        &self,
+        script: &str,
+        args: &[Value],
+        as_expr: bool,
+        timeout_ms: Option<u64>,
+    ) -> OpenPageResult<bool> {
+        match self.element {
+            Some(element) => {
+                element.run_async_js_with_options(script, args, as_expr, timeout_ms)?;
                 Ok(true)
             }
             None => Ok(false),

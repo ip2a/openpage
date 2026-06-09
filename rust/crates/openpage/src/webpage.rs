@@ -10653,6 +10653,7 @@ mod tests {
             owned_web_element: &ElementsOneOwned<WebElement>,
         ) {
             let key_sequence = vec!["Control".to_string(), "a".to_string()];
+            let js_args = vec![serde_json::json!("demo")];
 
             let _ = element.input("hello");
             let _ = element.input(["hello", "world"]);
@@ -10681,6 +10682,18 @@ mod tests {
             let _ = one_element.drag_to_point(50.0, 60.0, 0.1);
             let _ = one_element.set_property("value", &serde_json::json!("demo"));
             let _ = one_element.set_checked(true);
+            let _ = one_element.run_js("return this.id;");
+            let _ = one_element.run_js_with_args("return arguments[0];", &js_args, false);
+            let _ =
+                one_element.run_js_with_options("return arguments[0];", &js_args, false, Some(500));
+            let _ = one_element.run_async_js("return this.id;");
+            let _ = one_element.run_async_js_with_args("return arguments[0];", &js_args, false);
+            let _ = one_element.run_async_js_with_options(
+                "return arguments[0];",
+                &js_args,
+                false,
+                Some(500),
+            );
             let _ = one_element.save(None, Some("element.jpg"), 500, true);
             let _ = one_element.save(Some(Path::new("/tmp")), None, 500, false);
             let _ = one_web_element.input_with_options("hello", true, false);
@@ -10694,6 +10707,22 @@ mod tests {
             let _ = one_web_element.drag_to_point(50.0, 60.0, 0.1);
             let _ = one_web_element.set_property("value", &serde_json::json!("demo"));
             let _ = one_web_element.set_checked(true);
+            let _ = one_web_element.run_js("return this.id;");
+            let _ = one_web_element.run_js_with_args("return arguments[0];", &js_args, false);
+            let _ = one_web_element.run_js_with_options(
+                "return arguments[0];",
+                &js_args,
+                false,
+                Some(500),
+            );
+            let _ = one_web_element.run_async_js("return this.id;");
+            let _ = one_web_element.run_async_js_with_args("return arguments[0];", &js_args, false);
+            let _ = one_web_element.run_async_js_with_options(
+                "return arguments[0];",
+                &js_args,
+                false,
+                Some(500),
+            );
             let _ = one_web_element.save(None, Some("element.jpg"), 500, true);
             let _ = one_web_element.save(Some(Path::new("/tmp")), None, 500, false);
 
@@ -10708,6 +10737,22 @@ mod tests {
             let _ = owned_element.drag_to_point(50.0, 60.0, 0.1);
             let _ = owned_element.set_property("value", &serde_json::json!("demo"));
             let _ = owned_element.set_checked(true);
+            let _ = owned_element.run_js("return this.id;");
+            let _ = owned_element.run_js_with_args("return arguments[0];", &js_args, false);
+            let _ = owned_element.run_js_with_options(
+                "return arguments[0];",
+                &js_args,
+                false,
+                Some(500),
+            );
+            let _ = owned_element.run_async_js("return this.id;");
+            let _ = owned_element.run_async_js_with_args("return arguments[0];", &js_args, false);
+            let _ = owned_element.run_async_js_with_options(
+                "return arguments[0];",
+                &js_args,
+                false,
+                Some(500),
+            );
             let _ = owned_element.save(None, Some("element.jpg"), 500, true);
             let _ = owned_element.save(Some(Path::new("/tmp")), None, 500, false);
             let _ = owned_web_element.input_with_options("hello", true, false);
@@ -10721,6 +10766,23 @@ mod tests {
             let _ = owned_web_element.drag_to_point(50.0, 60.0, 0.1);
             let _ = owned_web_element.set_property("value", &serde_json::json!("demo"));
             let _ = owned_web_element.set_checked(true);
+            let _ = owned_web_element.run_js("return this.id;");
+            let _ = owned_web_element.run_js_with_args("return arguments[0];", &js_args, false);
+            let _ = owned_web_element.run_js_with_options(
+                "return arguments[0];",
+                &js_args,
+                false,
+                Some(500),
+            );
+            let _ = owned_web_element.run_async_js("return this.id;");
+            let _ =
+                owned_web_element.run_async_js_with_args("return arguments[0];", &js_args, false);
+            let _ = owned_web_element.run_async_js_with_options(
+                "return arguments[0];",
+                &js_args,
+                false,
+                Some(500),
+            );
             let _ = owned_web_element.save(None, Some("element.jpg"), 500, true);
             let _ = owned_web_element.save(Some(Path::new("/tmp")), None, 500, false);
         }
