@@ -1,5 +1,8 @@
 use crate::error::{OpenPageError, OpenPageResult};
-use crate::settings::unsupported_by_locator_message;
+use crate::settings::{
+    attribute_locator_requires_assignment_message, empty_locator_not_allowed_message,
+    text_locator_requires_non_empty_text_message, unsupported_by_locator_message,
+};
 
 #[derive(Debug, Clone)]
 pub struct LocatorMatch<T> {
@@ -160,7 +163,7 @@ impl Locator {
         let raw = raw.as_ref().trim();
         if raw.is_empty() {
             return Err(OpenPageError::UnsupportedLocator(
-                "empty locator is not allowed".to_string(),
+                empty_locator_not_allowed_message(),
             ));
         }
 
@@ -184,7 +187,7 @@ impl Locator {
             let query = query.trim();
             if query.is_empty() {
                 return Err(OpenPageError::UnsupportedLocator(
-                    "text locator requires non-empty text".to_string(),
+                    text_locator_requires_non_empty_text_message(),
                 ));
             }
             let text = xpath_string_literal(query);
@@ -204,8 +207,8 @@ impl Locator {
                 return Ok(Self::new(raw, LocatorKind::Css, selector));
             }
             let (name, value) = query.split_once('=').ok_or_else(|| {
-                OpenPageError::UnsupportedLocator(format!(
-                    "attribute locator requires @name=value form: {raw}"
+                OpenPageError::UnsupportedLocator(attribute_locator_requires_assignment_message(
+                    raw,
                 ))
             })?;
             let name = name.trim();
@@ -445,6 +448,48 @@ mod tests {
         assert_eq!(locator.kind(), LocatorKind::XPath);
         assert!(locator.query().contains("normalize-space(.)"));
         assert!(locator.query().contains("not(.//*"));
+    }
+
+    #[test]
+    fn parse_input_errors_follow_language_setting() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+
+        let empty = Locator::parse("").expect_err("empty locator should fail");
+        let text = Locator::parse("text=").expect_err("empty text locator should fail");
+        let attr = Locator::parse("@class").expect_err("attribute locator should fail");
+
+        assert!(
+            matches!(empty, crate::OpenPageError::UnsupportedLocator(ref message) if message == "empty locator is not allowed"),
+            "unexpected empty locator error: {empty}"
+        );
+        assert!(
+            matches!(text, crate::OpenPageError::UnsupportedLocator(ref message) if message == "text locator requires non-empty text"),
+            "unexpected text locator error: {text}"
+        );
+        assert!(
+            matches!(attr, crate::OpenPageError::UnsupportedLocator(ref message) if message == "attribute locator requires @name=value form: @class"),
+            "unexpected attribute locator error: {attr}"
+        );
+
+        crate::Settings::set_language("cn");
+
+        let empty = Locator::parse("").expect_err("empty locator should localize");
+        let text = Locator::parse("text=").expect_err("empty text locator should localize");
+        let attr = Locator::parse("@class").expect_err("attribute locator should localize");
+
+        assert!(
+            matches!(empty, crate::OpenPageError::UnsupportedLocator(ref message) if message == "定位符不能为空"),
+            "unexpected localized empty locator error: {empty}"
+        );
+        assert!(
+            matches!(text, crate::OpenPageError::UnsupportedLocator(ref message) if message == "text 定位符需要非空文本"),
+            "unexpected localized text locator error: {text}"
+        );
+        assert!(
+            matches!(attr, crate::OpenPageError::UnsupportedLocator(ref message) if message == "属性定位符需要 @name=value 格式: @class"),
+            "unexpected localized attribute locator error: {attr}"
+        );
     }
 
     #[test]

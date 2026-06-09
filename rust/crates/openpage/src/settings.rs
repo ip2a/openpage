@@ -1283,6 +1283,24 @@ pub(crate) fn unsupported_by_locator_message(by: &str) -> String {
     }
 }
 
+pub(crate) fn empty_locator_not_allowed_message() -> String {
+    localized_message("empty locator is not allowed", "定位符不能为空")
+}
+
+pub(crate) fn text_locator_requires_non_empty_text_message() -> String {
+    localized_message(
+        "text locator requires non-empty text",
+        "text 定位符需要非空文本",
+    )
+}
+
+pub(crate) fn attribute_locator_requires_assignment_message(raw: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("属性定位符需要 @name=value 格式: {raw}"),
+        _ => format!("attribute locator requires @name=value form: {raw}"),
+    }
+}
+
 pub(crate) fn invalid_launch_options_ini_field_message(field: &str, detail: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("launch options ini 中的 {field} 无效: {detail}"),
