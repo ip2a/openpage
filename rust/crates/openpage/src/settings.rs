@@ -715,6 +715,13 @@ pub(crate) fn elements_one_missing_method_message(method: &str) -> String {
     }
 }
 
+pub(crate) fn elements_one_filter_missing_message(method: &str, detail: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("{method} 未找到（{detail}）"),
+        _ => format!("{method} not found ({detail})"),
+    }
+}
+
 pub(crate) fn element_operation_failed_message(operation: &str, err: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("元素操作 {operation} 失败: {err}"),

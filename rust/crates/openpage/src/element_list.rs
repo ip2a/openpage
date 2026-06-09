@@ -9,8 +9,8 @@ use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::session::{SessionElement, SessionXPathResult};
 use crate::settings::{
-    component_state_lock_poisoned_message, elements_one_missing_method_message,
-    web_element_list_driver_filter_message,
+    component_state_lock_poisoned_message, elements_one_filter_missing_message,
+    elements_one_missing_method_message, web_element_list_driver_filter_message,
 };
 use crate::webpage::WebElement;
 
@@ -278,7 +278,7 @@ fn elements_one_missing_message(method: &str, filters: &[(&str, String)], index:
         .map(|(name, value)| format!("{name}={value}"))
         .collect::<Vec<_>>();
     parts.push(format!("index={index}"));
-    format!("{method} not found ({})", parts.join(", "))
+    elements_one_filter_missing_message(method, &parts.join(", "))
 }
 
 fn elements_search_debug(criteria: &ElementsSearch) -> String {
@@ -10241,6 +10241,58 @@ mod tests {
             matches!(error, crate::OpenPageError::ElementNotFound(_)),
             "unexpected error: {error}"
         );
+    }
+
+    #[test]
+    fn elements_filter_one_missing_errors_follow_language_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let item = FakeItem {
+            attr: Some("demo".to_string()),
+            text: Some("Alpha".to_string()),
+            tag: "button".to_string(),
+            displayed: true,
+            selected: false,
+            attrs: vec![],
+            child_count: 0,
+            css_path: "body > button".to_string(),
+            xpath: "/html/body/button".to_string(),
+            comments: vec![],
+            html: Some("<button>Alpha</button>".to_string()),
+            inner_html: Some("Alpha".to_string()),
+            value: Some("AlphaValue".to_string()),
+            style: "block".to_string(),
+            property: None,
+        };
+        let items = [item];
+        let config = Arc::new(Mutex::new(super::ElementsOneRuntimeConfig {
+            raise_when_not_found: true,
+            ..super::ElementsOneRuntimeConfig::default()
+        }));
+        let filter = super::ElementsFilterOne {
+            elements: items.iter().collect(),
+            index: 1,
+            config: Some(&config),
+        };
+
+        let english = filter
+            .attr("data-role", "missing", true)
+            .expect_err("missing filter should raise in English")
+            .to_string();
+        assert!(english.contains(
+            r#"filter_one.attr() not found (name="data-role", value="missing", equal=true, index=1)"#
+        ));
+
+        Settings::set_language("cn");
+
+        let chinese = filter
+            .attr("data-role", "missing", true)
+            .expect_err("missing filter should localize")
+            .to_string();
+        assert!(chinese.contains(
+            r#"filter_one.attr() 未找到（name="data-role", value="missing", equal=true, index=1）"#
+        ));
     }
 
     #[test]
