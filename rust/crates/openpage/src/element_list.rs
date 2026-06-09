@@ -1630,6 +1630,29 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
+    fn relative_optional_element<F>(&self, f: F) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        F: FnOnce(&Element) -> OpenPageResult<Option<Element>>,
+    {
+        match self.element {
+            Some(element) => match f(element) {
+                Ok(Some(element)) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.cloned(),
+                )),
+                Ok(None) => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config)? {
+                        return Err(err);
+                    }
+                    Ok(ElementsOneOwned::none_with_config(self.config.cloned()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
+        }
+    }
+
     pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -1776,6 +1799,63 @@ impl<'a> ElementsOne<'a, Element> {
         self.relative_element(|element| element.after_with(locator, index))
     }
 
+    pub fn over(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
+        self.relative_optional_element(|element| element.over())
+    }
+
+    pub fn over_with_timeout(&self, timeout_ms: u64) -> OpenPageResult<ElementsOneOwned<Element>> {
+        self.relative_optional_element(|element| element.over_with_timeout(timeout_ms))
+    }
+
+    pub fn offset<'b, L>(
+        &self,
+        locator: Option<L>,
+        x: Option<f64>,
+        y: Option<f64>,
+        timeout_ms: u64,
+    ) -> OpenPageResult<ElementsOneOwned<Element>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.offset(locator, x, y, timeout_ms))
+    }
+
+    pub fn east(
+        &self,
+        locator: Option<&str>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<Element>> {
+        self.relative_element(|element| element.east(locator, pixels, index))
+    }
+
+    pub fn south(
+        &self,
+        locator: Option<&str>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<Element>> {
+        self.relative_element(|element| element.south(locator, pixels, index))
+    }
+
+    pub fn west(
+        &self,
+        locator: Option<&str>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<Element>> {
+        self.relative_element(|element| element.west(locator, pixels, index))
+    }
+
+    pub fn north(
+        &self,
+        locator: Option<&str>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<Element>> {
+        self.relative_element(|element| element.north(locator, pixels, index))
+    }
+
     pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Option<Vec<String>>> {
         match self.element {
             Some(element) => element.texts(text_node_only).map(Some),
@@ -1813,6 +1893,29 @@ impl<'a> ElementsOne<'a, WebElement> {
                     element,
                     self.config.cloned(),
                 )),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config)? {
+                        return Err(err);
+                    }
+                    Ok(ElementsOneOwned::none_with_config(self.config.cloned()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
+        }
+    }
+
+    fn relative_optional_element<F>(&self, f: F) -> OpenPageResult<ElementsOneOwned<WebElement>>
+    where
+        F: FnOnce(&WebElement) -> OpenPageResult<Option<WebElement>>,
+    {
+        match self.element {
+            Some(element) => match f(element) {
+                Ok(Some(element)) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.cloned(),
+                )),
+                Ok(None) => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
                 Err(err @ OpenPageError::ElementNotFound(_)) => {
                     if elements_one_should_raise_when_missing(self.config)? {
                         return Err(err);
@@ -1969,6 +2072,66 @@ impl<'a> ElementsOne<'a, WebElement> {
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.relative_element(|element| element.after_with(locator, index))
+    }
+
+    pub fn over(&self) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+        self.relative_optional_element(|element| element.over())
+    }
+
+    pub fn over_with_timeout(
+        &self,
+        timeout_ms: u64,
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+        self.relative_optional_element(|element| element.over_with_timeout(timeout_ms))
+    }
+
+    pub fn offset<'b, L>(
+        &self,
+        locator: Option<L>,
+        x: Option<f64>,
+        y: Option<f64>,
+        timeout_ms: u64,
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>>
+    where
+        L: Into<crate::locator::LocatorInput<'b>>,
+    {
+        self.relative_element(|element| element.offset(locator, x, y, timeout_ms))
+    }
+
+    pub fn east(
+        &self,
+        locator: Option<&str>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+        self.relative_element(|element| element.east(locator, pixels, index))
+    }
+
+    pub fn south(
+        &self,
+        locator: Option<&str>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+        self.relative_element(|element| element.south(locator, pixels, index))
+    }
+
+    pub fn west(
+        &self,
+        locator: Option<&str>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+        self.relative_element(|element| element.west(locator, pixels, index))
+    }
+
+    pub fn north(
+        &self,
+        locator: Option<&str>,
+        pixels: Option<i64>,
+        index: usize,
+    ) -> OpenPageResult<ElementsOneOwned<WebElement>> {
+        self.relative_element(|element| element.north(locator, pixels, index))
     }
 
     pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Option<Vec<String>>> {
@@ -6396,6 +6559,49 @@ mod tests {
     }
 
     #[test]
+    fn borrowed_browser_elements_one_visual_navigation_handles_missing_owner() {
+        let missing = super::ElementsOne::<crate::Element>::none();
+
+        assert!(missing.over().expect("missing over owner").is_none());
+        assert!(
+            missing
+                .over_with_timeout(1)
+                .expect("missing over timeout owner")
+                .is_none()
+        );
+        assert!(
+            missing
+                .offset(None::<&str>, None, None, 1)
+                .expect("missing offset owner")
+                .is_none()
+        );
+        assert!(
+            missing
+                .east(None, None, 1)
+                .expect("missing east owner")
+                .is_none()
+        );
+        assert!(
+            missing
+                .south(None, None, 1)
+                .expect("missing south owner")
+                .is_none()
+        );
+        assert!(
+            missing
+                .west(None, None, 1)
+                .expect("missing west owner")
+                .is_none()
+        );
+        assert!(
+            missing
+                .north(None, None, 1)
+                .expect("missing north owner")
+                .is_none()
+        );
+    }
+
+    #[test]
     fn borrowed_session_elements_one_supports_relative_navigation() {
         let items = snapshot_find_all(
             r#"
@@ -6528,6 +6734,49 @@ mod tests {
         assert!(missing.child().expect("missing child owner").is_none());
         assert!(missing.parent().expect("missing parent owner").is_none());
         assert!(missing.next().expect("missing next owner").is_none());
+    }
+
+    #[test]
+    fn borrowed_web_elements_one_visual_navigation_handles_missing_owner() {
+        let missing = super::ElementsOne::<WebElement>::none();
+
+        assert!(missing.over().expect("missing over owner").is_none());
+        assert!(
+            missing
+                .over_with_timeout(1)
+                .expect("missing over timeout owner")
+                .is_none()
+        );
+        assert!(
+            missing
+                .offset(None::<&str>, None, None, 1)
+                .expect("missing offset owner")
+                .is_none()
+        );
+        assert!(
+            missing
+                .east(None, None, 1)
+                .expect("missing east owner")
+                .is_none()
+        );
+        assert!(
+            missing
+                .south(None, None, 1)
+                .expect("missing south owner")
+                .is_none()
+        );
+        assert!(
+            missing
+                .west(None, None, 1)
+                .expect("missing west owner")
+                .is_none()
+        );
+        assert!(
+            missing
+                .north(None, None, 1)
+                .expect("missing north owner")
+                .is_none()
+        );
     }
 
     #[test]
