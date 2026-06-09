@@ -1182,8 +1182,16 @@ impl WebFrame {
         self.frame().snapshot_find(locator)
     }
 
+    pub fn s_ele(&self, locator: &str) -> OpenPageResult<SessionElement> {
+        self.snapshot_find(locator)
+    }
+
     pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
         self.frame().snapshot_find_all(locator)
+    }
+
+    pub fn s_eles(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+        self.snapshot_find_all(locator)
     }
 
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
@@ -1333,6 +1341,10 @@ impl WebElement {
         }
     }
 
+    pub fn s_ele(&self, locator: &str) -> OpenPageResult<SessionElement> {
+        self.snapshot_find(locator)
+    }
+
     pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => {
@@ -1340,6 +1352,10 @@ impl WebElement {
             }
             Self::Session(element) => element.find_all(locator),
         }
+    }
+
+    pub fn s_eles(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+        self.snapshot_find_all(locator)
     }
 
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
@@ -5357,11 +5373,19 @@ impl WebPage {
         }
     }
 
+    pub fn s_ele(&self, locator: &str) -> OpenPageResult<SessionElement> {
+        self.snapshot_find(locator)
+    }
+
     pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
         match self.mode()? {
             WebMode::Driver => self.driver.snapshot_find_all(locator),
             WebMode::Session => self.session.find_all(locator),
         }
+    }
+
+    pub fn s_eles(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+        self.snapshot_find_all(locator)
     }
 
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
@@ -6814,8 +6838,34 @@ mod tests {
         assert!(matches!(
             chinese,
             OpenPageError::UnsupportedOperation(ref message)
-                if message.contains("get_frame_by_index() 仅在 driver 模式可用")
+            if message.contains("get_frame_by_index() 仅在 driver 模式可用")
         ));
+    }
+
+    #[test]
+    fn web_element_session_static_find_aliases_delegate_to_snapshot() {
+        let element = WebElement::Session(
+            snapshot_root(
+                r#"<html><body><section id="root"><span class="item">A</span><span class="item">B</span></section></body></html>"#,
+            )
+            .expect("session snapshot root should parse"),
+        );
+
+        assert_eq!(
+            element
+                .s_ele("#root")
+                .expect("s_ele should find session element")
+                .attr("id")
+                .expect("id attr should read"),
+            Some("root".to_string())
+        );
+        assert_eq!(
+            element
+                .s_eles(".item")
+                .expect("s_eles should find session elements")
+                .len(),
+            2
+        );
     }
 
     #[test]
@@ -8437,6 +8487,33 @@ mod tests {
         }
 
         let _ = assert_calls as fn(&Page, &Frame);
+    }
+
+    #[test]
+    fn page_frame_element_and_web_wrappers_expose_static_find_aliases() {
+        fn assert_calls(
+            page: &Page,
+            frame: &Frame,
+            element: &Element,
+            web_page: &WebPage,
+            web_frame: &WebFrame,
+            web_element: &WebElement,
+        ) {
+            let _ = page.s_ele("#root");
+            let _ = page.s_eles(".item");
+            let _ = frame.s_ele("#root");
+            let _ = frame.s_eles(".item");
+            let _ = element.s_ele("#root");
+            let _ = element.s_eles(".item");
+            let _ = web_page.s_ele("#root");
+            let _ = web_page.s_eles(".item");
+            let _ = web_frame.s_ele("#root");
+            let _ = web_frame.s_eles(".item");
+            let _ = web_element.s_ele("#root");
+            let _ = web_element.s_eles(".item");
+        }
+
+        let _ = assert_calls as fn(&Page, &Frame, &Element, &WebPage, &WebFrame, &WebElement);
     }
 
     #[test]

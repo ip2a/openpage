@@ -2402,8 +2402,16 @@ impl Frame {
         snapshot_find(&self.inner_html()?, locator)
     }
 
+    pub fn s_ele(&self, locator: &str) -> OpenPageResult<SessionElement> {
+        self.snapshot_find(locator)
+    }
+
     pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
         snapshot_find_all(&self.inner_html()?, locator)
+    }
+
+    pub fn s_eles(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+        self.snapshot_find_all(locator)
     }
 
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
@@ -5844,8 +5852,16 @@ impl Page {
         snapshot_find(&self.html()?, locator)
     }
 
+    pub fn s_ele(&self, locator: &str) -> OpenPageResult<SessionElement> {
+        self.snapshot_find(locator)
+    }
+
     pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
         snapshot_find_all(&self.html()?, locator)
+    }
+
+    pub fn s_eles(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+        self.snapshot_find_all(locator)
     }
 
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {

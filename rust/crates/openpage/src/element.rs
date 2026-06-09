@@ -773,12 +773,20 @@ impl Element {
         snapshot_fragment_find_with_base_url(&html, locator, base_url.as_deref())
     }
 
+    pub fn s_ele(&self, locator: &str) -> OpenPageResult<SessionElement> {
+        self.snapshot_find(locator)
+    }
+
     pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
         let html = self
             .html()?
             .ok_or_else(|| OpenPageError::ElementNotFound(element_html_unavailable_message()))?;
         let base_url = value_as_optional_string(self.property("baseURI")?, "baseURI")?;
         snapshot_fragment_find_all_with_base_url(&html, locator, base_url.as_deref())
+    }
+
+    pub fn s_eles(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+        self.snapshot_find_all(locator)
     }
 
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
