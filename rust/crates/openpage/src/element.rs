@@ -54,15 +54,16 @@ use crate::settings::{
     click_at_count_must_be_positive_message, click_failed_hidden_or_disabled_message,
     click_failed_no_rect_message, click_failed_should_raise, data_url_missing_comma_message,
     element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
-    element_no_visible_rect_message, element_operation_failed_message,
-    element_rect_corner_coordinate_count_message, element_rect_corners_parse_failed_message,
-    element_rect_corners_unexpected_value_message, element_resource_unavailable_message,
-    element_tag_name_unavailable_message, element_top_frame_check_failed_message,
-    frame_index_must_start_message, frame_index_out_of_range_message,
-    javascript_execution_timed_out_message, multi_select_action_required_message,
-    no_new_tab_message, parent_element_index_must_start_message,
-    parent_element_level_must_start_message, relative_direction_index_must_start_message,
-    resolve_element_frame_id_failed_message, resolve_frame_owner_viewport_location_failed_message,
+    element_index_must_start_message, element_no_visible_rect_message,
+    element_operation_failed_message, element_rect_corner_coordinate_count_message,
+    element_rect_corners_parse_failed_message, element_rect_corners_unexpected_value_message,
+    element_resource_unavailable_message, element_tag_name_unavailable_message,
+    element_top_frame_check_failed_message, frame_index_must_start_message,
+    frame_index_out_of_range_message, javascript_execution_timed_out_message,
+    multi_select_action_required_message, no_new_tab_message,
+    parent_element_index_must_start_message, parent_element_level_must_start_message,
+    relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
+    resolve_frame_owner_viewport_location_failed_message,
     resolve_frame_viewport_offset_failed_message,
     resolve_top_viewport_screen_origin_failed_message,
     resolve_top_window_device_pixel_ratio_failed_message, resolved_node_missing_object_id_message,
@@ -5179,9 +5180,9 @@ fn nth_element_from_start(
     error_message: &str,
 ) -> OpenPageResult<Element> {
     if index == 0 {
-        return Err(OpenPageError::ElementNotFound(format!(
-            "{error_message}: index must be >= 1"
-        )));
+        return Err(OpenPageError::ElementNotFound(
+            element_index_must_start_message(error_message),
+        ));
     }
     elements
         .into_iter()
@@ -5195,9 +5196,9 @@ fn nth_element_from_end(
     error_message: &str,
 ) -> OpenPageResult<Element> {
     if index == 0 {
-        return Err(OpenPageError::ElementNotFound(format!(
-            "{error_message}: index must be >= 1"
-        )));
+        return Err(OpenPageError::ElementNotFound(
+            element_index_must_start_message(error_message),
+        ));
     }
     elements
         .into_iter()
@@ -5852,10 +5853,11 @@ mod tests {
         RelativeDirection, decode_data_url_content, decode_resource_content, drag_path,
         drag_step_count, drag_step_pause, element_path_script, file_name_from_src,
         mac_meta_commands, modifier_bit, next_available_path, normalize_axis_xpath,
-        normalize_child_xpath, normalize_file_input_paths, relative_search_in_bounds,
-        resolve_save_name, resolve_screenshot_target_path, sanitize_file_name,
-        should_clear_before_typing, should_clear_before_typing_sequence,
-        split_text_or_keys_with_modifiers, src_attribute_name, value_as_usize,
+        normalize_child_xpath, normalize_file_input_paths, nth_element_from_end,
+        nth_element_from_start, relative_search_in_bounds, resolve_save_name,
+        resolve_screenshot_target_path, sanitize_file_name, should_clear_before_typing,
+        should_clear_before_typing_sequence, split_text_or_keys_with_modifiers, src_attribute_name,
+        value_as_usize,
     };
     use crate::Keys;
     use chromiumoxide::layout::Point;
@@ -5900,6 +5902,25 @@ mod tests {
         assert_eq!(text.as_text(), Some("aGVsbG8="));
         assert_eq!(text.clone().into_bytes(), None);
         assert_eq!(text.into_text(), Some("aGVsbG8=".to_string()));
+    }
+
+    #[test]
+    fn element_relative_index_errors_follow_language_setting() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+
+        let english =
+            nth_element_from_start(Vec::<super::Element>::new(), 0, "child element not found")
+                .expect_err("zero child index should fail")
+                .to_string();
+        assert!(english.contains("child element not found: index must be >= 1"));
+
+        crate::Settings::set_language("cn");
+
+        let chinese = nth_element_from_end(Vec::<super::Element>::new(), 0, "没有找到前方元素")
+            .expect_err("zero preceding index should localize")
+            .to_string();
+        assert!(chinese.contains("没有找到前方元素: index 必须 >= 1"));
     }
 
     #[test]
