@@ -82,6 +82,12 @@ pub enum ParamsInput<'a> {
     Pairs(Vec<(Cow<'a, str>, Cow<'a, str>)>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionAuthInput {
+    None,
+    Auth(String, String),
+}
+
 impl<'a> From<&'a str> for HeadersInput<'a> {
     fn from(value: &'a str) -> Self {
         Self::Text(Cow::Borrowed(value))
@@ -265,6 +271,27 @@ impl From<HashMap<String, String>> for ParamsInput<'_> {
                 .map(|(name, value)| (Cow::Owned(name), Cow::Owned(value)))
                 .collect(),
         )
+    }
+}
+
+impl From<(String, String)> for SessionAuthInput {
+    fn from(value: (String, String)) -> Self {
+        Self::Auth(value.0, value.1)
+    }
+}
+
+impl From<(&str, &str)> for SessionAuthInput {
+    fn from(value: (&str, &str)) -> Self {
+        Self::Auth(value.0.to_string(), value.1.to_string())
+    }
+}
+
+impl From<Option<(String, String)>> for SessionAuthInput {
+    fn from(value: Option<(String, String)>) -> Self {
+        match value {
+            Some((username, password)) => Self::Auth(username, password),
+            None => Self::None,
+        }
     }
 }
 
@@ -722,8 +749,11 @@ impl SessionOptions {
         self
     }
 
-    pub fn set_auth(&mut self, auth: Option<(String, String)>) -> &mut Self {
-        self.auth = auth;
+    pub fn set_auth<A>(&mut self, auth: A) -> &mut Self
+    where
+        A: Into<SessionAuthInput>,
+    {
+        self.auth = session_auth_input(auth);
         self
     }
 
@@ -1241,6 +1271,16 @@ where
     match cert.into() {
         SessionCertInput::None => None,
         SessionCertInput::Cert(cert) => Some(cert),
+    }
+}
+
+fn session_auth_input<A>(auth: A) -> Option<(String, String)>
+where
+    A: Into<SessionAuthInput>,
+{
+    match auth.into() {
+        SessionAuthInput::None => None,
+        SessionAuthInput::Auth(username, password) => Some((username, password)),
     }
 }
 
@@ -2168,7 +2208,10 @@ impl SessionPageSetter<'_> {
         self.page.set_params(params)
     }
 
-    pub fn auth(&self, auth: Option<(String, String)>) -> OpenPageResult<()> {
+    pub fn auth<A>(&self, auth: A) -> OpenPageResult<()>
+    where
+        A: Into<SessionAuthInput>,
+    {
         self.page.set_auth(auth)
     }
 
@@ -3154,8 +3197,11 @@ impl SessionPage {
         Ok(())
     }
 
-    pub fn set_auth(&self, auth: Option<(String, String)>) -> OpenPageResult<()> {
-        self.lock_state()?.auth = auth;
+    pub fn set_auth<A>(&self, auth: A) -> OpenPageResult<()>
+    where
+        A: Into<SessionAuthInput>,
+    {
+        self.lock_state()?.auth = session_auth_input(auth);
         Ok(())
     }
 
@@ -7433,7 +7479,7 @@ mod tests {
             .set_retry(Some(6), Some(125))
             .set_proxies(Some("http://127.0.0.1:8080".to_string()), None)
             .set_download_path("downloads")
-            .set_auth(Some(("alice".to_string(), "secret".to_string())))
+            .set_auth(("alice", "secret"))
             .set_params([("page", "2")])
             .set_cert("client.pem")
             .set_verify(false)
@@ -10103,7 +10149,9 @@ mod tests {
             let _ = setter.params(&params);
             let _ = setter.params([("q", "openpage"), ("page", "1")]);
             let _ = setter.params(&param_map);
-            let _ = setter.auth(Some(("user".to_string(), "pass".to_string())));
+            let _ = page.set_auth(("user", "pass"));
+            let _ = setter.auth(("user", "pass"));
+            let _ = setter.auth(None);
             let _ = setter.hooks(SessionHooks::default());
             let _ = setter.stream(true);
             let _ = setter.proxies(Some("http://127.0.0.1:8080".to_string()), None);
