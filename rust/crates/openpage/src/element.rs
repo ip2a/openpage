@@ -735,8 +735,9 @@ impl Element {
     pub fn tag(&self) -> OpenPageResult<String> {
         match self.property("tagName")? {
             Some(Value::String(tag)) => Ok(tag.to_ascii_lowercase()),
-            Some(value) => Err(OpenPageError::JavaScript(format!(
-                "tagName did not return a string: {value}"
+            Some(value) => Err(OpenPageError::JavaScript(value_string_required_message(
+                "tagName",
+                &value.to_string(),
             ))),
             None => Err(OpenPageError::ElementNotFound(
                 element_tag_name_unavailable_message(),
