@@ -135,6 +135,22 @@ where
         .map_err(|err| page_operation_error(operation, err))
 }
 
+async fn run_page_lookup_future_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))
+}
+
 async fn register_navigation_listener_with_cdp_timeout<Fut, T, E>(
     future: Fut,
     operation: &str,
@@ -4060,16 +4076,20 @@ impl Page {
         let javascript_timeout_ms = self.javascript_timeout_ms()?;
         self.runtime.block_on(async {
             let element = match locator.kind() {
-                LocatorKind::Css => self
-                    .inner
-                    .find_element(locator.query().to_string())
-                    .await
-                    .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?,
-                LocatorKind::XPath => self
-                    .inner
-                    .find_xpath(locator.query().to_string())
-                    .await
-                    .map_err(|err| OpenPageError::ElementNotFound(err.to_string()))?,
+                LocatorKind::Css => {
+                    run_page_lookup_future_with_cdp_timeout(
+                        self.inner.find_element(locator.query().to_string()),
+                        "find element",
+                    )
+                    .await?
+                }
+                LocatorKind::XPath => {
+                    run_page_lookup_future_with_cdp_timeout(
+                        self.inner.find_xpath(locator.query().to_string()),
+                        "find element by xpath",
+                    )
+                    .await?
+                }
             };
             Ok(Element::new(
                 Arc::clone(&self.runtime),
@@ -8081,7 +8101,8 @@ mod tests {
         register_navigation_listener_with_cdp_timeout, remaining_timeout_ms,
         resolve_implicit_wait_timeout_ms, resolve_navigation_local_file_path,
         resolve_page_save_target_path, resolve_page_screenshot_target_path,
-        resolve_permission_origin, run_page_future_with_cdp_timeout, run_with_timeout,
+        resolve_permission_origin, run_page_future_with_cdp_timeout,
+        run_page_lookup_future_with_cdp_timeout, run_with_timeout,
         runtime_timeout_seconds_to_millis, screenshot_clip, storage_lookup_script,
         value_as_f64_pair, value_as_optional_string, value_as_string, value_as_string_vec,
     };
@@ -12676,6 +12697,42 @@ mod tests {
         assert!(
             matches!(screenshot_error, OpenPageError::Timeout(ref message) if message.contains("capture screenshot")),
             "unexpected page screenshot timeout error: {screenshot_error}"
+        );
+    }
+
+    #[test]
+    fn page_lookup_operations_respect_global_timeout_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+
+        let runtime = Runtime::new().expect("create tokio runtime");
+
+        let lookup_error = runtime
+            .block_on(run_page_lookup_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(150)).await;
+                    Ok::<(), &'static str>(())
+                },
+                "find element",
+            ))
+            .expect_err("page lookup should time out");
+        assert!(
+            matches!(lookup_error, OpenPageError::Timeout(ref message) if message.contains("find element")),
+            "unexpected page lookup timeout error: {lookup_error}"
+        );
+
+        Settings::reset();
+
+        let lookup_error = runtime
+            .block_on(run_page_lookup_future_with_cdp_timeout(
+                async { Err::<(), &'static str>("missing") },
+                "find element",
+            ))
+            .expect_err("page lookup failure should remain ElementNotFound");
+        assert!(
+            matches!(lookup_error, OpenPageError::ElementNotFound(ref message) if message == "missing"),
+            "unexpected page lookup error: {lookup_error}"
         );
     }
 
