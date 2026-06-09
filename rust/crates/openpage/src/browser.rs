@@ -370,6 +370,14 @@ impl LaunchOptions {
         self
     }
 
+    pub fn set_retry_seconds(
+        &mut self,
+        retry_times: Option<usize>,
+        retry_interval_secs: Option<f64>,
+    ) -> &mut Self {
+        self.set_retry(retry_times, retry_interval_secs.map(seconds_to_millis))
+    }
+
     pub fn set_timeouts(
         &mut self,
         base_secs: Option<f64>,
@@ -5476,6 +5484,16 @@ mod tests {
         assert_eq!(options.retry_times(), 5);
         assert_eq!(options.retry_interval_millis, 0);
         assert_eq!(options.retry_interval(), 0.0);
+    }
+
+    #[test]
+    fn launch_options_set_retry_seconds_updates_interval_in_seconds() {
+        let mut options = LaunchOptions::default();
+        options.set_retry_seconds(Some(4), Some(1.25));
+
+        assert_eq!(options.retry_times(), 4);
+        assert_eq!(options.retry_interval_millis, 1_250);
+        assert_eq!(options.retry_interval(), 1.25);
     }
 
     #[test]
