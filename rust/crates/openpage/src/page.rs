@@ -2398,8 +2398,12 @@ impl Frame {
         snapshot_root(&self.inner_html()?)
     }
 
-    pub fn snapshot_find(&self, locator: &str) -> OpenPageResult<SessionElement> {
-        snapshot_find(&self.inner_html()?, locator)
+    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        snapshot_find(&self.inner_html()?, locator.raw())
     }
 
     pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
@@ -2410,8 +2414,12 @@ impl Frame {
         self.snapshot_find(locator.raw())
     }
 
-    pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
-        snapshot_find_all(&self.inner_html()?, locator)
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        snapshot_find_all(&self.inner_html()?, locator.raw())
     }
 
     pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
@@ -5868,8 +5876,12 @@ impl Page {
         )
     }
 
-    pub fn snapshot_find(&self, locator: &str) -> OpenPageResult<SessionElement> {
-        snapshot_find(&self.html()?, locator)
+    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        snapshot_find(&self.html()?, locator.raw())
     }
 
     pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
@@ -5880,8 +5892,12 @@ impl Page {
         self.snapshot_find(locator.raw())
     }
 
-    pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
-        snapshot_find_all(&self.html()?, locator)
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        snapshot_find_all(&self.html()?, locator.raw())
     }
 
     pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>

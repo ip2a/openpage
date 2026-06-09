@@ -765,12 +765,16 @@ impl Element {
         snapshot_fragment_root_with_base_url(&html, base_url.as_deref())
     }
 
-    pub fn snapshot_find(&self, locator: &str) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
         let html = self
             .html()?
             .ok_or_else(|| OpenPageError::ElementNotFound(element_html_unavailable_message()))?;
         let base_url = value_as_optional_string(self.property("baseURI")?, "baseURI")?;
-        snapshot_fragment_find_with_base_url(&html, locator, base_url.as_deref())
+        snapshot_fragment_find_with_base_url(&html, locator.raw(), base_url.as_deref())
     }
 
     pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
@@ -781,12 +785,16 @@ impl Element {
         self.snapshot_find(locator.raw())
     }
 
-    pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
         let html = self
             .html()?
             .ok_or_else(|| OpenPageError::ElementNotFound(element_html_unavailable_message()))?;
         let base_url = value_as_optional_string(self.property("baseURI")?, "baseURI")?;
-        snapshot_fragment_find_all_with_base_url(&html, locator, base_url.as_deref())
+        snapshot_fragment_find_all_with_base_url(&html, locator.raw(), base_url.as_deref())
     }
 
     pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>

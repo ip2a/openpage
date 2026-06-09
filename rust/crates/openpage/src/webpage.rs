@@ -1178,7 +1178,10 @@ impl WebFrame {
         self.frame().snapshot_root()
     }
 
-    pub fn snapshot_find(&self, locator: &str) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.frame().snapshot_find(locator)
     }
 
@@ -1190,7 +1193,10 @@ impl WebFrame {
         self.snapshot_find(locator.raw())
     }
 
-    pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         self.frame().snapshot_find_all(locator)
     }
 
@@ -1342,7 +1348,10 @@ impl WebElement {
         }
     }
 
-    pub fn snapshot_find(&self, locator: &str) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => element.snapshot_find(locator),
             Self::Session(element) => element.find(locator),
@@ -1357,7 +1366,10 @@ impl WebElement {
         self.snapshot_find(locator.raw())
     }
 
-    pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => {
                 element.snapshot_find_all(locator)
@@ -5406,7 +5418,10 @@ impl WebPage {
         }
     }
 
-    pub fn snapshot_find(&self, locator: &str) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         match self.mode()? {
             WebMode::Driver => self.driver.snapshot_find(locator),
             WebMode::Session => self.session.find(locator),
@@ -5421,7 +5436,10 @@ impl WebPage {
         self.snapshot_find(locator.raw())
     }
 
-    pub fn snapshot_find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
         match self.mode()? {
             WebMode::Driver => self.driver.snapshot_find_all(locator),
             WebMode::Session => self.session.find_all(locator),
@@ -8535,6 +8553,37 @@ mod tests {
         }
 
         let _ = assert_calls as fn(&Page, &Frame);
+    }
+
+    #[test]
+    fn snapshot_find_signatures_accept_by_tuples() {
+        fn assert_calls(
+            page: &Page,
+            frame: &Frame,
+            element: &Element,
+            shadow_root: &ShadowRoot,
+            web_page: &WebPage,
+            web_frame: &WebFrame,
+            web_element: &WebElement,
+        ) {
+            let _ = page.snapshot_find((By::ID, "root"));
+            let _ = page.snapshot_find_all((By::CLASS_NAME, "item"));
+            let _ = frame.snapshot_find((By::ID, "root"));
+            let _ = frame.snapshot_find_all((By::CLASS_NAME, "item"));
+            let _ = element.snapshot_find((By::ID, "root"));
+            let _ = element.snapshot_find_all((By::CLASS_NAME, "item"));
+            let _ = shadow_root.snapshot_find((By::ID, "root"));
+            let _ = shadow_root.snapshot_find_all((By::CLASS_NAME, "item"));
+            let _ = web_page.snapshot_find((By::ID, "root"));
+            let _ = web_page.snapshot_find_all((By::CLASS_NAME, "item"));
+            let _ = web_frame.snapshot_find((By::ID, "root"));
+            let _ = web_frame.snapshot_find_all((By::CLASS_NAME, "item"));
+            let _ = web_element.snapshot_find((By::ID, "root"));
+            let _ = web_element.snapshot_find_all((By::CLASS_NAME, "item"));
+        }
+
+        let _ = assert_calls
+            as fn(&Page, &Frame, &Element, &ShadowRoot, &WebPage, &WebFrame, &WebElement);
     }
 
     #[test]
