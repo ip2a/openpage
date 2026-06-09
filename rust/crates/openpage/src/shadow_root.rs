@@ -61,7 +61,10 @@ where
 fn shadow_root_selector_error(err: OpenPageError) -> OpenPageError {
     match err {
         OpenPageError::Timeout(message) => OpenPageError::Timeout(message),
-        err => OpenPageError::ElementNotFound(err.to_string()),
+        err => OpenPageError::ElementNotFound(shadow_root_operation_failed_message(
+            "selector lookup",
+            &err.to_string(),
+        )),
     }
 }
 
@@ -913,8 +916,16 @@ mod tests {
 
         let missing = shadow_root_selector_error(OpenPageError::PageOperation("boom".to_string()));
         assert!(
-            matches!(missing, OpenPageError::ElementNotFound(ref message) if message.contains("boom")),
+            matches!(missing, OpenPageError::ElementNotFound(ref message) if message == "ShadowRoot operation selector lookup failed: page operation failed: boom"),
             "unexpected selector conversion: {missing}"
+        );
+
+        Settings::set_language("cn");
+
+        let missing = shadow_root_selector_error(OpenPageError::PageOperation("boom".to_string()));
+        assert!(
+            matches!(missing, OpenPageError::ElementNotFound(ref message) if message == "ShadowRoot 操作 selector lookup 失败: 页面操作失败: boom"),
+            "unexpected localized selector conversion: {missing}"
         );
     }
 
