@@ -649,6 +649,15 @@ impl LaunchOptions {
         self
     }
 
+    pub fn set_flag_value(&mut self, flag: &str, value: Option<&str>) -> &mut Self {
+        self.flags
+            .retain(|item| item != flag && !item.starts_with(&format!("{flag}@")));
+        match value {
+            Some(value) => self.set_flag(format!("{flag}@{value}")),
+            None => self.set_flag(flag),
+        }
+    }
+
     pub fn clear_flags(&mut self) -> &mut Self {
         self.flags.clear();
         self
@@ -6699,6 +6708,23 @@ mod tests {
         options.clear_flags_in_file();
 
         assert!(options.clear_file_flags);
+    }
+
+    #[test]
+    fn launch_options_set_flag_value_updates_named_flag() {
+        let mut options = LaunchOptions::default();
+        options
+            .set_flag_value("temporary-unexpire-flags-m118", Some("1"))
+            .set_flag_value("temporary-unexpire-flags-m118", Some("2"))
+            .set_flag_value("disable-accelerated-2d-canvas", None);
+
+        assert_eq!(
+            options.flags,
+            vec![
+                "temporary-unexpire-flags-m118@2".to_string(),
+                "disable-accelerated-2d-canvas".to_string()
+            ]
+        );
     }
 
     #[test]
