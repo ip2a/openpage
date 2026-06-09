@@ -113,6 +113,12 @@ impl<'a> From<&'a Vec<String>> for UploadFilesInput<'a> {
     }
 }
 
+impl<'a, const N: usize> From<&'a [String; N]> for UploadFilesInput<'a> {
+    fn from(value: &'a [String; N]) -> Self {
+        Self::from(value.as_slice())
+    }
+}
+
 impl From<Vec<String>> for UploadFilesInput<'_> {
     fn from(value: Vec<String>) -> Self {
         Self::Paths(
@@ -139,6 +145,18 @@ impl<'a> From<&'a [&'a str]> for UploadFilesInput<'a> {
 impl<'a, const N: usize> From<&'a [&'a str; N]> for UploadFilesInput<'a> {
     fn from(value: &'a [&'a str; N]) -> Self {
         Self::from(value.as_slice())
+    }
+}
+
+impl<'a, const N: usize> From<[&'a str; N]> for UploadFilesInput<'a> {
+    fn from(value: [&'a str; N]) -> Self {
+        Self::Paths(
+            value
+                .into_iter()
+                .map(Path::new)
+                .map(Cow::Borrowed)
+                .collect(),
+        )
     }
 }
 

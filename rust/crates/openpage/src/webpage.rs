@@ -2508,7 +2508,10 @@ impl WebElement {
         }
     }
 
-    pub fn set_file_input_files(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn set_file_input_files<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => {
                 element.set_file_input_files(files)
@@ -9922,6 +9925,10 @@ mod tests {
             let _ = element.clicker().middle(true);
             let _ = element.clicker().multi(2);
             let _ = element.clicker().at(Some(5.0), Some(6.0), "left", 1);
+            let _ = element.set_file_input_files(&files);
+            let _ = element.set_file_input_files("./fixtures/demo.txt");
+            let _ = element.set_file_input_files(&upload_path);
+            let _ = element.set_file_input_files(borrowed_files);
             let _ = element.clicker().to_upload(&files, Some(1_000), false);
             let _ = element
                 .clicker()
@@ -9945,6 +9952,10 @@ mod tests {
             let _ = web_element.clicker().middle(true);
             let _ = web_element.clicker().multi(2);
             let _ = web_element.clicker().at(Some(5.0), Some(6.0), "left", 1);
+            let _ = web_element.set_file_input_files(&files);
+            let _ = web_element.set_file_input_files("./fixtures/demo.txt");
+            let _ = web_element.set_file_input_files(&upload_path);
+            let _ = web_element.set_file_input_files(borrowed_files);
             let _ = web_element.clicker().to_upload(&files, Some(1_000), false);
             let _ = web_element
                 .clicker()

@@ -770,7 +770,10 @@ impl Element {
         })
     }
 
-    pub fn set_file_input_files(&self, files: &[String]) -> OpenPageResult<()> {
+    pub fn set_file_input_files<'a, F>(&self, files: F) -> OpenPageResult<()>
+    where
+        F: Into<UploadFilesInput<'a>>,
+    {
         let files = normalize_file_input_paths(files)?;
         if files.is_empty() {
             return Err(OpenPageError::PageOperation(
@@ -5367,22 +5370,49 @@ fn resolve_screenshot_target_path(
     Ok(target)
 }
 
-fn normalize_file_input_paths(files: &[String]) -> OpenPageResult<Vec<String>> {
-    files
-        .iter()
-        .flat_map(|value| value.split('\n'))
+fn normalize_file_input_paths<'a, F>(files: F) -> OpenPageResult<Vec<String>>
+where
+    F: Into<UploadFilesInput<'a>>,
+{
+    match files.into() {
+        UploadFilesInput::Text(text) => text
+            .lines()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .map(normalize_file_input_path)
+            .collect(),
+        UploadFilesInput::Paths(paths) => paths
+            .into_iter()
+            .map(Cow::into_owned)
+            .flat_map(split_file_input_path_lines)
+            .map(normalize_file_input_path)
+            .collect(),
+    }
+}
+
+fn split_file_input_path_lines(path: PathBuf) -> Vec<PathBuf> {
+    let text = path.to_string_lossy();
+    if text.trim().is_empty() {
+        return Vec::new();
+    }
+    if !text.contains('\n') {
+        return vec![path];
+    }
+    text.lines()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(|file| {
-            let path = PathBuf::from(file);
-            let absolute = if path.is_absolute() {
-                path
-            } else {
-                std::env::current_dir()?.join(path)
-            };
-            Ok(absolute.to_string_lossy().into_owned())
-        })
+        .map(PathBuf::from)
         .collect()
+}
+
+fn normalize_file_input_path(path: PathBuf) -> OpenPageResult<String> {
+    let absolute = if path.is_absolute() {
+        path
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    Ok(absolute.to_string_lossy().into_owned())
 }
 
 fn drag_path(start: Point, end: Point, duration_secs: f64) -> Vec<Point> {
