@@ -100,6 +100,12 @@ pub enum SessionUserAgentInput {
     UserAgent(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionMaxRedirectsInput {
+    None,
+    Max(usize),
+}
+
 impl<'a> From<&'a str> for HeadersInput<'a> {
     fn from(value: &'a str) -> Self {
         Self::Text(Cow::Borrowed(value))
@@ -349,6 +355,21 @@ impl From<Option<String>> for SessionUserAgentInput {
     }
 }
 
+impl From<usize> for SessionMaxRedirectsInput {
+    fn from(value: usize) -> Self {
+        Self::Max(value)
+    }
+}
+
+impl From<Option<usize>> for SessionMaxRedirectsInput {
+    fn from(value: Option<usize>) -> Self {
+        match value {
+            Some(max_redirects) => Self::Max(max_redirects),
+            None => Self::None,
+        }
+    }
+}
+
 fn session_cookie_header_decode_error(err: impl ToString) -> OpenPageError {
     OpenPageError::Http(session_cookie_header_decode_failed_message(
         &err.to_string(),
@@ -547,8 +568,11 @@ impl SessionAdapter {
         self
     }
 
-    pub fn set_max_redirects(&mut self, max_redirects: Option<usize>) -> &mut Self {
-        self.max_redirects = Some(max_redirects);
+    pub fn set_max_redirects<M>(&mut self, max_redirects: M) -> &mut Self
+    where
+        M: Into<SessionMaxRedirectsInput>,
+    {
+        self.max_redirects = Some(session_max_redirects_input(max_redirects));
         self
     }
 
@@ -854,8 +878,11 @@ impl SessionOptions {
         self
     }
 
-    pub fn set_max_redirects(&mut self, max_redirects: Option<usize>) -> &mut Self {
-        self.max_redirects = max_redirects;
+    pub fn set_max_redirects<M>(&mut self, max_redirects: M) -> &mut Self
+    where
+        M: Into<SessionMaxRedirectsInput>,
+    {
+        self.max_redirects = session_max_redirects_input(max_redirects);
         self
     }
 
@@ -1358,6 +1385,16 @@ where
     match user_agent.into() {
         SessionUserAgentInput::None => None,
         SessionUserAgentInput::UserAgent(user_agent) => Some(user_agent),
+    }
+}
+
+fn session_max_redirects_input<M>(max_redirects: M) -> Option<usize>
+where
+    M: Into<SessionMaxRedirectsInput>,
+{
+    match max_redirects.into() {
+        SessionMaxRedirectsInput::None => None,
+        SessionMaxRedirectsInput::Max(max_redirects) => Some(max_redirects),
     }
 }
 
@@ -2326,7 +2363,10 @@ impl SessionPageSetter<'_> {
         self.page.set_trust_env(trust_env)
     }
 
-    pub fn max_redirects(&self, max_redirects: Option<usize>) -> OpenPageResult<()> {
+    pub fn max_redirects<M>(&self, max_redirects: M) -> OpenPageResult<()>
+    where
+        M: Into<SessionMaxRedirectsInput>,
+    {
         self.page.set_max_redirects(max_redirects)
     }
 
@@ -3338,9 +3378,12 @@ impl SessionPage {
         rebuild_session_client(&mut state)
     }
 
-    pub fn set_max_redirects(&self, max_redirects: Option<usize>) -> OpenPageResult<()> {
+    pub fn set_max_redirects<M>(&self, max_redirects: M) -> OpenPageResult<()>
+    where
+        M: Into<SessionMaxRedirectsInput>,
+    {
         let mut state = self.lock_state()?;
-        state.max_redirects = max_redirects;
+        state.max_redirects = session_max_redirects_input(max_redirects);
         rebuild_session_client(&mut state)
     }
 
@@ -7535,7 +7578,7 @@ mod tests {
             .set_proxies("http://adapter.test:8080", None)
             .set_verify(false)
             .set_cert(("adapter-cert.pem", "adapter-key.pem"))
-            .set_max_redirects(Some(1));
+            .set_max_redirects(1);
         let cookies = vec![SessionCookieParam {
             name: "sid".to_string(),
             value: "abc".to_string(),
@@ -7567,7 +7610,7 @@ mod tests {
             .set_verify(false)
             .set_stream(true)
             .set_trust_env(false)
-            .set_max_redirects(Some(5))
+            .set_max_redirects(5)
             .add_adapter("http://example.test/api/", adapter.clone());
 
         assert_eq!(options.timeout_secs, 21);
@@ -10247,7 +10290,9 @@ mod tests {
             let _ = setter.cert("client.pem");
             let _ = setter.cert(("client.pem", "client.key"));
             let _ = setter.trust_env(false);
+            let _ = page.set_max_redirects(5);
             let _ = setter.max_redirects(Some(5));
+            let _ = setter.max_redirects(5);
             let _ = setter.add_adapter("https://example.test/", SessionAdapter::new());
             let _ = setter.cookies("sid=1; domain=example.test; path=/");
             let _ = setter.cookies(&cookie);
