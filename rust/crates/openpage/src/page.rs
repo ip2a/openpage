@@ -1698,6 +1698,23 @@ impl Frame {
         self.frame_element.input_with_options(text, clear, by_js)
     }
 
+    pub fn input_keys_with_options<'a, I>(
+        &self,
+        values: I,
+        clear: bool,
+        by_js: bool,
+    ) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
+        self.frame_element
+            .input_keys_with_options(values, clear, by_js)
+    }
+
+    pub fn press_key(&self, key: &str) -> OpenPageResult<()> {
+        self.frame_element.press_key(key)
+    }
+
     pub fn clear(&self) -> OpenPageResult<()> {
         self.frame_element.clear()
     }

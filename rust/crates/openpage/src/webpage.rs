@@ -853,6 +853,22 @@ impl WebFrame {
         self.frame().input_with_options(text, clear, by_js)
     }
 
+    pub fn input_keys_with_options<'a, I>(
+        &self,
+        values: I,
+        clear: bool,
+        by_js: bool,
+    ) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
+        self.frame().input_keys_with_options(values, clear, by_js)
+    }
+
+    pub fn press_key(&self, key: &str) -> OpenPageResult<()> {
+        self.frame().press_key(key)
+    }
+
     pub fn clear(&self) -> OpenPageResult<()> {
         self.frame().clear()
     }
@@ -9643,6 +9659,8 @@ mod tests {
     #[test]
     fn frame_and_webframe_element_interaction_signatures_accept_common_inputs() {
         fn assert_calls(frame: &Frame, web_frame: &WebFrame) {
+            let key_sequence = vec!["Control".to_string(), "a".to_string()];
+
             let _ = frame.click();
             let _ = frame.click_with_options(Some(false), Some(500), true);
             let _ = frame.click_at(Some(1.0), Some(2.0), "left", 1);
@@ -9651,6 +9669,9 @@ mod tests {
             let _ = frame.click_right();
             let _ = frame.input("hello");
             let _ = frame.input_with_options("hello", true, false);
+            let _ = frame.input_keys_with_options(&key_sequence, true, false);
+            let _ = frame.input_keys_with_options(Keys::CTRL_A, true, false);
+            let _ = frame.press_key("Enter");
             let _ = frame.clear();
             let _ = frame.clear_with_mode(true);
             let _ = frame.submit();
@@ -9671,6 +9692,9 @@ mod tests {
             let _ = web_frame.click_right();
             let _ = web_frame.input("hello");
             let _ = web_frame.input_with_options("hello", true, false);
+            let _ = web_frame.input_keys_with_options(&key_sequence, true, false);
+            let _ = web_frame.input_keys_with_options(Keys::CTRL_A, true, false);
+            let _ = web_frame.press_key("Enter");
             let _ = web_frame.clear();
             let _ = web_frame.clear_with_mode(true);
             let _ = web_frame.submit();
