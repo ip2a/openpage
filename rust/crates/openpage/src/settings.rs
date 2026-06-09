@@ -1792,6 +1792,13 @@ pub(crate) fn element_resource_unavailable_message() -> String {
     localized_message("element resource is unavailable", "element 资源不可用")
 }
 
+pub(crate) fn element_resource_attribute_missing_message(tag: &str, attr_name: &str) -> String {
+    match current_language_code() {
+        Some("zh_cn") => format!("元素 <{tag}> 没有可用的 {attr_name} 属性"),
+        _ => format!("element <{tag}> does not have a usable {attr_name} attribute"),
+    }
+}
+
 pub(crate) fn frame_execution_context_unavailable_message(frame_id: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("frame 执行上下文不可用: {frame_id}"),

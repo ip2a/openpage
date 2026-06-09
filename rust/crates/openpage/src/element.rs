@@ -57,13 +57,13 @@ use crate::settings::{
     element_index_must_start_message, element_no_visible_rect_message,
     element_operation_failed_message, element_rect_corner_coordinate_count_message,
     element_rect_corners_parse_failed_message, element_rect_corners_unexpected_value_message,
-    element_resource_unavailable_message, element_tag_name_unavailable_message,
-    element_top_frame_check_failed_message, frame_index_must_start_message,
-    frame_index_out_of_range_message, javascript_execution_timed_out_message,
-    multi_select_action_required_message, no_new_tab_message,
-    parent_element_index_must_start_message, parent_element_level_must_start_message,
-    relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
-    resolve_frame_owner_viewport_location_failed_message,
+    element_resource_attribute_missing_message, element_resource_unavailable_message,
+    element_tag_name_unavailable_message, element_top_frame_check_failed_message,
+    frame_index_must_start_message, frame_index_out_of_range_message,
+    javascript_execution_timed_out_message, multi_select_action_required_message,
+    no_new_tab_message, parent_element_index_must_start_message,
+    parent_element_level_must_start_message, relative_direction_index_must_start_message,
+    resolve_element_frame_id_failed_message, resolve_frame_owner_viewport_location_failed_message,
     resolve_frame_viewport_offset_failed_message,
     resolve_top_viewport_screen_origin_failed_message,
     resolve_top_window_device_pixel_ratio_failed_message, resolved_node_missing_object_id_message,
@@ -1149,8 +1149,8 @@ impl Element {
             .attr(attr_name)?
             .filter(|value| !value.is_empty())
             .ok_or_else(|| {
-                OpenPageError::ElementNotFound(format!(
-                    "element <{tag}> does not have a usable {attr_name} attribute"
+                OpenPageError::ElementNotFound(element_resource_attribute_missing_message(
+                    &tag, attr_name,
                 ))
             })?;
 
@@ -5902,6 +5902,24 @@ mod tests {
         assert_eq!(text.as_text(), Some("aGVsbG8="));
         assert_eq!(text.clone().into_bytes(), None);
         assert_eq!(text.into_text(), Some("aGVsbG8=".to_string()));
+    }
+
+    #[test]
+    fn element_resource_attribute_missing_message_follows_language_setting() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+
+        assert_eq!(
+            crate::settings::element_resource_attribute_missing_message("img", "src"),
+            "element <img> does not have a usable src attribute"
+        );
+
+        crate::Settings::set_language("cn");
+
+        assert_eq!(
+            crate::settings::element_resource_attribute_missing_message("img", "src"),
+            "元素 <img> 没有可用的 src 属性"
+        );
     }
 
     #[test]
