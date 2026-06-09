@@ -1050,6 +1050,13 @@ impl ElementsOneOwned<Element> {
         self.snapshot_find((by, value))
     }
 
+    pub fn snapshot_root(&self) -> OpenPageResult<Option<SessionElement>> {
+        match self.as_option() {
+            Some(element) => element.snapshot_root().map(Some),
+            None => self.missing_optional_result("snapshot_root()"),
+        }
+    }
+
     pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
@@ -1073,6 +1080,16 @@ impl ElementsOneOwned<Element> {
         value: &str,
     ) -> OpenPageResult<Vec<SessionElement>> {
         self.snapshot_find_all((by, value))
+    }
+
+    pub fn snapshot_query_xpath(
+        &self,
+        expression: &str,
+    ) -> OpenPageResult<Vec<SessionXPathResult>> {
+        match self.as_option() {
+            Some(element) => element.snapshot_query_xpath(expression),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
@@ -1779,6 +1796,13 @@ impl ElementsOneOwned<WebElement> {
         self.snapshot_find((by, value))
     }
 
+    pub fn snapshot_root(&self) -> OpenPageResult<Option<SessionElement>> {
+        match self.as_option() {
+            Some(element) => element.snapshot_root().map(Some),
+            None => self.missing_optional_result("snapshot_root()"),
+        }
+    }
+
     pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
@@ -1802,6 +1826,16 @@ impl ElementsOneOwned<WebElement> {
         value: &str,
     ) -> OpenPageResult<Vec<SessionElement>> {
         self.snapshot_find_all((by, value))
+    }
+
+    pub fn snapshot_query_xpath(
+        &self,
+        expression: &str,
+    ) -> OpenPageResult<Vec<SessionXPathResult>> {
+        match self.as_option() {
+            Some(element) => element.snapshot_query_xpath(expression),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<WebElement>> {
@@ -2837,6 +2871,13 @@ impl<'a> ElementsOne<'a, Element> {
         self.snapshot_find((by, value))
     }
 
+    pub fn snapshot_root(&self) -> OpenPageResult<Option<SessionElement>> {
+        match self.element {
+            Some(element) => element.snapshot_root().map(Some),
+            None => Ok(None),
+        }
+    }
+
     pub fn s_eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -2860,6 +2901,16 @@ impl<'a> ElementsOne<'a, Element> {
         value: &str,
     ) -> OpenPageResult<Vec<SessionElement>> {
         self.snapshot_find_all((by, value))
+    }
+
+    pub fn snapshot_query_xpath(
+        &self,
+        expression: &str,
+    ) -> OpenPageResult<Vec<SessionXPathResult>> {
+        match self.element {
+            Some(element) => element.snapshot_query_xpath(expression),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<Element>> {
@@ -3300,6 +3351,13 @@ impl<'a> ElementsOne<'a, WebElement> {
         self.snapshot_find((by, value))
     }
 
+    pub fn snapshot_root(&self) -> OpenPageResult<Option<SessionElement>> {
+        match self.element {
+            Some(element) => element.snapshot_root().map(Some),
+            None => Ok(None),
+        }
+    }
+
     pub fn s_eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
@@ -3323,6 +3381,16 @@ impl<'a> ElementsOne<'a, WebElement> {
         value: &str,
     ) -> OpenPageResult<Vec<SessionElement>> {
         self.snapshot_find_all((by, value))
+    }
+
+    pub fn snapshot_query_xpath(
+        &self,
+        expression: &str,
+    ) -> OpenPageResult<Vec<SessionXPathResult>> {
+        match self.element {
+            Some(element) => element.snapshot_query_xpath(expression),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<WebElement>> {

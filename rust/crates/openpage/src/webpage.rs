@@ -11944,18 +11944,26 @@ mod tests {
             let _ = one_element.snapshot_find_by(By::ID, "root");
             let _ = one_element.snapshot_find_all((By::CLASS_NAME, "item"));
             let _ = one_element.snapshot_find_all_by(By::CLASS_NAME, "item");
+            let _ = one_element.snapshot_root();
+            let _ = one_element.snapshot_query_xpath(".//div");
             let _ = one_web_element.snapshot_find((By::ID, "root"));
             let _ = one_web_element.snapshot_find_by(By::ID, "root");
             let _ = one_web_element.snapshot_find_all((By::CLASS_NAME, "item"));
             let _ = one_web_element.snapshot_find_all_by(By::CLASS_NAME, "item");
+            let _ = one_web_element.snapshot_root();
+            let _ = one_web_element.snapshot_query_xpath(".//div");
             let _ = owned_element.snapshot_find((By::ID, "root"));
             let _ = owned_element.snapshot_find_by(By::ID, "root");
             let _ = owned_element.snapshot_find_all((By::CLASS_NAME, "item"));
             let _ = owned_element.snapshot_find_all_by(By::CLASS_NAME, "item");
+            let _ = owned_element.snapshot_root();
+            let _ = owned_element.snapshot_query_xpath(".//div");
             let _ = owned_web_element.snapshot_find((By::ID, "root"));
             let _ = owned_web_element.snapshot_find_by(By::ID, "root");
             let _ = owned_web_element.snapshot_find_all((By::CLASS_NAME, "item"));
             let _ = owned_web_element.snapshot_find_all_by(By::CLASS_NAME, "item");
+            let _ = owned_web_element.snapshot_root();
+            let _ = owned_web_element.snapshot_query_xpath(".//div");
         }
 
         let _ = assert_calls
