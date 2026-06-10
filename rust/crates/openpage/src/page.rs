@@ -7995,8 +7995,10 @@ where
     L: Into<LocatorInput<'a>>,
 {
     match locator.into() {
-        LocatorInput::Raw(raw) => Ok(frame_locator(raw)),
-        LocatorInput::By(by, value) => Ok(Locator::from_by(by, value)?.raw().to_string()),
+        LocatorInput::Raw(raw) => Ok(frame_locator(raw.as_ref())),
+        LocatorInput::By(by, value) => Ok(Locator::from_by(by.as_ref(), value.as_ref())?
+            .raw()
+            .to_string()),
     }
 }
 

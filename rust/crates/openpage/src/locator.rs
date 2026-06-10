@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::settings::{
     attribute_locator_requires_assignment_message, empty_locator_not_allowed_message,
@@ -16,10 +18,10 @@ pub enum LocatorKind {
     XPath,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum LocatorInput<'a> {
-    Raw(&'a str),
-    By(&'a str, &'a str),
+    Raw(Cow<'a, str>),
+    By(Cow<'a, str>, Cow<'a, str>),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -30,48 +32,73 @@ pub enum LocatorBatchInput<'a> {
 
 impl<'a> From<&'a str> for LocatorInput<'a> {
     fn from(value: &'a str) -> Self {
-        Self::Raw(value)
+        Self::Raw(Cow::Borrowed(value))
     }
 }
 
 impl<'a> From<&'a String> for LocatorInput<'a> {
     fn from(value: &'a String) -> Self {
-        Self::Raw(value.as_str())
+        Self::Raw(Cow::Borrowed(value.as_str()))
+    }
+}
+
+impl<'a> From<String> for LocatorInput<'a> {
+    fn from(value: String) -> Self {
+        Self::Raw(Cow::Owned(value))
     }
 }
 
 impl<'a> From<(&'a str, &'a str)> for LocatorInput<'a> {
     fn from(value: (&'a str, &'a str)) -> Self {
-        Self::By(value.0, value.1)
+        Self::By(Cow::Borrowed(value.0), Cow::Borrowed(value.1))
+    }
+}
+
+impl<'a> From<(String, String)> for LocatorInput<'a> {
+    fn from(value: (String, String)) -> Self {
+        Self::By(Cow::Owned(value.0), Cow::Owned(value.1))
     }
 }
 
 impl<'a> From<&'a str> for LocatorBatchInput<'a> {
     fn from(value: &'a str) -> Self {
-        Self::Single(LocatorInput::Raw(value))
+        Self::Single(LocatorInput::from(value))
     }
 }
 
 impl<'a> From<&'a String> for LocatorBatchInput<'a> {
     fn from(value: &'a String) -> Self {
-        Self::Single(LocatorInput::Raw(value.as_str()))
+        Self::Single(LocatorInput::from(value))
+    }
+}
+
+impl<'a> From<String> for LocatorBatchInput<'a> {
+    fn from(value: String) -> Self {
+        Self::Single(LocatorInput::from(value))
     }
 }
 
 impl<'a> From<(&'a str, &'a str)> for LocatorBatchInput<'a> {
     fn from(value: (&'a str, &'a str)) -> Self {
-        Self::Single(LocatorInput::By(value.0, value.1))
+        Self::Single(LocatorInput::from(value))
+    }
+}
+
+impl<'a> From<(String, String)> for LocatorBatchInput<'a> {
+    fn from(value: (String, String)) -> Self {
+        Self::Single(LocatorInput::from(value))
     }
 }
 
 impl<'a> From<&'a [String]> for LocatorBatchInput<'a> {
     fn from(value: &'a [String]) -> Self {
-        Self::Many(
-            value
-                .iter()
-                .map(|item| LocatorInput::Raw(item.as_str()))
-                .collect(),
-        )
+        Self::Many(value.iter().map(LocatorInput::from).collect())
+    }
+}
+
+impl<'a> From<Vec<String>> for LocatorBatchInput<'a> {
+    fn from(value: Vec<String>) -> Self {
+        Self::Many(value.into_iter().map(LocatorInput::from).collect())
     }
 }
 
@@ -129,6 +156,12 @@ impl<'a> From<Vec<(&'a str, &'a str)>> for LocatorBatchInput<'a> {
     }
 }
 
+impl<'a> From<Vec<(String, String)>> for LocatorBatchInput<'a> {
+    fn from(value: Vec<(String, String)>) -> Self {
+        Self::Many(value.into_iter().map(LocatorInput::from).collect())
+    }
+}
+
 impl<'a, const N: usize> From<[(&'a str, &'a str); N]> for LocatorBatchInput<'a> {
     fn from(value: [(&'a str, &'a str); N]) -> Self {
         Self::Many(value.into_iter().map(LocatorInput::from).collect())
@@ -154,8 +187,8 @@ impl Locator {
         L: Into<LocatorInput<'a>>,
     {
         match input.into() {
-            LocatorInput::Raw(raw) => Self::parse(raw),
-            LocatorInput::By(by, value) => Self::from_by(by, value),
+            LocatorInput::Raw(raw) => Self::parse(raw.as_ref()),
+            LocatorInput::By(by, value) => Self::from_by(by.as_ref(), value.as_ref()),
         }
     }
 
@@ -381,7 +414,7 @@ mod tests {
     fn locator_input_from_tuple_keeps_components() {
         let input = LocatorInput::from(("class name", "item"));
 
-        assert_eq!(input, LocatorInput::By("class name", "item"));
+        assert_eq!(input, LocatorInput::from(("class name", "item")));
     }
 
     #[test]
@@ -395,10 +428,27 @@ mod tests {
         assert_eq!(
             LocatorBatchInput::from(&items),
             LocatorBatchInput::Many(vec![
-                LocatorInput::Raw("#one"),
-                LocatorInput::Raw("xpath://div"),
+                LocatorInput::from("#one"),
+                LocatorInput::from("xpath://div"),
             ])
         );
+    }
+
+    #[test]
+    fn locator_input_accepts_owned_strings() {
+        let css = Locator::from_input(".owned".to_string()).expect("owned raw");
+        let by = Locator::from_input(("id".to_string(), "main".to_string())).expect("owned by");
+
+        assert_eq!(css.raw(), ".owned");
+        assert_eq!(by.raw(), "@id=main");
+    }
+
+    #[test]
+    fn locator_batch_input_accepts_owned_string_lists() {
+        let items = vec!["#one".to_string(), "xpath://div".to_string()];
+        let list = super::parse_locator_batch_input(items).expect("owned string list");
+
+        assert_eq!(list, vec!["#one".to_string(), "xpath://div".to_string()]);
     }
 
     #[test]
@@ -420,8 +470,8 @@ mod tests {
         assert_eq!(
             LocatorBatchInput::from(&mixed_list),
             LocatorBatchInput::Many(vec![
-                LocatorInput::Raw("#one"),
-                LocatorInput::By("xpath", "//div"),
+                LocatorInput::from("#one"),
+                LocatorInput::from(("xpath", "//div")),
             ])
         );
     }
