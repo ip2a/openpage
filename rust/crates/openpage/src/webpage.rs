@@ -9710,6 +9710,129 @@ mod tests {
     }
 
     #[test]
+    fn webpage_frame_index_helpers_accept_negative_indexes_at_runtime() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webpage-frame-negative-index", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <section id="host">
+                            <iframe id="first-frame" name="first-frame"
+                                srcdoc="<html><body><div>first</div></body></html>">
+                            </iframe>
+                            <iframe id="second-frame" name="second-frame"
+                                srcdoc="<html><body><div id='nested-host'></div></body></html>">
+                            </iframe>
+                        </section>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let last_frame = page.get_frame_by_index(-1isize)?;
+            let last_frame_ele = page.get_frame_ele_by_index(-1i32)?;
+            let last_context = page.get_frame_context_by_index(-1i64)?;
+            let host = page.find("css:#host")?;
+            let host_last_frame = host.get_frame_by_index(-1isize)?;
+
+            assert_eq!(last_frame.attr("id")?, Some("second-frame".to_string()));
+            assert_eq!(last_context.attr("id")?, Some("second-frame".to_string()));
+            assert_eq!(
+                host_last_frame.attr("id")?,
+                Some("second-frame".to_string())
+            );
+            match last_frame_ele {
+                WebElement::Mix {
+                    element,
+                    page: owner,
+                } => {
+                    assert_eq!(element.attr("id")?, Some("second-frame".to_string()));
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                WebElement::Browser(element) => {
+                    panic!(
+                        "negative WebPage get_frame_ele_by_index should keep mix element, got browser element {:?}",
+                        element.attr("id")?
+                    );
+                }
+                WebElement::Session(_) => {
+                    panic!("negative WebPage get_frame_ele_by_index should keep mix element");
+                }
+            }
+            match host_last_frame.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "negative WebElement get_frame_by_index should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!(
+                        "negative WebElement get_frame_by_index should keep webpage owner, got id {id}"
+                    );
+                }
+            }
+
+            assert!(last_frame.wait_for_doc_loaded(2_000)?);
+            last_frame.run_js(
+                r#"(() => {
+                    document.getElementById('nested-host').innerHTML = `
+                        <iframe id="nested-first" name="nested-first"
+                            srcdoc="<html><body>nested first</body></html>">
+                        </iframe>
+                        <iframe id="nested-second" name="nested-second"
+                            srcdoc="<html><body><button id='inside'>inside</button></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let nested_last = last_frame.get_frame_by_index(-1isize)?;
+            let nested_last_ele = last_frame.get_frame_ele_by_index(-1i32)?;
+
+            assert_eq!(nested_last.attr("id")?, Some("nested-second".to_string()));
+            match nested_last_ele {
+                WebElement::Mix { element, .. } => {
+                    assert_eq!(element.attr("id")?, Some("nested-second".to_string()));
+                }
+                WebElement::Browser(element) => {
+                    panic!(
+                        "negative WebFrame get_frame_ele_by_index should keep mix element, got browser element {:?}",
+                        element.attr("id")?
+                    );
+                }
+                WebElement::Session(_) => {
+                    panic!("negative WebFrame get_frame_ele_by_index should keep mix element");
+                }
+            }
+            assert_eq!(
+                nested_last.find("css:#inside")?.text()?,
+                Some("inside".to_string())
+            );
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("webpage frame negative index regression");
+    }
+
+    #[test]
     fn singleton_tab_obj_reuses_webframe_state_when_enabled() {
         let _settings = scoped_test_settings();
         Settings::reset();
