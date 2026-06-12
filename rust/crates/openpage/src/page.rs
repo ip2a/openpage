@@ -11253,6 +11253,63 @@ mod tests {
     }
 
     #[test]
+    fn singleton_tab_obj_reuses_shadow_root_frame_state_when_enabled() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(true);
+
+        let (browser, temp_dir) = launch_headless_test_browser("frame-shadow-singleton-enabled")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `<div id="host"></div>`;
+                    const host = document.getElementById('host');
+                    const root = host.attachShadow({mode: 'open'});
+                    root.innerHTML = `
+                        <div id="shadow-wrapper">
+                            <iframe id="shadow-frame" name="shadow-frame"
+                                srcdoc="<html><body><button id='inside'>inside</button></body></html>">
+                            </iframe>
+                        </div>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let host = page.find("css:#host")?;
+            let shadow_root = host.shadow_root()?.expect("host shadow root");
+            let wrapper = shadow_root.find("css:#shadow-wrapper")?;
+            let frame = wrapper.get_frame("css:#shadow-frame")?;
+            assert!(frame.wait_for_doc_loaded(2_000)?);
+            frame.set_none_element_value(Some("shadow missing"), true)?;
+
+            let same_frame = wrapper.get_frame((By::ID, "shadow-frame"))?;
+            assert_eq!(same_frame.id(), frame.id());
+            assert!(std::ptr::eq(
+                frame.frame_element(),
+                same_frame.frame_element()
+            ));
+            assert_eq!(
+                same_frame.ele(".does-not-exist")?.text()?,
+                Some("shadow missing".to_string())
+            );
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("shadow root singleton frame runtime-state regression");
+    }
+
+    #[test]
     fn frame_get_frame_with_timeout_waits_for_delayed_nested_iframe() {
         let (browser, temp_dir) = launch_headless_test_browser("frame-get-nested-frame-timeout")
             .expect("launch headless browser");
