@@ -32,7 +32,7 @@ use crate::session::{
     SessionOptions, SessionPage, SessionXPathResult,
 };
 use crate::settings::{
-    component_state_lock_poisoned_message, driver_mode_only_message, singleton_tab_obj_enabled,
+    component_state_lock_poisoned_message, driver_mode_only_message,
     timeout_must_be_non_negative_message, wait_for_locator_timed_out_message, wait_timeout_result,
     web_browser_backed_option_required_message, web_driver_element_required_message,
     web_mode_invalid_message, web_timeout_base_non_negative_message,
@@ -1791,17 +1791,7 @@ impl WebElement {
     fn wrap_browser_frame_result(&self, frame: Frame) -> OpenPageResult<WebFrame> {
         match self {
             Self::Browser(_) => Ok(WebFrame::Browser(frame)),
-            Self::Mix { page, .. } => {
-                let frame = if singleton_tab_obj_enabled() {
-                    let frame_element = page
-                        .driver
-                        .resolve_dom_backend_node_id(frame.frame_element().backend_node_id())?;
-                    page.driver.frame_from_element(frame_element)?
-                } else {
-                    frame
-                };
-                Ok(page.with_driver_frame(frame))
-            }
+            Self::Mix { page, .. } => Ok(page.with_driver_frame(frame)),
             Self::Session(_) => Ok(WebFrame::Browser(frame)),
         }
     }
@@ -9898,6 +9888,75 @@ mod tests {
             panic!("close headless webpage: {err}");
         }
         result.expect("nested webframe runtime-state inheritance regression");
+    }
+
+    #[test]
+    fn web_element_frame_initial_runtime_config_inherits_parent_webframe_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("web-element-frame-config-inherit", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(5_000)?);
+            outer.set_none_element_value(Some("web-element-default"), true)?;
+            outer.run_js(
+                r#"(() => {
+                    document.getElementById('outer-host').innerHTML = `
+                        <iframe id="inner-frame" name="inner-frame"
+                            srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let host = outer.find("css:#outer-host")?;
+            let inner = host.get_frame("css:#inner-frame")?;
+            assert!(inner.wait_for_doc_loaded(5_000)?);
+            assert_eq!(
+                inner.ele(".does-not-exist")?.text()?,
+                Some("web-element-default".to_string())
+            );
+            match inner.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "nested WebElement frame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("nested WebElement frame should keep webpage owner, got id {id}");
+                }
+            }
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("web element frame runtime-state inheritance regression");
     }
 
     #[test]

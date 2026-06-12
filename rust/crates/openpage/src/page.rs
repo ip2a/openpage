@@ -2093,6 +2093,14 @@ impl Frame {
             .wait_for_downloads_done(timeout_ms, cancel_if_timeout)
     }
 
+    fn bind_element_runtime_config(&self, element: Element) -> Element {
+        element.with_runtime_config_handles(
+            Arc::clone(&self.none_element_config),
+            Arc::clone(&self.page.frame_cache),
+            Arc::clone(&self.page.frame_none_element_configs),
+        )
+    }
+
     pub fn active_element(&self) -> OpenPageResult<Option<Element>> {
         let marker = next_page_marker();
         let script = format!(
@@ -2110,7 +2118,7 @@ impl Frame {
             Value::String(_) => {
                 let element = self.page.find(&marker_xpath(&marker))?;
                 let _ = element.remove_attr(PAGE_MARKER_ATTRIBUTE);
-                Ok(Some(element))
+                Ok(Some(self.bind_element_runtime_config(element)))
             }
             other => Err(OpenPageError::JavaScript(value_did_not_return_message(
                 "frame active element",
@@ -2168,7 +2176,7 @@ impl Frame {
             Value::String(_) => {
                 let element = self.page.find(&marker_xpath(&marker))?;
                 let _ = element.remove_attr(PAGE_MARKER_ATTRIBUTE);
-                Ok(element)
+                Ok(self.bind_element_runtime_config(element))
             }
             other => Err(OpenPageError::JavaScript(value_did_not_return_message(
                 "frame find()",
@@ -2191,7 +2199,7 @@ impl Frame {
         for marker in markers {
             let element = self.page.find(&marker_xpath(&marker))?;
             let _ = element.remove_attr(PAGE_MARKER_ATTRIBUTE);
-            elements.push(element);
+            elements.push(self.bind_element_runtime_config(element));
         }
         Ok(elements)
     }
@@ -13158,6 +13166,61 @@ mod tests {
             panic!("close headless browser: {err}");
         }
         result.expect("nested frame runtime-state inheritance regression");
+    }
+
+    #[test]
+    fn element_frame_initial_runtime_config_inherits_parent_frame_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (browser, temp_dir) = launch_headless_test_browser("element-frame-config-inherit")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame_context("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(5_000)?);
+            outer.set_none_element_value(Some("element-default"), true)?;
+            outer.run_js(
+                r#"(() => {
+                    document.getElementById('outer-host').innerHTML = `
+                        <iframe id="inner-frame" name="inner-frame"
+                            srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let host = outer.find("css:#outer-host")?;
+            let inner = host.get_frame("css:#inner-frame")?;
+            assert!(inner.wait_for_doc_loaded(5_000)?);
+            assert_eq!(
+                inner.ele(".does-not-exist")?.text()?,
+                Some("element-default".to_string())
+            );
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("element frame runtime-state inheritance regression");
     }
 
     #[test]

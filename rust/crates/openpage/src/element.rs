@@ -422,6 +422,18 @@ impl Element {
         &self.none_element_config
     }
 
+    pub(crate) fn with_runtime_config_handles(
+        mut self,
+        none_element_config: ElementsOneRuntimeConfigHandle,
+        frame_cache: FrameCacheHandle,
+        frame_none_element_configs: FrameNoneElementConfigCacheHandle,
+    ) -> Self {
+        self.none_element_config = none_element_config;
+        self.frame_cache = frame_cache;
+        self.frame_none_element_configs = frame_none_element_configs;
+        self
+    }
+
     pub fn scroll(&self) -> ElementScroller<'_> {
         ElementScroller { element: self }
     }
