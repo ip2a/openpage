@@ -2581,6 +2581,35 @@ pub struct SessionResponseInfo {
     pub encoding: Option<String>,
 }
 
+impl SessionResponseInfo {
+    pub fn url(&self) -> Option<&str> {
+        self.url.as_deref()
+    }
+
+    pub fn status_code(&self) -> Option<u16> {
+        self.status_code
+    }
+
+    pub fn headers(&self) -> &[(String, String)] {
+        &self.headers
+    }
+
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
+    pub fn content_type(&self) -> Option<&str> {
+        self.content_type.as_deref()
+    }
+
+    pub fn encoding(&self) -> Option<&str> {
+        self.encoding.as_deref()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct SessionRuntimeInfo {
     pub timeout_secs: u64,
@@ -9043,12 +9072,16 @@ mod tests {
             .expect("response snapshot result")
             .expect("response snapshot");
         assert_eq!(response.status_code, Some(200));
+        assert_eq!(response.status_code(), Some(200));
         assert_eq!(response.url.as_deref(), Some(expected_url.as_str()));
+        assert_eq!(response.url(), Some(expected_url.as_str()));
         assert_eq!(
             response.content_type.as_deref(),
             Some("text/plain; charset=utf-8")
         );
+        assert_eq!(response.content_type(), Some("text/plain; charset=utf-8"));
         assert_eq!(response.encoding.as_deref(), Some("utf-8"));
+        assert_eq!(response.encoding(), Some("utf-8"));
         assert!(
             response
                 .headers
@@ -9056,6 +9089,11 @@ mod tests {
                 .any(|(name, value)| name == "content-type"
                     && value == "text/plain; charset=utf-8")
         );
+        assert_eq!(
+            response.header("Content-Type"),
+            Some("text/plain; charset=utf-8")
+        );
+        assert_eq!(response.headers().len(), response.headers.len());
 
         let _ = handle.join().expect("server thread");
     }
