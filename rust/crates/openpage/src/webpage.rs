@@ -10371,7 +10371,6 @@ mod tests {
                     panic!("owned ElementsOne WebFrame should keep webpage owner, got id {id}");
                 }
             }
-
             let hosts = outer.find_all("css:#outer-host")?;
             let borrowed_inner = hosts
                 .filter_one()
@@ -10394,6 +10393,108 @@ mod tests {
                 }
                 BrowserTabReference::Id(id) => {
                     panic!("borrowed ElementsOne WebFrame should keep webpage owner, got id {id}");
+                }
+            }
+
+            owned_inner.set_none_element_value(Some("elements-one-target-default"), true)?;
+            let inner_frame = owned_inner.frame().clone();
+
+            let owned_frame_target = owned_host
+                .get_frame(&inner_frame)?
+                .expect("owned ElementsOne should accept borrowed Frame target");
+            assert_eq!(owned_frame_target.id(), owned_inner.id());
+            assert_eq!(
+                owned_frame_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-target-default".to_string())
+            );
+            match owned_frame_target.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "owned ElementsOne Frame target should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("owned ElementsOne Frame target should keep webpage owner, got id {id}");
+                }
+            }
+
+            let owned_frame_owned_target = owned_host
+                .get_frame(inner_frame.clone())?
+                .expect("owned ElementsOne should accept owned Frame target");
+            assert_eq!(owned_frame_owned_target.id(), owned_inner.id());
+            assert_eq!(
+                owned_frame_owned_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-target-default".to_string())
+            );
+            match owned_frame_owned_target.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "owned ElementsOne owned Frame target should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!(
+                        "owned ElementsOne owned Frame target should keep webpage owner, got id {id}"
+                    );
+                }
+            }
+            let borrowed_frame_target = hosts
+                .filter_one()
+                .get_frame(&inner_frame)?
+                .expect("borrowed ElementsOne should accept borrowed Frame target");
+            assert_eq!(borrowed_frame_target.id(), owned_inner.id());
+            assert_eq!(
+                borrowed_frame_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-target-default".to_string())
+            );
+            match borrowed_frame_target.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "borrowed ElementsOne Frame target should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!(
+                        "borrowed ElementsOne Frame target should keep webpage owner, got id {id}"
+                    );
+                }
+            }
+
+            let borrowed_frame_owned_target = hosts
+                .filter_one()
+                .get_frame(inner_frame.clone())?
+                .expect("borrowed ElementsOne should accept owned Frame target");
+            assert_eq!(borrowed_frame_owned_target.id(), owned_inner.id());
+            assert_eq!(
+                borrowed_frame_owned_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-target-default".to_string())
+            );
+            match borrowed_frame_owned_target.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "borrowed ElementsOne owned Frame target should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!(
+                        "borrowed ElementsOne owned Frame target should keep webpage owner, got id {id}"
+                    );
                 }
             }
             Ok(())
