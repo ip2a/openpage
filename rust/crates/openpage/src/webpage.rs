@@ -10046,6 +10046,98 @@ mod tests {
     }
 
     #[test]
+    fn webframe_object_target_preserves_mix_owner_and_runtime_config() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webframe-object-target-preserves-mix", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(5_000)?);
+            outer.run_js(
+                r#"(() => {
+                    document.getElementById('outer-host').innerHTML = `
+                        <iframe id="inner-frame" name="inner-frame"
+                            srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let inner = outer.get_frame("css:#inner-frame")?;
+            assert!(inner.wait_for_doc_loaded(5_000)?);
+            inner.set_none_element_value(Some("object-target-missing"), true)?;
+
+            let page_target = page.get_frame(&inner)?;
+            assert_eq!(page_target.id(), inner.id());
+            assert_eq!(
+                page_target.ele(".does-not-exist")?.text()?,
+                Some("object-target-missing".to_string())
+            );
+            match page_target.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "WebPage get_frame(&WebFrame) should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("WebPage get_frame(&WebFrame) should keep webpage owner, got id {id}");
+                }
+            }
+
+            let frame_target = outer.get_frame(&inner)?;
+            assert_eq!(frame_target.id(), inner.id());
+            assert_eq!(
+                frame_target.ele(".does-not-exist")?.text()?,
+                Some("object-target-missing".to_string())
+            );
+            match frame_target.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "WebFrame get_frame(&WebFrame) should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("WebFrame get_frame(&WebFrame) should keep webpage owner, got id {id}");
+                }
+            }
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("webframe object target owner/runtime regression");
+    }
+
+    #[test]
     fn elements_one_webframe_initial_runtime_config_keeps_mix_owner() {
         let _settings = scoped_test_settings();
         Settings::reset();
