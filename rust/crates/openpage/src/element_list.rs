@@ -662,15 +662,21 @@ impl ElementsOneOwned<Element> {
             .get_frame_with_timeout(target, timeout_ms)
     }
 
-    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<Option<crate::page::Frame>> {
+    pub fn get_frame_by_index<I>(&self, index: I) -> OpenPageResult<Option<crate::page::Frame>>
+    where
+        I: crate::page::FrameIndexInput,
+    {
         self.as_borrowed().get_frame_by_index(index)
     }
 
-    pub fn get_frame_by_index_with_timeout(
+    pub fn get_frame_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<Option<crate::page::Frame>> {
+    ) -> OpenPageResult<Option<crate::page::Frame>>
+    where
+        I: crate::page::FrameIndexInput,
+    {
         self.as_borrowed()
             .get_frame_by_index_with_timeout(index, timeout_ms)
     }
@@ -1420,18 +1426,24 @@ impl ElementsOneOwned<WebElement> {
             .get_frame_with_timeout(target, timeout_ms)
     }
 
-    pub fn get_frame_by_index(
+    pub fn get_frame_by_index<I>(
         &self,
-        index: usize,
-    ) -> OpenPageResult<Option<crate::webpage::WebFrame>> {
+        index: I,
+    ) -> OpenPageResult<Option<crate::webpage::WebFrame>>
+    where
+        I: crate::page::FrameIndexInput,
+    {
         self.as_borrowed().get_frame_by_index(index)
     }
 
-    pub fn get_frame_by_index_with_timeout(
+    pub fn get_frame_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<Option<crate::webpage::WebFrame>> {
+    ) -> OpenPageResult<Option<crate::webpage::WebFrame>>
+    where
+        I: crate::page::FrameIndexInput,
+    {
         self.as_borrowed()
             .get_frame_by_index_with_timeout(index, timeout_ms)
     }
@@ -2616,18 +2628,24 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
-    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<Option<crate::page::Frame>> {
+    pub fn get_frame_by_index<I>(&self, index: I) -> OpenPageResult<Option<crate::page::Frame>>
+    where
+        I: crate::page::FrameIndexInput,
+    {
         match self.element {
             Some(element) => element.get_frame_by_index(index).map(Some),
             None => Ok(None),
         }
     }
 
-    pub fn get_frame_by_index_with_timeout(
+    pub fn get_frame_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<Option<crate::page::Frame>> {
+    ) -> OpenPageResult<Option<crate::page::Frame>>
+    where
+        I: crate::page::FrameIndexInput,
+    {
         match self.element {
             Some(element) => element
                 .get_frame_by_index_with_timeout(index, timeout_ms)
@@ -2704,21 +2722,27 @@ impl<'a> ElementsOne<'a, WebElement> {
         }
     }
 
-    pub fn get_frame_by_index(
+    pub fn get_frame_by_index<I>(
         &self,
-        index: usize,
-    ) -> OpenPageResult<Option<crate::webpage::WebFrame>> {
+        index: I,
+    ) -> OpenPageResult<Option<crate::webpage::WebFrame>>
+    where
+        I: crate::page::FrameIndexInput,
+    {
         match self.element {
             Some(element) => element.get_frame_by_index(index).map(Some),
             None => Ok(None),
         }
     }
 
-    pub fn get_frame_by_index_with_timeout(
+    pub fn get_frame_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<Option<crate::webpage::WebFrame>> {
+    ) -> OpenPageResult<Option<crate::webpage::WebFrame>>
+    where
+        I: crate::page::FrameIndexInput,
+    {
         match self.element {
             Some(element) => element
                 .get_frame_by_index_with_timeout(index, timeout_ms)

@@ -41,8 +41,8 @@ use crate::locator::{
     parse_locator_batch_input, parse_optional_locator_input,
 };
 use crate::page::{
-    ActionsInput, Frame, FrameCacheHandle, FrameNoneElementConfigCacheHandle, Page,
-    PageFrameTarget, execute_page_command_async, execute_page_command_blocking,
+    ActionsInput, Frame, FrameCacheHandle, FrameIndexInput, FrameNoneElementConfigCacheHandle,
+    Page, PageFrameTarget, execute_page_command_async, execute_page_command_blocking,
     frame_locator_input,
 };
 use crate::session::{
@@ -3191,16 +3191,22 @@ impl Element {
         }
     }
 
-    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<Frame> {
-        self.get_frame(index)
+    pub fn get_frame_by_index<I>(&self, index: I) -> OpenPageResult<Frame>
+    where
+        I: FrameIndexInput,
+    {
+        self.get_frame(index.into_frame_index())
     }
 
-    pub fn get_frame_by_index_with_timeout(
+    pub fn get_frame_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<Frame> {
-        self.get_frame_with_timeout(index, timeout_ms)
+    ) -> OpenPageResult<Frame>
+    where
+        I: FrameIndexInput,
+    {
+        self.get_frame_with_timeout(index.into_frame_index(), timeout_ms)
     }
 
     pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<Element>>
@@ -3328,7 +3334,9 @@ impl Element {
             ));
         }
 
-        let frames = self.find_all("css:iframe,frame")?;
+        let frames = self.collect_relative_elements(
+            "return Array.from(this.querySelectorAll('iframe, frame'));",
+        )?;
         let resolved_index = if index > 0 {
             (index as usize).checked_sub(1)
         } else {

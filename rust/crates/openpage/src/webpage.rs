@@ -22,9 +22,9 @@ use crate::locator::{
     Locator, LocatorBatchInput, LocatorInput, LocatorMatch, parse_locator_batch_input,
 };
 use crate::page::{
-    Actions, ActionsInput, DisconnectedFrame, Frame, FrameRect, FrameScroller, FrameSetter,
-    FrameStates, FrameWait, Page, PageElementContent, PageElementInfo, PageElementTarget,
-    PageFrameTarget, PageSaveContent,
+    Actions, ActionsInput, DisconnectedFrame, Frame, FrameIndexInput, FrameRect, FrameScroller,
+    FrameSetter, FrameStates, FrameWait, Page, PageElementContent, PageElementInfo,
+    PageElementTarget, PageFrameTarget, PageSaveContent,
 };
 use crate::screencast::Screencast;
 use crate::session::{
@@ -1054,17 +1054,23 @@ impl WebFrame {
             .map(|frame| self.wrap_frame(frame))
     }
 
-    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
+    pub fn get_frame_by_index<I>(&self, index: I) -> OpenPageResult<WebFrame>
+    where
+        I: FrameIndexInput,
+    {
         self.frame()
             .get_frame_by_index(index)
             .map(|frame| self.wrap_frame(frame))
     }
 
-    pub fn get_frame_by_index_with_timeout(
+    pub fn get_frame_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<WebFrame> {
+    ) -> OpenPageResult<WebFrame>
+    where
+        I: FrameIndexInput,
+    {
         self.frame()
             .get_frame_by_index_with_timeout(index, timeout_ms)
             .map(|frame| self.wrap_frame(frame))
@@ -1092,17 +1098,23 @@ impl WebFrame {
             .map(|element| self.wrap_element(element))
     }
 
-    pub fn get_frame_ele_by_index(&self, index: usize) -> OpenPageResult<WebElement> {
+    pub fn get_frame_ele_by_index<I>(&self, index: I) -> OpenPageResult<WebElement>
+    where
+        I: FrameIndexInput,
+    {
         self.frame()
             .get_frame_ele_by_index(index)
             .map(|element| self.wrap_element(element))
     }
 
-    pub fn get_frame_ele_by_index_with_timeout(
+    pub fn get_frame_ele_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<WebElement> {
+    ) -> OpenPageResult<WebElement>
+    where
+        I: FrameIndexInput,
+    {
         self.frame()
             .get_frame_ele_by_index_with_timeout(index, timeout_ms)
             .map(|element| self.wrap_element(element))
@@ -1175,7 +1187,10 @@ impl WebFrame {
         self.get_frame(target)
     }
 
-    pub fn get_frame_context_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
+    pub fn get_frame_context_by_index<I>(&self, index: I) -> OpenPageResult<WebFrame>
+    where
+        I: FrameIndexInput,
+    {
         self.get_frame_by_index(index)
     }
 
@@ -1994,7 +2009,10 @@ impl WebElement {
         }
     }
 
-    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
+    pub fn get_frame_by_index<I>(&self, index: I) -> OpenPageResult<WebFrame>
+    where
+        I: FrameIndexInput,
+    {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => element
                 .get_frame_by_index(index)
@@ -2005,11 +2023,14 @@ impl WebElement {
         }
     }
 
-    pub fn get_frame_by_index_with_timeout(
+    pub fn get_frame_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<WebFrame> {
+    ) -> OpenPageResult<WebFrame>
+    where
+        I: FrameIndexInput,
+    {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => element
                 .get_frame_by_index_with_timeout(index, timeout_ms)
@@ -5833,7 +5854,10 @@ impl WebPage {
         }
     }
 
-    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
+    pub fn get_frame_by_index<I>(&self, index: I) -> OpenPageResult<WebFrame>
+    where
+        I: FrameIndexInput,
+    {
         match self.mode()? {
             WebMode::Driver => self
                 .driver
@@ -5845,11 +5869,14 @@ impl WebPage {
         }
     }
 
-    pub fn get_frame_by_index_with_timeout(
+    pub fn get_frame_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<WebFrame> {
+    ) -> OpenPageResult<WebFrame>
+    where
+        I: FrameIndexInput,
+    {
         match self.mode()? {
             WebMode::Driver => self
                 .driver
@@ -5895,7 +5922,10 @@ impl WebPage {
         }
     }
 
-    pub fn get_frame_ele_by_index(&self, index: usize) -> OpenPageResult<WebElement> {
+    pub fn get_frame_ele_by_index<I>(&self, index: I) -> OpenPageResult<WebElement>
+    where
+        I: FrameIndexInput,
+    {
         match self.mode()? {
             WebMode::Driver => self
                 .driver
@@ -5907,11 +5937,14 @@ impl WebPage {
         }
     }
 
-    pub fn get_frame_ele_by_index_with_timeout(
+    pub fn get_frame_ele_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<WebElement> {
+    ) -> OpenPageResult<WebElement>
+    where
+        I: FrameIndexInput,
+    {
         match self.mode()? {
             WebMode::Driver => self
                 .driver
@@ -6017,7 +6050,10 @@ impl WebPage {
         }
     }
 
-    pub fn get_frame_context_by_index(&self, index: usize) -> OpenPageResult<WebFrame> {
+    pub fn get_frame_context_by_index<I>(&self, index: I) -> OpenPageResult<WebFrame>
+    where
+        I: FrameIndexInput,
+    {
         match self.mode()? {
             WebMode::Driver => self.get_frame_by_index(index),
             WebMode::Session => Err(OpenPageError::UnsupportedOperation(
@@ -9441,9 +9477,13 @@ mod tests {
             let _ = page.get_frame_ele((By::ID, "theFrame"));
             let _ = page.get_frame_ele_with_timeout((By::ID, "theFrame"), 10);
             let _ = page.get_frame(1usize);
+            let _ = page.get_frame_by_index(-1isize);
             let _ = page.get_frame_by_index_with_timeout(1usize, 10);
+            let _ = page.get_frame_by_index_with_timeout(-1isize, 10);
             let _ = page.get_frame_ele(1usize);
+            let _ = page.get_frame_ele_by_index(-1isize);
             let _ = page.get_frame_ele_by_index_with_timeout(1usize, 10);
+            let _ = page.get_frame_ele_by_index_with_timeout(-1isize, 10);
             let _ = page.get_frame(-1isize);
             let _ = page.get_frame_ele(-1isize);
             let _ = page.get_frame(element);
@@ -9458,6 +9498,7 @@ mod tests {
             let _ = page.get_frame_eles_with_timeout(Some((By::TAG_NAME, "iframe")), 10);
             let _ = page.get_frame_context((By::ID, "theFrame"));
             let _ = page.get_frame_context(1usize);
+            let _ = page.get_frame_context_by_index(-1isize);
             let _ = page.get_frame_context(-1isize);
             let _ = page.get_frame_context(element);
             let _ = page.get_frame_context(frame);
@@ -9468,20 +9509,27 @@ mod tests {
             let _ = frame.get_frame_ele((By::ID, "childFrame"));
             let _ = frame.get_frame_ele_with_timeout((By::ID, "childFrame"), 10);
             let _ = frame.get_frame(1usize);
+            let _ = frame.get_frame_by_index(-1isize);
             let _ = frame.get_frame_by_index_with_timeout(1usize, 10);
+            let _ = frame.get_frame_by_index_with_timeout(-1isize, 10);
             let _ = frame.get_frame_ele(1usize);
+            let _ = frame.get_frame_ele_by_index(-1isize);
             let _ = frame.get_frame_ele_by_index_with_timeout(1usize, 10);
+            let _ = frame.get_frame_ele_by_index_with_timeout(-1isize, 10);
             let _ = frame.get_frames(Some((By::TAG_NAME, "iframe")));
             let _ = frame.get_frames_with_timeout(Some((By::TAG_NAME, "iframe")), 10);
             let _ = frame.get_frame_eles(Some((By::TAG_NAME, "iframe")));
             let _ = frame.get_frame_eles_with_timeout(Some((By::TAG_NAME, "iframe")), 10);
             let _ = frame.get_frame_context((By::ID, "childFrame"));
             let _ = frame.get_frame_context(1usize);
+            let _ = frame.get_frame_context_by_index(-1isize);
             let _ = frame.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
             let _ = element.get_frame((By::ID, "theFrame"));
             let _ = element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = element.get_frame(1usize);
+            let _ = element.get_frame_by_index(-1isize);
             let _ = element.get_frame_by_index_with_timeout(1usize, 10);
+            let _ = element.get_frame_by_index_with_timeout(-1isize, 10);
             let _ = element.get_frame(frame);
             let _ = element.get_frame(frame.clone());
             let _ = element.get_frame(web_frame.clone());
@@ -9489,22 +9537,30 @@ mod tests {
             let _ = one_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = one_element.get_frame(1usize);
             let _ = one_element.get_frame_by_index(1usize);
+            let _ = one_element.get_frame_by_index(-1isize);
             let _ = one_element.get_frame_by_index_with_timeout(1usize, 10);
+            let _ = one_element.get_frame_by_index_with_timeout(-1isize, 10);
             let _ = one_element.get_frame(frame);
             let _ = owned_element.get_frame((By::ID, "theFrame"));
             let _ = owned_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = owned_element.get_frame(1usize);
             let _ = owned_element.get_frame_by_index(1usize);
+            let _ = owned_element.get_frame_by_index(-1isize);
             let _ = owned_element.get_frame_by_index_with_timeout(1usize, 10);
+            let _ = owned_element.get_frame_by_index_with_timeout(-1isize, 10);
             let _ = owned_element.get_frame(frame);
             let _ = web_page.get_frame((By::ID, "theFrame"));
             let _ = web_page.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = web_page.get_frame_ele((By::ID, "theFrame"));
             let _ = web_page.get_frame_ele_with_timeout((By::ID, "theFrame"), 10);
             let _ = web_page.get_frame(1usize);
+            let _ = web_page.get_frame_by_index(-1isize);
             let _ = web_page.get_frame_by_index_with_timeout(1usize, 10);
+            let _ = web_page.get_frame_by_index_with_timeout(-1isize, 10);
             let _ = web_page.get_frame_ele(1usize);
+            let _ = web_page.get_frame_ele_by_index(-1isize);
             let _ = web_page.get_frame_ele_by_index_with_timeout(1usize, 10);
+            let _ = web_page.get_frame_ele_by_index_with_timeout(-1isize, 10);
             let _ = web_page.get_frame(-1isize);
             let _ = web_page.get_frame_ele(-1isize);
             let _ = web_page.get_frame(web_element);
@@ -9519,6 +9575,7 @@ mod tests {
             let _ = web_page.get_frame_eles_with_timeout(Some((By::TAG_NAME, "iframe")), 10);
             let _ = web_page.get_frame_context((By::ID, "theFrame"));
             let _ = web_page.get_frame_context(1usize);
+            let _ = web_page.get_frame_context_by_index(-1isize);
             let _ = web_page.get_frame_context(-1isize);
             let _ = web_page.get_frame_context(web_element);
             let _ = web_page.get_frame_context(web_frame);
@@ -9529,20 +9586,27 @@ mod tests {
             let _ = web_frame.get_frame_ele((By::ID, "childFrame"));
             let _ = web_frame.get_frame_ele_with_timeout((By::ID, "childFrame"), 10);
             let _ = web_frame.get_frame(1usize);
+            let _ = web_frame.get_frame_by_index(-1isize);
             let _ = web_frame.get_frame_by_index_with_timeout(1usize, 10);
+            let _ = web_frame.get_frame_by_index_with_timeout(-1isize, 10);
             let _ = web_frame.get_frame_ele(1usize);
+            let _ = web_frame.get_frame_ele_by_index(-1isize);
             let _ = web_frame.get_frame_ele_by_index_with_timeout(1usize, 10);
+            let _ = web_frame.get_frame_ele_by_index_with_timeout(-1isize, 10);
             let _ = web_frame.get_frames(Some((By::TAG_NAME, "iframe")));
             let _ = web_frame.get_frames_with_timeout(Some((By::TAG_NAME, "iframe")), 10);
             let _ = web_frame.get_frame_eles(Some((By::TAG_NAME, "iframe")));
             let _ = web_frame.get_frame_eles_with_timeout(Some((By::TAG_NAME, "iframe")), 10);
             let _ = web_frame.get_frame_context((By::ID, "childFrame"));
             let _ = web_frame.get_frame_context(1usize);
+            let _ = web_frame.get_frame_context_by_index(-1isize);
             let _ = web_frame.get_frame_contexts(Some((By::TAG_NAME, "iframe")));
             let _ = web_element.get_frame((By::ID, "theFrame"));
             let _ = web_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = web_element.get_frame(1usize);
+            let _ = web_element.get_frame_by_index(-1isize);
             let _ = web_element.get_frame_by_index_with_timeout(1usize, 10);
+            let _ = web_element.get_frame_by_index_with_timeout(-1isize, 10);
             let _ = web_element.get_frame(web_frame);
             let _ = web_element.get_frame(web_frame.clone());
             let _ = web_element.get_frame(frame.clone());
@@ -9550,13 +9614,17 @@ mod tests {
             let _ = one_web_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = one_web_element.get_frame(1usize);
             let _ = one_web_element.get_frame_by_index(1usize);
+            let _ = one_web_element.get_frame_by_index(-1isize);
             let _ = one_web_element.get_frame_by_index_with_timeout(1usize, 10);
+            let _ = one_web_element.get_frame_by_index_with_timeout(-1isize, 10);
             let _ = one_web_element.get_frame(web_frame);
             let _ = owned_web_element.get_frame((By::ID, "theFrame"));
             let _ = owned_web_element.get_frame_with_timeout((By::ID, "theFrame"), 10);
             let _ = owned_web_element.get_frame(1usize);
             let _ = owned_web_element.get_frame_by_index(1usize);
+            let _ = owned_web_element.get_frame_by_index(-1isize);
             let _ = owned_web_element.get_frame_by_index_with_timeout(1usize, 10);
+            let _ = owned_web_element.get_frame_by_index_with_timeout(-1isize, 10);
             let _ = owned_web_element.get_frame(web_frame);
         }
 

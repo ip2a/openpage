@@ -709,6 +709,34 @@ pub enum PageFrameTarget<'a> {
     OwnedWebFrame(WebFrame),
 }
 
+pub trait FrameIndexInput {
+    fn into_frame_index(self) -> isize;
+}
+
+impl FrameIndexInput for usize {
+    fn into_frame_index(self) -> isize {
+        self as isize
+    }
+}
+
+impl FrameIndexInput for isize {
+    fn into_frame_index(self) -> isize {
+        self
+    }
+}
+
+impl FrameIndexInput for i32 {
+    fn into_frame_index(self) -> isize {
+        self as isize
+    }
+}
+
+impl FrameIndexInput for i64 {
+    fn into_frame_index(self) -> isize {
+        self as isize
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageElementInfo {
     tag: String,
@@ -2217,16 +2245,22 @@ impl Frame {
         }
     }
 
-    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<Frame> {
-        self.get_frame(index)
+    pub fn get_frame_by_index<I>(&self, index: I) -> OpenPageResult<Frame>
+    where
+        I: FrameIndexInput,
+    {
+        self.get_frame(index.into_frame_index())
     }
 
-    pub fn get_frame_by_index_with_timeout(
+    pub fn get_frame_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<Frame> {
-        self.get_frame_with_timeout(index, timeout_ms)
+    ) -> OpenPageResult<Frame>
+    where
+        I: FrameIndexInput,
+    {
+        self.get_frame_with_timeout(index.into_frame_index(), timeout_ms)
     }
 
     pub fn get_frame_ele<'a, L>(&self, target: L) -> OpenPageResult<Element>
@@ -2262,16 +2296,22 @@ impl Frame {
         }
     }
 
-    pub fn get_frame_ele_by_index(&self, index: usize) -> OpenPageResult<Element> {
-        self.get_frame_ele(index)
+    pub fn get_frame_ele_by_index<I>(&self, index: I) -> OpenPageResult<Element>
+    where
+        I: FrameIndexInput,
+    {
+        self.get_frame_ele(index.into_frame_index())
     }
 
-    pub fn get_frame_ele_by_index_with_timeout(
+    pub fn get_frame_ele_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<Element> {
-        self.get_frame_ele_with_timeout(index, timeout_ms)
+    ) -> OpenPageResult<Element>
+    where
+        I: FrameIndexInput,
+    {
+        self.get_frame_ele_with_timeout(index.into_frame_index(), timeout_ms)
     }
 
     pub fn get_frames<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Frame>>
@@ -2365,7 +2405,10 @@ impl Frame {
         self.get_frame(target)
     }
 
-    pub fn get_frame_context_by_index(&self, index: usize) -> OpenPageResult<Frame> {
+    pub fn get_frame_context_by_index<I>(&self, index: I) -> OpenPageResult<Frame>
+    where
+        I: FrameIndexInput,
+    {
         self.get_frame_by_index(index)
     }
 
@@ -5225,16 +5268,22 @@ impl Page {
         }
     }
 
-    pub fn get_frame_by_index(&self, index: usize) -> OpenPageResult<Frame> {
-        self.get_frame(index)
+    pub fn get_frame_by_index<I>(&self, index: I) -> OpenPageResult<Frame>
+    where
+        I: FrameIndexInput,
+    {
+        self.get_frame(index.into_frame_index())
     }
 
-    pub fn get_frame_by_index_with_timeout(
+    pub fn get_frame_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<Frame> {
-        self.get_frame_with_timeout(index, timeout_ms)
+    ) -> OpenPageResult<Frame>
+    where
+        I: FrameIndexInput,
+    {
+        self.get_frame_with_timeout(index.into_frame_index(), timeout_ms)
     }
 
     pub fn get_frame_ele<'a, L>(&self, target: L) -> OpenPageResult<Element>
@@ -5270,16 +5319,22 @@ impl Page {
         }
     }
 
-    pub fn get_frame_ele_by_index(&self, index: usize) -> OpenPageResult<Element> {
-        self.get_frame_ele(index)
+    pub fn get_frame_ele_by_index<I>(&self, index: I) -> OpenPageResult<Element>
+    where
+        I: FrameIndexInput,
+    {
+        self.get_frame_ele(index.into_frame_index())
     }
 
-    pub fn get_frame_ele_by_index_with_timeout(
+    pub fn get_frame_ele_by_index_with_timeout<I>(
         &self,
-        index: usize,
+        index: I,
         timeout_ms: u64,
-    ) -> OpenPageResult<Element> {
-        self.get_frame_ele_with_timeout(index, timeout_ms)
+    ) -> OpenPageResult<Element>
+    where
+        I: FrameIndexInput,
+    {
+        self.get_frame_ele_with_timeout(index.into_frame_index(), timeout_ms)
     }
 
     pub fn get_frames<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Frame>>
@@ -5382,7 +5437,10 @@ impl Page {
         self.get_frame(target)
     }
 
-    pub fn get_frame_context_by_index(&self, index: usize) -> OpenPageResult<Frame> {
+    pub fn get_frame_context_by_index<I>(&self, index: I) -> OpenPageResult<Frame>
+    where
+        I: FrameIndexInput,
+    {
         self.get_frame_by_index(index)
     }
 
@@ -11004,6 +11062,77 @@ mod tests {
     }
 
     #[test]
+    fn frame_index_helpers_accept_negative_indexes_at_runtime() {
+        let (browser, temp_dir) =
+            launch_headless_test_browser("frame-negative-index").expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <div id="host">
+                            <iframe id="first-frame" name="first-frame"
+                                srcdoc="<html><body><div>first</div></body></html>">
+                            </iframe>
+                            <iframe id="second-frame" name="second-frame"
+                                srcdoc="<html><body><div id='nested-host'></div></body></html>">
+                            </iframe>
+                        </div>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let last_frame = page.get_frame_by_index(-1isize)?;
+            let last_frame_ele = page.get_frame_ele_by_index(-1i32)?;
+            let last_context = page.get_frame_context_by_index(-1i64)?;
+
+            assert_eq!(last_frame.attr("id")?, Some("second-frame".to_string()));
+            assert_eq!(last_frame_ele.attr("id")?, Some("second-frame".to_string()));
+            assert_eq!(last_context.attr("id")?, Some("second-frame".to_string()));
+
+            assert!(last_frame.wait_for_doc_loaded(2_000)?);
+            last_frame.run_js(
+                r#"(() => {
+                    document.getElementById('nested-host').innerHTML = `
+                        <iframe id="nested-first" name="nested-first"
+                            srcdoc="<html><body>nested first</body></html>">
+                        </iframe>
+                        <iframe id="nested-second" name="nested-second"
+                            srcdoc="<html><body><button id='inside'>inside</button></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let nested_last = last_frame.get_frame_by_index(-1isize)?;
+            let nested_last_ele = last_frame.get_frame_ele_by_index(-1i32)?;
+
+            assert_eq!(nested_last.attr("id")?, Some("nested-second".to_string()));
+            assert_eq!(
+                nested_last_ele.attr("id")?,
+                Some("nested-second".to_string())
+            );
+            assert_eq!(
+                nested_last.find("css:#inside")?.text()?,
+                Some("inside".to_string())
+            );
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("frame negative index regression");
+    }
+
+    #[test]
     fn get_frames_with_timeout_waits_for_delayed_iframes() {
         let (browser, temp_dir) = launch_headless_test_browser("page-get-frames-timeout")
             .expect("launch headless browser");
@@ -13924,12 +14053,23 @@ mod tests {
                     .expect("page.get_frame(1) should fail without any frame"),
                 "frame index out of range: 1",
             );
+
+            page.run_js(
+                r#"(() => {
+                    const frame = document.createElement('iframe');
+                    frame.id = 'child-frame';
+                    frame.srcdoc = "<html><body>child</body></html>";
+                    document.getElementById('host').appendChild(frame);
+                    return true;
+                })()"#,
+            )?;
+
             assert_error(
-                "host.get_frame(1)",
-                host.get_frame(1isize)
+                "host.get_frame(2)",
+                host.get_frame(2isize)
                     .err()
-                    .expect("host.get_frame(1) should fail without any frame"),
-                "frame index out of range: 1",
+                    .expect("host.get_frame(2) should fail with one frame"),
+                "frame index out of range: 2",
             );
 
             Settings::set_language("cn");
@@ -13949,18 +14089,18 @@ mod tests {
                 "frame 序号必须从 1 开始，或使用从 -1 开始的负序号",
             );
             assert_error(
-                "page.get_frame(1) localized",
-                page.get_frame(1isize)
+                "page.get_frame(2) localized",
+                page.get_frame(2isize)
                     .err()
-                    .expect("page.get_frame(1) should localize"),
-                "frame 序号超出范围: 1",
+                    .expect("page.get_frame(2) should localize"),
+                "frame 序号超出范围: 2",
             );
             assert_error(
-                "host.get_frame(1) localized",
-                host.get_frame(1isize)
+                "host.get_frame(2) localized",
+                host.get_frame(2isize)
                     .err()
-                    .expect("host.get_frame(1) should localize"),
-                "frame 序号超出范围: 1",
+                    .expect("host.get_frame(2) should localize"),
+                "frame 序号超出范围: 2",
             );
             Ok(())
         })();
