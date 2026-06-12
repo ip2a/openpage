@@ -121,6 +121,10 @@ const ACTION_MODIFIER_SHIFT: i64 = 8;
 const PAGE_ZOOM_MANAGED_ATTRIBUTE: &str = "data-openpage-zoom-managed";
 const PAGE_ZOOM_ORIGINAL_ATTRIBUTE: &str = "data-openpage-zoom-original";
 
+pub(crate) type FrameCacheHandle = Arc<std::sync::Mutex<HashMap<String, Frame>>>;
+pub(crate) type FrameNoneElementConfigCacheHandle =
+    Arc<std::sync::Mutex<HashMap<String, ElementsOneRuntimeConfigHandle>>>;
+
 fn page_operation_error(operation: &str, err: impl ToString) -> OpenPageError {
     OpenPageError::PageOperation(page_operation_failed_message(operation, &err.to_string()))
 }
@@ -188,9 +192,8 @@ pub struct Page {
     init_scripts: Arc<std::sync::Mutex<Vec<String>>>,
     browser_pid: Option<u32>,
     none_element_config: ElementsOneRuntimeConfigHandle,
-    frame_cache: Arc<std::sync::Mutex<HashMap<String, Frame>>>,
-    frame_none_element_configs:
-        Arc<std::sync::Mutex<HashMap<String, ElementsOneRuntimeConfigHandle>>>,
+    frame_cache: FrameCacheHandle,
+    frame_none_element_configs: FrameNoneElementConfigCacheHandle,
 }
 
 #[derive(Clone)]
@@ -4130,6 +4133,16 @@ impl Page {
         self
     }
 
+    pub(crate) fn with_frame_caches(
+        mut self,
+        frame_cache: FrameCacheHandle,
+        frame_none_element_configs: FrameNoneElementConfigCacheHandle,
+    ) -> Self {
+        self.frame_cache = frame_cache;
+        self.frame_none_element_configs = frame_none_element_configs;
+        self
+    }
+
     pub(crate) fn set_runtime_load_mode(&self, load_mode: LoadMode) -> OpenPageResult<()> {
         self.load_mode
             .lock()
@@ -4690,6 +4703,8 @@ impl Page {
                 element,
                 javascript_timeout_ms,
                 Arc::clone(&self.none_element_config),
+                Arc::clone(&self.frame_cache),
+                Arc::clone(&self.frame_none_element_configs),
             ))
         })
     }
@@ -4728,6 +4743,8 @@ impl Page {
                         element,
                         javascript_timeout_ms,
                         Arc::clone(&self.none_element_config),
+                        Arc::clone(&self.frame_cache),
+                        Arc::clone(&self.frame_none_element_configs),
                     )
                 })
                 .collect())
@@ -11156,6 +11173,83 @@ mod tests {
             panic!("close headless browser: {err}");
         }
         result.expect("nested frame lookup regression");
+    }
+
+    #[test]
+    fn singleton_tab_obj_reuses_nested_frame_state_when_enabled() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(true);
+
+        let (browser, temp_dir) = launch_headless_test_browser("frame-nested-singleton-enabled")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(2_000)?);
+            outer.run_js(
+                r#"(() => {
+                    const frame = document.createElement('iframe');
+                    frame.id = 'inner-frame';
+                    frame.name = 'inner-frame';
+                    frame.srcdoc = "<html><body><button id='inside'>inside</button></body></html>";
+                    document.getElementById('outer-host').appendChild(frame);
+                    return true;
+                })()"#,
+            )?;
+
+            let inner = outer.get_frame("css:#inner-frame")?;
+            assert!(inner.wait_for_doc_loaded(2_000)?);
+            inner.set_none_element_value(Some("nested missing"), true)?;
+
+            let inner_by_index = outer.get_frame_by_index(1)?;
+            let nested_frames = outer.get_frames(Some((By::TAG_NAME, "iframe")))?;
+            let host = outer.find("css:#outer-host")?;
+            let inner_from_host = host.get_frame("css:#inner-frame")?;
+
+            assert_eq!(inner_by_index.id(), inner.id());
+            assert!(std::ptr::eq(
+                inner.frame_element(),
+                inner_by_index.frame_element()
+            ));
+            assert_eq!(nested_frames.len(), 1);
+            assert_eq!(nested_frames[0].id(), inner.id());
+            assert!(std::ptr::eq(
+                inner.frame_element(),
+                nested_frames[0].frame_element()
+            ));
+            assert_eq!(inner_from_host.id(), inner.id());
+            assert!(std::ptr::eq(
+                inner.frame_element(),
+                inner_from_host.frame_element()
+            ));
+            assert_eq!(
+                inner_from_host.ele(".does-not-exist")?.text()?,
+                Some("nested missing".to_string())
+            );
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("nested singleton frame runtime-state regression");
     }
 
     #[test]

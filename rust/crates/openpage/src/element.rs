@@ -41,8 +41,9 @@ use crate::locator::{
     parse_locator_batch_input, parse_optional_locator_input,
 };
 use crate::page::{
-    ActionsInput, Frame, Page, PageFrameTarget, execute_page_command_async,
-    execute_page_command_blocking, frame_locator_input,
+    ActionsInput, Frame, FrameCacheHandle, FrameNoneElementConfigCacheHandle, Page,
+    PageFrameTarget, execute_page_command_async, execute_page_command_blocking,
+    frame_locator_input,
 };
 use crate::session::{
     SessionElement, SessionXPathResult, snapshot_fragment_find_all_with_base_url,
@@ -206,6 +207,8 @@ pub struct Element {
     inner: OxElement,
     javascript_timeout_ms: u64,
     none_element_config: ElementsOneRuntimeConfigHandle,
+    frame_cache: FrameCacheHandle,
+    frame_none_element_configs: FrameNoneElementConfigCacheHandle,
 }
 
 pub struct ElementClicker<'a> {
@@ -395,6 +398,8 @@ impl Element {
         inner: OxElement,
         javascript_timeout_ms: u64,
         none_element_config: ElementsOneRuntimeConfigHandle,
+        frame_cache: FrameCacheHandle,
+        frame_none_element_configs: FrameNoneElementConfigCacheHandle,
     ) -> Self {
         Self {
             runtime,
@@ -404,6 +409,8 @@ impl Element {
             inner,
             javascript_timeout_ms,
             none_element_config,
+            frame_cache,
+            frame_none_element_configs,
         }
     }
 
@@ -1271,6 +1278,8 @@ impl Element {
                 self.inner.node_id,
                 self.javascript_timeout_ms,
                 Arc::clone(&self.none_element_config),
+                Arc::clone(&self.frame_cache),
+                Arc::clone(&self.frame_none_element_configs),
             )))
         })
     }
@@ -3085,6 +3094,8 @@ impl Element {
                     element,
                     self.javascript_timeout_ms,
                     Arc::clone(&self.none_element_config),
+                    Arc::clone(&self.frame_cache),
+                    Arc::clone(&self.frame_none_element_configs),
                 ))
             }),
             LocatorKind::XPath => nth_element_from_start(
@@ -3205,6 +3216,8 @@ impl Element {
                             element,
                             self.javascript_timeout_ms,
                             Arc::clone(&self.none_element_config),
+                            Arc::clone(&self.frame_cache),
+                            Arc::clone(&self.frame_none_element_configs),
                         )
                     })
                     .collect())
@@ -3554,6 +3567,8 @@ impl Element {
                 element,
                 self.javascript_timeout_ms,
                 Arc::clone(&self.none_element_config),
+                Arc::clone(&self.frame_cache),
+                Arc::clone(&self.frame_none_element_configs),
             ))
         });
 
@@ -3603,7 +3618,10 @@ impl Element {
     }
 
     fn page_wrapper(&self) -> Page {
-        let page = Page::new(Arc::clone(&self.runtime), self.page.clone());
+        let page = Page::new(Arc::clone(&self.runtime), self.page.clone()).with_frame_caches(
+            Arc::clone(&self.frame_cache),
+            Arc::clone(&self.frame_none_element_configs),
+        );
         match &self.browser {
             Some(browser) => page.with_browser(browser.clone()),
             None => page,
@@ -4263,6 +4281,8 @@ impl Element {
                     element,
                     self.javascript_timeout_ms,
                     Arc::clone(&self.none_element_config),
+                    Arc::clone(&self.frame_cache),
+                    Arc::clone(&self.frame_none_element_configs),
                 ));
             }
             Ok(elements)

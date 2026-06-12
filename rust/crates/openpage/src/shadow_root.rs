@@ -21,7 +21,9 @@ use crate::locator::{
     Locator, LocatorBatchInput, LocatorInput, LocatorKind, LocatorMatch, collect_locator_matches,
     parse_locator_batch_input, parse_optional_locator_input,
 };
-use crate::page::execute_page_command_async;
+use crate::page::{
+    FrameCacheHandle, FrameNoneElementConfigCacheHandle, execute_page_command_async,
+};
 use crate::session::{
     SessionElement, SessionXPathResult, snapshot_fragment_find_all_with_base_url,
     snapshot_fragment_find_with_base_url, snapshot_fragment_query_xpath_with_base_url,
@@ -82,6 +84,8 @@ pub struct ShadowRoot {
     host_node_id: NodeId,
     javascript_timeout_ms: u64,
     none_element_config: ElementsOneRuntimeConfigHandle,
+    frame_cache: FrameCacheHandle,
+    frame_none_element_configs: FrameNoneElementConfigCacheHandle,
 }
 
 impl ShadowRoot {
@@ -93,6 +97,8 @@ impl ShadowRoot {
         host_node_id: NodeId,
         javascript_timeout_ms: u64,
         none_element_config: ElementsOneRuntimeConfigHandle,
+        frame_cache: FrameCacheHandle,
+        frame_none_element_configs: FrameNoneElementConfigCacheHandle,
     ) -> Self {
         Self {
             runtime,
@@ -102,6 +108,8 @@ impl ShadowRoot {
             host_node_id,
             javascript_timeout_ms,
             none_element_config,
+            frame_cache,
+            frame_none_element_configs,
         }
     }
 
@@ -687,6 +695,8 @@ impl ShadowRoot {
                     element,
                     self.javascript_timeout_ms,
                     Arc::clone(&self.none_element_config),
+                    Arc::clone(&self.frame_cache),
+                    Arc::clone(&self.frame_none_element_configs),
                 ));
             }
             Ok::<Vec<Element>, OpenPageError>(elements)
