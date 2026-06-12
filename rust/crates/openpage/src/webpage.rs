@@ -10398,6 +10398,29 @@ mod tests {
 
             owned_inner.set_none_element_value(Some("elements-one-target-default"), true)?;
             let inner_frame = owned_inner.frame().clone();
+            let assert_owned_inner_target =
+                |frame: &WebFrame, label: &str| -> crate::OpenPageResult<()> {
+                    assert_eq!(frame.id(), owned_inner.id());
+                    assert_eq!(
+                        frame.ele(".does-not-exist")?.text()?,
+                        Some("elements-one-target-default".to_string())
+                    );
+                    match frame.owner_reference() {
+                        BrowserTabReference::WebPage(owner) => {
+                            assert_eq!(owner.target_id(), page.target_id());
+                        }
+                        BrowserTabReference::Page(owner) => {
+                            panic!(
+                                "{label} should keep webpage owner, got page {}",
+                                owner.target_id()
+                            );
+                        }
+                        BrowserTabReference::Id(id) => {
+                            panic!("{label} should keep webpage owner, got id {id}");
+                        }
+                    }
+                    Ok(())
+                };
 
             let owned_frame_target = owned_host
                 .get_frame(&inner_frame)?
@@ -10601,6 +10624,40 @@ mod tests {
                     );
                 }
             }
+
+            let owned_frame_timeout_target = owned_host
+                .get_frame_with_timeout(&inner_frame, 10)?
+                .expect("owned ElementsOne timeout should accept borrowed Frame target");
+            assert_owned_inner_target(
+                &owned_frame_timeout_target,
+                "owned ElementsOne timeout Frame target",
+            )?;
+
+            let owned_webframe_timeout_target = owned_host
+                .get_frame_with_timeout(owned_inner.clone(), 10)?
+                .expect("owned ElementsOne timeout should accept owned WebFrame target");
+            assert_owned_inner_target(
+                &owned_webframe_timeout_target,
+                "owned ElementsOne timeout WebFrame target",
+            )?;
+
+            let borrowed_frame_timeout_target = hosts
+                .filter_one()
+                .get_frame_with_timeout(inner_frame.clone(), 10)?
+                .expect("borrowed ElementsOne timeout should accept owned Frame target");
+            assert_owned_inner_target(
+                &borrowed_frame_timeout_target,
+                "borrowed ElementsOne timeout Frame target",
+            )?;
+
+            let borrowed_webframe_timeout_target = hosts
+                .filter_one()
+                .get_frame_with_timeout(&owned_inner, 10)?
+                .expect("borrowed ElementsOne timeout should accept borrowed WebFrame target");
+            assert_owned_inner_target(
+                &borrowed_webframe_timeout_target,
+                "borrowed ElementsOne timeout WebFrame target",
+            )?;
             Ok(())
         })();
 
