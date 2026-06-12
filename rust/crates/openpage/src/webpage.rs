@@ -10343,6 +10343,23 @@ mod tests {
                 &element_timeout_target,
                 "WebElement timeout Frame target",
             )?;
+
+            assert_eq!(
+                page.driver
+                    .get_frame_ele_with_timeout(&inner_frame, 10)?
+                    .attr("id")?,
+                Some("inner-frame".to_string())
+            );
+            assert_eq!(
+                page.get_frame_ele_with_timeout(&inner, 10)?.attr("id")?,
+                Some("inner-frame".to_string())
+            );
+            assert_eq!(
+                outer
+                    .get_frame_ele_with_timeout(inner_frame.clone(), 10)?
+                    .attr("name")?,
+                Some("inner-frame".to_string())
+            );
             Ok(())
         })();
 
