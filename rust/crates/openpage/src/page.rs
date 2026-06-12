@@ -2220,7 +2220,10 @@ impl Frame {
             }
             _ => {}
         }
-        self.page.frame_from_element(self.get_frame_ele(target)?)
+        self.page.frame_from_element_with_config_source(
+            self.get_frame_ele(target)?,
+            &self.none_element_config,
+        )
     }
 
     pub fn get_frame_with_timeout<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<Frame>
@@ -2320,7 +2323,10 @@ impl Frame {
     {
         self.get_frame_eles(locator)?
             .into_iter()
-            .map(|element| self.page.frame_from_element(element))
+            .map(|element| {
+                self.page
+                    .frame_from_element_with_config_source(element, &self.none_element_config)
+            })
             .collect()
     }
 
@@ -4234,11 +4240,12 @@ impl Page {
             })
     }
 
-    fn frame_none_element_config(
+    fn frame_none_element_config_from(
         &self,
         frame_id: &str,
+        source: &ElementsOneRuntimeConfigHandle,
     ) -> OpenPageResult<ElementsOneRuntimeConfigHandle> {
-        let fresh_config = self.cloned_none_element_config(&self.none_element_config)?;
+        let fresh_config = self.cloned_none_element_config(source)?;
         if !singleton_tab_obj_enabled() {
             return Ok(fresh_config);
         }
@@ -7304,6 +7311,14 @@ impl Page {
     }
 
     pub(crate) fn frame_from_element(&self, element: Element) -> OpenPageResult<Frame> {
+        self.frame_from_element_with_config_source(element, &self.none_element_config)
+    }
+
+    pub(crate) fn frame_from_element_with_config_source(
+        &self,
+        element: Element,
+        config_source: &ElementsOneRuntimeConfigHandle,
+    ) -> OpenPageResult<Frame> {
         let backend_node_id = element.backend_node_id();
         let frame_id = self.runtime.block_on(async {
             let response = execute_page_command_async(
@@ -7351,7 +7366,7 @@ impl Page {
         if let Some(frame) = self.cached_frame(&frame_id)? {
             return Ok(frame);
         }
-        let none_element_config = self.frame_none_element_config(&frame_id)?;
+        let none_element_config = self.frame_none_element_config_from(&frame_id, config_source)?;
         let frame = Frame::new(self.clone(), frame_id, element, none_element_config);
         self.cache_frame(&frame)?;
         Ok(frame)
@@ -13089,6 +13104,60 @@ mod tests {
             panic!("close headless browser: {err}");
         }
         result.expect("frame runtime-state inheritance regression");
+    }
+
+    #[test]
+    fn nested_frame_initial_runtime_config_inherits_parent_frame_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (browser, temp_dir) = launch_headless_test_browser("nested-frame-config-inherit")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame_context("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(5_000)?);
+            outer.set_none_element_value(Some("outer-default"), true)?;
+            outer.run_js(
+                r#"(() => {
+                    document.getElementById('outer-host').innerHTML = `
+                        <iframe id="inner-frame" name="inner-frame"
+                            srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let inner = outer.get_frame_context("css:#inner-frame")?;
+            assert!(inner.wait_for_doc_loaded(5_000)?);
+            assert_eq!(
+                inner.ele(".does-not-exist")?.text()?,
+                Some("outer-default".to_string())
+            );
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("nested frame runtime-state inheritance regression");
     }
 
     #[test]

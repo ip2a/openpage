@@ -3166,7 +3166,8 @@ impl Element {
             _ => {}
         }
         let frame_element = self.resolve_frame_target(target)?;
-        self.page_wrapper().frame_from_element(frame_element)
+        self.page_wrapper()
+            .frame_from_element_with_config_source(frame_element, &self.none_element_config)
     }
 
     pub fn get_frame_with_timeout<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<Frame>
