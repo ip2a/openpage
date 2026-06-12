@@ -13422,6 +13422,21 @@ mod tests {
                 inner.ele(".does-not-exist")?.text()?,
                 Some("element-default".to_string())
             );
+
+            inner.set_none_element_value(Some("element-target"), true)?;
+            let inner_web_frame = WebFrame::Browser(inner.clone());
+            let frame_timeout_target = outer.get_frame_with_timeout(inner.clone(), 10)?;
+            assert_eq!(frame_timeout_target.id(), inner.id());
+            assert_eq!(
+                frame_timeout_target.ele(".does-not-exist")?.text()?,
+                Some("element-target".to_string())
+            );
+            let element_timeout_target = host.get_frame_with_timeout(&inner_web_frame, 10)?;
+            assert_eq!(element_timeout_target.id(), inner.id());
+            assert_eq!(
+                element_timeout_target.ele(".does-not-exist")?.text()?,
+                Some("element-target".to_string())
+            );
             Ok(())
         })();
 
