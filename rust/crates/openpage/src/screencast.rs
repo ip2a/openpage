@@ -1,5 +1,6 @@
 use std::env;
 use std::fs::{self, File};
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex as StdMutex};
@@ -392,10 +393,11 @@ async fn evaluate_with_user_gesture(page: &OxPage, expression: &str) -> OpenPage
         .user_gesture(true)
         .build()
         .map_err(OpenPageError::PageOperation)?;
-    let result = page
-        .evaluate(params)
-        .await
-        .map_err(|err| OpenPageError::JavaScript(err.to_string()))?;
+    let result = run_screencast_js_future_with_cdp_timeout(
+        page.evaluate(params),
+        "Screencast::evaluate_with_user_gesture()",
+    )
+    .await?;
     result
         .into_value::<Value>()
         .map_err(|err| OpenPageError::JavaScript(err.to_string()))
@@ -445,6 +447,22 @@ where
         .await
         .map_err(|_| timeout_error(operation, timeout_ms))?
         .map_err(|err| screencast_capture_error(operation, err))
+}
+
+async fn run_screencast_js_future_with_cdp_timeout<Fut, T, E>(
+    future: Fut,
+    operation: &str,
+) -> OpenPageResult<T>
+where
+    Fut: Future<Output = Result<T, E>>,
+    E: ToString,
+{
+    let timeout = cdp_timeout_duration();
+    let timeout_ms = timeout_duration_millis(timeout);
+    tokio_timeout(timeout, future)
+        .await
+        .map_err(|_| timeout_error(operation, timeout_ms))?
+        .map_err(|err| OpenPageError::JavaScript(err.to_string()))
 }
 
 async fn run_imgs_screencast(
@@ -769,8 +787,8 @@ mod tests {
         ScreencastMode, build_video_output_path, decode_data_url, encode_frames_output,
         frame_output_path, image_error, prepare_output_dir,
         register_screencast_listener_with_cdp_timeout,
-        run_screencast_capture_future_with_cdp_timeout, screencast_capture_error,
-        screencast_setup_error,
+        run_screencast_capture_future_with_cdp_timeout, run_screencast_js_future_with_cdp_timeout,
+        screencast_capture_error, screencast_setup_error,
     };
     use crate::settings::{Settings, scoped_test_settings};
 
@@ -886,6 +904,26 @@ mod tests {
             .expect_err("screencast capture should time out")
             .to_string();
         assert!(error.contains("capture screenshot frame"));
+    }
+
+    #[test]
+    fn screencast_js_evaluate_respects_cdp_timeout() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+        let runtime = Runtime::new().expect("runtime");
+
+        let error = runtime
+            .block_on(run_screencast_js_future_with_cdp_timeout(
+                async {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    Ok::<(), &str>(())
+                },
+                "Screencast::evaluate_with_user_gesture()",
+            ))
+            .expect_err("screencast js evaluation should time out")
+            .to_string();
+        assert!(error.contains("Screencast::evaluate_with_user_gesture()"));
     }
 
     #[test]
