@@ -10046,6 +10046,102 @@ mod tests {
     }
 
     #[test]
+    fn elements_one_webframe_initial_runtime_config_keeps_mix_owner() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("elements-one-webframe-config-inherit", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(5_000)?);
+            outer.set_none_element_value(Some("elements-one-web-default"), true)?;
+            outer.run_js(
+                r#"(() => {
+                    document.getElementById('outer-host').innerHTML = `
+                        <iframe id="inner-frame" name="inner-frame"
+                            srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let owned_host = outer.ele("css:#outer-host")?;
+            let owned_inner = owned_host
+                .get_frame("css:#inner-frame")?
+                .expect("owned WebElement ElementsOne should find inner frame");
+            assert!(owned_inner.wait_for_doc_loaded(5_000)?);
+            assert_eq!(
+                owned_inner.ele(".does-not-exist")?.text()?,
+                Some("elements-one-web-default".to_string())
+            );
+            match owned_inner.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "owned ElementsOne WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("owned ElementsOne WebFrame should keep webpage owner, got id {id}");
+                }
+            }
+
+            let hosts = outer.find_all("css:#outer-host")?;
+            let borrowed_inner = hosts
+                .filter_one()
+                .get_frame("css:#inner-frame")?
+                .expect("borrowed WebElement ElementsOne should find inner frame");
+            assert!(borrowed_inner.wait_for_doc_loaded(5_000)?);
+            assert_eq!(
+                borrowed_inner.ele(".does-not-exist")?.text()?,
+                Some("elements-one-web-default".to_string())
+            );
+            match borrowed_inner.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "borrowed ElementsOne WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("borrowed ElementsOne WebFrame should keep webpage owner, got id {id}");
+                }
+            }
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("elements one webframe runtime-state inheritance regression");
+    }
+
+    #[test]
     fn singleton_tab_obj_reuses_webframe_state_when_enabled() {
         let _settings = scoped_test_settings();
         Settings::reset();

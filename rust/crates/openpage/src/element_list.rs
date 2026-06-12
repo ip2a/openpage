@@ -8063,6 +8063,18 @@ impl<'a, T> ElementsFilterOne<'a, T>
 where
     T: ElementListItem,
 {
+    fn current_one(&self) -> ElementsOne<'a, T> {
+        match self
+            .elements
+            .as_slice()
+            .get(self.index.saturating_sub(1))
+            .copied()
+        {
+            Some(element) => ElementsOne::some_with_config(element, self.config),
+            None => ElementsOne::none_with_config(self.config),
+        }
+    }
+
     pub fn attr(&self, name: &str, value: &str, equal: bool) -> OpenPageResult<ElementsOne<'a, T>> {
         self.find_matching(
             |element| match_option_string(element.list_attr(name)?, value, equal),
@@ -8293,6 +8305,89 @@ where
                 )
             },
         )
+    }
+}
+
+impl<'a> ElementsFilterOne<'a, Element> {
+    pub fn get_frame<'b, L>(&self, target: L) -> OpenPageResult<Option<crate::page::Frame>>
+    where
+        L: Into<crate::page::PageFrameTarget<'b>>,
+    {
+        self.current_one().get_frame(target)
+    }
+
+    pub fn get_frame_with_timeout<'b, L>(
+        &self,
+        target: L,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<crate::page::Frame>>
+    where
+        L: Into<crate::page::PageFrameTarget<'b>>,
+    {
+        self.current_one()
+            .get_frame_with_timeout(target, timeout_ms)
+    }
+
+    pub fn get_frame_by_index<I>(&self, index: I) -> OpenPageResult<Option<crate::page::Frame>>
+    where
+        I: crate::page::FrameIndexInput,
+    {
+        self.current_one().get_frame_by_index(index)
+    }
+
+    pub fn get_frame_by_index_with_timeout<I>(
+        &self,
+        index: I,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<crate::page::Frame>>
+    where
+        I: crate::page::FrameIndexInput,
+    {
+        self.current_one()
+            .get_frame_by_index_with_timeout(index, timeout_ms)
+    }
+}
+
+impl<'a> ElementsFilterOne<'a, WebElement> {
+    pub fn get_frame<'b, L>(&self, target: L) -> OpenPageResult<Option<crate::webpage::WebFrame>>
+    where
+        L: Into<crate::page::PageFrameTarget<'b>>,
+    {
+        self.current_one().get_frame(target)
+    }
+
+    pub fn get_frame_with_timeout<'b, L>(
+        &self,
+        target: L,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<crate::webpage::WebFrame>>
+    where
+        L: Into<crate::page::PageFrameTarget<'b>>,
+    {
+        self.current_one()
+            .get_frame_with_timeout(target, timeout_ms)
+    }
+
+    pub fn get_frame_by_index<I>(
+        &self,
+        index: I,
+    ) -> OpenPageResult<Option<crate::webpage::WebFrame>>
+    where
+        I: crate::page::FrameIndexInput,
+    {
+        self.current_one().get_frame_by_index(index)
+    }
+
+    pub fn get_frame_by_index_with_timeout<I>(
+        &self,
+        index: I,
+        timeout_ms: u64,
+    ) -> OpenPageResult<Option<crate::webpage::WebFrame>>
+    where
+        I: crate::page::FrameIndexInput,
+    {
+        self.current_one()
+            .get_frame_by_index_with_timeout(index, timeout_ms)
     }
 }
 

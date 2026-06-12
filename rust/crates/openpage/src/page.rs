@@ -13422,6 +13422,74 @@ mod tests {
     }
 
     #[test]
+    fn elements_one_frame_initial_runtime_config_inherits_parent_frame_setting() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (browser, temp_dir) = launch_headless_test_browser("elements-one-frame-config-inherit")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame_context("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(5_000)?);
+            outer.set_none_element_value(Some("elements-one-default"), true)?;
+            outer.run_js(
+                r#"(() => {
+                    document.getElementById('outer-host').innerHTML = `
+                        <iframe id="inner-frame" name="inner-frame"
+                            srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let owned_host = outer.ele("css:#outer-host")?;
+            let owned_inner = owned_host
+                .get_frame("css:#inner-frame")?
+                .expect("owned ElementsOne should find inner frame");
+            assert!(owned_inner.wait_for_doc_loaded(5_000)?);
+            assert_eq!(
+                owned_inner.ele(".does-not-exist")?.text()?,
+                Some("elements-one-default".to_string())
+            );
+
+            let hosts = outer.find_all("css:#outer-host")?;
+            let borrowed_inner = hosts
+                .filter_one()
+                .get_frame("css:#inner-frame")?
+                .expect("borrowed ElementsOne should find inner frame");
+            assert!(borrowed_inner.wait_for_doc_loaded(5_000)?);
+            assert_eq!(
+                borrowed_inner.ele(".does-not-exist")?.text()?,
+                Some("elements-one-default".to_string())
+            );
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("elements one frame runtime-state inheritance regression");
+    }
+
+    #[test]
     fn latest_tab_returns_page_reference_when_singleton_enabled() {
         let _settings = scoped_test_settings();
         Settings::reset();
