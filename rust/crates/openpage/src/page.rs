@@ -188,6 +188,7 @@ pub struct Page {
     init_scripts: Arc<std::sync::Mutex<Vec<String>>>,
     browser_pid: Option<u32>,
     none_element_config: ElementsOneRuntimeConfigHandle,
+    frame_cache: Arc<std::sync::Mutex<HashMap<String, Frame>>>,
     frame_none_element_configs:
         Arc<std::sync::Mutex<HashMap<String, ElementsOneRuntimeConfigHandle>>>,
 }
@@ -198,6 +199,18 @@ pub struct Frame {
     frame_id: String,
     frame_element: Arc<Element>,
     none_element_config: ElementsOneRuntimeConfigHandle,
+}
+
+impl std::fmt::Debug for Frame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Frame")
+            .field("frame_id", &self.frame_id)
+            .field(
+                "frame_element_backend_node_id",
+                &self.frame_element.backend_node_id(),
+            )
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -4102,6 +4115,7 @@ impl Page {
             none_element_config: Arc::new(std::sync::Mutex::new(
                 default_none_element_runtime_config(),
             )),
+            frame_cache: Arc::new(std::sync::Mutex::new(HashMap::new())),
             frame_none_element_configs: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
     }
@@ -4180,9 +4194,66 @@ impl Page {
         Ok(fresh_config)
     }
 
+    fn cached_frame(&self, frame_id: &str) -> OpenPageResult<Option<Frame>> {
+        if !singleton_tab_obj_enabled() {
+            return Ok(None);
+        }
+
+        self.prune_frame_caches()?;
+        self.frame_cache
+            .lock()
+            .map(|cache| cache.get(frame_id).cloned())
+            .map_err(|_| {
+                OpenPageError::PageOperation(component_state_lock_poisoned_message(
+                    "frame object cache",
+                    "frame 对象缓存",
+                ))
+            })
+    }
+
+    fn cache_frame(&self, frame: &Frame) -> OpenPageResult<()> {
+        if !singleton_tab_obj_enabled() {
+            return Ok(());
+        }
+
+        self.frame_cache
+            .lock()
+            .map(|mut cache| {
+                cache.insert(frame.id().to_string(), frame.clone());
+            })
+            .map_err(|_| {
+                OpenPageError::PageOperation(component_state_lock_poisoned_message(
+                    "frame object cache",
+                    "frame 对象缓存",
+                ))
+            })
+    }
+
     fn prune_frame_none_element_configs(&self) -> OpenPageResult<()> {
         let live_frame_ids: HashSet<String> =
             self.download_scope_frame_ids()?.into_iter().collect();
+        self.prune_frame_caches_for_live_ids(&live_frame_ids)
+    }
+
+    fn prune_frame_caches(&self) -> OpenPageResult<()> {
+        let live_frame_ids: HashSet<String> =
+            self.download_scope_frame_ids()?.into_iter().collect();
+        self.prune_frame_caches_for_live_ids(&live_frame_ids)
+    }
+
+    fn prune_frame_caches_for_live_ids(
+        &self,
+        live_frame_ids: &HashSet<String>,
+    ) -> OpenPageResult<()> {
+        let mut frames = self.frame_cache.lock().map_err(|_| {
+            OpenPageError::PageOperation(component_state_lock_poisoned_message(
+                "frame object cache",
+                "frame 对象缓存",
+            ))
+        })?;
+        frames.retain(|frame_id, _| live_frame_ids.contains(frame_id));
+        drop(frames);
+
         let mut configs = self.frame_none_element_configs.lock().map_err(|_| {
             OpenPageError::PageOperation(component_state_lock_poisoned_message(
                 "frame none element config cache",
@@ -7195,13 +7266,13 @@ impl Page {
                 }
             }
         };
+        if let Some(frame) = self.cached_frame(&frame_id)? {
+            return Ok(frame);
+        }
         let none_element_config = self.frame_none_element_config(&frame_id)?;
-        Ok(Frame::new(
-            self.clone(),
-            frame_id,
-            element,
-            none_element_config,
-        ))
+        let frame = Frame::new(self.clone(), frame_id, element, none_element_config);
+        self.cache_frame(&frame)?;
+        Ok(frame)
     }
 
     fn frame_owner_element_by_id(&self, frame_id: &str) -> OpenPageResult<Element> {
@@ -12535,6 +12606,10 @@ mod tests {
             frame.set_none_element_value(Some("missing"), true)?;
 
             let same_frame = page.get_frame_context("css:#demo-frame")?;
+            assert!(std::ptr::eq(
+                frame.frame_element(),
+                same_frame.frame_element()
+            ));
             assert_eq!(
                 same_frame.ele(".does-not-exist")?.text()?,
                 Some("missing".to_string())
@@ -12585,6 +12660,12 @@ mod tests {
                     .expect("frame runtime cache")
                     .contains_key(&old_frame_id)
             );
+            assert!(
+                page.frame_cache
+                    .lock()
+                    .expect("frame object cache")
+                    .contains_key(&old_frame_id)
+            );
 
             page.run_js(
                 r#"(() => {
@@ -12607,6 +12688,11 @@ mod tests {
                 .expect("frame runtime cache");
             assert!(!configs.contains_key(&old_frame_id));
             assert!(configs.contains_key(replacement.id()));
+            drop(configs);
+
+            let frames = page.frame_cache.lock().expect("frame object cache");
+            assert!(!frames.contains_key(&old_frame_id));
+            assert!(frames.contains_key(replacement.id()));
             Ok(())
         })();
 
