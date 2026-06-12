@@ -9638,10 +9638,34 @@ mod tests {
             frame.set_none_element_value(Some("missing"), true)?;
 
             let same_frame = page.get_frame("css:#demo-frame")?;
+            assert_eq!(same_frame.id(), frame.id());
+            assert!(std::ptr::eq(
+                frame.frame_element(),
+                same_frame.frame_element()
+            ));
             assert_eq!(
                 same_frame.ele(".does-not-exist")?.text()?,
                 Some("missing".to_string())
             );
+            match same_frame.frame_element_reference()? {
+                WebElement::Mix {
+                    element,
+                    page: owner,
+                } => {
+                    assert_eq!(element.attr("id")?, Some("demo-frame".to_string()));
+                    assert_eq!(owner.target_id(), page.target_id());
+                    assert_eq!(owner.mode()?, WebMode::Driver);
+                }
+                WebElement::Browser(element) => {
+                    panic!(
+                        "singleton mix WebFrame should keep mix frame element, got browser element {:?}",
+                        element.attr("id")?
+                    );
+                }
+                WebElement::Session(_) => {
+                    panic!("singleton mix WebFrame should keep mix frame element");
+                }
+            }
             match same_frame.owner_reference() {
                 BrowserTabReference::WebPage(owner) => {
                     assert_eq!(owner.target_id(), page.target_id());
