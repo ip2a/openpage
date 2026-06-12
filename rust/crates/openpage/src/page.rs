@@ -11445,7 +11445,10 @@ mod tests {
             inner.set_none_element_value(Some("nested missing"), true)?;
 
             let inner_by_index = outer.get_frame_by_index(1)?;
+            let inner_by_index_timeout = outer.get_frame_by_index_with_timeout(1, 500)?;
             let nested_frames = outer.get_frames(Some((By::TAG_NAME, "iframe")))?;
+            let nested_frames_timeout =
+                outer.get_frames_with_timeout(Some((By::TAG_NAME, "iframe")), 500)?;
             let host = outer.find("css:#outer-host")?;
             let inner_from_host = host.get_frame("css:#inner-frame")?;
 
@@ -11454,11 +11457,22 @@ mod tests {
                 inner.frame_element(),
                 inner_by_index.frame_element()
             ));
+            assert_eq!(inner_by_index_timeout.id(), inner.id());
+            assert!(std::ptr::eq(
+                inner.frame_element(),
+                inner_by_index_timeout.frame_element()
+            ));
             assert_eq!(nested_frames.len(), 1);
             assert_eq!(nested_frames[0].id(), inner.id());
             assert!(std::ptr::eq(
                 inner.frame_element(),
                 nested_frames[0].frame_element()
+            ));
+            assert_eq!(nested_frames_timeout.len(), 1);
+            assert_eq!(nested_frames_timeout[0].id(), inner.id());
+            assert!(std::ptr::eq(
+                inner.frame_element(),
+                nested_frames_timeout[0].frame_element()
             ));
             assert_eq!(inner_from_host.id(), inner.id());
             assert!(std::ptr::eq(
