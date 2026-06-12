@@ -2387,6 +2387,22 @@ impl SessionHandle {
     pub fn response_snapshot(&self) -> OpenPageResult<Option<SessionResponseInfo>> {
         self.response()
     }
+
+    pub fn html(&self) -> OpenPageResult<String> {
+        self.page().html()
+    }
+
+    pub fn raw_data(&self) -> OpenPageResult<Vec<u8>> {
+        self.page().raw_data()
+    }
+
+    pub fn json(&self) -> OpenPageResult<Option<Value>> {
+        self.page().json()
+    }
+
+    pub fn encoding(&self) -> OpenPageResult<Option<String>> {
+        self.page().encoding()
+    }
 }
 
 impl SessionPageSetter<'_> {
@@ -9559,6 +9575,16 @@ mod tests {
                 .response_snapshot()
                 .expect("handle response snapshot"),
             Some(response)
+        );
+        assert_eq!(handle.html().expect("handle html"), "shared session");
+        assert_eq!(
+            handle.raw_data().expect("handle raw data"),
+            b"shared session".to_vec()
+        );
+        assert_eq!(handle.json().expect("handle json"), None);
+        assert_eq!(
+            handle.encoding().expect("handle encoding").as_deref(),
+            Some("utf-8")
         );
 
         let _ = server.join().expect("server thread");
