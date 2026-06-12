@@ -230,13 +230,13 @@ impl Screencast {
 
         let result = match mode {
             ScreencastMode::Imgs => {
-                wait_for_task(&self.runtime, handle);
+                wait_for_task(&self.runtime, handle)?;
                 Ok(output_dir.clone())
             }
             ScreencastMode::FrugalImgs => {
                 self.runtime
                     .block_on(stop_cdp_screencast(self.page.clone()))?;
-                wait_for_task(&self.runtime, handle);
+                wait_for_task(&self.runtime, handle)?;
                 Ok(output_dir.clone())
             }
             ScreencastMode::Video | ScreencastMode::FrugalVideo => {
@@ -244,7 +244,7 @@ impl Screencast {
                     self.runtime
                         .block_on(stop_cdp_screencast(self.page.clone()))?;
                 }
-                wait_for_task(&self.runtime, handle);
+                wait_for_task(&self.runtime, handle)?;
                 let capture_dir = capture_path.ok_or_else(|| {
                     OpenPageError::BrowserOperation(screencast_capture_path_unavailable_message())
                 })?;
@@ -754,10 +754,21 @@ fn finish_screencast(shared: &Arc<ScreencastShared>, error: Option<String>) {
     }
 }
 
-fn wait_for_task(runtime: &Arc<Runtime>, handle: Option<JoinHandle<()>>) {
-    if let Some(handle) = handle {
-        let _ = runtime.block_on(async { handle.await });
-    }
+fn wait_for_task(runtime: &Arc<Runtime>, handle: Option<JoinHandle<()>>) -> OpenPageResult<()> {
+    let Some(mut handle) = handle else {
+        return Ok(());
+    };
+    runtime.block_on(async {
+        let timeout = cdp_timeout_duration();
+        let timeout_ms = timeout_duration_millis(timeout);
+        tokio::select! {
+            _ = &mut handle => Ok(()),
+            _ = tokio::time::sleep(timeout) => {
+                handle.abort();
+                Err(timeout_error("Screencast::stop().wait_for_task()", timeout_ms))
+            }
+        }
+    })
 }
 
 fn prepare_output_dir(path: &Path) -> OpenPageResult<PathBuf> {
@@ -779,6 +790,7 @@ mod tests {
     use std::env;
     use std::fs;
     use std::path::Path;
+    use std::sync::Arc;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use tokio::runtime::Runtime;
@@ -788,7 +800,7 @@ mod tests {
         frame_output_path, image_error, prepare_output_dir,
         register_screencast_listener_with_cdp_timeout,
         run_screencast_capture_future_with_cdp_timeout, run_screencast_js_future_with_cdp_timeout,
-        screencast_capture_error, screencast_setup_error,
+        screencast_capture_error, screencast_setup_error, wait_for_task,
     };
     use crate::settings::{Settings, scoped_test_settings};
 
@@ -924,6 +936,23 @@ mod tests {
             .expect_err("screencast js evaluation should time out")
             .to_string();
         assert!(error.contains("Screencast::evaluate_with_user_gesture()"));
+    }
+
+    #[test]
+    fn screencast_stop_task_wait_respects_cdp_timeout() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+        Settings::set_cdp_timeout(0.01);
+        let runtime = Arc::new(Runtime::new().expect("runtime"));
+        let handle = runtime.spawn(async {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        });
+
+        let error = wait_for_task(&runtime, Some(handle))
+            .expect_err("screencast task wait should time out")
+            .to_string();
+
+        assert!(error.contains("Screencast::stop().wait_for_task()"));
     }
 
     #[test]
