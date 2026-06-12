@@ -2632,6 +2632,96 @@ pub struct SessionRuntimeInfo {
     pub current_url: Option<String>,
 }
 
+impl SessionRuntimeInfo {
+    pub fn timeout_secs(&self) -> u64 {
+        self.timeout_secs
+    }
+
+    pub fn user_agent(&self) -> Option<&str> {
+        self.user_agent.as_deref()
+    }
+
+    pub fn headers(&self) -> &[(String, String)] {
+        &self.headers
+    }
+
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
+    pub fn cookies(&self) -> &[SessionCookie] {
+        &self.cookies
+    }
+
+    pub fn download_path(&self) -> &str {
+        &self.download_path
+    }
+
+    pub fn retry_times(&self) -> usize {
+        self.retry_times
+    }
+
+    pub fn retry_interval_millis(&self) -> u64 {
+        self.retry_interval_millis
+    }
+
+    pub fn http_proxy(&self) -> Option<&str> {
+        self.http_proxy.as_deref()
+    }
+
+    pub fn https_proxy(&self) -> Option<&str> {
+        self.https_proxy.as_deref()
+    }
+
+    pub fn params(&self) -> &[(String, String)] {
+        &self.params
+    }
+
+    pub fn param(&self, name: &str) -> Option<&str> {
+        self.params
+            .iter()
+            .find(|(candidate, _)| candidate == name)
+            .map(|(_, value)| value.as_str())
+    }
+
+    pub fn verify(&self) -> bool {
+        self.verify
+    }
+
+    pub fn auth(&self) -> Option<(&str, &str)> {
+        self.auth
+            .as_ref()
+            .map(|(username, password)| (username.as_str(), password.as_str()))
+    }
+
+    pub fn stream(&self) -> bool {
+        self.stream
+    }
+
+    pub fn cert(&self) -> Option<&SessionCert> {
+        self.cert.as_ref()
+    }
+
+    pub fn trust_env(&self) -> bool {
+        self.trust_env
+    }
+
+    pub fn max_redirects(&self) -> Option<usize> {
+        self.max_redirects
+    }
+
+    pub fn adapters(&self) -> &[SessionAdapterMount] {
+        &self.adapters
+    }
+
+    pub fn current_url(&self) -> Option<&str> {
+        self.current_url.as_deref()
+    }
+}
+
 struct PendingSessionResponse {
     requested_url: String,
     response: reqwest::blocking::Response,
@@ -9347,29 +9437,45 @@ mod tests {
             .to_string();
 
         assert_eq!(snapshot.timeout_secs, 21);
+        assert_eq!(snapshot.timeout_secs(), 21);
         assert_eq!(snapshot.user_agent.as_deref(), Some("OpenPage/TestAgent"));
+        assert_eq!(snapshot.user_agent(), Some("OpenPage/TestAgent"));
         assert_eq!(snapshot.download_path, expected_download_path);
+        assert_eq!(snapshot.download_path(), expected_download_path);
         assert_eq!(snapshot.retry_times, 4);
+        assert_eq!(snapshot.retry_times(), 4);
         assert_eq!(snapshot.retry_interval_millis, 250);
+        assert_eq!(snapshot.retry_interval_millis(), 250);
         assert_eq!(
             snapshot.http_proxy.as_deref(),
             Some("http://127.0.0.1:7890")
         );
+        assert_eq!(snapshot.http_proxy(), Some("http://127.0.0.1:7890"));
         assert_eq!(
             snapshot.https_proxy.as_deref(),
             Some("http://127.0.0.1:7891")
         );
+        assert_eq!(snapshot.https_proxy(), Some("http://127.0.0.1:7891"));
         assert_eq!(snapshot.params, vec![("page".to_string(), "2".to_string())]);
+        assert_eq!(snapshot.params(), &[("page".to_string(), "2".to_string())]);
+        assert_eq!(snapshot.param("page"), Some("2"));
         assert!(!snapshot.verify);
+        assert!(!snapshot.verify());
         assert_eq!(
             snapshot.auth,
             Some(("alice".to_string(), "secret".to_string()))
         );
+        assert_eq!(snapshot.auth(), Some(("alice", "secret")));
         assert!(snapshot.stream);
+        assert!(snapshot.stream());
         assert!(snapshot.cert.is_none());
+        assert!(snapshot.cert().is_none());
         assert!(!snapshot.trust_env);
+        assert!(!snapshot.trust_env());
         assert_eq!(snapshot.max_redirects, Some(5));
+        assert_eq!(snapshot.max_redirects(), Some(5));
         assert!(snapshot.current_url.is_none());
+        assert!(snapshot.current_url().is_none());
         assert!(
             snapshot
                 .headers
@@ -9380,7 +9486,10 @@ mod tests {
                 .headers
                 .contains(&("x-one".to_string(), "1".to_string()))
         );
+        assert_eq!(snapshot.header("Accept"), Some("text/html"));
+        assert_eq!(snapshot.headers().len(), snapshot.headers.len());
         assert_eq!(snapshot.cookies.len(), 1);
+        assert_eq!(snapshot.cookies().len(), 1);
         assert_eq!(snapshot.cookies[0].name, "sid".to_string());
         assert_eq!(snapshot.cookies[0].value, "abc".to_string());
         assert_eq!(snapshot.cookies[0].same_site.as_deref(), Some("Lax"));
@@ -9391,6 +9500,7 @@ mod tests {
                 adapter,
             }]
         );
+        assert_eq!(snapshot.adapters().len(), 1);
     }
 
     #[test]
