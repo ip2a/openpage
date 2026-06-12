@@ -329,18 +329,25 @@ impl DisconnectedFrame {
 
 impl NavigationTracker {
     fn new(runtime: Arc<Runtime>, page: OxPage) -> Self {
-        let snapshot = initial_navigation_snapshot(runtime.as_ref(), &page).unwrap_or_default();
+        let (snapshot, initial_error) = match initial_navigation_snapshot(runtime.as_ref(), &page) {
+            Ok(snapshot) => (snapshot, None),
+            Err(err) => (PageNavigationSnapshot::default(), Some(err.to_string())),
+        };
         let shared = Arc::new(NavigationShared::new(snapshot));
         let tracker = Self {
             shared: Arc::clone(&shared),
         };
 
-        let _ = execute_page_command_blocking(
+        if let Err(err) = execute_page_command_blocking(
             runtime.as_ref(),
             &page,
             SetLifecycleEventsEnabledParams::new(true),
             "Page::set_lifecycle_events_enabled()",
-        );
+        ) {
+            set_navigation_last_error(&shared, err.to_string());
+        } else if let Some(error) = initial_error {
+            set_navigation_last_error(&shared, error);
+        }
 
         let lifecycle_shared = Arc::clone(&shared);
         let lifecycle_page = page.clone();
@@ -415,16 +422,16 @@ impl NavigationTracker {
     }
 
     fn snapshot(&self) -> OpenPageResult<PageNavigationSnapshot> {
-        self.shared
-            .state
-            .lock()
-            .map(|state| state.snapshot.clone())
-            .map_err(|_| {
-                OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
-                    "page navigation state",
-                    "页面导航状态",
-                ))
-            })
+        let state = self.shared.state.lock().map_err(|_| {
+            OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
+                "page navigation state",
+                "页面导航状态",
+            ))
+        })?;
+        if let Some(error) = state.last_error.as_ref() {
+            return Err(OpenPageError::PageOperation(error.clone()));
+        }
+        Ok(state.snapshot.clone())
     }
 }
 
@@ -8827,7 +8834,8 @@ mod tests {
     use url::Url;
 
     use super::{
-        Page, PageElementContent, PageElementInfo, PageSaveContent, action_drag_payload,
+        NavigationShared, NavigationTracker, Page, PageElementContent, PageElementInfo,
+        PageNavigationSnapshot, PageSaveContent, action_drag_payload,
         browser_cookie_param_from_session_cookie, compose_frame_html,
         cookie_domain_candidates_for_url, cookie_param, default_frame_locator,
         delete_cookie_params, frame_locator, frame_locator_input, history_entry_index,
@@ -13506,6 +13514,33 @@ mod tests {
             matches!(error, OpenPageError::Timeout(ref message) if message.contains("register navigation lifecycle listener")),
             "unexpected navigation registration timeout error: {error}"
         );
+    }
+
+    #[test]
+    fn page_navigation_snapshot_reports_tracker_initialization_errors() {
+        let shared = Arc::new(NavigationShared::new(PageNavigationSnapshot {
+            current_url: Some("about:blank".to_string()),
+            ..PageNavigationSnapshot::default()
+        }));
+        let tracker = NavigationTracker {
+            shared: Arc::clone(&shared),
+        };
+
+        assert_eq!(
+            tracker
+                .snapshot()
+                .expect("navigation snapshot without error")
+                .current_url
+                .as_deref(),
+            Some("about:blank")
+        );
+
+        super::set_navigation_last_error(&shared, "navigation setup failed".to_string());
+        let error = tracker
+            .snapshot()
+            .expect_err("navigation setup error should be reported")
+            .to_string();
+        assert!(error.contains("navigation setup failed"));
     }
 
     #[test]
