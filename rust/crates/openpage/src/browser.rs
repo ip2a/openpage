@@ -276,6 +276,14 @@ impl LaunchOptions {
         resolved_launch_options_address(self)
     }
 
+    pub fn remote_debugging_port(&self) -> Option<u16> {
+        self.remote_debugging_port
+    }
+
+    pub fn ws_address(&self) -> Option<&str> {
+        self.ws_address.as_deref()
+    }
+
     pub fn user(&self) -> &str {
         chrome_profile_directory(&self.args)
     }
@@ -308,6 +316,18 @@ impl LaunchOptions {
         &self.prefs
     }
 
+    pub fn preferences_to_remove(&self) -> &[String] {
+        &self.prefs_to_remove
+    }
+
+    pub fn flags(&self) -> &[String] {
+        &self.flags
+    }
+
+    pub fn source_ini_path(&self) -> Option<&Path> {
+        self.source_ini_path.as_deref()
+    }
+
     pub fn system_user_path(&self) -> bool {
         self.system_user_path
     }
@@ -330,6 +350,22 @@ impl LaunchOptions {
 
     pub fn is_headless(&self) -> bool {
         self.headless
+    }
+
+    pub fn window_size(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub fn is_no_sandbox(&self) -> bool {
+        self.no_sandbox
     }
 
     pub fn retry_times(&self) -> usize {
@@ -364,12 +400,24 @@ impl LaunchOptions {
         self.download_file_exists.as_str()
     }
 
+    pub fn download_file_exists_mode(&self) -> DownloadFileExistsMode {
+        self.download_file_exists
+    }
+
     pub fn user_agent(&self) -> Option<&str> {
         self.user_agent.as_deref()
     }
 
     pub fn is_incognito(&self) -> bool {
         self.incognito
+    }
+
+    pub fn is_ignore_certificate_errors(&self) -> bool {
+        self.ignore_https_errors
+    }
+
+    pub fn is_disable_default_args(&self) -> bool {
+        self.disable_default_args
     }
 
     pub fn is_no_imgs(&self) -> bool {
@@ -386,6 +434,10 @@ impl LaunchOptions {
 
     pub fn is_new_env(&self) -> bool {
         self.new_env
+    }
+
+    pub fn is_clear_file_flags(&self) -> bool {
+        self.clear_file_flags
     }
 
     pub fn set_retry(
@@ -5601,6 +5653,10 @@ mod tests {
 
         assert_eq!(options.download_file_exists, DownloadFileExistsMode::Rename);
         assert_eq!(options.download_file_exists(), "rename");
+        assert_eq!(
+            options.download_file_exists_mode(),
+            DownloadFileExistsMode::Rename
+        );
 
         options.set_download_file_exists_mode(DownloadFileExistsMode::Overwrite);
         assert_eq!(
@@ -5608,12 +5664,53 @@ mod tests {
             DownloadFileExistsMode::Overwrite
         );
         assert_eq!(options.download_file_exists(), "overwrite");
+        assert_eq!(
+            options.download_file_exists_mode(),
+            DownloadFileExistsMode::Overwrite
+        );
 
         options
             .when_download_file_exists("skip")
             .expect("set download file-exists mode");
         assert_eq!(options.download_file_exists, DownloadFileExistsMode::Skip);
         assert_eq!(options.download_file_exists(), "skip");
+        assert_eq!(
+            options.download_file_exists_mode(),
+            DownloadFileExistsMode::Skip
+        );
+    }
+
+    #[test]
+    fn launch_options_state_accessors_report_default_values() {
+        let options = LaunchOptions::default();
+
+        assert_eq!(options.remote_debugging_port(), None);
+        assert_eq!(options.ws_address(), None);
+        assert_eq!(options.window_size(), (1280, 900));
+        assert_eq!(options.width(), 1280);
+        assert_eq!(options.height(), 900);
+        assert!(!options.is_no_sandbox());
+        assert!(!options.is_ignore_certificate_errors());
+        assert!(!options.is_disable_default_args());
+        assert!(options.preferences_to_remove().is_empty());
+        assert!(options.flags().is_empty());
+        assert!(!options.is_clear_file_flags());
+        assert_eq!(options.source_ini_path(), None);
+    }
+
+    #[test]
+    fn launch_options_state_accessors_reflect_configured_values() {
+        let mut options = LaunchOptions::default();
+        options.width = 1024;
+        options.height = 768;
+        options.no_sandbox = true;
+        options.disable_default_args = true;
+
+        assert_eq!(options.window_size(), (1024, 768));
+        assert_eq!(options.width(), 1024);
+        assert_eq!(options.height(), 768);
+        assert!(options.is_no_sandbox());
+        assert!(options.is_disable_default_args());
     }
 
     #[test]
@@ -5768,9 +5865,11 @@ mod tests {
 
         options.ignore_certificate_errors(true);
         assert!(options.ignore_https_errors);
+        assert!(options.is_ignore_certificate_errors());
 
         options.ignore_certificate_errors(false);
         assert!(!options.ignore_https_errors);
+        assert!(!options.is_ignore_certificate_errors());
     }
 
     #[test]
@@ -5867,8 +5966,10 @@ mod tests {
         assert!(options.is_auto_port());
         assert_eq!(options.auto_port_scope(), Some(DEFAULT_AUTO_PORT_SCOPE));
         assert!(options.remote_debugging_port.is_none());
+        assert_eq!(options.remote_debugging_port(), None);
         assert!(options.address.is_none());
         assert!(options.ws_address.is_none());
+        assert_eq!(options.ws_address(), None);
         assert!(options.user_data_dir.is_none());
         assert!(!options.system_user_path);
 
@@ -5893,8 +5994,10 @@ mod tests {
         assert!(options.is_auto_port());
         assert_eq!(options.auto_port_scope(), Some((19600, 19616)));
         assert!(options.remote_debugging_port.is_none());
+        assert_eq!(options.remote_debugging_port(), None);
         assert!(options.address.is_none());
         assert!(options.ws_address.is_none());
+        assert_eq!(options.ws_address(), None);
         assert!(options.user_data_dir.is_none());
         assert!(!options.system_user_path);
     }
@@ -6098,6 +6201,7 @@ mod tests {
         assert!(!loaded.is_headless());
         assert!(loaded.incognito);
         assert!(loaded.ignore_https_errors);
+        assert!(loaded.is_ignore_certificate_errors());
         assert!(loaded.no_imgs);
         assert!(loaded.no_js);
         assert!(loaded.mute);
@@ -6120,6 +6224,7 @@ mod tests {
             Some(&json!(0))
         );
         assert_eq!(loaded.flags, vec!["test-flag@1".to_string()]);
+        assert_eq!(loaded.flags(), &["test-flag@1".to_string()]);
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -6175,8 +6280,7 @@ mod tests {
         assert_eq!(options.browser_path(), "project-chrome");
         assert_eq!(
             options
-                .source_ini_path
-                .as_ref()
+                .source_ini_path()
                 .and_then(|path| fs::canonicalize(path).ok()),
             Some(fs::canonicalize(&project_ini).expect("canonicalize source project ini"))
         );
@@ -6213,6 +6317,7 @@ mod tests {
         );
         assert!(loaded.user_agent.is_none());
         assert!(loaded.source_ini_path.is_none());
+        assert_eq!(loaded.source_ini_path(), None);
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -6297,7 +6402,9 @@ mod tests {
         );
         assert_eq!(options.preferences().get("profile.demo"), Some(&json!(1)));
         assert!(options.flags.iter().any(|flag| flag == "demo-flag"));
+        assert!(options.flags().iter().any(|flag| flag == "demo-flag"));
         assert!(options.clear_file_flags);
+        assert!(options.is_clear_file_flags());
     }
 
     #[test]
@@ -6307,6 +6414,7 @@ mod tests {
         assert_eq!(options.address(), "127.0.0.1:9222");
         assert_eq!(options.load_mode(), "normal");
         assert!(options.source_ini_path.is_some());
+        assert!(options.source_ini_path().is_some());
     }
 
     #[test]
@@ -6325,10 +6433,7 @@ mod tests {
 
         assert_eq!(loaded.user(), "Profile 9");
         assert_eq!(loaded.user_agent.as_deref(), Some("ReadSpecifiedIni/1.0"));
-        assert_eq!(
-            loaded.source_ini_path.as_deref(),
-            Some(config_path.as_path())
-        );
+        assert_eq!(loaded.source_ini_path(), Some(config_path.as_path()));
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -6395,7 +6500,7 @@ mod tests {
                 .get("profile.default_content_settings.popups"),
             Some(&json!(0))
         );
-        assert!(options.flags.is_empty());
+        assert!(options.flags().is_empty());
     }
 
     #[test]
@@ -6453,8 +6558,10 @@ mod tests {
         options.set_local_port(9333);
 
         assert_eq!(options.remote_debugging_port, Some(9333));
+        assert_eq!(options.remote_debugging_port(), Some(9333));
         assert_eq!(options.address.as_deref(), Some("127.0.0.1:9333"));
         assert!(options.ws_address.is_none());
+        assert_eq!(options.ws_address(), None);
         assert!(!options.auto_port);
         assert!(options.auto_port_scope.is_none());
     }
@@ -6485,7 +6592,9 @@ mod tests {
 
         assert_eq!(options.address.as_deref(), Some("127.0.0.1:9222"));
         assert_eq!(options.remote_debugging_port, Some(9222));
+        assert_eq!(options.remote_debugging_port(), Some(9222));
         assert!(options.ws_address.is_none());
+        assert_eq!(options.ws_address(), None);
         assert!(!options.auto_port);
         assert!(options.auto_port_scope.is_none());
     }
@@ -6574,7 +6683,12 @@ mod tests {
             options.ws_address.as_deref(),
             Some("wss://127.0.0.1:9222/devtools/browser/abc")
         );
+        assert_eq!(
+            options.ws_address(),
+            Some("wss://127.0.0.1:9222/devtools/browser/abc")
+        );
         assert_eq!(options.remote_debugging_port, Some(9222));
+        assert_eq!(options.remote_debugging_port(), Some(9222));
         assert!(!options.auto_port);
     }
 
@@ -6755,6 +6869,10 @@ mod tests {
             options.prefs_to_remove,
             vec!["profile.default_content_settings.popups".to_string()]
         );
+        assert_eq!(
+            options.preferences_to_remove(),
+            &["profile.default_content_settings.popups".to_string()]
+        );
     }
 
     #[test]
@@ -6797,6 +6915,7 @@ mod tests {
         options.clear_flags_in_file();
 
         assert!(options.clear_file_flags);
+        assert!(options.is_clear_file_flags());
     }
 
     #[test]
@@ -6810,6 +6929,13 @@ mod tests {
         assert_eq!(
             options.flags,
             vec![
+                "temporary-unexpire-flags-m118@2".to_string(),
+                "disable-accelerated-2d-canvas".to_string()
+            ]
+        );
+        assert_eq!(
+            options.flags(),
+            &[
                 "temporary-unexpire-flags-m118@2".to_string(),
                 "disable-accelerated-2d-canvas".to_string()
             ]
