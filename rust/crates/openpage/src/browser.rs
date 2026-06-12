@@ -348,12 +348,44 @@ impl LaunchOptions {
         option_path_string(self.tmp_path.as_deref())
     }
 
+    pub fn cache_path(&self) -> String {
+        option_path_string(self.cache_path.as_deref())
+    }
+
     pub fn download_path(&self) -> String {
         option_path_string(self.download_path.as_deref())
     }
 
     pub fn load_mode(&self) -> &'static str {
         self.load_mode.as_str()
+    }
+
+    pub fn download_file_exists(&self) -> &'static str {
+        self.download_file_exists.as_str()
+    }
+
+    pub fn user_agent(&self) -> Option<&str> {
+        self.user_agent.as_deref()
+    }
+
+    pub fn is_incognito(&self) -> bool {
+        self.incognito
+    }
+
+    pub fn is_no_imgs(&self) -> bool {
+        self.no_imgs
+    }
+
+    pub fn is_no_js(&self) -> bool {
+        self.no_js
+    }
+
+    pub fn is_mute(&self) -> bool {
+        self.mute
+    }
+
+    pub fn is_new_env(&self) -> bool {
+        self.new_env
     }
 
     pub fn set_retry(
@@ -5554,6 +5586,14 @@ mod tests {
     }
 
     #[test]
+    fn launch_options_download_file_exists_reports_default_mode() {
+        let options = LaunchOptions::default();
+
+        assert_eq!(options.download_file_exists, DownloadFileExistsMode::Rename);
+        assert_eq!(options.download_file_exists(), "rename");
+    }
+
+    #[test]
     fn browser_parse_errors_follow_settings_language() {
         let _guard = scoped_test_settings();
         Settings::reset();
@@ -5666,12 +5706,15 @@ mod tests {
     #[test]
     fn launch_options_set_cache_path_updates_cache_directory() {
         let mut options = LaunchOptions::default();
+        assert_eq!(options.cache_path(), "");
+
         options.set_cache_path("/tmp/openpage-cache");
 
         assert_eq!(
             options.cache_path,
             Some(PathBuf::from("/tmp/openpage-cache"))
         );
+        assert_eq!(options.cache_path(), "/tmp/openpage-cache");
     }
 
     #[test]
@@ -5688,9 +5731,12 @@ mod tests {
     #[test]
     fn launch_options_set_user_agent_updates_user_agent_setting() {
         let mut options = LaunchOptions::default();
+        assert_eq!(options.user_agent(), None);
+
         options.set_user_agent("Mozilla/5.0 OpenPage");
 
         assert_eq!(options.user_agent, Some("Mozilla/5.0 OpenPage".to_string()));
+        assert_eq!(options.user_agent(), Some("Mozilla/5.0 OpenPage"));
     }
 
     #[test]
@@ -5710,9 +5756,11 @@ mod tests {
 
         options.incognito(true);
         assert!(options.incognito);
+        assert!(options.is_incognito());
 
         options.incognito(false);
         assert!(!options.incognito);
+        assert!(!options.is_incognito());
     }
 
     #[test]
@@ -5735,9 +5783,11 @@ mod tests {
 
         options.no_imgs(true);
         assert!(options.no_imgs);
+        assert!(options.is_no_imgs());
 
         options.no_imgs(false);
         assert!(!options.no_imgs);
+        assert!(!options.is_no_imgs());
     }
 
     #[test]
@@ -5746,9 +5796,11 @@ mod tests {
 
         options.no_js(true);
         assert!(options.no_js);
+        assert!(options.is_no_js());
 
         options.no_js(false);
         assert!(!options.no_js);
+        assert!(!options.is_no_js());
     }
 
     #[test]
@@ -5757,9 +5809,11 @@ mod tests {
 
         options.mute(true);
         assert!(options.mute);
+        assert!(options.is_mute());
 
         options.mute(false);
         assert!(!options.mute);
+        assert!(!options.is_mute());
     }
 
     #[test]
@@ -6504,9 +6558,11 @@ mod tests {
         let mut options = LaunchOptions::default();
         options.new_env(true);
         assert!(options.new_env);
+        assert!(options.is_new_env());
 
         options.new_env(false);
         assert!(!options.new_env);
+        assert!(!options.is_new_env());
     }
 
     #[test]
