@@ -10084,6 +10084,13 @@ mod tests {
             assert!(inner.wait_for_doc_loaded(5_000)?);
             inner.set_none_element_value(Some("object-target-missing"), true)?;
 
+            let driver_target = page.driver.get_frame(&inner)?;
+            assert_eq!(driver_target.id(), inner.id());
+            assert_eq!(
+                driver_target.ele(".does-not-exist")?.text()?,
+                Some("object-target-missing".to_string())
+            );
+
             let page_target = page.get_frame(&inner)?;
             assert_eq!(page_target.id(), inner.id());
             assert_eq!(
