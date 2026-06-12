@@ -10134,6 +10134,101 @@ mod tests {
     }
 
     #[test]
+    fn singleton_tab_obj_prunes_nested_webframe_after_parent_frame_navigation() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(true);
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webframe-parent-navigation-singleton", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(2_000)?);
+            outer.set_none_element_value(Some("outer missing"), true)?;
+            outer.run_js(
+                r#"(() => {
+                    document.getElementById('outer-host').innerHTML = `
+                        <iframe id="inner-frame" name="inner-frame"
+                            srcdoc="<html><body><button id='inside'>first</button></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let first_inner = outer.get_frame("css:#inner-frame")?;
+            assert!(first_inner.wait_for_doc_loaded(2_000)?);
+            first_inner.set_none_element_value(Some("inner missing"), true)?;
+
+            page.run_js(
+                r#"(() => {
+                    document.getElementById('outer-frame').srcdoc = `
+                        <html><body>
+                            <iframe id="inner-frame" name="inner-frame"
+                                srcdoc="<html><body><button id='inside'>second</button></body></html>">
+                            </iframe>
+                        </body></html>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+            assert!(outer.wait_for_doc_loaded(2_000)?);
+
+            let second_inner = outer.get_frame("css:#inner-frame")?;
+            assert!(second_inner.wait_for_doc_loaded(2_000)?);
+            assert_ne!(second_inner.id(), first_inner.id());
+            assert_eq!(
+                second_inner.find("css:#inside")?.text()?,
+                Some("second".to_string())
+            );
+            assert_eq!(
+                second_inner.ele(".does-not-exist")?.text()?,
+                Some("outer missing".to_string())
+            );
+            assert!(!first_inner.is_alive()?);
+            match second_inner.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "nested WebFrame after parent navigation should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!(
+                        "nested WebFrame after parent navigation should keep webpage owner, got id {id}"
+                    );
+                }
+            }
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("parent webframe navigation cache prune regression");
+    }
+
+    #[test]
     fn singleton_tab_obj_returns_fresh_webframe_state_when_disabled() {
         let _settings = scoped_test_settings();
         Settings::reset();

@@ -7531,15 +7531,26 @@ impl Page {
         timeout_ms: Option<u64>,
         await_promise: bool,
     ) -> OpenPageResult<Value> {
-        let context_id = self.frame_context_id(frame_id)?;
-        let params = EvaluateParams::builder()
-            .expression(expression)
-            .context_id(context_id)
-            .await_promise(await_promise)
-            .build()
-            .map_err(OpenPageError::PageOperation)?;
         let timeout_ms = resolve_javascript_timeout_ms(timeout_ms, self.javascript_timeout_ms()?);
-        self.evaluate_params_with_timeout(params, timeout_ms)
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        loop {
+            let context_id = self.frame_context_id(frame_id)?;
+            let params = EvaluateParams::builder()
+                .expression(expression)
+                .context_id(context_id)
+                .await_promise(await_promise)
+                .build()
+                .map_err(OpenPageError::PageOperation)?;
+            match self.evaluate_params_with_timeout(params, remaining_timeout_ms(deadline)) {
+                Ok(value) => return Ok(value),
+                Err(OpenPageError::JavaScript(message))
+                    if frame_execution_context_was_stale(&message) && Instant::now() < deadline =>
+                {
+                    sleep(Duration::from_millis(50));
+                }
+                Err(err) => return Err(err),
+            }
+        }
     }
 
     fn clear_page_markers(&self, markers: &[&str]) -> OpenPageResult<()> {
@@ -8848,6 +8859,10 @@ fn remaining_timeout_ms(deadline: Instant) -> u64 {
         .as_millis()
         .try_into()
         .unwrap_or(u64::MAX)
+}
+
+fn frame_execution_context_was_stale(message: &str) -> bool {
+    message.contains("Cannot find context with specified id")
 }
 
 fn resolve_implicit_wait_timeout_ms(configured_timeout_ms: Option<u64>) -> u64 {
@@ -11487,6 +11502,85 @@ mod tests {
             panic!("close headless browser: {err}");
         }
         result.expect("stale nested singleton frame cache regression");
+    }
+
+    #[test]
+    fn singleton_tab_obj_prunes_nested_frame_after_parent_frame_navigation() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(true);
+
+        let (browser, temp_dir) = launch_headless_test_browser("frame-parent-navigation-singleton")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(2_000)?);
+            outer.set_none_element_value(Some("outer missing"), true)?;
+            outer.run_js(
+                r#"(() => {
+                    document.getElementById('outer-host').innerHTML = `
+                        <iframe id="inner-frame" name="inner-frame"
+                            srcdoc="<html><body><button id='inside'>first</button></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let first_inner = outer.get_frame("css:#inner-frame")?;
+            assert!(first_inner.wait_for_doc_loaded(2_000)?);
+            first_inner.set_none_element_value(Some("inner missing"), true)?;
+
+            page.run_js(
+                r#"(() => {
+                    document.getElementById('outer-frame').srcdoc = `
+                        <html><body>
+                            <iframe id="inner-frame" name="inner-frame"
+                                srcdoc="<html><body><button id='inside'>second</button></body></html>">
+                            </iframe>
+                        </body></html>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+            assert!(outer.wait_for_doc_loaded(2_000)?);
+
+            let second_inner = outer.get_frame("css:#inner-frame")?;
+            assert!(second_inner.wait_for_doc_loaded(2_000)?);
+            assert_ne!(second_inner.id(), first_inner.id());
+            assert_eq!(
+                second_inner.find("css:#inside")?.text()?,
+                Some("second".to_string())
+            );
+            assert_eq!(
+                second_inner.ele(".does-not-exist")?.text()?,
+                Some("outer missing".to_string())
+            );
+            assert!(!first_inner.is_alive()?);
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("parent frame navigation cache prune regression");
     }
 
     #[test]
