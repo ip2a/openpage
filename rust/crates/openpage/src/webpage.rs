@@ -32,7 +32,7 @@ use crate::session::{
     SessionOptions, SessionPage, SessionXPathResult,
 };
 use crate::settings::{
-    component_state_lock_poisoned_message, driver_mode_only_message,
+    component_state_lock_poisoned_message, driver_mode_only_message, singleton_tab_obj_enabled,
     timeout_must_be_non_negative_message, wait_for_locator_timed_out_message, wait_timeout_result,
     web_browser_backed_option_required_message, web_driver_element_required_message,
     web_mode_invalid_message, web_timeout_base_non_negative_message,
@@ -1773,11 +1773,21 @@ impl WebElement {
         }
     }
 
-    fn wrap_browser_frame(&self, frame: Frame) -> WebFrame {
+    fn wrap_browser_frame_result(&self, frame: Frame) -> OpenPageResult<WebFrame> {
         match self {
-            Self::Browser(_) => WebFrame::Browser(frame),
-            Self::Mix { page, .. } => page.with_driver_frame(frame),
-            Self::Session(_) => WebFrame::Browser(frame),
+            Self::Browser(_) => Ok(WebFrame::Browser(frame)),
+            Self::Mix { page, .. } => {
+                let frame = if singleton_tab_obj_enabled() {
+                    let frame_element = page
+                        .driver
+                        .resolve_dom_backend_node_id(frame.frame_element().backend_node_id())?;
+                    page.driver.frame_from_element(frame_element)?
+                } else {
+                    frame
+                };
+                Ok(page.with_driver_frame(frame))
+            }
+            Self::Session(_) => Ok(WebFrame::Browser(frame)),
         }
     }
 
@@ -1959,7 +1969,7 @@ impl WebElement {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => element
                 .get_frame(target)
-                .map(|frame| self.wrap_browser_frame(frame)),
+                .and_then(|frame| self.wrap_browser_frame_result(frame)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame()"),
             )),
@@ -1977,7 +1987,7 @@ impl WebElement {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => element
                 .get_frame_with_timeout(target, timeout_ms)
-                .map(|frame| self.wrap_browser_frame(frame)),
+                .and_then(|frame| self.wrap_browser_frame_result(frame)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_with_timeout()"),
             )),
@@ -1988,7 +1998,7 @@ impl WebElement {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => element
                 .get_frame_by_index(index)
-                .map(|frame| self.wrap_browser_frame(frame)),
+                .and_then(|frame| self.wrap_browser_frame_result(frame)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_by_index()"),
             )),
@@ -2003,7 +2013,7 @@ impl WebElement {
         match self {
             Self::Browser(element) | Self::Mix { element, .. } => element
                 .get_frame_by_index_with_timeout(index, timeout_ms)
-                .map(|frame| self.wrap_browser_frame(frame)),
+                .and_then(|frame| self.wrap_browser_frame_result(frame)),
             Self::Session(_) => Err(OpenPageError::UnsupportedOperation(
                 driver_mode_only_message("get_frame_by_index_with_timeout()"),
             )),
@@ -9642,6 +9652,20 @@ mod tests {
             assert!(std::ptr::eq(
                 frame.frame_element(),
                 same_frame.frame_element()
+            ));
+            let frames = page.get_frames(Some("css:iframe"))?;
+            assert_eq!(frames.len(), 1);
+            assert_eq!(frames[0].id(), frame.id());
+            assert!(std::ptr::eq(
+                frame.frame_element(),
+                frames[0].frame_element()
+            ));
+            let host = page.find("css:body")?;
+            let frame_from_element = host.get_frame("css:#demo-frame")?;
+            assert_eq!(frame_from_element.id(), frame.id());
+            assert!(std::ptr::eq(
+                frame.frame_element(),
+                frame_from_element.frame_element()
             ));
             assert_eq!(
                 same_frame.ele(".does-not-exist")?.text()?,
