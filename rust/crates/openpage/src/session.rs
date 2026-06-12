@@ -912,6 +912,10 @@ impl SessionOptions {
         self.save(Some(path.as_path()))
     }
 
+    pub fn source_ini_path(&self) -> Option<&Path> {
+        self.source_ini_path.as_deref()
+    }
+
     pub fn timeout_secs(&self) -> u64 {
         self.timeout_secs
     }
@@ -8725,10 +8729,7 @@ mod tests {
         assert!(options.verify);
         assert!(options.trust_env);
         assert_eq!(options.max_redirects, Some(30));
-        assert_eq!(
-            options.source_ini_path.as_deref(),
-            Some(config_path.as_path())
-        );
+        assert_eq!(options.source_ini_path(), Some(config_path.as_path()));
         assert!(
             options
                 .headers
@@ -8752,6 +8753,7 @@ mod tests {
         assert_eq!(options.retry_times, 3);
         assert_eq!(options.retry_interval_millis, 2_000);
         assert!(options.source_ini_path.is_some());
+        assert!(options.source_ini_path().is_some());
         assert!(
             options
                 .headers
@@ -8794,8 +8796,7 @@ mod tests {
         );
         assert_eq!(
             options
-                .source_ini_path
-                .as_ref()
+                .source_ini_path()
                 .and_then(|path| fs::canonicalize(path).ok()),
             Some(fs::canonicalize(&project_ini).expect("canonicalize source project session ini"))
         );
@@ -8858,6 +8859,7 @@ mod tests {
         assert!(loaded.user_agent.is_none());
         assert!(loaded.auth.is_none());
         assert!(loaded.source_ini_path.is_none());
+        assert_eq!(loaded.source_ini_path(), None);
 
         let _ = fs::remove_dir_all(&dir);
     }
