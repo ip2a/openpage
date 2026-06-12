@@ -13250,10 +13250,22 @@ mod tests {
                 same_handle.ele(".does-not-exist")?.text()?,
                 Some("missing".to_string())
             );
+            let same_owned_handle = page.get_frame_context(frame.clone())?;
+            assert_eq!(
+                same_owned_handle.ele(".does-not-exist")?.text()?,
+                Some("missing".to_string())
+            );
             let host = page.find("css:body")?;
             let same_handle_from_element = host.get_frame(&frame)?;
             assert_eq!(
                 same_handle_from_element.ele(".does-not-exist")?.text()?,
+                Some("missing".to_string())
+            );
+            let same_owned_handle_from_element = host.get_frame(frame.clone())?;
+            assert_eq!(
+                same_owned_handle_from_element
+                    .ele(".does-not-exist")?
+                    .text()?,
                 Some("missing".to_string())
             );
 
