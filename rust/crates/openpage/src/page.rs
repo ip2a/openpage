@@ -244,6 +244,7 @@ pub struct DisconnectedFrame {
     frame_xpath: Option<String>,
     frame_css_path: Option<String>,
     frame_backend_node_id: BackendNodeId,
+    none_element_config: ElementsOneRuntimeConfigHandle,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -293,7 +294,9 @@ impl DisconnectedFrame {
             && !id.is_empty()
         {
             let locator = format!("css:#{id}");
-            if let Ok(frame) = page.get_frame_context(locator.as_str()) {
+            if let Ok(frame) = page
+                .frame_from_locator_with_config_source(locator.as_str(), &self.none_element_config)
+            {
                 return Ok(frame);
             }
         }
@@ -301,7 +304,9 @@ impl DisconnectedFrame {
             && !name.is_empty()
         {
             let locator = format!(r#"css:iframe[name="{name}"],frame[name="{name}"]"#);
-            if let Ok(frame) = page.get_frame_context(locator.as_str()) {
+            if let Ok(frame) = page
+                .frame_from_locator_with_config_source(locator.as_str(), &self.none_element_config)
+            {
                 return Ok(frame);
             }
         }
@@ -309,7 +314,9 @@ impl DisconnectedFrame {
             && !xpath.is_empty()
         {
             let locator = format!("xpath:{xpath}");
-            if let Ok(frame) = page.get_frame_context(locator.as_str()) {
+            if let Ok(frame) = page
+                .frame_from_locator_with_config_source(locator.as_str(), &self.none_element_config)
+            {
                 return Ok(frame);
             }
         }
@@ -317,13 +324,15 @@ impl DisconnectedFrame {
             && !css_path.is_empty()
         {
             let locator = format!("css:{css_path}");
-            if let Ok(frame) = page.get_frame_context(locator.as_str()) {
+            if let Ok(frame) = page
+                .frame_from_locator_with_config_source(locator.as_str(), &self.none_element_config)
+            {
                 return Ok(frame);
             }
         }
 
         let frame_element = page.resolve_dom_backend_node_id(self.frame_backend_node_id)?;
-        page.get_frame_context(&frame_element)
+        page.frame_from_element_with_config_source(frame_element, &self.none_element_config)
     }
 }
 
@@ -1705,7 +1714,9 @@ impl Frame {
             && !id.is_empty()
         {
             let locator = format!("css:#{id}");
-            if let Ok(frame) = page.get_frame_context(locator.as_str()) {
+            if let Ok(frame) = page
+                .frame_from_locator_with_config_source(locator.as_str(), &self.none_element_config)
+            {
                 return Ok(frame);
             }
         }
@@ -1713,7 +1724,9 @@ impl Frame {
             && !name.is_empty()
         {
             let locator = format!(r#"css:iframe[name="{name}"],frame[name="{name}"]"#);
-            if let Ok(frame) = page.get_frame_context(locator.as_str()) {
+            if let Ok(frame) = page
+                .frame_from_locator_with_config_source(locator.as_str(), &self.none_element_config)
+            {
                 return Ok(frame);
             }
         }
@@ -1721,7 +1734,9 @@ impl Frame {
             && !xpath.is_empty()
         {
             let locator = format!("xpath:{xpath}");
-            if let Ok(frame) = page.get_frame_context(locator.as_str()) {
+            if let Ok(frame) = page
+                .frame_from_locator_with_config_source(locator.as_str(), &self.none_element_config)
+            {
                 return Ok(frame);
             }
         }
@@ -1729,13 +1744,15 @@ impl Frame {
             && !css_path.is_empty()
         {
             let locator = format!("css:{css_path}");
-            if let Ok(frame) = page.get_frame_context(locator.as_str()) {
+            if let Ok(frame) = page
+                .frame_from_locator_with_config_source(locator.as_str(), &self.none_element_config)
+            {
                 return Ok(frame);
             }
         }
         let frame_element =
             page.resolve_dom_backend_node_id(self.frame_element.backend_node_id())?;
-        page.get_frame_context(&frame_element)
+        page.frame_from_element_with_config_source(frame_element, &self.none_element_config)
     }
 
     pub fn disconnect(self) -> OpenPageResult<DisconnectedFrame> {
@@ -1758,6 +1775,7 @@ impl Frame {
             frame_xpath,
             frame_css_path,
             frame_backend_node_id: self.frame_element.backend_node_id(),
+            none_element_config: self.none_element_config,
         })
     }
 
@@ -7320,6 +7338,15 @@ impl Page {
 
     pub(crate) fn frame_from_element(&self, element: Element) -> OpenPageResult<Frame> {
         self.frame_from_element_with_config_source(element, &self.none_element_config)
+    }
+
+    fn frame_from_locator_with_config_source(
+        &self,
+        locator: &str,
+        config_source: &ElementsOneRuntimeConfigHandle,
+    ) -> OpenPageResult<Frame> {
+        let element = self.get_frame_ele(locator)?;
+        self.frame_from_element_with_config_source(element, config_source)
     }
 
     pub(crate) fn frame_from_element_with_config_source(
@@ -13802,6 +13829,64 @@ mod tests {
 
         if let Err(err) = close_result {
             panic!("close headless browser after reconnect: {err}");
+        }
+    }
+
+    #[test]
+    fn frame_reconnect_preserves_runtime_config() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (browser, temp_dir) = launch_headless_test_browser("frame-reconnect-runtime-config")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<Page> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="demo-frame"
+                            srcdoc="<html><body><div id='inside'>frame reconnect</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let frame = page.get_frame_context("css:#demo-frame")?;
+            assert!(frame.wait_for_doc_loaded(5_000)?);
+            frame.set_none_element_value(Some("frame missing"), true)?;
+
+            let reconnected = frame.reconnect(0)?;
+            assert_eq!(
+                reconnected.ele(".does-not-exist")?.text()?,
+                Some("frame missing".to_string())
+            );
+
+            let disconnected = reconnected.disconnect()?;
+            let roundtrip = disconnected.reconnect(0)?;
+            assert_eq!(
+                roundtrip.ele(".does-not-exist")?.text()?,
+                Some("frame missing".to_string())
+            );
+            Ok(roundtrip.owner().clone())
+        })();
+
+        let page = match result {
+            Ok(page) => page,
+            Err(err) => {
+                let _ = browser.close();
+                let _ = fs::remove_dir_all(&temp_dir);
+                panic!("frame reconnect runtime config regression failed before cleanup: {err}");
+            }
+        };
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser after frame reconnect config test: {err}");
         }
     }
 

@@ -9142,6 +9142,92 @@ mod tests {
     }
 
     #[test]
+    fn webframe_reconnect_preserves_mix_runtime_config() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webframe-reconnect-runtime-config", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<WebFrame> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="demo-frame"
+                            srcdoc="<html><body><div id='inside'>frame reconnect</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let frame = page.get_frame("css:#demo-frame")?;
+            assert!(frame.wait_for_doc_loaded(5_000)?);
+            frame.set_none_element_value(Some("webframe missing"), true)?;
+
+            let reconnected = frame.reconnect(0)?;
+            assert_eq!(
+                reconnected.ele(".does-not-exist")?.text()?,
+                Some("webframe missing".to_string())
+            );
+            match reconnected.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "reconnected WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("reconnected WebFrame should keep webpage owner, got id {id}");
+                }
+            }
+
+            let disconnected = reconnected.disconnect()?;
+            let roundtrip = disconnected.reconnect(0)?;
+            assert_eq!(
+                roundtrip.ele(".does-not-exist")?.text()?,
+                Some("webframe missing".to_string())
+            );
+            match roundtrip.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "roundtrip WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("roundtrip WebFrame should keep webpage owner, got id {id}");
+                }
+            }
+            Ok(roundtrip)
+        })();
+
+        let frame = match result {
+            Ok(frame) => frame,
+            Err(err) => {
+                let _ = page.quit();
+                let _ = fs::remove_dir_all(&temp_dir);
+                panic!("webframe reconnect runtime config regression failed before cleanup: {err}");
+            }
+        };
+
+        let close_result = frame.owner().quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage after webframe reconnect config test: {err}");
+        }
+    }
+
+    #[test]
     fn webelement_new_tab_click_helpers_return_webpage_references() {
         let _settings = scoped_test_settings();
         Settings::reset();
