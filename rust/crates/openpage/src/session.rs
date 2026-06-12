@@ -825,6 +825,90 @@ impl SessionOptions {
         self.save(Some(path.as_path()))
     }
 
+    pub fn timeout_secs(&self) -> u64 {
+        self.timeout_secs
+    }
+
+    pub fn user_agent(&self) -> Option<&str> {
+        self.user_agent.as_deref()
+    }
+
+    pub fn headers(&self) -> &[(String, String)] {
+        &self.headers
+    }
+
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
+    pub fn cookies(&self) -> &[SessionCookieParam] {
+        &self.cookies
+    }
+
+    pub fn download_path(&self) -> &Path {
+        self.download_path.as_path()
+    }
+
+    pub fn retry_times(&self) -> usize {
+        self.retry_times
+    }
+
+    pub fn retry_interval_millis(&self) -> u64 {
+        self.retry_interval_millis
+    }
+
+    pub fn retry_interval(&self) -> f64 {
+        self.retry_interval_millis as f64 / 1000.0
+    }
+
+    pub fn http_proxy(&self) -> Option<&str> {
+        self.http_proxy.as_deref()
+    }
+
+    pub fn https_proxy(&self) -> Option<&str> {
+        self.https_proxy.as_deref()
+    }
+
+    pub fn params(&self) -> &[(String, String)] {
+        &self.params
+    }
+
+    pub fn param(&self, name: &str) -> Option<&str> {
+        self.params
+            .iter()
+            .find(|(candidate, _)| candidate == name)
+            .map(|(_, value)| value.as_str())
+    }
+
+    pub fn verify(&self) -> bool {
+        self.verify
+    }
+
+    pub fn auth(&self) -> Option<(&str, &str)> {
+        self.auth
+            .as_ref()
+            .map(|(username, password)| (username.as_str(), password.as_str()))
+    }
+
+    pub fn stream(&self) -> bool {
+        self.stream
+    }
+
+    pub fn cert(&self) -> Option<&SessionCert> {
+        self.cert.as_ref()
+    }
+
+    pub fn trust_env(&self) -> bool {
+        self.trust_env
+    }
+
+    pub fn max_redirects(&self) -> Option<usize> {
+        self.max_redirects
+    }
+
     pub fn set_timeout(&mut self, timeout_secs: u64) -> &mut Self {
         self.timeout_secs = timeout_secs;
         self
@@ -7712,20 +7796,37 @@ mod tests {
         let options = SessionOptions::default();
 
         assert_eq!(options.timeout_secs, 10);
+        assert_eq!(options.timeout_secs(), 10);
         assert!(options.verify);
+        assert!(options.verify());
         assert!(options.trust_env);
+        assert!(options.trust_env());
         assert_eq!(options.max_redirects, Some(30));
+        assert_eq!(options.max_redirects(), Some(30));
         assert_eq!(options.retry_times, 3);
+        assert_eq!(options.retry_times(), 3);
         assert_eq!(options.retry_interval_millis, 2_000);
+        assert_eq!(options.retry_interval_millis(), 2_000);
+        assert_eq!(options.retry_interval(), 2.0);
         assert_eq!(options.download_path, std::path::PathBuf::from("."));
+        assert_eq!(options.download_path(), std::path::Path::new("."));
         assert!(options.headers.is_empty());
+        assert!(options.headers().is_empty());
         assert!(options.cookies.is_empty());
+        assert!(options.cookies().is_empty());
         assert!(options.params.is_empty());
+        assert!(options.params().is_empty());
         assert!(options.auth.is_none());
+        assert!(options.auth().is_none());
         assert!(options.hooks().is_empty());
         assert!(!options.stream);
+        assert!(!options.stream());
         assert!(options.http_proxy.is_none());
+        assert!(options.http_proxy().is_none());
         assert!(options.https_proxy.is_none());
+        assert!(options.https_proxy().is_none());
+        assert!(options.user_agent().is_none());
+        assert!(options.cert().is_none());
         assert!(options.adapters().is_empty());
     }
 
@@ -7885,30 +7986,52 @@ mod tests {
             .add_adapter("http://example.test/api/", adapter.clone());
 
         assert_eq!(options.timeout_secs, 21);
+        assert_eq!(options.timeout_secs(), 21);
         assert_eq!(options.user_agent.as_deref(), Some("OpenPage/Test"));
+        assert_eq!(options.user_agent(), Some("OpenPage/Test"));
         assert_eq!(
             options.headers,
             vec![("accept".to_string(), "application/json".to_string())]
         );
+        assert_eq!(options.header("Accept"), Some("application/json"));
+        assert_eq!(options.headers().len(), 1);
         assert_eq!(options.cookies, cookies);
+        assert_eq!(options.cookies(), cookies.as_slice());
         assert_eq!(options.retry_times, 6);
+        assert_eq!(options.retry_times(), 6);
         assert_eq!(options.retry_interval_millis, 125);
+        assert_eq!(options.retry_interval_millis(), 125);
+        assert_eq!(options.retry_interval(), 0.125);
         assert_eq!(options.http_proxy.as_deref(), Some("http://127.0.0.1:8080"));
+        assert_eq!(options.http_proxy(), Some("http://127.0.0.1:8080"));
         assert_eq!(options.https_proxy, None);
+        assert_eq!(options.https_proxy(), None);
         assert_eq!(options.download_path, std::path::PathBuf::from("downloads"));
+        assert_eq!(options.download_path(), std::path::Path::new("downloads"));
         assert_eq!(
             options.auth,
             Some(("alice".to_string(), "secret".to_string()))
         );
+        assert_eq!(options.auth(), Some(("alice", "secret")));
         assert_eq!(options.params, vec![("page".to_string(), "2".to_string())]);
+        assert_eq!(options.params(), &[("page".to_string(), "2".to_string())]);
+        assert_eq!(options.param("page"), Some("2"));
         assert_eq!(
             options.cert,
             Some(SessionCert::Pem(std::path::PathBuf::from("client.pem")))
         );
+        assert_eq!(
+            options.cert(),
+            Some(&SessionCert::Pem(std::path::PathBuf::from("client.pem")))
+        );
         assert!(!options.verify);
+        assert!(!options.verify());
         assert!(options.stream);
+        assert!(options.stream());
         assert!(!options.trust_env);
+        assert!(!options.trust_env());
         assert_eq!(options.max_redirects, Some(5));
+        assert_eq!(options.max_redirects(), Some(5));
         assert_eq!(
             options.adapters(),
             &[SessionAdapterMount {
