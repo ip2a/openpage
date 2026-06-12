@@ -13163,8 +13163,32 @@ mod tests {
                 frame.frame_element(),
                 same_frame.frame_element()
             ));
+            let frames = page.get_frames(Some("css:iframe"))?;
+            assert_eq!(frames.len(), 1);
+            assert_eq!(frames[0].id(), frame.id());
+            assert!(std::ptr::eq(
+                frame.frame_element(),
+                frames[0].frame_element()
+            ));
+            let frames_with_timeout = page.get_frames_with_timeout(Some("css:iframe"), 500)?;
+            assert_eq!(frames_with_timeout.len(), 1);
+            assert_eq!(frames_with_timeout[0].id(), frame.id());
+            assert!(std::ptr::eq(
+                frame.frame_element(),
+                frames_with_timeout[0].frame_element()
+            ));
+            let frame_by_index_timeout = page.get_frame_by_index_with_timeout(1, 500)?;
+            assert_eq!(frame_by_index_timeout.id(), frame.id());
+            assert!(std::ptr::eq(
+                frame.frame_element(),
+                frame_by_index_timeout.frame_element()
+            ));
             assert_eq!(
                 same_frame.ele(".does-not-exist")?.text()?,
+                Some("missing".to_string())
+            );
+            assert_eq!(
+                frames_with_timeout[0].ele(".does-not-exist")?.text()?,
                 Some("missing".to_string())
             );
             Ok(())

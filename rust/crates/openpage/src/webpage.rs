@@ -10774,6 +10774,19 @@ mod tests {
                 frame.frame_element(),
                 frames[0].frame_element()
             ));
+            let frames_with_timeout = page.get_frames_with_timeout(Some("css:iframe"), 500)?;
+            assert_eq!(frames_with_timeout.len(), 1);
+            assert_eq!(frames_with_timeout[0].id(), frame.id());
+            assert!(std::ptr::eq(
+                frame.frame_element(),
+                frames_with_timeout[0].frame_element()
+            ));
+            let frame_by_index_timeout = page.get_frame_by_index_with_timeout(1, 500)?;
+            assert_eq!(frame_by_index_timeout.id(), frame.id());
+            assert!(std::ptr::eq(
+                frame.frame_element(),
+                frame_by_index_timeout.frame_element()
+            ));
             let host = page.find("css:body")?;
             let frame_from_element = host.get_frame("css:#demo-frame")?;
             assert_eq!(frame_from_element.id(), frame.id());
