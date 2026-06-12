@@ -612,6 +612,34 @@ impl SessionAdapter {
         Self::default()
     }
 
+    pub fn timeout_secs(&self) -> Option<u64> {
+        self.timeout_secs
+    }
+
+    pub fn http_proxy(&self) -> Option<Option<&str>> {
+        self.http_proxy.as_ref().map(|proxy| proxy.as_deref())
+    }
+
+    pub fn https_proxy(&self) -> Option<Option<&str>> {
+        self.https_proxy.as_ref().map(|proxy| proxy.as_deref())
+    }
+
+    pub fn verify(&self) -> Option<bool> {
+        self.verify
+    }
+
+    pub fn cert(&self) -> Option<Option<&SessionCert>> {
+        self.cert.as_ref().map(|cert| cert.as_ref())
+    }
+
+    pub fn trust_env(&self) -> Option<bool> {
+        self.trust_env
+    }
+
+    pub fn max_redirects(&self) -> Option<Option<usize>> {
+        self.max_redirects
+    }
+
     pub fn set_timeout(&mut self, timeout_secs: u64) -> &mut Self {
         self.timeout_secs = Some(timeout_secs);
         self
@@ -712,6 +740,65 @@ pub struct SessionRequestOptions {
     pub auth: Option<(String, String)>,
     pub hooks: Option<SessionHooks>,
     pub stream: Option<bool>,
+}
+
+impl SessionRequestOptions {
+    pub fn timeout_secs(&self) -> Option<u64> {
+        self.timeout_secs
+    }
+
+    pub fn retry_times(&self) -> Option<usize> {
+        self.retry_times
+    }
+
+    pub fn retry_interval_millis(&self) -> Option<u64> {
+        self.retry_interval_millis
+    }
+
+    pub fn retry_interval(&self) -> Option<f64> {
+        self.retry_interval_millis
+            .map(|millis| millis as f64 / 1000.0)
+    }
+
+    pub fn user_agent(&self) -> Option<&str> {
+        self.user_agent.as_deref()
+    }
+
+    pub fn headers(&self) -> &[(String, String)] {
+        &self.headers
+    }
+
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+
+    pub fn params(&self) -> &[(String, String)] {
+        &self.params
+    }
+
+    pub fn param(&self, name: &str) -> Option<&str> {
+        self.params
+            .iter()
+            .find(|(candidate, _)| candidate == name)
+            .map(|(_, value)| value.as_str())
+    }
+
+    pub fn auth(&self) -> Option<(&str, &str)> {
+        self.auth
+            .as_ref()
+            .map(|(username, password)| (username.as_str(), password.as_str()))
+    }
+
+    pub fn hooks(&self) -> Option<&SessionHooks> {
+        self.hooks.as_ref()
+    }
+
+    pub fn stream(&self) -> Option<bool> {
+        self.stream
+    }
 }
 
 pub enum CookieInput<'a> {
@@ -7951,6 +8038,19 @@ mod tests {
             .set_verify(false)
             .set_cert(("adapter-cert.pem", "adapter-key.pem"))
             .set_max_redirects(1);
+        assert_eq!(adapter.timeout_secs(), Some(17));
+        assert_eq!(adapter.http_proxy(), Some(Some("http://adapter.test:8080")));
+        assert_eq!(adapter.https_proxy(), Some(None));
+        assert_eq!(adapter.verify(), Some(false));
+        assert_eq!(
+            adapter.cert(),
+            Some(Some(&SessionCert::PemPair {
+                cert: std::path::PathBuf::from("adapter-cert.pem"),
+                key: std::path::PathBuf::from("adapter-key.pem"),
+            }))
+        );
+        assert_eq!(adapter.trust_env(), None);
+        assert_eq!(adapter.max_redirects(), Some(Some(1)));
         let cookies = vec![SessionCookieParam {
             name: "sid".to_string(),
             value: "abc".to_string(),
@@ -8042,6 +8142,56 @@ mod tests {
 
         options.clear_headers();
         assert!(options.headers.is_empty());
+    }
+
+    #[test]
+    fn session_request_options_accessors_expose_request_overrides() {
+        let default_options = SessionRequestOptions::default();
+        assert!(default_options.timeout_secs().is_none());
+        assert!(default_options.retry_times().is_none());
+        assert!(default_options.retry_interval_millis().is_none());
+        assert!(default_options.retry_interval().is_none());
+        assert!(default_options.user_agent().is_none());
+        assert!(default_options.headers().is_empty());
+        assert!(default_options.header("accept").is_none());
+        assert!(default_options.params().is_empty());
+        assert!(default_options.param("page").is_none());
+        assert!(default_options.auth().is_none());
+        assert!(default_options.hooks().is_none());
+        assert!(default_options.stream().is_none());
+
+        let mut hooks = SessionHooks::new();
+        hooks.add_response(|_| {});
+        let request_options = SessionRequestOptions {
+            timeout_secs: Some(3),
+            retry_times: Some(2),
+            retry_interval_millis: Some(250),
+            user_agent: Some("OpenPage/Request".to_string()),
+            headers: vec![("accept".to_string(), "application/json".to_string())],
+            params: vec![("page".to_string(), "7".to_string())],
+            auth: Some(("bob".to_string(), "secret".to_string())),
+            hooks: Some(hooks),
+            stream: Some(true),
+        };
+
+        assert_eq!(request_options.timeout_secs(), Some(3));
+        assert_eq!(request_options.retry_times(), Some(2));
+        assert_eq!(request_options.retry_interval_millis(), Some(250));
+        assert_eq!(request_options.retry_interval(), Some(0.25));
+        assert_eq!(request_options.user_agent(), Some("OpenPage/Request"));
+        assert_eq!(request_options.header("Accept"), Some("application/json"));
+        assert_eq!(
+            request_options.headers(),
+            &[("accept".to_string(), "application/json".to_string())]
+        );
+        assert_eq!(request_options.param("page"), Some("7"));
+        assert_eq!(
+            request_options.params(),
+            &[("page".to_string(), "7".to_string())]
+        );
+        assert_eq!(request_options.auth(), Some(("bob", "secret")));
+        assert!(request_options.hooks().is_some());
+        assert_eq!(request_options.stream(), Some(true));
     }
 
     #[test]
