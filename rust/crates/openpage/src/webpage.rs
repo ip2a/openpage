@@ -10085,6 +10085,29 @@ mod tests {
             inner.set_none_element_value(Some("object-target-missing"), true)?;
             let inner_frame = inner.frame().clone();
             let host = outer.find("css:#outer-host")?;
+            let assert_webframe_inner_target =
+                |frame: &WebFrame, label: &str| -> crate::OpenPageResult<()> {
+                    assert_eq!(frame.id(), inner.id());
+                    assert_eq!(
+                        frame.ele(".does-not-exist")?.text()?,
+                        Some("object-target-missing".to_string())
+                    );
+                    match frame.owner_reference() {
+                        BrowserTabReference::WebPage(owner) => {
+                            assert_eq!(owner.target_id(), page.target_id());
+                        }
+                        BrowserTabReference::Page(owner) => {
+                            panic!(
+                                "{label} should keep webpage owner, got page {}",
+                                owner.target_id()
+                            );
+                        }
+                        BrowserTabReference::Id(id) => {
+                            panic!("{label} should keep webpage owner, got id {id}");
+                        }
+                    }
+                    Ok(())
+                };
 
             let driver_target = page.driver.get_frame(&inner)?;
             assert_eq!(driver_target.id(), inner.id());
@@ -10300,6 +10323,26 @@ mod tests {
                     panic!("WebElement get_frame(Frame) should keep webpage owner, got id {id}");
                 }
             }
+
+            let driver_frame_timeout_target =
+                page.driver.get_frame_with_timeout(&inner_frame, 10)?;
+            assert_eq!(driver_frame_timeout_target.id(), inner.id());
+            assert_eq!(
+                driver_frame_timeout_target.ele(".does-not-exist")?.text()?,
+                Some("object-target-missing".to_string())
+            );
+
+            let page_timeout_target = page.get_frame_with_timeout(&inner, 10)?;
+            assert_webframe_inner_target(&page_timeout_target, "WebPage timeout WebFrame target")?;
+
+            let frame_timeout_target = outer.get_frame_with_timeout(inner_frame.clone(), 10)?;
+            assert_webframe_inner_target(&frame_timeout_target, "WebFrame timeout Frame target")?;
+
+            let element_timeout_target = host.get_frame_with_timeout(&inner_frame, 10)?;
+            assert_webframe_inner_target(
+                &element_timeout_target,
+                "WebElement timeout Frame target",
+            )?;
             Ok(())
         })();
 
