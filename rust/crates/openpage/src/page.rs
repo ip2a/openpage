@@ -8941,6 +8941,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::WebFrame;
     use chromiumoxide::cdp::browser_protocol::emulation::SetDeviceMetricsOverrideParams;
     use chromiumoxide::cdp::browser_protocol::page::PrintToPdfParams;
     use chromiumoxide::cdp::js_protocol::runtime::{EvaluateParams, ExecutionContextId};
@@ -13488,6 +13489,80 @@ mod tests {
             assert_eq!(
                 borrowed_inner.ele(".does-not-exist")?.text()?,
                 Some("elements-one-default".to_string())
+            );
+
+            owned_inner.set_none_element_value(Some("elements-one-target"), true)?;
+            let inner_web_frame = WebFrame::Browser(owned_inner.clone());
+            let owned_frame_target = owned_host
+                .get_frame(&owned_inner)?
+                .expect("owned ElementsOne should accept borrowed Frame target");
+            assert_eq!(owned_frame_target.id(), owned_inner.id());
+            assert_eq!(
+                owned_frame_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-target".to_string())
+            );
+            let owned_frame_owned_target = owned_host
+                .get_frame(owned_inner.clone())?
+                .expect("owned ElementsOne should accept owned Frame target");
+            assert_eq!(owned_frame_owned_target.id(), owned_inner.id());
+            assert_eq!(
+                owned_frame_owned_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-target".to_string())
+            );
+            let owned_webframe_target = owned_host
+                .get_frame(&inner_web_frame)?
+                .expect("owned ElementsOne should accept borrowed WebFrame target");
+            assert_eq!(owned_webframe_target.id(), owned_inner.id());
+            assert_eq!(
+                owned_webframe_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-target".to_string())
+            );
+            let owned_webframe_owned_target = owned_host
+                .get_frame(inner_web_frame.clone())?
+                .expect("owned ElementsOne should accept owned WebFrame target");
+            assert_eq!(owned_webframe_owned_target.id(), owned_inner.id());
+            assert_eq!(
+                owned_webframe_owned_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-target".to_string())
+            );
+
+            let borrowed_frame_target = hosts
+                .filter_one()
+                .get_frame(&owned_inner)?
+                .expect("borrowed ElementsOne should accept borrowed Frame target");
+            assert_eq!(borrowed_frame_target.id(), owned_inner.id());
+            assert_eq!(
+                borrowed_frame_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-target".to_string())
+            );
+            let borrowed_frame_owned_target = hosts
+                .filter_one()
+                .get_frame(owned_inner.clone())?
+                .expect("borrowed ElementsOne should accept owned Frame target");
+            assert_eq!(borrowed_frame_owned_target.id(), owned_inner.id());
+            assert_eq!(
+                borrowed_frame_owned_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-target".to_string())
+            );
+            let borrowed_webframe_target = hosts
+                .filter_one()
+                .get_frame(&inner_web_frame)?
+                .expect("borrowed ElementsOne should accept borrowed WebFrame target");
+            assert_eq!(borrowed_webframe_target.id(), owned_inner.id());
+            assert_eq!(
+                borrowed_webframe_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-target".to_string())
+            );
+            let borrowed_webframe_owned_target = hosts
+                .filter_one()
+                .get_frame(inner_web_frame.clone())?
+                .expect("borrowed ElementsOne should accept owned WebFrame target");
+            assert_eq!(borrowed_webframe_owned_target.id(), owned_inner.id());
+            assert_eq!(
+                borrowed_webframe_owned_target
+                    .ele(".does-not-exist")?
+                    .text()?,
+                Some("elements-one-target".to_string())
             );
             Ok(())
         })();
