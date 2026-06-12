@@ -8957,6 +8957,7 @@ mod tests {
     fn mix_webelement_get_frame_preserves_webframe_context() {
         let _settings = scoped_test_settings();
         Settings::reset();
+        Settings::set_singleton_tab_obj(true);
 
         let (page, temp_dir) =
             launch_headless_test_webpage("webelement-get-frame-mix", WebMode::Driver)
@@ -8978,11 +8979,29 @@ mod tests {
             )?;
 
             let host = page.find("css:#host")?;
-            let frame = host.get_frame("css:#demo-frame")?;
+            let frame = host.get_frame("css:#demo-frame").map_err(|err| {
+                OpenPageError::PageOperation(format!("mix host get_frame first: {err}"))
+            })?;
             assert!(frame.wait_for_doc_loaded(5_000)?);
             assert_eq!(
-                frame.find("css:#inside")?.text()?,
+                frame
+                    .find("css:#inside")
+                    .map_err(|err| OpenPageError::PageOperation(format!("frame find: {err}")))?
+                    .text()?,
                 Some("inside".to_string())
+            );
+            frame.set_none_element_value(Some("mix missing"), true)?;
+            let same_frame = host.get_frame((By::ID, "demo-frame")).map_err(|err| {
+                OpenPageError::PageOperation(format!("mix host get_frame second: {err}"))
+            })?;
+            assert_eq!(same_frame.id(), frame.id());
+            assert!(std::ptr::eq(
+                frame.frame_element(),
+                same_frame.frame_element()
+            ));
+            assert_eq!(
+                same_frame.ele(".does-not-exist")?.text()?,
+                Some("mix missing".to_string())
             );
             match frame.owner_reference() {
                 BrowserTabReference::WebPage(owner) => {
@@ -8999,7 +9018,9 @@ mod tests {
                     panic!("Mix WebElement get_frame should return mix WebFrame, got id {id}");
                 }
             }
-            match frame.frame_element_reference()? {
+            match frame.frame_element_reference().map_err(|err| {
+                OpenPageError::PageOperation(format!("frame element reference: {err}"))
+            })? {
                 WebElement::Mix {
                     element,
                     page: owner,

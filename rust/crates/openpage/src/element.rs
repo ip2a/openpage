@@ -3133,6 +3133,19 @@ impl Element {
         L: Into<PageFrameTarget<'a>>,
     {
         let target = target.into();
+        if self.browser.is_some()
+            && let Ok(owner) = self.resolve_backend_node_id(self.backend_node_id())
+            && let Ok(frame) = owner.get_frame_from_resolved_target(target.clone())
+        {
+            return Ok(frame);
+        }
+        self.get_frame_from_resolved_target(target)
+    }
+
+    fn get_frame_from_resolved_target<'a>(
+        &self,
+        target: PageFrameTarget<'a>,
+    ) -> OpenPageResult<Frame> {
         match &target {
             PageFrameTarget::Frame(frame) => {
                 self.resolve_frame_target(target.clone())?;
@@ -3163,10 +3176,7 @@ impl Element {
         let target = target.into();
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         loop {
-            match self
-                .resolve_backend_node_id(self.backend_node_id())
-                .and_then(|element| element.get_frame(target.clone()))
-            {
+            match self.get_frame(target.clone()) {
                 Ok(frame) => return Ok(frame),
                 Err(err) => {
                     if Instant::now() >= deadline {

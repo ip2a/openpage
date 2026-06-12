@@ -11283,11 +11283,15 @@ mod tests {
             let host = page.find("css:#host")?;
             let shadow_root = host.shadow_root()?.expect("host shadow root");
             let wrapper = shadow_root.find("css:#shadow-wrapper")?;
-            let frame = wrapper.get_frame("css:#shadow-frame")?;
+            let frame = wrapper.get_frame("css:#shadow-frame").map_err(|err| {
+                OpenPageError::PageOperation(format!("shadow wrapper get_frame first: {err}"))
+            })?;
             assert!(frame.wait_for_doc_loaded(2_000)?);
             frame.set_none_element_value(Some("shadow missing"), true)?;
 
-            let same_frame = wrapper.get_frame((By::ID, "shadow-frame"))?;
+            let same_frame = wrapper.get_frame((By::ID, "shadow-frame")).map_err(|err| {
+                OpenPageError::PageOperation(format!("shadow wrapper get_frame second: {err}"))
+            })?;
             assert_eq!(same_frame.id(), frame.id());
             assert!(std::ptr::eq(
                 frame.frame_element(),
