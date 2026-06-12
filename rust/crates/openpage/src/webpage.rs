@@ -10083,6 +10083,7 @@ mod tests {
             let inner = outer.get_frame("css:#inner-frame")?;
             assert!(inner.wait_for_doc_loaded(5_000)?);
             inner.set_none_element_value(Some("object-target-missing"), true)?;
+            let inner_frame = inner.frame().clone();
 
             let driver_target = page.driver.get_frame(&inner)?;
             assert_eq!(driver_target.id(), inner.id());
@@ -10137,6 +10138,46 @@ mod tests {
                     panic!("WebPage get_frame(WebFrame) should keep webpage owner, got id {id}");
                 }
             }
+            let page_frame_target = page.get_frame(&inner_frame)?;
+            assert_eq!(page_frame_target.id(), inner.id());
+            assert_eq!(
+                page_frame_target.ele(".does-not-exist")?.text()?,
+                Some("object-target-missing".to_string())
+            );
+            match page_frame_target.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "WebPage get_frame(&Frame) should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("WebPage get_frame(&Frame) should keep webpage owner, got id {id}");
+                }
+            }
+            let page_owned_frame_target = page.get_frame(inner_frame.clone())?;
+            assert_eq!(page_owned_frame_target.id(), inner.id());
+            assert_eq!(
+                page_owned_frame_target.ele(".does-not-exist")?.text()?,
+                Some("object-target-missing".to_string())
+            );
+            match page_owned_frame_target.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "WebPage get_frame(Frame) should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("WebPage get_frame(Frame) should keep webpage owner, got id {id}");
+                }
+            }
 
             let frame_target = outer.get_frame(&inner)?;
             assert_eq!(frame_target.id(), inner.id());
@@ -10176,6 +10217,46 @@ mod tests {
                 }
                 BrowserTabReference::Id(id) => {
                     panic!("WebFrame get_frame(WebFrame) should keep webpage owner, got id {id}");
+                }
+            }
+            let frame_frame_target = outer.get_frame(&inner_frame)?;
+            assert_eq!(frame_frame_target.id(), inner.id());
+            assert_eq!(
+                frame_frame_target.ele(".does-not-exist")?.text()?,
+                Some("object-target-missing".to_string())
+            );
+            match frame_frame_target.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "WebFrame get_frame(&Frame) should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("WebFrame get_frame(&Frame) should keep webpage owner, got id {id}");
+                }
+            }
+            let frame_owned_frame_target = outer.get_frame(inner_frame.clone())?;
+            assert_eq!(frame_owned_frame_target.id(), inner.id());
+            assert_eq!(
+                frame_owned_frame_target.ele(".does-not-exist")?.text()?,
+                Some("object-target-missing".to_string())
+            );
+            match frame_owned_frame_target.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "WebFrame get_frame(Frame) should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("WebFrame get_frame(Frame) should keep webpage owner, got id {id}");
                 }
             }
             Ok(())
