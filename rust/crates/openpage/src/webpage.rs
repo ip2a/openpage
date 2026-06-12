@@ -10343,6 +10343,10 @@ mod tests {
                 &element_timeout_target,
                 "WebElement timeout Frame target",
             )?;
+            let page_context_target = page.get_frame_context(&inner)?;
+            assert_webframe_inner_target(&page_context_target, "WebPage context WebFrame target")?;
+            let frame_context_target = outer.get_frame_context(inner_frame.clone())?;
+            assert_webframe_inner_target(&frame_context_target, "WebFrame context Frame target")?;
 
             assert_eq!(
                 page.driver

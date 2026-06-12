@@ -10949,6 +10949,9 @@ mod tests {
             let frame_from_frame = page
                 .get_frame_context(&frame)
                 .map_err(|err| OpenPageError::PageOperation(format!("from frame: {err}")))?;
+            let frame_from_web_frame = page
+                .get_frame_context(&web_frame)
+                .map_err(|err| OpenPageError::PageOperation(format!("from web frame: {err}")))?;
             let host = page
                 .find("css:#host")
                 .map_err(|err| OpenPageError::PageOperation(format!("host find: {err}")))?;
@@ -10995,6 +10998,12 @@ mod tests {
                     .map_err(|err| OpenPageError::PageOperation(format!(
                         "frame_from_frame name: {err}"
                     )))?,
+                Some("demo-frame".to_string())
+            );
+            assert_eq!(
+                frame_from_web_frame.name().map_err(|err| {
+                    OpenPageError::PageOperation(format!("frame_from_web_frame name: {err}"))
+                })?,
                 Some("demo-frame".to_string())
             );
             assert_eq!(
