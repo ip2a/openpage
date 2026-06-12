@@ -13564,6 +13564,48 @@ mod tests {
                     .text()?,
                 Some("elements-one-target".to_string())
             );
+
+            let owned_frame_timeout_target = owned_host
+                .get_frame_with_timeout(&owned_inner, 10)?
+                .expect("owned ElementsOne timeout should accept borrowed Frame target");
+            assert_eq!(owned_frame_timeout_target.id(), owned_inner.id());
+            assert_eq!(
+                owned_frame_timeout_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-target".to_string())
+            );
+            let owned_webframe_timeout_target = owned_host
+                .get_frame_with_timeout(inner_web_frame.clone(), 10)?
+                .expect("owned ElementsOne timeout should accept owned WebFrame target");
+            assert_eq!(owned_webframe_timeout_target.id(), owned_inner.id());
+            assert_eq!(
+                owned_webframe_timeout_target
+                    .ele(".does-not-exist")?
+                    .text()?,
+                Some("elements-one-target".to_string())
+            );
+
+            let borrowed_frame_timeout_target = hosts
+                .filter_one()
+                .get_frame_with_timeout(owned_inner.clone(), 10)?
+                .expect("borrowed ElementsOne timeout should accept owned Frame target");
+            assert_eq!(borrowed_frame_timeout_target.id(), owned_inner.id());
+            assert_eq!(
+                borrowed_frame_timeout_target
+                    .ele(".does-not-exist")?
+                    .text()?,
+                Some("elements-one-target".to_string())
+            );
+            let borrowed_webframe_timeout_target = hosts
+                .filter_one()
+                .get_frame_with_timeout(&inner_web_frame, 10)?
+                .expect("borrowed ElementsOne timeout should accept borrowed WebFrame target");
+            assert_eq!(borrowed_webframe_timeout_target.id(), owned_inner.id());
+            assert_eq!(
+                borrowed_webframe_timeout_target
+                    .ele(".does-not-exist")?
+                    .text()?,
+                Some("elements-one-target".to_string())
+            );
             Ok(())
         })();
 
