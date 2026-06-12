@@ -11413,6 +11413,83 @@ mod tests {
     }
 
     #[test]
+    fn singleton_tab_obj_drops_stale_nested_frame_after_recreation() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(true);
+
+        let (browser, temp_dir) = launch_headless_test_browser("frame-nested-recreated-singleton")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(2_000)?);
+            outer.set_none_element_value(Some("outer missing"), true)?;
+            outer.run_js(
+                r#"(() => {
+                    document.getElementById('outer-host').innerHTML = `
+                        <iframe id="inner-frame" name="inner-frame"
+                            srcdoc="<html><body><button id='inside'>first</button></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let first = outer.get_frame("css:#inner-frame")?;
+            assert!(first.wait_for_doc_loaded(2_000)?);
+            first.set_none_element_value(Some("first missing"), true)?;
+
+            outer.run_js(
+                r#"(() => {
+                    document.getElementById('inner-frame').remove();
+                    document.getElementById('outer-host').innerHTML = `
+                        <iframe id="inner-frame" name="inner-frame"
+                            srcdoc="<html><body><button id='inside'>second</button></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let second = outer.get_frame("css:#inner-frame")?;
+            assert!(second.wait_for_doc_loaded(2_000)?);
+            assert_eq!(
+                second.find("css:#inside")?.text()?,
+                Some("second".to_string())
+            );
+            assert_ne!(second.id(), first.id());
+            assert_eq!(
+                second.ele(".does-not-exist")?.text()?,
+                Some("outer missing".to_string())
+            );
+            assert!(!first.is_alive()?);
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("stale nested singleton frame cache regression");
+    }
+
+    #[test]
     fn singleton_tab_obj_reuses_shadow_root_frame_state_when_enabled() {
         let _settings = scoped_test_settings();
         Settings::reset();

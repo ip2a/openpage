@@ -10056,6 +10056,84 @@ mod tests {
     }
 
     #[test]
+    fn singleton_tab_obj_drops_stale_webframe_after_recreation() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(true);
+
+        let (page, temp_dir) =
+            launch_headless_test_webpage("webframe-recreated-singleton", WebMode::Driver)
+                .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="demo-frame"
+                            srcdoc="<html><body><button id='inside'>first</button></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            page.set_none_element_value(Some("page missing"), true)?;
+            let first = page.get_frame("css:#demo-frame")?;
+            assert!(first.wait_for_doc_loaded(2_000)?);
+            first.set_none_element_value(Some("first missing"), true)?;
+
+            page.run_js(
+                r#"(() => {
+                    document.getElementById('demo-frame').remove();
+                    document.body.innerHTML = `
+                        <iframe id="demo-frame"
+                            srcdoc="<html><body><button id='inside'>second</button></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let second = page.get_frame("css:#demo-frame")?;
+            assert!(second.wait_for_doc_loaded(2_000)?);
+            assert_eq!(
+                second.find("css:#inside")?.text()?,
+                Some("second".to_string())
+            );
+            assert_ne!(second.id(), first.id());
+            assert_eq!(
+                second.ele(".does-not-exist")?.text()?,
+                Some("page missing".to_string())
+            );
+            assert!(!first.is_alive()?);
+            match second.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "recreated WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("recreated WebFrame should keep webpage owner, got id {id}");
+                }
+            }
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("stale singleton webframe cache regression");
+    }
+
+    #[test]
     fn singleton_tab_obj_returns_fresh_webframe_state_when_disabled() {
         let _settings = scoped_test_settings();
         Settings::reset();
