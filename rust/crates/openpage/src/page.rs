@@ -10895,6 +10895,7 @@ mod tests {
             let frame = page
                 .get_frame("css:#demo-frame")
                 .map_err(|err| OpenPageError::PageOperation(format!("locator get_frame: {err}")))?;
+            let web_frame = WebFrame::Browser(frame.clone());
             let frame_by_index = page
                 .get_frame(1usize)
                 .map_err(|err| OpenPageError::PageOperation(format!("index get_frame: {err}")))?;
@@ -11023,6 +11024,22 @@ mod tests {
                     .and_then(|element| element.attr("id"))
                     .map_err(|err| OpenPageError::PageOperation(format!(
                         "get_frame_ele(&Frame): {err}"
+                    )))?,
+                Some("demo-frame".to_string())
+            );
+            assert_eq!(
+                page.get_frame_ele_with_timeout(&web_frame, 10)
+                    .and_then(|element| element.attr("id"))
+                    .map_err(|err| OpenPageError::PageOperation(format!(
+                        "get_frame_ele_with_timeout(&WebFrame): {err}"
+                    )))?,
+                Some("demo-frame".to_string())
+            );
+            assert_eq!(
+                page.get_frame_ele_with_timeout(frame.clone(), 10)
+                    .and_then(|element| element.attr("name"))
+                    .map_err(|err| OpenPageError::PageOperation(format!(
+                        "get_frame_ele_with_timeout(Frame): {err}"
                     )))?,
                 Some("demo-frame".to_string())
             );
@@ -11718,6 +11735,19 @@ mod tests {
 
             let inner_by_index = outer.get_frame_by_index_with_timeout(1, 500)?;
             assert_eq!(inner_by_index.attr("id")?, Some("inner-frame".to_string()));
+            let inner_web_frame = WebFrame::Browser(inner.clone());
+            assert_eq!(
+                outer
+                    .get_frame_ele_with_timeout(&inner_web_frame, 10)?
+                    .attr("id")?,
+                Some("inner-frame".to_string())
+            );
+            assert_eq!(
+                outer
+                    .get_frame_ele_with_timeout(inner.clone(), 10)?
+                    .attr("name")?,
+                Some("inner-frame".to_string())
+            );
             Ok(())
         })();
 
