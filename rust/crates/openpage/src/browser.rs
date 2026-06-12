@@ -433,6 +433,16 @@ impl LaunchOptions {
         Ok(self)
     }
 
+    pub fn set_download_file_exists_mode(&mut self, mode: DownloadFileExistsMode) -> &mut Self {
+        self.download_file_exists = mode;
+        self
+    }
+
+    pub fn when_download_file_exists(&mut self, mode: &str) -> OpenPageResult<&mut Self> {
+        self.download_file_exists = DownloadFileExistsMode::parse(mode)?;
+        Ok(self)
+    }
+
     pub fn set_browser_path(&mut self, path: impl AsRef<Path>) -> &mut Self {
         self.browser_path = Some(path.as_ref().to_path_buf());
         self
@@ -5587,10 +5597,23 @@ mod tests {
 
     #[test]
     fn launch_options_download_file_exists_reports_default_mode() {
-        let options = LaunchOptions::default();
+        let mut options = LaunchOptions::default();
 
         assert_eq!(options.download_file_exists, DownloadFileExistsMode::Rename);
         assert_eq!(options.download_file_exists(), "rename");
+
+        options.set_download_file_exists_mode(DownloadFileExistsMode::Overwrite);
+        assert_eq!(
+            options.download_file_exists,
+            DownloadFileExistsMode::Overwrite
+        );
+        assert_eq!(options.download_file_exists(), "overwrite");
+
+        options
+            .when_download_file_exists("skip")
+            .expect("set download file-exists mode");
+        assert_eq!(options.download_file_exists, DownloadFileExistsMode::Skip);
+        assert_eq!(options.download_file_exists(), "skip");
     }
 
     #[test]
@@ -6229,6 +6252,7 @@ mod tests {
             .existing_only(true)
             .set_browser_path("/tmp/browser")
             .set_download_path("/tmp/downloads")
+            .set_download_file_exists_mode(DownloadFileExistsMode::Overwrite)
             .set_tmp_path("/tmp/tmpdir")
             .set_cache_path("/tmp/cache")
             .set_proxy("http://127.0.0.1:7890")
@@ -6257,6 +6281,7 @@ mod tests {
         assert!(options.is_existing_only());
         assert_eq!(options.browser_path(), "/tmp/browser");
         assert_eq!(options.download_path(), "/tmp/downloads");
+        assert_eq!(options.download_file_exists(), "overwrite");
         assert_eq!(options.tmp_path(), "/tmp/tmpdir");
         assert_eq!(options.proxy(), Some("http://127.0.0.1:7890"));
         assert_eq!(options.user_agent.as_deref(), Some("OpenPage/Chain"));
