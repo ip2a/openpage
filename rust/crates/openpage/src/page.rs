@@ -239,6 +239,7 @@ impl DisconnectedPage {
 #[derive(Clone, Debug)]
 pub struct DisconnectedFrame {
     page: DisconnectedPage,
+    frame_id: String,
     frame_dom_id: Option<String>,
     frame_dom_name: Option<String>,
     frame_xpath: Option<String>,
@@ -329,6 +330,11 @@ impl DisconnectedFrame {
             {
                 return Ok(frame);
             }
+        }
+
+        if let Ok(frame_element) = page.frame_owner_element_by_id(&self.frame_id) {
+            return page
+                .frame_from_element_with_config_source(frame_element, &self.none_element_config);
         }
 
         let frame_element = page.resolve_dom_backend_node_id(self.frame_backend_node_id)?;
@@ -1769,6 +1775,7 @@ impl Frame {
             .filter(|css_path| !css_path.is_empty());
         Ok(DisconnectedFrame {
             page: self.page.disconnect()?,
+            frame_id: self.frame_id,
             frame_dom_id,
             frame_dom_name,
             frame_xpath,
@@ -7422,6 +7429,14 @@ impl Page {
                 OpenPageError,
             >((response.node_id, response.backend_node_id))
         })?;
+        if let Some(node_id) = node_id.as_ref()
+            && let Some(parent_frame_id) = self.frame_parent_id(frame_id)?
+            && parent_frame_id != self.main_frame_id()?
+            && let Ok(element) =
+                self.resolve_frame_owner_node_in_parent_frame(&parent_frame_id, node_id.clone())
+        {
+            return Ok(element);
+        }
         if let Some(node_id) = node_id {
             match self
                 .resolve_dom_node_id(node_id, "frame owner could not be resolved to an element")
@@ -7436,6 +7451,46 @@ impl Page {
             }
         } else {
             self.resolve_dom_backend_node_id(backend_node_id)
+        }
+    }
+
+    fn resolve_frame_owner_node_in_parent_frame(
+        &self,
+        parent_frame_id: &str,
+        node_id: chromiumoxide::cdp::browser_protocol::dom::NodeId,
+    ) -> OpenPageResult<Element> {
+        let marker = next_page_marker();
+        execute_page_command_blocking(
+            self.runtime.as_ref(),
+            &self.inner,
+            SetAttributeValueParams::new(node_id, PAGE_MARKER_ATTRIBUTE, marker.clone()),
+            "Page::resolve_frame_owner_node_in_parent_frame()",
+        )?;
+
+        let selector = marker_selector(&marker);
+        let element = (|| -> OpenPageResult<Element> {
+            let parent_owner = self.frame_owner_element_by_id(parent_frame_id)?;
+            let parent_frame = self.frame_from_element(parent_owner)?;
+            parent_frame.find(selector.as_str())
+        })();
+        let cleanup = self.runtime.block_on(async {
+            let _ = execute_page_command_async(
+                &self.inner,
+                RemoveAttributeParams::new(node_id, PAGE_MARKER_ATTRIBUTE),
+                "Page::resolve_frame_owner_node_in_parent_frame()",
+            )
+            .await;
+            Ok::<(), OpenPageError>(())
+        });
+
+        match (element, cleanup) {
+            (Ok(element), Ok(())) => Ok(element),
+            (Err(OpenPageError::Timeout(message)), _) => Err(OpenPageError::Timeout(message)),
+            (Err(_), Ok(())) => Err(OpenPageError::ElementNotFound(
+                "frame owner could not be resolved to an element".to_string(),
+            )),
+            (Err(err), Err(_)) => Err(err),
+            (Ok(_), Err(err)) => Err(err),
         }
     }
 

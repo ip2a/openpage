@@ -9290,7 +9290,32 @@ mod tests {
                     panic!("reconnected nested WebFrame should keep webpage owner, got id {id}");
                 }
             }
-            Ok(reconnected)
+
+            let disconnected = reconnected.disconnect()?;
+            let roundtrip = disconnected.reconnect(0)?;
+            assert_eq!(
+                roundtrip.run_js("document.querySelector('#inside').textContent")?,
+                Value::from("nested reconnect")
+            );
+            assert_eq!(
+                roundtrip.ele(".does-not-exist")?.text()?,
+                Some("nested reconnect missing".to_string())
+            );
+            match roundtrip.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "roundtrip nested WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("roundtrip nested WebFrame should keep webpage owner, got id {id}");
+                }
+            }
+            Ok(roundtrip)
         })();
 
         let reconnected = match result {
