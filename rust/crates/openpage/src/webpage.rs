@@ -430,11 +430,10 @@ impl WebFrame {
     }
 
     pub fn frame_element_reference(&self) -> OpenPageResult<WebElement> {
-        let element = self
-            .frame()
+        self.frame()
             .owner()
-            .resolve_dom_backend_node_id(self.frame().frame_element().backend_node_id())?;
-        Ok(self.wrap_element(element))
+            .get_frame_ele(self.frame().frame_element())
+            .map(|element| self.wrap_element(element))
     }
 
     pub fn frame_ele_reference(&self) -> OpenPageResult<WebElement> {
@@ -10065,6 +10064,139 @@ mod tests {
             panic!("close headless webpage: {err}");
         }
         result.expect("nested singleton webframe runtime-state regression");
+    }
+
+    #[test]
+    fn singleton_tab_obj_reuses_nested_frame_cache_across_page_and_webpage_wrappers() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(true);
+
+        let (page, temp_dir) = launch_headless_test_webpage(
+            "nested-webframe-cross-wrapper-singleton",
+            WebMode::Driver,
+        )
+        .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let driver_outer = page.driver.get_frame("css:#outer-frame")?;
+            assert!(driver_outer.wait_for_doc_loaded(2_000)?);
+            let mix_outer = page.get_frame("css:#outer-frame")?;
+            assert_eq!(mix_outer.id(), driver_outer.id());
+            assert!(std::ptr::eq(
+                driver_outer.frame_element(),
+                mix_outer.frame_element()
+            ));
+            match mix_outer.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "cross-wrapper nested outer WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!(
+                        "cross-wrapper nested outer WebFrame should keep webpage owner, got id {id}"
+                    );
+                }
+            }
+
+            driver_outer.run_js(
+                r#"(() => {
+                    const frame = document.createElement('iframe');
+                    frame.id = 'inner-frame';
+                    frame.name = 'inner-frame';
+                    frame.srcdoc = "<html><body><button id='inside'>inside</button></body></html>";
+                    document.getElementById('outer-host').appendChild(frame);
+                    return true;
+                })()"#,
+            )?;
+
+            let driver_inner = driver_outer.get_frame("css:#inner-frame")?;
+            assert!(driver_inner.wait_for_doc_loaded(2_000)?);
+            driver_inner.set_none_element_value(Some("driver nested missing"), true)?;
+
+            let mix_inner = mix_outer.get_frame("css:#inner-frame")?;
+            assert_eq!(mix_inner.id(), driver_inner.id());
+            assert!(std::ptr::eq(
+                driver_inner.frame_element(),
+                mix_inner.frame_element()
+            ));
+            assert_eq!(
+                mix_inner.ele(".does-not-exist")?.text()?,
+                Some("driver nested missing".to_string())
+            );
+            match mix_inner.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "cross-wrapper nested inner WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!(
+                        "cross-wrapper nested inner WebFrame should keep webpage owner, got id {id}"
+                    );
+                }
+            }
+            match mix_inner.frame_element_reference()? {
+                WebElement::Mix {
+                    element,
+                    page: owner,
+                } => {
+                    assert_eq!(element.attr("id")?, Some("inner-frame".to_string()));
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                WebElement::Browser(element) => {
+                    panic!(
+                        "cross-wrapper nested frame element should stay mix, got browser element {:?}",
+                        element.attr("id")?
+                    );
+                }
+                WebElement::Session(_) => {
+                    panic!("cross-wrapper nested frame element should stay mix");
+                }
+            }
+
+            mix_inner.set_none_element_value(Some("mix nested missing"), true)?;
+            let driver_inner_again = driver_outer.get_frame("css:#inner-frame")?;
+            assert_eq!(driver_inner_again.id(), driver_inner.id());
+            assert!(std::ptr::eq(
+                driver_inner.frame_element(),
+                driver_inner_again.frame_element()
+            ));
+            assert_eq!(
+                driver_inner_again.ele(".does-not-exist")?.text()?,
+                Some("mix nested missing".to_string())
+            );
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("cross-wrapper nested singleton frame cache regression");
     }
 
     #[test]
