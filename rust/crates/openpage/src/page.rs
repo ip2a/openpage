@@ -1750,8 +1750,7 @@ impl Frame {
                 return Ok(frame);
             }
         }
-        let frame_element =
-            page.resolve_dom_backend_node_id(self.frame_element.backend_node_id())?;
+        let frame_element = page.get_frame_ele(self.frame_element())?;
         page.frame_from_element_with_config_source(frame_element, &self.none_element_config)
     }
 

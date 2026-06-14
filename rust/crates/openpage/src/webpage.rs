@@ -9227,6 +9227,90 @@ mod tests {
     }
 
     #[test]
+    fn nested_webframe_reconnect_preserves_mix_runtime_config() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+
+        let (page, temp_dir) = launch_headless_test_webpage(
+            "nested-webframe-reconnect-runtime-config",
+            WebMode::Driver,
+        )
+        .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<WebFrame> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(2_000)?);
+            outer.run_js(
+                r#"(() => {
+                    document.getElementById('outer-host').innerHTML = `
+                        <iframe id="inner-frame"
+                            srcdoc="<html><body><div id='inside'>nested reconnect</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let inner = outer.get_frame("css:#inner-frame")?;
+            assert!(inner.wait_for_doc_loaded(2_000)?);
+            inner.set_none_element_value(Some("nested reconnect missing"), true)?;
+
+            let reconnected = inner.reconnect(0)?;
+            assert_eq!(
+                reconnected.run_js("document.querySelector('#inside').textContent")?,
+                Value::from("nested reconnect")
+            );
+            assert_eq!(
+                reconnected.ele(".does-not-exist")?.text()?,
+                Some("nested reconnect missing".to_string())
+            );
+            match reconnected.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "reconnected nested WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!("reconnected nested WebFrame should keep webpage owner, got id {id}");
+                }
+            }
+            Ok(reconnected)
+        })();
+
+        let reconnected = match result {
+            Ok(frame) => frame,
+            Err(err) => {
+                let _ = page.quit();
+                let _ = fs::remove_dir_all(&temp_dir);
+                panic!("nested webframe reconnect runtime config failed before cleanup: {err}");
+            }
+        };
+
+        let close_result = reconnected.owner().quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage after nested frame reconnect: {err}");
+        }
+    }
+
+    #[test]
     fn webelement_new_tab_click_helpers_return_webpage_references() {
         let _settings = scoped_test_settings();
         Settings::reset();
