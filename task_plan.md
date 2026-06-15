@@ -252,6 +252,30 @@ Phase 5 in progress - the latest installed-binary experiments refine the top pro
 - Remaining gap before calling the slice proven in user terms:
   - re-dogfood the installed binary against the slow-server busy-session repro and compare command payloads before/after
 
+## Task Plan: DrissionPage Rust Frame convergence (2026-06-13)
+
+### Goal
+Move the Rust Frame/WebFrame object model closer to DrissionPage semantics, starting with the currently in-progress signed frame index helpers.
+
+### Phases
+- [x] Phase 1: Complete signed frame index wrapper coverage
+- [x] Phase 2: Add focused negative-index browser regressions
+- [x] Phase 3: Run formatting, compile, and diff hygiene gates
+- [x] Phase 4: Update the local mapping document and commit the focused slice
+
+### Success Criteria
+1. `get_frame_by_index()` and related explicit index helpers accept existing `usize` callers and signed negative indexes across Page/Frame/Element/WebPage/WebFrame/WebElement/ElementsOne wrappers.
+2. At least one real browser regression proves `-1` resolves the last iframe and its iframe element.
+3. The slice passes focused tests, `cargo fmt --check`, `cargo check`, and `git diff --check`.
+
+### Decisions Made
+- Keep the current slice limited to Frame index semantics.
+- Defer multilingual tail coverage, DownloadKit ecosystem work, and selenium/playwright docking as requested.
+- Preserve the existing underlying `PageFrameTarget` signed index behavior; only widen helper API surfaces that were still `usize`.
+
+### Current Status
+Completed - signed frame index helpers are implemented, verified, documented in the local mapping file, and committed as `e4eea1f`; WebFrame/Mix wrapper runtime coverage was added in `d9ba232`.
+
 ## Task Plan: Unified config.toml module refactor (2026-06-01)
 
 ### Goal
