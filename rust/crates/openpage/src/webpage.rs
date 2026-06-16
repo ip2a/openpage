@@ -11498,6 +11498,104 @@ mod tests {
     }
 
     #[test]
+    fn singleton_tab_obj_keeps_cross_wrapper_webframe_state_isolated_when_disabled() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(false);
+
+        let (page, temp_dir) = launch_headless_test_webpage(
+            "webframe-cross-wrapper-singleton-disabled",
+            WebMode::Driver,
+        )
+        .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="demo-frame"
+                            srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let driver_frame = page.driver.get_frame("css:#demo-frame")?;
+            assert!(driver_frame.wait_for_doc_loaded(5_000)?);
+            driver_frame.set_none_element_value(Some("driver missing"), true)?;
+
+            let same_driver_handle = page.get_frame(&driver_frame)?;
+            assert_eq!(
+                same_driver_handle.ele(".does-not-exist")?.text()?,
+                Some("driver missing".to_string())
+            );
+
+            let host = page.find("css:body")?;
+            let same_driver_handle_from_element = host.get_frame(&driver_frame)?;
+            assert_eq!(
+                same_driver_handle_from_element
+                    .ele(".does-not-exist")?
+                    .text()?,
+                Some("driver missing".to_string())
+            );
+
+            let mix_frame = page.get_frame("css:#demo-frame")?;
+            assert_eq!(mix_frame.id(), driver_frame.id());
+            assert_eq!(mix_frame.ele(".does-not-exist")?.text()?, None);
+            match mix_frame.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "non-singleton cross-wrapper WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!(
+                        "non-singleton cross-wrapper WebFrame should keep webpage owner, got id {id}"
+                    );
+                }
+            }
+            match mix_frame.frame_element_reference()? {
+                WebElement::Mix {
+                    element,
+                    page: owner,
+                } => {
+                    assert_eq!(element.attr("id")?, Some("demo-frame".to_string()));
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                WebElement::Browser(element) => {
+                    panic!(
+                        "non-singleton cross-wrapper frame element should stay mix, got browser element {:?}",
+                        element.attr("id")?
+                    );
+                }
+                WebElement::Session(_) => {
+                    panic!("non-singleton cross-wrapper frame element should stay mix");
+                }
+            }
+
+            mix_frame.set_none_element_value(Some("mix missing"), true)?;
+            let driver_fresh_again = page.driver.get_frame("css:#demo-frame")?;
+            assert_eq!(driver_fresh_again.id(), driver_frame.id());
+            assert_eq!(driver_fresh_again.ele(".does-not-exist")?.text()?, None);
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("non-singleton cross-wrapper webframe regression");
+    }
+
+    #[test]
     fn page_frame_webpage_and_webframe_js_helper_signatures_accept_common_inputs() {
         fn assert_calls(page: &Page, frame: &Frame, web_page: &WebPage, web_frame: &WebFrame) {
             let args = [Value::from(1), Value::from(2)];
