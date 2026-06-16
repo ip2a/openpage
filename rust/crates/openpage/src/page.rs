@@ -13416,6 +13416,74 @@ mod tests {
     }
 
     #[test]
+    fn singleton_tab_obj_keeps_nested_runtime_frame_state_isolated_when_disabled() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(false);
+
+        let (browser, temp_dir) = launch_headless_test_browser("nested-frame-singleton-disabled")
+            .expect("launch headless browser");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            let page = browser.new_page(None)?;
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(2_000)?);
+            outer.run_js(
+                r#"(() => {
+                    const frame = document.createElement('iframe');
+                    frame.id = 'inner-frame';
+                    frame.name = 'inner-frame';
+                    frame.srcdoc = "<html><body><button id='inside'>inside</button></body></html>";
+                    document.getElementById('outer-host').appendChild(frame);
+                    return true;
+                })()"#,
+            )?;
+
+            let inner = outer.get_frame("css:#inner-frame")?;
+            assert!(inner.wait_for_doc_loaded(2_000)?);
+            inner.set_none_element_value(Some("nested missing"), true)?;
+
+            let same_handle = outer.get_frame(&inner)?;
+            assert_eq!(
+                same_handle.ele(".does-not-exist")?.text()?,
+                Some("nested missing".to_string())
+            );
+
+            let host = outer.find("css:#outer-host")?;
+            let same_handle_from_element = host.get_frame(&inner)?;
+            assert_eq!(
+                same_handle_from_element.ele(".does-not-exist")?.text()?,
+                Some("nested missing".to_string())
+            );
+
+            let fresh_inner = outer.get_frame("css:#inner-frame")?;
+            assert_eq!(fresh_inner.id(), inner.id());
+            assert_eq!(fresh_inner.ele(".does-not-exist")?.text()?, None);
+            Ok(())
+        })();
+
+        let close_result = browser.close();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless browser: {err}");
+        }
+        result.expect("non-singleton nested frame runtime-state regression");
+    }
+
+    #[test]
     fn frame_initial_runtime_config_inherits_current_page_setting() {
         let _settings = scoped_test_settings();
         Settings::reset();
