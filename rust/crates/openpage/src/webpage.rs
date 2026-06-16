@@ -11498,6 +11498,125 @@ mod tests {
     }
 
     #[test]
+    fn singleton_tab_obj_keeps_elements_one_webframe_state_isolated_when_disabled() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(false);
+
+        let (page, temp_dir) = launch_headless_test_webpage(
+            "elements-one-webframe-singleton-disabled",
+            WebMode::Driver,
+        )
+        .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let outer = page.get_frame("css:#outer-frame")?;
+            assert!(outer.wait_for_doc_loaded(5_000)?);
+            outer.run_js(
+                r#"(() => {
+                    document.getElementById('outer-host').innerHTML = `
+                        <iframe id="inner-frame" name="inner-frame"
+                            srcdoc="<html><body><div id='inside'>inside</div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let owned_host = outer.ele("css:#outer-host")?;
+            let owned_inner = owned_host
+                .get_frame("css:#inner-frame")?
+                .expect("owned WebElement ElementsOne should find inner frame");
+            assert!(owned_inner.wait_for_doc_loaded(5_000)?);
+            owned_inner.set_none_element_value(Some("elements-one-web-target"), true)?;
+
+            let same_owned_target = owned_host
+                .get_frame(&owned_inner)?
+                .expect("owned ElementsOne should accept borrowed WebFrame target");
+            assert_eq!(
+                same_owned_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-web-target".to_string())
+            );
+
+            let hosts = outer.find_all("css:#outer-host")?;
+            let same_borrowed_target = hosts
+                .filter_one()
+                .get_frame(owned_inner.clone())?
+                .expect("borrowed ElementsOne should accept owned WebFrame target");
+            assert_eq!(
+                same_borrowed_target.ele(".does-not-exist")?.text()?,
+                Some("elements-one-web-target".to_string())
+            );
+
+            let fresh_owned_locator = owned_host
+                .get_frame("css:#inner-frame")?
+                .expect("owned ElementsOne should re-find inner WebFrame");
+            assert_eq!(fresh_owned_locator.id(), owned_inner.id());
+            assert_eq!(fresh_owned_locator.ele(".does-not-exist")?.text()?, None);
+            match fresh_owned_locator.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "non-singleton owned ElementsOne locator WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!(
+                        "non-singleton owned ElementsOne locator WebFrame should keep webpage owner, got id {id}"
+                    );
+                }
+            }
+
+            let fresh_borrowed_locator = hosts
+                .filter_one()
+                .get_frame("css:#inner-frame")?
+                .expect("borrowed ElementsOne should re-find inner WebFrame");
+            assert_eq!(fresh_borrowed_locator.id(), owned_inner.id());
+            assert_eq!(fresh_borrowed_locator.ele(".does-not-exist")?.text()?, None);
+            match fresh_borrowed_locator.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "non-singleton borrowed ElementsOne locator WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!(
+                        "non-singleton borrowed ElementsOne locator WebFrame should keep webpage owner, got id {id}"
+                    );
+                }
+            }
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("non-singleton elements-one webframe runtime-state regression");
+    }
+
+    #[test]
     fn singleton_tab_obj_keeps_cross_wrapper_webframe_state_isolated_when_disabled() {
         let _settings = scoped_test_settings();
         Settings::reset();
