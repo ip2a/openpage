@@ -11596,6 +11596,139 @@ mod tests {
     }
 
     #[test]
+    fn singleton_tab_obj_keeps_nested_cross_wrapper_webframe_state_isolated_when_disabled() {
+        let _settings = scoped_test_settings();
+        Settings::reset();
+        Settings::set_singleton_tab_obj(false);
+
+        let (page, temp_dir) = launch_headless_test_webpage(
+            "nested-webframe-cross-wrapper-singleton-disabled",
+            WebMode::Driver,
+        )
+        .expect("launch headless webpage");
+
+        let result = (|| -> crate::OpenPageResult<()> {
+            assert!(page.wait_for_doc_loaded(5_000)?);
+            page.run_js(
+                r#"(() => {
+                    document.body.innerHTML = `
+                        <iframe id="outer-frame" name="outer-frame"
+                            srcdoc="<html><body><div id='outer-host'></div></body></html>">
+                        </iframe>
+                    `;
+                    return true;
+                })()"#,
+            )?;
+
+            let driver_outer = page.driver.get_frame("css:#outer-frame")?;
+            assert!(driver_outer.wait_for_doc_loaded(2_000)?);
+            let mix_outer = page.get_frame("css:#outer-frame")?;
+            assert_eq!(mix_outer.id(), driver_outer.id());
+            match mix_outer.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "non-singleton nested outer WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!(
+                        "non-singleton nested outer WebFrame should keep webpage owner, got id {id}"
+                    );
+                }
+            }
+
+            driver_outer.run_js(
+                r#"(() => {
+                    const frame = document.createElement('iframe');
+                    frame.id = 'inner-frame';
+                    frame.name = 'inner-frame';
+                    frame.srcdoc = "<html><body><button id='inside'>inside</button></body></html>";
+                    document.getElementById('outer-host').appendChild(frame);
+                    return true;
+                })()"#,
+            )?;
+
+            let driver_inner = driver_outer.get_frame("css:#inner-frame")?;
+            assert!(driver_inner.wait_for_doc_loaded(2_000)?);
+            driver_inner.set_none_element_value(Some("driver nested missing"), true)?;
+
+            let same_driver_handle = mix_outer.get_frame(&driver_inner)?;
+            assert_eq!(
+                same_driver_handle.ele(".does-not-exist")?.text()?,
+                Some("driver nested missing".to_string())
+            );
+
+            let outer_host = mix_outer.find("css:#outer-host")?;
+            let same_driver_handle_from_element = outer_host.get_frame(&driver_inner)?;
+            assert_eq!(
+                same_driver_handle_from_element
+                    .ele(".does-not-exist")?
+                    .text()?,
+                Some("driver nested missing".to_string())
+            );
+
+            let mix_inner = mix_outer.get_frame("css:#inner-frame")?;
+            assert_eq!(mix_inner.id(), driver_inner.id());
+            assert_eq!(mix_inner.ele(".does-not-exist")?.text()?, None);
+            match mix_inner.owner_reference() {
+                BrowserTabReference::WebPage(owner) => {
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                BrowserTabReference::Page(owner) => {
+                    panic!(
+                        "non-singleton nested inner WebFrame should keep webpage owner, got page {}",
+                        owner.target_id()
+                    );
+                }
+                BrowserTabReference::Id(id) => {
+                    panic!(
+                        "non-singleton nested inner WebFrame should keep webpage owner, got id {id}"
+                    );
+                }
+            }
+            match mix_inner.frame_element_reference()? {
+                WebElement::Mix {
+                    element,
+                    page: owner,
+                } => {
+                    assert_eq!(element.attr("id")?, Some("inner-frame".to_string()));
+                    assert_eq!(owner.target_id(), page.target_id());
+                }
+                WebElement::Browser(element) => {
+                    panic!(
+                        "non-singleton nested cross-wrapper frame element should stay mix, got browser element {:?}",
+                        element.attr("id")?
+                    );
+                }
+                WebElement::Session(_) => {
+                    panic!("non-singleton nested cross-wrapper frame element should stay mix");
+                }
+            }
+
+            mix_inner.set_none_element_value(Some("mix nested missing"), true)?;
+            let driver_inner_fresh_again = driver_outer.get_frame("css:#inner-frame")?;
+            assert_eq!(driver_inner_fresh_again.id(), driver_inner.id());
+            assert_eq!(
+                driver_inner_fresh_again.ele(".does-not-exist")?.text()?,
+                None
+            );
+            Ok(())
+        })();
+
+        let close_result = page.quit();
+        let _ = fs::remove_dir_all(&temp_dir);
+
+        if let Err(err) = close_result {
+            panic!("close headless webpage: {err}");
+        }
+        result.expect("non-singleton nested cross-wrapper webframe regression");
+    }
+
+    #[test]
     fn page_frame_webpage_and_webframe_js_helper_signatures_accept_common_inputs() {
         fn assert_calls(page: &Page, frame: &Frame, web_page: &WebPage, web_frame: &WebFrame) {
             let args = [Value::from(1), Value::from(2)];
