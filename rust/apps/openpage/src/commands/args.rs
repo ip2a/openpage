@@ -1331,7 +1331,7 @@ pub struct McpArgs {
 
 #[derive(Debug, Args)]
 #[command(
-    after_help = "TCP daemon mode. Use `--port 0` for an OS-assigned port. MCP stdio is exposed separately by `openpage mcp`."
+    after_help = "TCP-only daemon mode. Use `--port 0` for an OS-assigned port. The active OpenPage daemon protocol remains unique; `serve --stdio` was removed. MCP stdio is exposed separately by `openpage mcp`."
 )]
 pub struct ServeArgs {
     #[arg(long, default_value = "default")]
