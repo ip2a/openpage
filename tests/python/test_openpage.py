@@ -1940,64 +1940,62 @@ class OpenPageIntegrationTest(unittest.TestCase):
                 page.quit()
 
     def test_webpage_element_click_for_new_tab_returns_new_page(self) -> None:
-        page = WebPage(mode="d")
-        try:
-            self.assertTrue(page.get(data_url()))
-            before_tab_ids = list(page.tab_ids)
-            new_tab_url = "data:text/html," + quote("<h1>new-tab</h1>")
-            page.run_js(
-                f"""
-                (() => {{
-                    const link = document.createElement('a');
-                    link.id = 'open-tab';
-                    link.href = {new_tab_url!r};
-                    link.target = '_blank';
-                    link.textContent = 'Open tab';
-                    document.body.appendChild(link);
-                    return true;
-                }})()
-                """
-            )
-
-            new_page = page.ele("#open-tab").click.for_new_tab(timeout=2.0)
-
-            self.assertNotEqual(new_page, False)
-            assert new_page is not False
-            self.assertNotIn(new_page.tab_id, before_tab_ids)
-            self.assertTrue(new_page.wait.doc_loaded(timeout=2.0))
-            self.assertIn("new-tab", new_page.html)
-        finally:
-            page.quit()
+        with serve_new_tab_site() as base_url:
+            page = WebPage(mode="d")
+            try:
+                self.assertTrue(page.get(base_url + "/"))
+                before_tab_ids = list(page.tab_ids)
+                new_tab_url = base_url + "/new-tab"
+                page.run_js(
+                    f"""
+                    (() => {{
+                        const link = document.createElement('a');
+                        link.id = 'open-tab';
+                        link.href = {new_tab_url!r};
+                        link.target = '_blank';
+                        link.textContent = 'Open tab';
+                        document.body.appendChild(link);
+                        return true;
+                    }})()
+                    """
+                )
+                new_page = page.ele("#open-tab").click.for_new_tab(timeout=2.0)
+                self.assertNotEqual(new_page, False)
+                assert new_page is not False
+                self.assertNotIn(new_page.tab_id, before_tab_ids)
+                self.assertTrue(new_page.wait.doc_loaded(timeout=2.0))
+                self.assertIn("new-tab", new_page.html)
+            finally:
+                page.quit()
 
     def test_webpage_element_click_middle_returns_new_page(self) -> None:
-        page = WebPage(mode="d")
-        try:
-            self.assertTrue(page.get(data_url()))
-            before_tab_ids = list(page.tab_ids)
-            new_tab_url = "data:text/html," + quote("<h1>middle-tab</h1>")
-            page.run_js(
-                f"""
-                (() => {{
-                    const link = document.createElement('a');
-                    link.id = 'middle-open-tab';
-                    link.href = {new_tab_url!r};
-                    link.textContent = 'Open by middle click';
-                    document.body.appendChild(link);
-                    return true;
-                }})()
-                """
-            )
-
-            new_page = page.ele("#middle-open-tab").click.middle()
-
-            self.assertNotEqual(new_page, False)
-            assert new_page is not False
-            self.assertNotIn(new_page.tab_id, before_tab_ids)
-            self.assertTrue(new_page.wait.doc_loaded(timeout=2.0))
-            self.assertIn("middle-tab", new_page.html)
-            self.assertIn("Open by middle click", page.html)
-        finally:
-            page.quit()
+        with serve_new_tab_site() as base_url:
+            page = WebPage(mode="d")
+            try:
+                self.assertTrue(page.get(base_url + "/"))
+                before_tab_ids = list(page.tab_ids)
+                new_tab_url = base_url + "/middle-tab"
+                page.run_js(
+                    f"""
+                    (() => {{
+                        const link = document.createElement('a');
+                        link.id = 'middle-open-tab';
+                        link.href = {new_tab_url!r};
+                        link.textContent = 'Open by middle click';
+                        document.body.appendChild(link);
+                        return true;
+                    }})()
+                    """
+                )
+                new_page = page.ele("#middle-open-tab").click.middle()
+                self.assertNotEqual(new_page, False)
+                assert new_page is not False
+                self.assertNotIn(new_page.tab_id, before_tab_ids)
+                self.assertTrue(new_page.wait.doc_loaded(timeout=2.0))
+                self.assertIn("middle-tab", new_page.html)
+                self.assertIn("Open by middle click", page.html)
+            finally:
+                page.quit()
 
     def test_webpage_window_controls_use_driver_page(self) -> None:
         page = WebPage(mode="d", chromium_options=ChromiumOptions().headless(False).set_window_size(880, 680))
