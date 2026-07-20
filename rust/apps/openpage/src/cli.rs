@@ -1,9 +1,15 @@
+#[path = "commands/args.rs"]
 pub mod args;
+#[path = "commands/connection.rs"]
 pub mod connection;
+#[path = "commands/protocol.rs"]
 pub mod protocol;
 
+#[path = "commands/doctor.rs"]
 mod doctor;
+#[path = "commands/oneshot.rs"]
 mod oneshot;
+#[path = "commands/serve.rs"]
 mod serve;
 
 use clap::Parser;

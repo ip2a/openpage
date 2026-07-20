@@ -27,6 +27,7 @@ pub struct CompatCli {
 #[derive(Debug, Parser)]
 #[command(
     name = "openpage",
+    version,
     about = "OpenPage — Agent-friendly browser automation CLI",
     long_about = "OpenPage — Agent-friendly browser automation CLI.\n\nActive CLI protocol: TCP-backed daemon only. All `openpage ...` commands route through the same daemon-backed execution path; there is no separate stdio daemon mode or direct browser-execution CLI path.",
     after_help = "Use `openpage serve` for long-lived NDJSON TCP control, `openpage doctor` for local environment checks, and the normal `openpage ...` commands for daemon-backed one-shot control.\n\nBootstrap commands: `browser start` and `goto` may create the daemon-backed session when it is missing. Other `--session` commands require an already active session and fail fast instead of silently starting a fresh browser.\n\nRemoved on purpose and rejected: `serve --stdio`, `page get`, `page url`, `page title`, `page screenshot`.\n\n`dp` is compatibility glue only. It does not define a second OpenPage protocol surface."
