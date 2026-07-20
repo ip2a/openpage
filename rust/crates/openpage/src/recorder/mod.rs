@@ -141,7 +141,13 @@ impl Recorder {
         state.started_at_ms = Some(now_ms());
         state.flow = RecordedFlow::default();
         drop(state);
-        self.start_page_listener()?;
+        if let Err(error) = self.start_page_listener() {
+            let mut state = self.lock()?;
+            state.recording = false;
+            state.started_at_ms = None;
+            state.flow = RecordedFlow::default();
+            return Err(error);
+        }
         Ok(())
     }
 

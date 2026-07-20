@@ -1155,3 +1155,13 @@ Core 回放也已用真实 daemon 验证：在相同 DOM 中回放 `fill + click
 ```
 
 审查后仍明确保留的 v1 限制：secret 需要运行时输入；fallback locator、iframe frame 路由和多 session UI 尚未纳入本里程碑。
+
+补充稳健性修复：
+
+- Recorder 初始化 listener 失败时回滚 `recording` 状态、开始时间和空 flow，避免协议返回失败但状态仍显示录制中的不一致。
+
+验证：
+
+```text
+4 recorder tests passed
+```
