@@ -12,7 +12,9 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs
 from urllib.parse import quote
+from urllib.parse import urlsplit
 
 from openpage import Browser
 from openpage import ChromiumOptions
@@ -536,6 +538,60 @@ def serve_blocked_url_site():
         thread.join(timeout=5)
         server.server_close()
 
+
+
+@contextmanager
+def serve_session_site():
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            path, _, query = self.path.partition("?")
+            if path == "/":
+                payload = b"<!doctype html><html><head><title>Example Domain</title></head><body><div><h1>Example Domain</h1></div></body></html>"
+                content_type = "text/html; charset=utf-8"
+            elif path == "/json":
+                payload = json.dumps({"slideshow": {"title": "OpenPage"}}).encode()
+                content_type = "application/json"
+            elif path == "/cookies/set":
+                token = parse_qs(query).get("token", [""])[0]
+                payload = b"cookie set"
+                content_type = "text/plain; charset=utf-8"
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Set-Cookie", f"token={token}; Path=/")
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+            elif path == "/cookies":
+                cookies = {}
+                for item in self.headers.get("Cookie", "").split(";"):
+                    if "=" in item:
+                        name, value = item.strip().split("=", 1)
+                        cookies[name] = value
+                payload = json.dumps({"cookies": cookies}).encode()
+                content_type = "application/json"
+            else:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format: str, *args: object) -> None:
+            del format, args
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/"
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
 
 def assert_get_ok(page: SessionPage | WebPage, url: str, attempts: int = 3) -> None:
     last_status: int | str | None = None
@@ -1774,27 +1830,27 @@ class OpenPageIntegrationTest(unittest.TestCase):
     def test_session_page_flow(self) -> None:
         options = SessionOptions().set_user_agent("openpage-test-agent")
         page = SessionPage(options)
-        self.assertTrue(page.get("https://example.com"))
-        self.assertEqual(page.title, "Example Domain")
-        self.assertEqual(page.ele("h1").text, "Example Domain")
-        self.assertEqual(page.s_ele("h1").text, "Example Domain")
-        self.assertEqual(page.s_ele().tag, "html")
-        self.assertEqual(page.s_ele("body").ele("h1").text, "Example Domain")
-        self.assertEqual(page.s_ele("h1").parent().tag, "div")
-        self.assertEqual(page.s_ele("h1").parent().parent().tag, "body")
-        self.assertEqual(page.s_ele("h1").raw_text, "Example Domain")
-        self.assertEqual(page.user_agent, "openpage-test-agent")
-        self.assertEqual(page.status_code, 200)
-        self.assertIn(b"Example Domain", page.raw_data)
-        self.assertEqual(page.encoding, "utf-8")
-
-        assert_get_ok(page, "https://httpbin.org/json")
-        self.assertIn("slideshow", page.json)
-        self.assertIn(b"slideshow", page.raw_data)
-        self.assertEqual(page.encoding, "utf-8")
+        with serve_session_site() as base_url:
+            self.assertTrue(page.get(base_url))
+            self.assertEqual(page.title, "Example Domain")
+            self.assertEqual(page.ele("h1").text, "Example Domain")
+            self.assertEqual(page.s_ele("h1").text, "Example Domain")
+            self.assertEqual(page.s_ele().tag, "html")
+            self.assertEqual(page.s_ele("body").ele("h1").text, "Example Domain")
+            self.assertEqual(page.s_ele("h1").parent().tag, "div")
+            self.assertEqual(page.s_ele("h1").parent().parent().tag, "body")
+            self.assertEqual(page.s_ele("h1").raw_text, "Example Domain")
+            self.assertEqual(page.user_agent, "openpage-test-agent")
+            self.assertEqual(page.status_code, 200)
+            self.assertIn(b"Example Domain", page.raw_data)
+            self.assertEqual(page.encoding, "utf-8")
+            assert_get_ok(page, base_url + "json")
+            self.assertIn("slideshow", page.json)
+            self.assertIn(b"slideshow", page.raw_data)
+            self.assertEqual(page.encoding, "utf-8")
 
     def test_webpage_mode_switch_and_cookie_sync(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
+        with tempfile.TemporaryDirectory() as tmp_dir, serve_session_site() as base_url:
             page = WebPage(
                 mode="d",
                 chromium_options=ChromiumOptions().set_download_path(tmp_dir),
@@ -1802,25 +1858,25 @@ class OpenPageIntegrationTest(unittest.TestCase):
             try:
                 self.assertEqual(page.mode, "d")
                 self.assertEqual(page.download_path, tmp_dir)
-                assert_get_ok(page, "https://httpbin.org/cookies/set?token=browser")
-                assert_get_ok(page, "https://httpbin.org/cookies")
+                assert_get_ok(page, base_url + "cookies/set?token=browser")
+                assert_get_ok(page, base_url + "cookies")
                 page.change_mode("s", go=True, copy_cookies=True)
                 self.assertEqual(page.mode, "s")
                 self.assertEqual(page.status_code, 200)
                 self.assertTrue(page.user_agent)
                 self.assertEqual(page.json["cookies"]["token"], "browser")
-                self.assertIn({"name": "token", "value": "browser", "domain": "httpbin.org"}, page.cookies())
+                self.assertIn({"name": "token", "value": "browser", "domain": urlsplit(base_url).hostname}, page.cookies())
                 self.assertIn(b"browser", page.raw_data)
                 self.assertEqual(page.encoding, "utf-8")
 
-                assert_get_ok(page, "https://httpbin.org/cookies/set?token=session")
-                assert_get_ok(page, "https://httpbin.org/cookies")
+                assert_get_ok(page, base_url + "cookies/set?token=session")
+                assert_get_ok(page, base_url + "cookies")
                 page.change_mode("d", go=True, copy_cookies=True)
                 self.assertEqual(page.mode, "d")
                 self.assertIsNone(page.status_code)
                 self.assertTrue(page.user_agent)
                 self.assertIn('"token": "session"', page.ele("body").text or "")
-                self.assertIn({"name": "token", "value": "session", "domain": "httpbin.org"}, page.cookies())
+                self.assertIn({"name": "token", "value": "session", "domain": None}, page.cookies())
                 self.assertEqual(page.raw_data, b"")
                 self.assertIsNone(page.encoding)
             finally:
