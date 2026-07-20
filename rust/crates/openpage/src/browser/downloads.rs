@@ -6,7 +6,7 @@ impl Browser {
         current_tab_id: Option<&str>,
         timeout_ms: u64,
     ) -> OpenPageResult<Option<String>> {
-        let _initial_baseline = self.tab_ids()?;
+        let initial_baseline = self.tab_ids()?;
         // CDP can report a newly created background target a few milliseconds after
         // new_page() returns; stabilize the baseline before waiting for the next one.
         sleep(Duration::from_millis(50));
@@ -16,10 +16,10 @@ impl Browser {
             .filter(|target_id| !target_id.is_empty())
         {
             let newest = resolve_newest_tab_id(&baseline, self.tracked_newest_tab_id()?);
-            if newest
-                .as_deref()
-                .is_some_and(|target_id| target_id != current_tab_id)
-            {
+            if newest.as_deref().is_some_and(|target_id| {
+                target_id != current_tab_id
+                    && !initial_baseline.iter().any(|seen| seen == target_id)
+            }) {
                 return Ok(newest);
             }
         }
