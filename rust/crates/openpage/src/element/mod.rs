@@ -4379,6 +4379,7 @@ impl<'a> ElementClicker<'a> {
         }
         let timeout_ms = self.timeout_ms(None)?;
         let browser = self.element.browser.as_ref();
+        let baseline = browser.map(Browser::tab_ids).transpose()?;
         let current_tab_id = match browser {
             Some(browser) => Some(
                 browser
@@ -4398,9 +4399,11 @@ impl<'a> ElementClicker<'a> {
             timeout_ms.min(500)
         };
         if let Some(browser) = browser {
-            if let Some(target_id) =
-                browser.wait_for_new_tab(current_tab_id.as_deref(), detect_timeout_ms)?
-            {
+            if let Some(target_id) = browser.wait_for_new_tab_from(
+                baseline.as_deref().unwrap_or(&[]),
+                current_tab_id.as_deref(),
+                detect_timeout_ms,
+            )? {
                 if get_tab {
                     return browser
                         .wait_for_page(&target_id, detect_timeout_ms)
@@ -4485,9 +4488,12 @@ impl<'a> ElementClicker<'a> {
         let current_tab_id = browser
             .newest_tab_id()?
             .unwrap_or_else(|| self.element.page.target_id().as_ref().to_string());
+        let baseline = browser.tab_ids()?;
         browser.activate_tab(self.element.page.target_id().as_ref())?;
         let _ = self.left_with_options(Some(by_js), Some(timeout_ms), true)?;
-        if let Some(target_id) = browser.wait_for_new_tab(Some(&current_tab_id), timeout_ms)? {
+        if let Some(target_id) =
+            browser.wait_for_new_tab_from(&baseline, Some(&current_tab_id), timeout_ms)?
+        {
             return browser.wait_for_page(&target_id, timeout_ms).map(Some);
         }
         Err(OpenPageError::PageOperation(no_new_tab_message()))
