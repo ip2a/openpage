@@ -1129,3 +1129,29 @@ Core 回放也已用真实 daemon 验证：在相同 DOM 中回放 `fill + click
 - 浏览器生命周期仍由 OpenPage CLI/daemon 管理，React 不直接启动 Chromium。
 
 因此桌面端 MVP 已覆盖“启动或连接现有 OpenPage session”，而不是只依赖用户预先启动 daemon。
+
+## 里程碑 8：事件归一化修复
+
+状态：**已完成**
+
+根据真实 Chromium 审查结果修复：
+
+- `checkbox` / `radio` 不再被 `input` 事件误记为 `fill`。
+- `select` 不再被 `input` 事件误记为 `fill`，只生成 `select`。
+- 同一目标的 `click + check` 合并为单个 `check` 步骤。
+- 同一流程中的 `click + 主 frame 导航` 合并为 `click`，并设置 `wait_after: "navigation"`，不再追加重复 `goto`。
+- 增加了 checkbox 合并和 click-navigation 合并的单元测试。
+
+真实浏览器验证结果：
+
+```json
+{
+  "steps": [
+    {"action": "check", "target": {"locator": "css:#ok"}, "checked": true},
+    {"action": "select", "target": {"locator": "css:#kind"}, "values": ["b"]}
+  ],
+  "version": 1
+}
+```
+
+审查后仍明确保留的 v1 限制：secret 需要运行时输入；fallback locator、iframe frame 路由和多 session UI 尚未纳入本里程碑。

@@ -262,6 +262,22 @@ fn merge_step(previous: &mut RecordedStep, next: &RecordedStep) -> bool {
             previous.timestamp_ms = next.timestamp_ms;
             true
         }
+        (
+            RecordedAction::Click {
+                target: previous_target,
+            },
+            RecordedAction::Check {
+                target: next_target,
+                ..
+            },
+        ) if previous_target == next_target => {
+            previous.action = next.action.clone();
+            true
+        }
+        (RecordedAction::Click { .. }, RecordedAction::Goto { .. }) => {
+            previous.wait_after = Some(RecordedWait::Navigation);
+            true
+        }
         _ => false,
     }
 }
@@ -307,6 +323,8 @@ const RECORDER_SCRIPT: &str = r#"(() => {
   document.addEventListener("input", (event) => {
     const element = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement ? event.target : null;
     if (!element) return;
+    if (element instanceof HTMLInputElement && (element.type === "checkbox" || element.type === "radio")) return;
+    if (element instanceof HTMLSelectElement) return;
     const value = element instanceof HTMLInputElement && element.type === "password" ? { secret: "PASSWORD" } : String(element.value);
     send({ action: "fill", target: target(element), value });
   }, true);
@@ -325,7 +343,10 @@ const RECORDER_SCRIPT: &str = r#"(() => {
 
 #[cfg(test)]
 mod tests {
-    use super::{RECORDED_FLOW_VERSION, RecordedAction, RecordedTarget, RecordedValue, Recorder};
+    use super::{
+        RECORDED_FLOW_VERSION, RecordedAction, RecordedTarget, RecordedValue, RecordedWait,
+        Recorder,
+    };
 
     #[test]
     fn recorder_merges_consecutive_fill_steps_for_same_target() {
@@ -356,6 +377,51 @@ mod tests {
                 ..
             } if value == "alice@example.com"
         ));
+    }
+
+    #[test]
+    fn recorder_merges_checkbox_click_into_check() {
+        let recorder = Recorder::default();
+        let target = RecordedTarget::new("css:#ok");
+
+        recorder.start().unwrap();
+        recorder
+            .record(RecordedAction::Click {
+                target: target.clone(),
+            })
+            .unwrap();
+        recorder
+            .record(RecordedAction::Check {
+                target,
+                checked: true,
+            })
+            .unwrap();
+
+        let flow = recorder.stop().unwrap();
+        assert_eq!(flow.steps.len(), 1);
+        assert!(matches!(
+            flow.steps[0].action,
+            RecordedAction::Check { checked: true, .. }
+        ));
+    }
+
+    #[test]
+    fn recorder_marks_navigation_after_click_without_adding_goto() {
+        let recorder = Recorder::default();
+        let target = RecordedTarget::new("css:#login");
+
+        recorder.start().unwrap();
+        recorder.record(RecordedAction::Click { target }).unwrap();
+        recorder
+            .record(RecordedAction::Goto {
+                url: "https://example.com/login".to_string(),
+            })
+            .unwrap();
+
+        let flow = recorder.stop().unwrap();
+        assert_eq!(flow.steps.len(), 1);
+        assert_eq!(flow.steps[0].wait_after, Some(RecordedWait::Navigation));
+        assert!(matches!(flow.steps[0].action, RecordedAction::Click { .. }));
     }
 
     #[test]
