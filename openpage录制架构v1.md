@@ -1281,3 +1281,23 @@ cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
 cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
 ```
+
+## 里程碑 13：敏感字段识别扩展
+
+状态：**已完成**
+
+录制脚本不再只依赖 `type=password`：
+
+- password / password-like 字段 → `PASSWORD`。
+- OTP / verification 字段 → `OTP`。
+- token / secret / api key 字段 → `TOKEN`。
+- credit card number 字段 → `CARD_NUMBER`。
+
+flow 仍只保存 `{ "secret": "..." }` 占位符，真实值只允许通过 replay RPC 的 `secrets` 运行时映射注入。该识别是基于字段元数据的保守启发式；无法从页面元数据判断的业务敏感值不能被录制器可靠识别，调用方仍应在导出/保存前复核 flow。
+
+验证：
+
+```text
+cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
+```

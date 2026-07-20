@@ -322,6 +322,16 @@ const RECORDER_SCRIPT: &str = r#"(() => {
     return `css:${parts.join(" > ")}`;
   };
   const target = (element) => ({ locator: locator(element) });
+  const sensitiveKey = (element) => {
+    const metadata = [element.type, element.autocomplete, element.name, element.id,
+      element.getAttribute("aria-label"), element.getAttribute("placeholder")]
+      .filter(Boolean).join(" ").toLowerCase();
+    if (element.type === "password" || /pass(word)?/.test(metadata)) return "PASSWORD";
+    if (/otp|one[-_ ]?time|verification/.test(metadata)) return "OTP";
+    if (/token|secret|api[-_ ]?key/.test(metadata)) return "TOKEN";
+    if (/credit|card[-_ ]?number/.test(metadata)) return "CARD_NUMBER";
+    return null;
+  };
   document.addEventListener("click", (event) => {
     const element = event.target instanceof Element ? event.target : null;
     if (element) send({ action: "click", target: target(element) });
@@ -331,7 +341,8 @@ const RECORDER_SCRIPT: &str = r#"(() => {
     if (!element) return;
     if (element instanceof HTMLInputElement && (element.type === "checkbox" || element.type === "radio")) return;
     if (element instanceof HTMLSelectElement) return;
-    const value = element instanceof HTMLInputElement && element.type === "password" ? { secret: "PASSWORD" } : String(element.value);
+    const secret = element instanceof HTMLInputElement ? sensitiveKey(element) : null;
+    const value = secret ? { secret } : String(element.value);
     send({ action: "fill", target: target(element), value });
   }, true);
   document.addEventListener("change", (event) => {
