@@ -33,3 +33,10 @@ package-lock.json
 参考项目/DrissionPage-master/.codegraph/
 package.json
 重要参考文档/
+desktop/openpage/node_modules/
+desktop/openpage/dist/
+desktop/openpage/src-tauri/target/
+
+desktop/openpage/tsconfig.tsbuildinfo
+desktop/openpage/src-tauri/Cargo.lock
+desktop/openpage/src-tauri/gen/

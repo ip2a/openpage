@@ -1066,3 +1066,44 @@ cargo run --manifest-path rust/apps/openpage/Cargo.toml -- record replay --help
 验证环境：2026 年 7 月 20 日，macOS，本地 OpenPage daemon + Chromium。
 
 下一里程碑：实现 React + Tauri 桌面端最小控制台。
+
+## 里程碑 7：React + Tauri 桌面端最小闭环
+
+状态：**已完成**
+
+新增独立应用：
+
+```text
+desktop/openpage/
+├── src/                 # React + TypeScript UI
+└── src-tauri/           # Tauri 2 Rust shell
+```
+
+第一版桌面端完成：
+
+- 开始录制。
+- 停止录制。
+- 查看录制状态和步骤数量。
+- 查看结构化步骤 JSON。
+- 保存 `flow.json`。
+- 回放当前 flow。
+- 清空录制步骤。
+- 通过 Tauri Rust shell 使用本地 NDJSON TCP 调用现有 OpenPage daemon。
+
+边界保持不变：
+
+```text
+React → Tauri invoke → local TCP/NDJSON → OpenPage daemon → Core → Chromium/CDP
+```
+
+桌面端没有复制浏览器控制逻辑，也没有把浏览器嵌入 Tauri WebView。桌面端当前连接 `default` session；后续只需把 session 选择加入 UI，不改变协议和 Core。
+
+验证证据：
+
+```text
+cd desktop/openpage
+npm run build
+cargo check --manifest-path src-tauri/Cargo.toml
+```
+
+下一步：补充跨平台打包验收、session 选择和真实桌面运行验收；这些不属于 Core 录制协议的必要前置条件。
