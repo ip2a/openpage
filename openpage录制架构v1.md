@@ -1173,3 +1173,39 @@ Core 回放也已用真实 daemon 验证：在相同 DOM 中回放 `fill + click
 ```
 
 没有重复生成 `goto`。Tauri 本地 daemon TCP 调用同时增加了 5 秒写超时和 30 秒读超时，避免桌面 UI 无限等待。
+
+## 里程碑 9：回放定位与敏感值注入
+
+状态：**已完成**
+
+回放协议现在支持：
+
+- primary locator 失败时按 `RecordedTarget.fallbacks` 顺序尝试备用 locator。
+- `RecordedValue::Secret` 从 RPC 参数的 `secrets` 对象读取运行时值。
+- 缺少 secret 时立即返回明确错误，不会把占位符当成真实密码填写。
+
+RPC 形态：
+
+```json
+{
+  "flow": {"version": 1, "steps": []},
+  "secrets": {
+    "PASSWORD": "runtime-only-value"
+  }
+}
+```
+
+真实 flow 文件仍只保存：
+
+```json
+{"secret":"PASSWORD"}
+```
+
+不会保存真实敏感值。CLI 仍默认拒绝未提供运行时 secret 的回放；需要注入敏感值时使用 daemon RPC 层传入 `secrets`。
+
+验证：
+
+```text
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib
+cargo check --manifest-path rust/Cargo.toml -p openpage-app
+```

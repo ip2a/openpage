@@ -18,7 +18,7 @@ use crate::download::DownloadMission;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::{ActionsDragData, PageNavigationSnapshot};
 use crate::protocol::{Request, Response};
-use crate::recorder::{RecordedAction, RecordedFlow, RecordedValue};
+use crate::recorder::{RecordedAction, RecordedFlow, RecordedTarget, RecordedValue};
 use crate::session::SessionOptions;
 use crate::settings::wait_timeout_result;
 use crate::webpage::{WebElement, WebFrame, WebMode, WebPage};
@@ -3945,6 +3945,22 @@ fn replay_recorded_flow(state: &mut ServeWebPage, params: &Value) -> OpenPageRes
         .unwrap_or_else(|| params.clone());
     let flow: RecordedFlow = serde_json::from_value(flow_value)
         .map_err(|err| OpenPageError::BrowserOperation(format!("invalid recorded flow: {err}")))?;
+    let secrets = params
+        .get("secrets")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let find = |target: &RecordedTarget| match state.page.find(&target.locator) {
+        Ok(element) => Ok(element),
+        Err(primary_error) => {
+            for locator in &target.fallbacks {
+                if let Ok(element) = state.page.find(locator) {
+                    return Ok(element);
+                }
+            }
+            Err(primary_error)
+        }
+    };
     let mut replayed = 0;
     for step in flow.steps {
         match step.action {
@@ -3952,28 +3968,32 @@ fn replay_recorded_flow(state: &mut ServeWebPage, params: &Value) -> OpenPageRes
                 state.page.goto(&url)?;
             }
             RecordedAction::Click { target } => {
-                state.page.find(target.locator)?.click()?;
+                find(&target)?.click()?;
             }
             RecordedAction::Fill { target, value } => {
                 let text = match value {
                     RecordedValue::Text(text) => text,
-                    RecordedValue::Secret { .. } => {
-                        return Err(OpenPageError::BrowserOperation(
-                            "recorded secret requires runtime input before replay".to_string(),
-                        ));
-                    }
+                    RecordedValue::Secret { secret } => secrets
+                        .get(&secret)
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| {
+                            OpenPageError::BrowserOperation(format!(
+                                "missing runtime secret: {secret}"
+                            ))
+                        })?
+                        .to_string(),
                 };
-                state.page.find(target.locator)?.input(text)?;
+                find(&target)?.input(text)?;
             }
             RecordedAction::Select { target, values } => {
-                state.page.find(target.locator)?.select_by_value(values)?;
+                find(&target)?.select_by_value(values)?;
             }
             RecordedAction::Check { target, checked } => {
-                state.page.find(target.locator)?.set_checked(checked)?;
+                find(&target)?.set_checked(checked)?;
             }
             RecordedAction::Press { target, key } => {
                 if let Some(target) = target {
-                    state.page.find(target.locator)?.press_key(&key)?;
+                    find(&target)?.press_key(&key)?;
                 } else {
                     state.page.actions()?.type_keys(key)?;
                 }
