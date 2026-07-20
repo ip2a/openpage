@@ -1107,3 +1107,17 @@ cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
 下一步：补充跨平台打包验收、session 选择和真实桌面运行验收；这些不属于 Core 录制协议的必要前置条件。
+
+补充验收：
+
+```text
+npm run tauri build -- --bundles app
+```
+
+已在 macOS 成功生成：
+
+```text
+src-tauri/target/release/bundle/macos/OpenPage.app
+```
+
+Core 回放也已用真实 daemon 验证：在相同 DOM 中回放 `fill + click` flow，daemon 返回 `{"replayed":2,"version":1}`。
