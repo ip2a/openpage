@@ -889,3 +889,29 @@ npm package
 一句话目标：
 
 > OpenPage Core 提供唯一的浏览器录制与回放能力，CLI、Web 和 React + Tauri Desktop 只是共享该能力的不同产品入口。
+
+# 19. 执行进度
+
+## 里程碑 1：Core 录制数据模型
+
+状态：**已完成**
+
+完成内容：
+
+- 新增 `rust/crates/openpage/src/recorder/mod.rs`。
+- 定义版本化 `RecordedFlow`、`RecordedStep`、`RecordedAction`、`RecordedTarget`。
+- 定义敏感值 `RecordedValue::Secret` 和等待语义 `RecordedWait`。
+- 实现 `Recorder` 的 `start`、`stop`、`flow`、`clear`、`status`。
+- 连续向同一目标输入时合并为一个 `fill` 步骤。
+- `Page` 持有并公开同一个共享 `Recorder` 实例。
+- 从 Rust crate 根模块公开录制协议类型。
+
+验证证据：
+
+```text
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib
+
+2 passed; 0 failed
+```
+
+下一里程碑：CDP 页面事件采集与原始事件归一化。

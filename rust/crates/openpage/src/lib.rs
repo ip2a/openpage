@@ -14,6 +14,7 @@ pub mod mcp;
 pub mod options_manager;
 pub mod page;
 pub mod protocol;
+pub mod recorder;
 pub mod screencast;
 pub mod session;
 pub mod settings;
@@ -66,6 +67,10 @@ pub use page::{
     PageCookieSetter, PageElementContent, PageElementInfo, PageElementTarget, PageFrameTarget,
     PageLoadModeSetter, PageNavigationSnapshot, PageSaveContent, PageScroller, PageSetter,
     PageWindowSetter,
+};
+pub use recorder::{
+    RECORDED_FLOW_VERSION, RecordedAction, RecordedFlow, RecordedStep, RecordedTarget,
+    RecordedValue, RecordedWait, Recorder, RecorderStatus,
 };
 pub use screencast::{Screencast, ScreencastMode};
 pub use session::{

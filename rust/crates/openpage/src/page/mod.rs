@@ -74,6 +74,7 @@ use crate::locator::{
     Locator, LocatorBatchInput, LocatorInput, LocatorKind, LocatorMatch, collect_locator_matches,
     parse_locator_batch_input,
 };
+use crate::recorder::Recorder;
 use crate::screencast::Screencast;
 use crate::session::{
     CookieEntry, CookieInput, HeadersInput, SessionCookieParam, SessionElement, SessionOptions,
@@ -186,6 +187,7 @@ pub struct Page {
     interceptor: Interceptor,
     console: Console,
     screencast: Screencast,
+    recorder: Recorder,
     alerts: AlertTracker,
     uploader: UploadTracker,
     load_mode: Arc<std::sync::Mutex<LoadMode>>,
@@ -4188,6 +4190,7 @@ impl Page {
         let interceptor = Interceptor::new(Arc::clone(&runtime), inner.clone());
         let console = Console::new(Arc::clone(&runtime), inner.clone());
         let screencast = Screencast::new(Arc::clone(&runtime), inner.clone());
+        let recorder = Recorder::default();
         let alerts = AlertTracker::new(Arc::clone(&runtime), inner.clone());
         let uploader = UploadTracker::new(Arc::clone(&runtime), inner.clone());
         Self {
@@ -4198,6 +4201,7 @@ impl Page {
             interceptor,
             console,
             screencast,
+            recorder,
             alerts,
             uploader,
             load_mode: Arc::new(std::sync::Mutex::new(load_mode)),
@@ -6533,6 +6537,10 @@ impl Page {
 
     pub fn screencast(&self) -> Screencast {
         self.screencast.clone()
+    }
+
+    pub fn recorder(&self) -> Recorder {
+        self.recorder.clone()
     }
 
     pub fn has_alert(&self) -> OpenPageResult<bool> {
