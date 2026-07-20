@@ -942,3 +942,30 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib
 ```
 
 下一里程碑：将 Recorder 接入 daemon 协议和 CLI，并增加 JSON flow 的保存入口。
+
+## 里程碑 3：daemon 录制协议
+
+状态：**已完成**
+
+完成内容：
+
+- `WebPage` 暴露 Core Recorder。
+- daemon 增加 `recorder.start`。
+- daemon 增加 `recorder.stop`。
+- daemon 增加 `recorder.steps`。
+- daemon 增加 `recorder.clear`。
+- daemon 增加 `recorder.status`。
+- daemon 返回版本化 `RecordedFlow` 和状态 JSON。
+- daemon 仍通过现有 `webpage` target 路由，不新增第二个浏览器控制入口。
+
+验证证据：
+
+```text
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib
+
+2 passed; 0 failed
+```
+
+说明：daemon 全量测试中已有与本次改动无关的 sidecar/临时目录测试失败；录制模块测试和 crate 编译通过。后续增加专门的 daemon recorder 协议测试，避免依赖真实浏览器启动。
+
+下一里程碑：CLI `record` / `replay` 入口和 flow JSON 文件保存。

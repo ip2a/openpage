@@ -823,6 +823,22 @@ fn dispatch_webpage(state: &mut ServeWebPage, op: &str, params: &Value) -> OpenP
     }
     let page = state.page.clone();
     match op {
+        "recorder.start" => {
+            page.recorder().start()?;
+            Ok(json!(page.recorder().status()?))
+        }
+        "recorder.stop" => {
+            let flow = page.recorder().stop()?;
+            Ok(serde_json::to_value(flow)
+                .map_err(|err| OpenPageError::Serialization(err.to_string()))?)
+        }
+        "recorder.steps" => Ok(serde_json::to_value(page.recorder().flow()?)
+            .map_err(|err| OpenPageError::Serialization(err.to_string()))?),
+        "recorder.clear" => {
+            page.recorder().clear()?;
+            Ok(json!({"cleared": true}))
+        }
+        "recorder.status" => Ok(json!(page.recorder().status()?)),
         "webpage.back" => {
             let navigation_token = state.record_navigation_baseline();
             let result = json!({"back": page.back(1)?, "navigation_token": navigation_token});

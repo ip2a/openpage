@@ -4677,6 +4677,10 @@ impl WebPage {
         self.driver.screencast()
     }
 
+    pub fn recorder(&self) -> crate::recorder::Recorder {
+        self.driver.recorder()
+    }
+
     pub fn change_mode(
         &self,
         mode: Option<WebMode>,
