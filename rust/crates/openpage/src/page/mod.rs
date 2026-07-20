@@ -6112,14 +6112,23 @@ impl Page {
             ))
         })?;
         let timeout_ms = timeout_ms.unwrap_or(browser.timeouts()?.implicit_wait);
-        let current_tab_id = browser.newest_tab_id()?.unwrap_or_else(|| self.target_id());
-        browser.activate_tab(self.target_id().as_str())?;
+        let current_tab_id = self.target_id();
+        browser.activate_tab(&current_tab_id)?;
         let element = self.wait_for(locator, timeout_ms)?;
+        let baseline = browser.tab_ids()?;
         let _ = element.click_with_options(Some(by_js), Some(timeout_ms), true)?;
-        let Some(target_id) = browser.wait_for_new_tab(Some(&current_tab_id), timeout_ms)? else {
+        let Some(target_id) =
+            browser.wait_for_new_tab_from(&baseline, Some(&current_tab_id), timeout_ms)?
+        else {
             return Err(OpenPageError::PageOperation(no_new_tab_message()));
         };
-        browser.wait_for_page(&target_id, timeout_ms).map(Some)
+        let page = browser.wait_for_page(&target_id, timeout_ms)?;
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        while page.url()? == "about:blank" && Instant::now() < deadline {
+            sleep(Duration::from_millis(25));
+        }
+        page.wait_for_doc_loaded(remaining_timeout_ms(deadline))?;
+        Ok(Some(page))
     }
 
     pub fn click_middle<'a, L>(
@@ -6142,13 +6151,11 @@ impl Page {
         };
         let element = self.wait_for(locator, timeout_ms)?;
         let browser = self.browser.as_ref();
-        let current_tab_id = match browser {
-            Some(browser) => Some(browser.newest_tab_id()?.unwrap_or_else(|| self.target_id())),
-            None => None,
-        };
+        let current_tab_id = browser.map(|_| self.target_id());
         if get_tab && let Some(browser) = browser {
             browser.activate_tab(self.target_id().as_str())?;
         }
+        let baseline = browser.map(Browser::tab_ids).transpose()?;
         element.click_middle()?;
         let detect_timeout_ms = if get_tab {
             timeout_ms
@@ -6156,13 +6163,19 @@ impl Page {
             timeout_ms.min(500)
         };
         if let Some(browser) = browser {
-            if let Some(target_id) =
-                browser.wait_for_new_tab(current_tab_id.as_deref(), detect_timeout_ms)?
-            {
+            if let Some(target_id) = browser.wait_for_new_tab_from(
+                baseline.as_deref().unwrap_or(&[]),
+                current_tab_id.as_deref(),
+                detect_timeout_ms,
+            )? {
                 if get_tab {
-                    return browser
-                        .wait_for_page(&target_id, detect_timeout_ms)
-                        .map(Some);
+                    let page = browser.wait_for_page(&target_id, detect_timeout_ms)?;
+                    let deadline = Instant::now() + Duration::from_millis(detect_timeout_ms.max(1));
+                    while page.url()? == "about:blank" && Instant::now() < deadline {
+                        sleep(Duration::from_millis(25));
+                    }
+                    page.wait_for_doc_loaded(remaining_timeout_ms(deadline))?;
+                    return Ok(Some(page));
                 }
                 return Ok(None);
             }

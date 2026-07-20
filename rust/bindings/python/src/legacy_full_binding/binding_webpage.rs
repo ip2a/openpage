@@ -2,6 +2,10 @@ use super::*;
 
 #[pymethods]
 impl PyWebPage {
+    fn target_id(&self) -> String {
+        self.inner.target_id()
+    }
+
     #[staticmethod]
     #[pyo3(signature = (mode="d", browser_path=None, download_path=None, download_file_exists_mode="rename", load_mode="normal", headless=true, user_data_dir=None, width=1280, height=900, no_sandbox=false, timeout_secs=10, user_agent=None))]
     fn create(
