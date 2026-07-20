@@ -6,6 +6,10 @@ impl Browser {
         current_tab_id: Option<&str>,
         timeout_ms: u64,
     ) -> OpenPageResult<Option<String>> {
+        let _initial_baseline = self.tab_ids()?;
+        // CDP can report a newly created background target a few milliseconds after
+        // new_page() returns; stabilize the baseline before waiting for the next one.
+        sleep(Duration::from_millis(50));
         let baseline = self.tab_ids()?;
         let tracked_baseline = self.tracked_newest_tab_id()?;
         let baseline_marker = current_tab_id

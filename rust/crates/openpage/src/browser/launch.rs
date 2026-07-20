@@ -1547,6 +1547,9 @@ pub(super) fn find_new_tab_id(
         && current_ids
             .iter()
             .any(|target_id| target_id == current_newest)
+        && !baseline_ids
+            .iter()
+            .any(|target_id| target_id == current_newest)
         && current_newest != baseline_marker
     {
         return Some(current_newest.to_string());
@@ -2467,6 +2470,10 @@ mod tests {
         );
         assert_eq!(
             find_new_tab_id(&baseline, &baseline, Some("tab-1"), Some("tab-1")),
+            None
+        );
+        assert_eq!(
+            find_new_tab_id(&baseline, &baseline, Some("tab-1"), Some("tab-0")),
             None
         );
         assert_eq!(
