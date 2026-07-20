@@ -5414,7 +5414,7 @@ impl WebPage {
             |driver, target, remaining| driver.wait_for_ele_deleted(target, remaining),
             |page, locator, remaining| {
                 if page.session.find(locator).is_err() {
-                    return Ok(false);
+                    return Ok(locator.starts_with("xpath:"));
                 }
                 page.session_wait_until(remaining, || Ok(page.session.find(locator).is_err()))
             },

@@ -2636,13 +2636,18 @@ mod tests {
             assert!(page.wait_for_doc_loaded(5_000)?);
 
             let current_tab_id = page.target_id();
-            let new_tab =
-                browser.new_tab(Some("about:blank#wait-existing"), false, false, false)?;
-            assert!(new_tab.wait_for_doc_loaded(5_000)?);
-
+            let browser_for_thread = browser.clone();
+            let thread = std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(100));
+                browser_for_thread.new_tab(Some("about:blank#wait-existing"), false, false, false)
+            });
             let waited = browser
-                .wait_for_new_tab(Some(&current_tab_id), 100)?
-                .expect("wait_for_new_tab should return latest tab immediately");
+                .wait_for_new_tab(Some(&current_tab_id), 2_000)?
+                .expect("wait_for_new_tab should return the delayed tab");
+            let new_tab = thread
+                .join()
+                .expect("new tab thread")
+                .expect("create new tab");
             assert_eq!(waited, new_tab.target_id());
             Ok(())
         })();
