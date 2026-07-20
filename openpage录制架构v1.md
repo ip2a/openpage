@@ -1034,3 +1034,35 @@ cargo run --manifest-path rust/apps/openpage/Cargo.toml -- record replay --help
 说明：当前尚未把 secret 的运行时注入纳入 v1；后续可以在 RPC 参数中增加显式 `secrets` 映射，但必须保持 flow 文件本身不保存真实密码。
 
 下一里程碑：补充真实 Chromium 录制/回放验收，并开始 React + Tauri 桌面端最小闭环。
+
+## 里程碑 6：真实 Chromium 录制验收
+
+状态：**已完成**
+
+使用真实 OpenPage daemon 管理的 Chromium 验证了：
+
+- 启动浏览器 session。
+- 开始和停止录制。
+- 通过 CDP 页面事件记录 `goto`。
+- 通过页面事件记录 `fill` 和 `click`。
+- 连续输入合并为一个 `fill` 步骤。
+- 录制结果保存为版本化 JSON。
+
+实际验收结果：
+
+```json
+{
+  "steps": [
+    {"action": "goto", "url": "https://example.com/"},
+    {"action": "fill", "target": {"locator": "css:#email"}, "value": "a"},
+    {"action": "click", "target": {"locator": "css:#go"}}
+  ],
+  "version": 1
+}
+```
+
+补充修复：导航监听使用 CDP `Page.frameNavigated`，只记录主 frame，避免把 iframe 导航误记为主流程步骤。
+
+验证环境：2026 年 7 月 20 日，macOS，本地 OpenPage daemon + Chromium。
+
+下一里程碑：实现 React + Tauri 桌面端最小控制台。

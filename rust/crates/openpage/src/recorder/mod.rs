@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use chromiumoxide::cdp::browser_protocol::page::EventFrameNavigated;
 use chromiumoxide::cdp::js_protocol::runtime::{AddBindingParams, EventBindingCalled};
 use chromiumoxide::page::Page as OxPage;
 use futures::StreamExt;
@@ -198,7 +199,7 @@ impl Recorder {
             (Some(runtime), Some(page)) => (Arc::clone(runtime), page.clone()),
             _ => return Ok(()),
         };
-        let mut events = runtime.block_on(async {
+        let (mut events, mut navigations) = runtime.block_on(async {
             let events = page.event_listener::<EventBindingCalled>().await
                 .map_err(|err| OpenPageError::PageOperation(format!("register recorder listener: {err}")))?;
             execute_page_command_async(&page, AddBindingParams::new(RECORDER_BINDING), "add recorder binding").await?;
@@ -209,14 +210,27 @@ impl Recorder {
             ).await?;
             page.evaluate(RECORDER_SCRIPT).await
                 .map_err(|err| OpenPageError::PageOperation(format!("install recorder script: {err}")))?;
-            Ok::<_, OpenPageError>(events)
+            let navigations = page.event_listener::<EventFrameNavigated>().await
+                .map_err(|err| OpenPageError::PageOperation(format!("register navigation listener: {err}")))?;
+            Ok::<_, OpenPageError>((events, navigations))
         })?;
         let recorder = self.clone();
         let task = runtime.spawn(async move {
-            while let Some(event) = events.next().await {
-                if event.name == RECORDER_BINDING {
-                    if let Ok(action) = serde_json::from_str::<RecordedAction>(&event.payload) {
-                        let _ = recorder.record(action);
+            loop {
+                tokio::select! {
+                    event = events.next() => {
+                        let Some(event) = event else { break };
+                        if event.name == RECORDER_BINDING {
+                            if let Ok(action) = serde_json::from_str::<RecordedAction>(&event.payload) {
+                                let _ = recorder.record(action);
+                            }
+                        }
+                    }
+                    navigation = navigations.next() => {
+                        let Some(navigation) = navigation else { break };
+                        if navigation.frame.parent_id.is_none() && !navigation.frame.url.is_empty() {
+                            let _ = recorder.record(RecordedAction::Goto { url: navigation.frame.url.clone() });
+                        }
                     }
                 }
             }
@@ -266,7 +280,7 @@ const RECORDER_SCRIPT: &str = r#"(() => {
   if (window.__openpageRecorderInstalled) return;
   window.__openpageRecorderInstalled = true;
   const send = (value) => window.__openpage_record(JSON.stringify(value));
-  const escape = (value) => String(value).replace(/\/g, "\\").replace(/"/g, '\\"');
+  const escape = (value) => String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"');
   const locator = (element) => {
     if (element.id) return `css:#${CSS.escape(element.id)}`;
     for (const name of ["data-testid", "name", "aria-label", "placeholder"]) {
