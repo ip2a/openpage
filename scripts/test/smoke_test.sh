@@ -19,4 +19,8 @@ echo "[run] Smoke test: ${BINARY} --help"
 echo "[run] Smoke test: ${BINARY} --version"
 "${BINARY}" --version
 
+echo "[run] Smoke test: ${BINARY} mcp"
+payload=$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize"}' | "${BINARY}" mcp --session smoke)
+printf '%s\n' "$payload" | python3 -c 'import json,sys; row=json.loads(sys.stdin.read()); assert row["result"]["serverInfo"]["name"] == "openpage"'
+
 echo "[ok] Smoke test passed"
