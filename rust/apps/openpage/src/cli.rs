@@ -2,6 +2,8 @@
 pub mod args;
 #[path = "commands/doctor.rs"]
 mod doctor;
+#[path = "commands/mcp.rs"]
+mod mcp;
 #[path = "commands/oneshot.rs"]
 mod oneshot;
 #[path = "commands/serve.rs"]
@@ -47,6 +49,13 @@ where
     };
 
     match cli.command {
+        Command::Mcp(args) => match mcp::run(args) {
+            Ok(()) => Ok(0),
+            Err(err) => {
+                print_output_json(&openpage::protocol::simple_openpage_error(&err));
+                Ok(1)
+            }
+        },
         Command::Serve(args) => match serve::run(args) {
             Ok(()) => Ok(0),
             Err(err) => {

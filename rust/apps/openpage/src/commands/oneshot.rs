@@ -183,7 +183,7 @@ fn run_single(command: Command) -> OpenPageResult<()> {
         Command::Frame(command) => run_frame(command),
         Command::Doctor(_) => unreachable!("doctor is handled by cli::doctor"),
         Command::Batch(_) => unreachable!("batch is handled by oneshot::run"),
-        Command::Serve(_) => unreachable!("serve is handled by cli::serve"),
+        Command::Serve(_) | Command::Mcp(_) => unreachable!("handled by cli entrypoint"),
     }
 }
 

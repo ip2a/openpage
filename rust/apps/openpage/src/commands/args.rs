@@ -29,8 +29,8 @@ pub struct CompatCli {
     name = "openpage",
     version,
     about = "OpenPage — Agent-friendly browser automation CLI",
-    long_about = "OpenPage — Agent-friendly browser automation CLI.\n\nActive CLI protocol: TCP-backed daemon only. All `openpage ...` commands route through the same daemon-backed execution path; there is no separate stdio daemon mode or direct browser-execution CLI path.",
-    after_help = "Use `openpage serve` for long-lived NDJSON TCP control, `openpage doctor` for local environment checks, and the normal `openpage ...` commands for daemon-backed one-shot control.\n\nBootstrap commands: `browser start` and `goto` may create the daemon-backed session when it is missing. Other `--session` commands require an already active session and fail fast instead of silently starting a fresh browser.\n\nRemoved on purpose and rejected: `serve --stdio`, `page get`, `page url`, `page title`, `page screenshot`.\n\n`dp` is compatibility glue only. It does not define a second OpenPage protocol surface."
+    long_about = "OpenPage — Agent-friendly browser automation CLI.\n\nActive execution modes: TCP-backed daemon for CLI commands and stdio MCP for tool clients. Browser operations remain daemon-backed.",
+    after_help = "Use `openpage serve` for long-lived NDJSON TCP control, `openpage mcp` for MCP stdio, `openpage doctor` for local environment checks, and the normal `openpage ...` commands for daemon-backed one-shot control.\n\nBootstrap commands: `browser start` and `goto` may create the daemon-backed session when it is missing. Other `--session` commands require an already active session and fail fast instead of silently starting a fresh browser.\n\nRemoved on purpose and rejected: `serve --stdio`, `page get`, `page url`, `page title`, `page screenshot`.\n\n`dp` is compatibility glue only. It does not define a second OpenPage protocol surface."
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -326,8 +326,10 @@ pub enum Command {
     Doctor(DoctorArgs),
     /// Execute multiple commands in one invocation
     Batch(BatchArgs),
-    /// Start the long-lived NDJSON daemon
+    /// Start the long-lived NDJSON TCP daemon
     Serve(ServeArgs),
+    /// Start the MCP stdio server
+    Mcp(McpArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -1321,8 +1323,15 @@ pub struct FrameSwitchArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct McpArgs {
+    /// Browser session used by MCP tool calls
+    #[arg(long, default_value = "default")]
+    pub session: String,
+}
+
+#[derive(Debug, Args)]
 #[command(
-    after_help = "TCP-only daemon mode. Use `--port 0` for an OS-assigned port.\n\nThe removed `serve --stdio` surface stays rejected so the active OpenPage daemon protocol remains unique."
+    after_help = "TCP daemon mode. Use `--port 0` for an OS-assigned port. MCP stdio is exposed separately by `openpage mcp`."
 )]
 pub struct ServeArgs {
     #[arg(long, default_value = "default")]

@@ -10,6 +10,7 @@ pub mod error;
 pub mod intercept;
 pub mod listener;
 pub mod locator;
+pub mod mcp;
 pub mod options_manager;
 pub mod page;
 pub mod protocol;
