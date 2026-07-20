@@ -15654,7 +15654,7 @@ mod tests {
                         zero.style.width = '40px';
                         zero.style.height = '20px';
                     }, 200);
-                    setTimeout(() => document.getElementById('overlay')?.remove(), 260);
+                    setTimeout(() => document.getElementById('overlay')?.remove(), 1_000);
                     return true;
                 })()"#,
             )?;
@@ -16220,7 +16220,7 @@ mod tests {
                         zero.style.width = '40px';
                         zero.style.height = '20px';
                     }, 200);
-                    setTimeout(() => document.getElementById('overlay')?.remove(), 260);
+                    setTimeout(() => document.getElementById('overlay')?.remove(), 1_000);
                     return true;
                 })()"#,
             )?;
