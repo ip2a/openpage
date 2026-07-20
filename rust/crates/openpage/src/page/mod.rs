@@ -4190,7 +4190,7 @@ impl Page {
         let interceptor = Interceptor::new(Arc::clone(&runtime), inner.clone());
         let console = Console::new(Arc::clone(&runtime), inner.clone());
         let screencast = Screencast::new(Arc::clone(&runtime), inner.clone());
-        let recorder = Recorder::default();
+        let recorder = Recorder::new(Arc::clone(&runtime), inner.clone());
         let alerts = AlertTracker::new(Arc::clone(&runtime), inner.clone());
         let uploader = UploadTracker::new(Arc::clone(&runtime), inner.clone());
         Self {

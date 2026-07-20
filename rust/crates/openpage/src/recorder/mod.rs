@@ -1,9 +1,16 @@
 use std::sync::{Arc, Mutex};
+
+use chromiumoxide::cdp::js_protocol::runtime::{AddBindingParams, EventBindingCalled};
+use chromiumoxide::page::Page as OxPage;
+use futures::StreamExt;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::runtime::Runtime;
+use tokio::task::JoinHandle;
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::{OpenPageError, OpenPageResult};
+use crate::page::execute_page_command_async;
 
 pub const RECORDED_FLOW_VERSION: u32 = 1;
 
@@ -105,25 +112,44 @@ struct RecorderState {
     recording: bool,
     started_at_ms: Option<u64>,
     flow: RecordedFlow,
+    task: Option<JoinHandle<()>>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Recorder {
+    runtime: Option<Arc<Runtime>>,
+    page: Option<OxPage>,
     state: Arc<Mutex<RecorderState>>,
 }
 
 impl Recorder {
+    pub fn new(runtime: Arc<Runtime>, page: OxPage) -> Self {
+        Self {
+            runtime: Some(runtime),
+            page: Some(page),
+            state: Arc::new(Mutex::new(RecorderState::default())),
+        }
+    }
+
     pub fn start(&self) -> OpenPageResult<()> {
         let mut state = self.lock()?;
+        if state.recording {
+            return Ok(());
+        }
         state.recording = true;
         state.started_at_ms = Some(now_ms());
         state.flow = RecordedFlow::default();
+        drop(state);
+        self.start_page_listener()?;
         Ok(())
     }
 
     pub fn stop(&self) -> OpenPageResult<RecordedFlow> {
         let mut state = self.lock()?;
         state.recording = false;
+        if let Some(task) = state.task.take() {
+            task.abort();
+        }
         Ok(state.flow.clone())
     }
 
@@ -167,6 +193,38 @@ impl Recorder {
         Ok(true)
     }
 
+    fn start_page_listener(&self) -> OpenPageResult<()> {
+        let (runtime, page) = match (&self.runtime, &self.page) {
+            (Some(runtime), Some(page)) => (Arc::clone(runtime), page.clone()),
+            _ => return Ok(()),
+        };
+        let mut events = runtime.block_on(async {
+            let events = page.event_listener::<EventBindingCalled>().await
+                .map_err(|err| OpenPageError::PageOperation(format!("register recorder listener: {err}")))?;
+            execute_page_command_async(&page, AddBindingParams::new(RECORDER_BINDING), "add recorder binding").await?;
+            execute_page_command_async(
+                &page,
+                chromiumoxide::cdp::browser_protocol::page::AddScriptToEvaluateOnNewDocumentParams::new(RECORDER_SCRIPT),
+                "install recorder script",
+            ).await?;
+            page.evaluate(RECORDER_SCRIPT).await
+                .map_err(|err| OpenPageError::PageOperation(format!("install recorder script: {err}")))?;
+            Ok::<_, OpenPageError>(events)
+        })?;
+        let recorder = self.clone();
+        let task = runtime.spawn(async move {
+            while let Some(event) = events.next().await {
+                if event.name == RECORDER_BINDING {
+                    if let Ok(action) = serde_json::from_str::<RecordedAction>(&event.payload) {
+                        let _ = recorder.record(action);
+                    }
+                }
+            }
+        });
+        self.lock()?.task = Some(task);
+        Ok(())
+    }
+
     fn lock(&self) -> OpenPageResult<std::sync::MutexGuard<'_, RecorderState>> {
         self.state.lock().map_err(|_| {
             OpenPageError::PageOperation("recorder state lock is poisoned".to_string())
@@ -201,6 +259,55 @@ fn now_ms() -> u64 {
         .as_millis()
         .min(u128::from(u64::MAX)) as u64
 }
+
+const RECORDER_BINDING: &str = "__openpage_record";
+
+const RECORDER_SCRIPT: &str = r#"(() => {
+  if (window.__openpageRecorderInstalled) return;
+  window.__openpageRecorderInstalled = true;
+  const send = (value) => window.__openpage_record(JSON.stringify(value));
+  const escape = (value) => String(value).replace(/\/g, "\\").replace(/"/g, '\\"');
+  const locator = (element) => {
+    if (element.id) return `css:#${CSS.escape(element.id)}`;
+    for (const name of ["data-testid", "name", "aria-label", "placeholder"]) {
+      if (element.getAttribute(name)) return `css:[${name}="${escape(element.getAttribute(name))}"]`;
+    }
+    let node = element;
+    const parts = [];
+    while (node && node.nodeType === 1 && node !== document.body && parts.length < 6) {
+      let part = node.tagName.toLowerCase();
+      if (node.parentElement) {
+        const same = [...node.parentElement.children].filter((item) => item.tagName === node.tagName);
+        if (same.length > 1) part += `:nth-of-type(${same.indexOf(node) + 1})`;
+      }
+      parts.unshift(part);
+      node = node.parentElement;
+    }
+    return `css:${parts.join(" > ")}`;
+  };
+  const target = (element) => ({ locator: locator(element) });
+  document.addEventListener("click", (event) => {
+    const element = event.target instanceof Element ? event.target : null;
+    if (element) send({ action: "click", target: target(element) });
+  }, true);
+  document.addEventListener("input", (event) => {
+    const element = event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement ? event.target : null;
+    if (!element) return;
+    const value = element instanceof HTMLInputElement && element.type === "password" ? { secret: "PASSWORD" } : String(element.value);
+    send({ action: "fill", target: target(element), value });
+  }, true);
+  document.addEventListener("change", (event) => {
+    const element = event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement ? event.target : null;
+    if (!element) return;
+    if (element instanceof HTMLInputElement && (element.type === "checkbox" || element.type === "radio")) send({ action: "check", target: target(element), checked: element.checked });
+    if (element instanceof HTMLSelectElement) send({ action: "select", target: target(element), values: [...element.selectedOptions].map((option) => option.value) });
+  }, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Tab" && event.key !== "Enter" && event.key !== "Escape") return;
+    const element = event.target instanceof Element ? event.target : null;
+    send({ action: "press", target: element ? target(element) : null, key: event.key });
+  }, true);
+})();"#;
 
 #[cfg(test)]
 mod tests {
