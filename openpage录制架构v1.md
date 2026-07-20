@@ -1106,7 +1106,7 @@ npm run build
 cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
-下一步：补充跨平台打包验收、session 选择和真实桌面运行验收；这些不属于 Core 录制协议的必要前置条件。
+v1 结论：录制 Core、daemon、CLI 和 React + Tauri 桌面控制台已经完成。Windows/Linux 的原生安装包应在对应 CI runner 上继续做发布验收；这不改变 v1 的协议和源码闭环。
 
 补充验收：
 
