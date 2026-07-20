@@ -3,6 +3,7 @@ use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
+use std::time::Duration;
 use tauri::State;
 
 struct Session(String);
@@ -20,6 +21,12 @@ fn recorder_call(session: State<'_, Session>, op: String, params: Value) -> Resu
         .parse::<u16>()
         .map_err(|e| format!("无效 daemon 端口: {e}"))?;
     let mut stream = TcpStream::connect(("127.0.0.1", port)).map_err(|e| e.to_string())?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(5)))
+        .map_err(|e| e.to_string())?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .map_err(|e| e.to_string())?;
     let request = json!({"id": 1, "op": op, "target": session.0, "params": params});
     writeln!(stream, "{}", request).map_err(|e| e.to_string())?;
     let mut line = String::new();

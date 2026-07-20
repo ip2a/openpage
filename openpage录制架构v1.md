@@ -1165,3 +1165,11 @@ Core 回放也已用真实 daemon 验证：在相同 DOM 中回放 `fill + click
 ```text
 4 recorder tests passed
 ```
+
+补充真实验收：点击链接触发主 frame 导航后，实际 flow 只保留：
+
+```json
+{"action":"click","target":{"locator":"css:#go"},"wait_after":"navigation"}
+```
+
+没有重复生成 `goto`。Tauri 本地 daemon TCP 调用同时增加了 5 秒写超时和 30 秒读超时，避免桌面 UI 无限等待。
