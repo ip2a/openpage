@@ -1209,3 +1209,35 @@ RPC 形态：
 cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib
 cargo check --manifest-path rust/Cargo.toml -p openpage-app
 ```
+
+## 里程碑 10：桌面端 session 选择与本轮审查
+
+状态：**已完成**
+
+本轮审查发现桌面端 session 改造存在一个实际编译问题：React state `session` 被桌面端模块外层的 `call()` 函数直接引用，导致 TypeScript `TS18004`。已按最小改动修复：
+
+- `call()` 显式接收 `session` 参数，并将其传给 Tauri `recorder_call` 命令。
+- `refresh`、`replay` 等操作均使用当前输入框中的 session。
+- session 切换后自动刷新对应 daemon 的状态和步骤。
+- Tauri Rust 命令 `recorder_call` 与 `ensure_browser` 接收调用方传入的 session，不再固定使用 `default`。
+- 保持原有链路不变：`React → Tauri invoke → local TCP/NDJSON → OpenPage daemon`。
+
+验收命令及结果：
+
+```text
+npm run build --prefix desktop/openpage       # 通过
+cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml  # 通过
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check         # 通过
+cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app # 通过
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib # 4 passed
+```
+
+当前仍未声称完成的事项：
+
+- Tauri 原生文件保存对话框；当前“保存 JSON”使用 WebView 下载。
+- stop 时对最后一批异步 CDP 事件的显式 flush。
+- `wait_after` 在回放阶段的实际等待语义。
+- Windows/Linux 原生安装包和权限验证。
+- iframe/frame 路由录制与回放。
+
+这些属于后续 v1.1 或平台发布验收，不影响当前源码链路和 session 选择功能的闭环。

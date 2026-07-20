@@ -4,18 +4,15 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::time::Duration;
-use tauri::State;
-
-struct Session(String);
 
 #[tauri::command]
-fn recorder_call(session: State<'_, Session>, op: String, params: Value) -> Result<Value, String> {
+fn recorder_call(session: String, op: String, params: Value) -> Result<Value, String> {
     let home = std::env::var_os("OPENPAGE_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".openpage")
         });
-    let port = fs::read_to_string(home.join("daemon").join(format!("{}.port", session.0)))
+    let port = fs::read_to_string(home.join("daemon").join(format!("{}.port", session)))
         .map_err(|e| format!("无法连接 OpenPage daemon: {e}"))?
         .trim()
         .parse::<u16>()
@@ -27,7 +24,7 @@ fn recorder_call(session: State<'_, Session>, op: String, params: Value) -> Resu
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
         .map_err(|e| e.to_string())?;
-    let request = json!({"id": 1, "op": op, "target": session.0, "params": params});
+    let request = json!({"id": 1, "op": op, "target": session, "params": params});
     writeln!(stream, "{}", request).map_err(|e| e.to_string())?;
     let mut line = String::new();
     BufReader::new(stream)
@@ -45,10 +42,10 @@ fn recorder_call(session: State<'_, Session>, op: String, params: Value) -> Resu
 }
 
 #[tauri::command]
-fn ensure_browser(session: State<'_, Session>) -> Result<Value, String> {
+fn ensure_browser(session: String) -> Result<Value, String> {
     let binary = std::env::var_os("OPENPAGE_BIN").unwrap_or_else(|| "openpage".into());
     let output = std::process::Command::new(binary)
-        .args(["browser", "start", "--session", &session.0, "--head"])
+        .args(["browser", "start", "--session", &session, "--head"])
         .output()
         .map_err(|e| format!("无法启动 OpenPage CLI: {e}"))?;
     let value: Value = serde_json::from_slice(&output.stdout)
@@ -65,7 +62,6 @@ fn ensure_browser(session: State<'_, Session>) -> Result<Value, String> {
 
 pub fn run() {
     tauri::Builder::default()
-        .manage(Session("default".to_string()))
         .invoke_handler(tauri::generate_handler![recorder_call, ensure_browser])
         .run(tauri::generate_context!())
         .expect("error while running OpenPage desktop");
