@@ -1262,3 +1262,22 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib # 4 pass
 ```text
 npm run build --prefix desktop/openpage  # 通过
 ```
+
+## 里程碑 12：回放兑现录制等待语义
+
+状态：**已完成**
+
+此前 `RecordedStep.wait_after` 只被录制和序列化，回放没有实际消费。本里程碑修复为：
+
+- `click` 步骤带 `wait_after: navigation` 时，回放先建立现有 daemon navigation baseline。
+- 点击后调用现有 `wait_for_navigation_payload()`，复用 OpenPage 已有的导航 token、页面 ready 和超时语义。
+- locator fallback、secret runtime 注入仍走同一条回放路径。
+- 没有新增浏览器控制引擎或第二套等待实现。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
+cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
+```

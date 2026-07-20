@@ -18,7 +18,7 @@ use crate::download::DownloadMission;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::{ActionsDragData, PageNavigationSnapshot};
 use crate::protocol::{Request, Response};
-use crate::recorder::{RecordedAction, RecordedFlow, RecordedTarget, RecordedValue};
+use crate::recorder::{RecordedAction, RecordedFlow, RecordedTarget, RecordedValue, RecordedWait};
 use crate::session::SessionOptions;
 use crate::settings::wait_timeout_result;
 use crate::webpage::{WebElement, WebFrame, WebMode, WebPage};
@@ -3950,11 +3950,12 @@ fn replay_recorded_flow(state: &mut ServeWebPage, params: &Value) -> OpenPageRes
         .and_then(Value::as_object)
         .cloned()
         .unwrap_or_default();
-    let find = |target: &RecordedTarget| match state.page.find(&target.locator) {
+    let page = state.page.clone();
+    let find = |target: &RecordedTarget| match page.find(&target.locator) {
         Ok(element) => Ok(element),
         Err(primary_error) => {
             for locator in &target.fallbacks {
-                if let Ok(element) = state.page.find(locator) {
+                if let Ok(element) = page.find(locator) {
                     return Ok(element);
                 }
             }
@@ -3968,7 +3969,15 @@ fn replay_recorded_flow(state: &mut ServeWebPage, params: &Value) -> OpenPageRes
                 state.page.goto(&url)?;
             }
             RecordedAction::Click { target } => {
+                let navigation_token = if step.wait_after == Some(RecordedWait::Navigation) {
+                    Some(state.record_navigation_baseline())
+                } else {
+                    None
+                };
                 find(&target)?.click()?;
+                if let Some(token) = navigation_token {
+                    wait_for_navigation_payload(state, 30_000, Some(&token))?;
+                }
             }
             RecordedAction::Fill { target, value } => {
                 let text = match value {
