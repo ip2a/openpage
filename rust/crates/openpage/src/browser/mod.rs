@@ -7,8 +7,13 @@ use std::thread::sleep;
 use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod cookies;
+mod downloads;
 mod launch;
+mod lifecycle;
 mod operations;
+mod settings;
+mod tabs;
 use chromiumoxide::Command;
 use chromiumoxide::browser::{Browser as OxBrowser, BrowserConfig};
 use chromiumoxide::cdp::browser_protocol::browser::{
