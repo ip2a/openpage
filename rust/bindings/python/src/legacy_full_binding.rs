@@ -24,10 +24,8 @@ use openpage::session::{
 };
 use openpage::webpage::{WebElement, WebMode, WebPage};
 
-impl From<OpenPageError> for PyErr {
-    fn from(value: OpenPageError) -> Self {
-        PyRuntimeError::new_err(value.to_string())
-    }
+fn py_err(error: impl std::fmt::Display) -> PyErr {
+    PyRuntimeError::new_err(error.to_string())
 }
 
 #[pyclass(module = "openpage_rs", name = "Browser")]
@@ -139,8 +137,9 @@ impl PyBrowser {
         let options = LaunchOptions {
             browser_path: browser_path.map(PathBuf::from),
             download_path: download_path.map(PathBuf::from),
-            download_file_exists: DownloadFileExistsMode::parse(download_file_exists_mode)?,
-            load_mode: LoadMode::parse(load_mode)?,
+            download_file_exists: DownloadFileExistsMode::parse(download_file_exists_mode)
+                .map_err(py_err)?,
+            load_mode: LoadMode::parse(load_mode).map_err(py_err)?,
             user_data_dir: user_data_dir.map(PathBuf::from),
             headless,
             width,
@@ -148,7 +147,9 @@ impl PyBrowser {
             no_sandbox,
             ..LaunchOptions::default()
         };
-        let inner = py.detach(move || Browser::launch(options))?;
+        let inner = py
+            .detach(move || Browser::launch(options))
+            .map_err(py_err)?;
         Ok(Self { inner })
     }
 
@@ -156,24 +157,26 @@ impl PyBrowser {
     fn new_page(&self, py: Python<'_>, url: Option<&str>) -> PyResult<Py<PyPage>> {
         let browser = self.inner.clone();
         let url = url.map(str::to_string);
-        let page = py.detach(move || browser.new_page(url.as_deref()))?;
+        let page = py
+            .detach(move || browser.new_page(url.as_deref()))
+            .map_err(py_err)?;
         Py::new(py, PyPage { inner: Some(page) })
     }
 
     fn close(&self, py: Python<'_>) -> PyResult<()> {
         let browser = self.inner.clone();
-        py.detach(move || browser.close())?;
+        py.detach(move || browser.close()).map_err(py_err)?;
         Ok(())
     }
 
     fn version(&self, py: Python<'_>) -> PyResult<String> {
         let browser = self.inner.clone();
-        py.detach(move || browser.version()).map_err(Into::into)
+        py.detach(move || browser.version()).map_err(py_err)
     }
 
     fn is_alive(&self, py: Python<'_>) -> PyResult<bool> {
         let browser = self.inner.clone();
-        py.detach(move || browser.is_alive()).map_err(Into::into)
+        py.detach(move || browser.is_alive()).map_err(py_err)
     }
 
     fn is_headless(&self) -> PyResult<bool> {
@@ -182,13 +185,12 @@ impl PyBrowser {
 
     fn is_existed(&self, py: Python<'_>) -> PyResult<bool> {
         let browser = self.inner.clone();
-        py.detach(move || browser.is_existed()).map_err(Into::into)
+        py.detach(move || browser.is_existed()).map_err(py_err)
     }
 
     fn is_incognito(&self, py: Python<'_>) -> PyResult<bool> {
         let browser = self.inner.clone();
-        py.detach(move || browser.is_incognito())
-            .map_err(Into::into)
+        py.detach(move || browser.is_incognito()).map_err(py_err)
     }
 
     #[pyo3(signature = (current_tab_id=None, timeout_ms=10000))]
@@ -201,42 +203,45 @@ impl PyBrowser {
         let browser = self.inner.clone();
         let current_tab_id = current_tab_id.map(str::to_string);
         py.detach(move || browser.wait_for_new_tab(current_tab_id.as_deref(), timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn download_path(&self) -> PyResult<Option<String>> {
-        self.inner.download_path().map_err(Into::into)
+        self.inner.download_path().map_err(py_err)
     }
 
     fn set_download_path(&self, py: Python<'_>, path: &str) -> PyResult<()> {
         let browser = self.inner.clone();
         let path = path.to_string();
-        py.detach(move || browser.set_download_path(&path))?;
+        py.detach(move || browser.set_download_path(&path))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn download_file_exists_mode(&self, py: Python<'_>) -> PyResult<String> {
         let browser = self.inner.clone();
         py.detach(move || browser.download_file_exists_mode())
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn set_download_file_exists_mode(&self, py: Python<'_>, mode: &str) -> PyResult<()> {
         let browser = self.inner.clone();
-        let mode = DownloadFileExistsMode::parse(mode)?;
-        py.detach(move || browser.set_download_file_exists_mode(mode))?;
+        let mode = DownloadFileExistsMode::parse(mode).map_err(py_err)?;
+        py.detach(move || browser.set_download_file_exists_mode(mode))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn load_mode(&self, py: Python<'_>) -> PyResult<String> {
         let browser = self.inner.clone();
-        py.detach(move || browser.load_mode()).map_err(Into::into)
+        py.detach(move || browser.load_mode()).map_err(py_err)
     }
 
     fn set_load_mode(&self, py: Python<'_>, mode: &str) -> PyResult<()> {
         let browser = self.inner.clone();
-        let mode = LoadMode::parse(mode)?;
-        py.detach(move || browser.set_load_mode(mode))?;
+        let mode = LoadMode::parse(mode).map_err(py_err)?;
+        py.detach(move || browser.set_load_mode(mode))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -254,12 +259,13 @@ impl PyBrowser {
         let browser = self.inner.clone();
         let filename = filename.map(str::to_string);
         py.detach(move || browser.wait_for_download(filename.as_deref(), timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn download_missions(&self, py: Python<'_>) -> PyResult<Vec<Py<PyDownloadMission>>> {
         let browser = self.inner.clone();
-        py.detach(move || browser.download_missions())?
+        py.detach(move || browser.download_missions())
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PyDownloadMission { inner }))
             .collect()
@@ -267,7 +273,8 @@ impl PyBrowser {
 
     fn last_download(&self, py: Python<'_>) -> PyResult<Option<Py<PyDownloadMission>>> {
         let browser = self.inner.clone();
-        py.detach(move || browser.last_download())?
+        py.detach(move || browser.last_download())
+            .map_err(py_err)?
             .map(|inner| Py::new(py, PyDownloadMission { inner }))
             .transpose()
     }
@@ -280,7 +287,8 @@ impl PyBrowser {
         cancel_it: bool,
     ) -> PyResult<Option<Py<PyDownloadMission>>> {
         let browser = self.inner.clone();
-        py.detach(move || browser.wait_for_download_begin(timeout_ms, cancel_it))?
+        py.detach(move || browser.wait_for_download_begin(timeout_ms, cancel_it))
+            .map_err(py_err)?
             .map(|inner| Py::new(py, PyDownloadMission { inner }))
             .transpose()
     }
@@ -294,23 +302,25 @@ impl PyBrowser {
     ) -> PyResult<bool> {
         let browser = self.inner.clone();
         py.detach(move || browser.wait_for_downloads_done(timeout_ms, cancel_if_timeout))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn tabs_count(&self, py: Python<'_>) -> PyResult<usize> {
         let browser = self.inner.clone();
-        py.detach(move || browser.tabs_count()).map_err(Into::into)
+        py.detach(move || browser.tabs_count()).map_err(py_err)
     }
 
     fn tab_ids(&self, py: Python<'_>) -> PyResult<Vec<String>> {
         let browser = self.inner.clone();
-        py.detach(move || browser.tab_ids()).map_err(Into::into)
+        py.detach(move || browser.tab_ids()).map_err(py_err)
     }
 
     fn get_page(&self, py: Python<'_>, target_id: &str) -> PyResult<Py<PyPage>> {
         let browser = self.inner.clone();
         let target_id = target_id.to_string();
-        let page = py.detach(move || browser.get_page(&target_id))?;
+        let page = py
+            .detach(move || browser.get_page(&target_id))
+            .map_err(py_err)?;
         Py::new(py, PyPage { inner: Some(page) })
     }
 
@@ -318,14 +328,15 @@ impl PyBrowser {
         let browser = self.inner.clone();
         let target_id = target_id.to_string();
         py.detach(move || browser.page_download_path(&target_id))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn set_page_download_path(&self, py: Python<'_>, target_id: &str, path: &str) -> PyResult<()> {
         let browser = self.inner.clone();
         let target_id = target_id.to_string();
         let path = path.to_string();
-        py.detach(move || browser.set_page_download_path(&target_id, &path))?;
+        py.detach(move || browser.set_page_download_path(&target_id, &path))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -333,7 +344,7 @@ impl PyBrowser {
         let browser = self.inner.clone();
         let target_id = target_id.to_string();
         py.detach(move || browser.page_download_file_exists_mode(&target_id))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn set_page_download_file_exists_mode(
@@ -344,8 +355,9 @@ impl PyBrowser {
     ) -> PyResult<()> {
         let browser = self.inner.clone();
         let target_id = target_id.to_string();
-        let mode = DownloadFileExistsMode::parse(mode)?;
-        py.detach(move || browser.set_page_download_file_exists_mode(&target_id, mode))?;
+        let mode = DownloadFileExistsMode::parse(mode).map_err(py_err)?;
+        py.detach(move || browser.set_page_download_file_exists_mode(&target_id, mode))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -369,7 +381,8 @@ impl PyBrowser {
                 suffix.as_deref(),
                 suffix_specified,
             )
-        })?;
+        })
+        .map_err(py_err)?;
         Ok(())
     }
 }
@@ -379,18 +392,18 @@ impl PyPage {
     fn goto(&self, py: Python<'_>, url: &str) -> PyResult<()> {
         let page = self.page()?.clone();
         let url = url.to_string();
-        py.detach(move || page.goto(&url))?;
+        py.detach(move || page.goto(&url)).map_err(py_err)?;
         Ok(())
     }
 
     fn url(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.page()?.clone();
-        py.detach(move || page.url()).map_err(Into::into)
+        py.detach(move || page.url()).map_err(py_err)
     }
 
     fn title(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.page()?.clone();
-        py.detach(move || page.title()).map_err(Into::into)
+        py.detach(move || page.title()).map_err(py_err)
     }
 
     fn target_id(&self) -> PyResult<String> {
@@ -399,36 +412,41 @@ impl PyPage {
 
     fn html(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.page()?.clone();
-        py.detach(move || page.html()).map_err(Into::into)
+        py.detach(move || page.html()).map_err(py_err)
     }
 
     fn evaluate(&self, py: Python<'_>, expression: &str) -> PyResult<String> {
         let page = self.page()?.clone();
         let expression = expression.to_string();
-        let value = py.detach(move || page.evaluate(&expression))?;
+        let value = py
+            .detach(move || page.evaluate(&expression))
+            .map_err(py_err)?;
         serde_json::to_string(&value)
-            .map_err(|err| OpenPageError::Serialization(err.to_string()).into())
+            .map_err(|err| py_err(OpenPageError::Serialization(err.to_string())))
     }
 
     #[pyo3(signature = (locator, timeout_ms=10000))]
     fn wait_for(&self, py: Python<'_>, locator: &str, timeout_ms: u64) -> PyResult<Py<PyElement>> {
         let page = self.page()?.clone();
         let locator = locator.to_string();
-        let element = py.detach(move || page.wait_for(&locator, timeout_ms))?;
+        let element = py
+            .detach(move || page.wait_for(&locator, timeout_ms))
+            .map_err(py_err)?;
         Py::new(py, PyElement { inner: element })
     }
 
     fn find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PyElement>> {
         let page = self.page()?.clone();
         let locator = locator.to_string();
-        let element = py.detach(move || page.find(&locator))?;
+        let element = py.detach(move || page.find(&locator)).map_err(py_err)?;
         Py::new(py, PyElement { inner: element })
     }
 
     fn find_all(&self, py: Python<'_>, locator: &str) -> PyResult<Vec<Py<PyElement>>> {
         let page = self.page()?.clone();
         let locator = locator.to_string();
-        py.detach(move || page.find_all(&locator))?
+        py.detach(move || page.find_all(&locator))
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PyElement { inner }))
             .collect()
@@ -437,7 +455,7 @@ impl PyPage {
     fn click(&self, py: Python<'_>, locator: &str) -> PyResult<()> {
         let page = self.page()?.clone();
         let locator = locator.to_string();
-        py.detach(move || page.click(&locator))?;
+        py.detach(move || page.click(&locator)).map_err(py_err)?;
         Ok(())
     }
 
@@ -470,7 +488,8 @@ impl PyPage {
                 by_js,
                 new_tab,
             )
-        })?
+        })
+        .map_err(py_err)?
         .map(|inner| Py::new(py, PyDownloadMission { inner }))
         .transpose()
     }
@@ -487,7 +506,7 @@ impl PyPage {
         let page = self.page()?.clone();
         let locator = locator.to_string();
         py.detach(move || page.click_to_upload(&locator, &files, timeout_ms, by_js))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locator, timeout_ms=None, by_js=false))]
@@ -500,7 +519,8 @@ impl PyPage {
     ) -> PyResult<Option<Py<PyPage>>> {
         let page = self.page()?.clone();
         let locator = locator.to_string();
-        py.detach(move || page.click_for_new_tab(&locator, timeout_ms, by_js))?
+        py.detach(move || page.click_for_new_tab(&locator, timeout_ms, by_js))
+            .map_err(py_err)?
             .map(|inner| Py::new(py, PyPage { inner: Some(inner) }))
             .transpose()
     }
@@ -515,7 +535,8 @@ impl PyPage {
     ) -> PyResult<Option<Py<PyPage>>> {
         let page = self.page()?.clone();
         let locator = locator.to_string();
-        py.detach(move || page.click_middle(&locator, timeout_ms, get_tab))?
+        py.detach(move || page.click_middle(&locator, timeout_ms, get_tab))
+            .map_err(py_err)?
             .map(|inner| Py::new(py, PyPage { inner: Some(inner) }))
             .transpose()
     }
@@ -524,14 +545,15 @@ impl PyPage {
         let page = self.page()?.clone();
         let locator = locator.to_string();
         let text = text.to_string();
-        py.detach(move || page.fill(&locator, &text))?;
+        py.detach(move || page.fill(&locator, &text))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn text(&self, py: Python<'_>, locator: &str) -> PyResult<Option<String>> {
         let page = self.page()?.clone();
         let locator = locator.to_string();
-        py.detach(move || page.text(&locator)).map_err(Into::into)
+        py.detach(move || page.text(&locator)).map_err(py_err)
     }
 
     fn attr(&self, py: Python<'_>, locator: &str, name: &str) -> PyResult<Option<String>> {
@@ -539,7 +561,7 @@ impl PyPage {
         let locator = locator.to_string();
         let name = name.to_string();
         py.detach(move || page.attr(&locator, &name))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (user_agent, platform=None))]
@@ -552,14 +574,16 @@ impl PyPage {
         let page = self.page()?.clone();
         let user_agent = user_agent.to_string();
         let platform = platform.map(str::to_string);
-        py.detach(move || page.set_user_agent(&user_agent, platform.as_deref()))?;
+        py.detach(move || page.set_user_agent(&user_agent, platform.as_deref()))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn set_headers(&self, py: Python<'_>, headers: HashMap<String, String>) -> PyResult<()> {
         let page = self.page()?.clone();
         let headers = headers.into_iter().collect::<Vec<_>>();
-        py.detach(move || page.set_headers(&headers))?;
+        py.detach(move || page.set_headers(&headers))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -567,7 +591,8 @@ impl PyPage {
         let page = self.page()?.clone();
         let item = item.to_string();
         let value = value.map(str::to_string);
-        py.detach(move || page.set_session_storage(&item, value.as_deref()))?;
+        py.detach(move || page.set_session_storage(&item, value.as_deref()))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -575,77 +600,79 @@ impl PyPage {
         let page = self.page()?.clone();
         let item = item.to_string();
         let value = value.map(str::to_string);
-        py.detach(move || page.set_local_storage(&item, value.as_deref()))?;
+        py.detach(move || page.set_local_storage(&item, value.as_deref()))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn set_upload_files(&self, py: Python<'_>, files: Vec<String>) -> PyResult<()> {
         let page = self.page()?.clone();
-        py.detach(move || page.set_upload_files(&files))?;
+        py.detach(move || page.set_upload_files(&files))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn load_mode(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.page()?.clone();
-        py.detach(move || page.load_mode()).map_err(Into::into)
+        py.detach(move || page.load_mode()).map_err(py_err)
     }
 
     fn set_load_mode(&self, py: Python<'_>, mode: &str) -> PyResult<()> {
         let page = self.page()?.clone();
-        let mode = LoadMode::parse(mode)?;
-        py.detach(move || page.set_load_mode(mode))?;
+        let mode = LoadMode::parse(mode).map_err(py_err)?;
+        py.detach(move || page.set_load_mode(mode))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn window_state(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.page()?.clone();
-        py.detach(move || page.window_state()).map_err(Into::into)
+        py.detach(move || page.window_state()).map_err(py_err)
     }
 
     fn window_size(&self, py: Python<'_>) -> PyResult<(i64, i64)> {
         let page = self.page()?.clone();
-        py.detach(move || page.window_size()).map_err(Into::into)
+        py.detach(move || page.window_size()).map_err(py_err)
     }
 
     fn window_location(&self, py: Python<'_>) -> PyResult<(i64, i64)> {
         let page = self.page()?.clone();
-        py.detach(move || page.window_location())
-            .map_err(Into::into)
+        py.detach(move || page.window_location()).map_err(py_err)
     }
 
     fn window_max(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.page()?.clone();
-        py.detach(move || page.window_max())?;
+        py.detach(move || page.window_max()).map_err(py_err)?;
         Ok(())
     }
 
     fn window_min(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.page()?.clone();
-        py.detach(move || page.window_min())?;
+        py.detach(move || page.window_min()).map_err(py_err)?;
         Ok(())
     }
 
     fn window_full(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.page()?.clone();
-        py.detach(move || page.window_full())?;
+        py.detach(move || page.window_full()).map_err(py_err)?;
         Ok(())
     }
 
     fn window_normal(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.page()?.clone();
-        py.detach(move || page.window_normal())?;
+        py.detach(move || page.window_normal()).map_err(py_err)?;
         Ok(())
     }
 
     fn window_hide(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.page()?.clone();
-        py.detach(move || page.window_hide())?;
+        py.detach(move || page.window_hide()).map_err(py_err)?;
         Ok(())
     }
 
     fn window_show(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.page()?.clone();
-        py.detach(move || page.window_show())?;
+        py.detach(move || page.window_show()).map_err(py_err)?;
         Ok(())
     }
 
@@ -657,7 +684,8 @@ impl PyPage {
         height: Option<i64>,
     ) -> PyResult<()> {
         let page = self.page()?.clone();
-        py.detach(move || page.window_size_set(width, height))?;
+        py.detach(move || page.window_size_set(width, height))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -669,13 +697,14 @@ impl PyPage {
         top: Option<i64>,
     ) -> PyResult<()> {
         let page = self.page()?.clone();
-        py.detach(move || page.window_location_set(left, top))?;
+        py.detach(move || page.window_location_set(left, top))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn activate(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.page()?.clone();
-        py.detach(move || page.activate())?;
+        py.detach(move || page.activate()).map_err(py_err)?;
         Ok(())
     }
 
@@ -687,29 +716,33 @@ impl PyPage {
     fn save_screenshot(&self, py: Python<'_>, path: &str, full_page: bool) -> PyResult<()> {
         let page = self.page()?.clone();
         let path = path.to_string();
-        py.detach(move || page.save_screenshot(&path, full_page))?;
+        py.detach(move || page.save_screenshot(&path, full_page))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn set_blocked_urls(&self, py: Python<'_>, patterns: Vec<String>) -> PyResult<()> {
         let page = self.page()?.clone();
-        py.detach(move || page.set_blocked_urls(&patterns))?;
+        py.detach(move || page.set_blocked_urls(&patterns))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn save_pdf(&self, py: Python<'_>, path: &str) -> PyResult<()> {
         let page = self.page()?.clone();
         let path = path.to_string();
-        py.detach(move || page.save_pdf(&path))?;
+        py.detach(move || page.save_pdf(&path)).map_err(py_err)?;
         Ok(())
     }
 
     fn run_js(&self, py: Python<'_>, expression: &str) -> PyResult<String> {
         let page = self.page()?.clone();
         let expression = expression.to_string();
-        let value = py.detach(move || page.run_js(&expression))?;
+        let value = py
+            .detach(move || page.run_js(&expression))
+            .map_err(py_err)?;
         serde_json::to_string(&value)
-            .map_err(|err| OpenPageError::Serialization(err.to_string()).into())
+            .map_err(|err| py_err(OpenPageError::Serialization(err.to_string())))
     }
 
     fn listener(&self, py: Python<'_>) -> PyResult<Py<PyListener>> {
@@ -728,7 +761,7 @@ impl PyPage {
     }
 
     fn has_alert(&self) -> PyResult<bool> {
-        self.page()?.has_alert().map_err(Into::into)
+        self.page()?.has_alert().map_err(py_err)
     }
 
     #[pyo3(signature = (accept=true, prompt_text=None, timeout_ms=10000))]
@@ -742,7 +775,7 @@ impl PyPage {
         let page = self.page()?.clone();
         let prompt_text = prompt_text.map(str::to_string);
         py.detach(move || page.handle_alert(accept, prompt_text.as_deref(), timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (accept=true, prompt_text=None))]
@@ -754,7 +787,8 @@ impl PyPage {
     ) -> PyResult<()> {
         let page = self.page()?.clone();
         let prompt_text = prompt_text.map(str::to_string);
-        py.detach(move || page.set_next_alert_action(accept, prompt_text.as_deref()))?;
+        py.detach(move || page.set_next_alert_action(accept, prompt_text.as_deref()))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -767,7 +801,8 @@ impl PyPage {
     ) -> PyResult<()> {
         let page = self.page()?.clone();
         let prompt_text = prompt_text.map(str::to_string);
-        py.detach(move || page.set_auto_alert_action(accept, prompt_text.as_deref()))?;
+        py.detach(move || page.set_auto_alert_action(accept, prompt_text.as_deref()))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -775,13 +810,15 @@ impl PyPage {
     fn wait_for_alert_closed(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
         let page = self.page()?.clone();
         py.detach(move || page.wait_for_alert_closed(timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn snapshot_find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PySessionElement>> {
         let page = self.page()?.clone();
         let locator = locator.to_string();
-        let element = py.detach(move || page.snapshot_find(&locator))?;
+        let element = py
+            .detach(move || page.snapshot_find(&locator))
+            .map_err(py_err)?;
         Py::new(py, PySessionElement { inner: element })
     }
 
@@ -792,7 +829,8 @@ impl PyPage {
     ) -> PyResult<Vec<Py<PySessionElement>>> {
         let page = self.page()?.clone();
         let locator = locator.to_string();
-        py.detach(move || page.snapshot_find_all(&locator))?
+        py.detach(move || page.snapshot_find_all(&locator))
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
@@ -800,14 +838,15 @@ impl PyPage {
 
     fn snapshot_root(&self, py: Python<'_>) -> PyResult<Py<PySessionElement>> {
         let page = self.page()?.clone();
-        let element = py.detach(move || page.snapshot_root())?;
+        let element = py.detach(move || page.snapshot_root()).map_err(py_err)?;
         Py::new(py, PySessionElement { inner: element })
     }
 
     fn snapshot_query_xpath(&self, py: Python<'_>, expression: &str) -> PyResult<Vec<Py<PyAny>>> {
         let page = self.page()?.clone();
         let expression = expression.to_string();
-        py.detach(move || page.snapshot_query_xpath(&expression))?
+        py.detach(move || page.snapshot_query_xpath(&expression))
+            .map_err(py_err)?
             .into_iter()
             .map(|item| session_xpath_result_to_py(py, item))
             .collect()
@@ -822,7 +861,8 @@ impl PyPage {
         first_match_only: bool,
     ) -> PyResult<Vec<(String, Vec<Py<PyElement>>)>> {
         let page = self.page()?.clone();
-        py.detach(move || page.find_locators(&locators, any_one, first_match_only))?
+        py.detach(move || page.find_locators(&locators, any_one, first_match_only))
+            .map_err(py_err)?
             .into_iter()
             .map(|item| locator_match_element_to_py(py, item))
             .collect()
@@ -830,22 +870,22 @@ impl PyPage {
 
     fn user_agent(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.page()?.clone();
-        py.detach(move || page.user_agent()).map_err(Into::into)
+        py.detach(move || page.user_agent()).map_err(py_err)
     }
 
     fn ready_state(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.page()?.clone();
-        py.detach(move || page.ready_state()).map_err(Into::into)
+        py.detach(move || page.ready_state()).map_err(py_err)
     }
 
     fn is_loading(&self, py: Python<'_>) -> PyResult<bool> {
         let page = self.page()?.clone();
-        py.detach(move || page.is_loading()).map_err(Into::into)
+        py.detach(move || page.is_loading()).map_err(py_err)
     }
 
     fn is_alive(&self, py: Python<'_>) -> PyResult<bool> {
         let page = self.page()?.clone();
-        py.detach(move || page.is_alive()).map_err(Into::into)
+        py.detach(move || page.is_alive()).map_err(py_err)
     }
 
     #[pyo3(signature = (text, exclude=false, timeout_ms=10000))]
@@ -859,7 +899,7 @@ impl PyPage {
         let page = self.page()?.clone();
         let text = text.to_string();
         py.detach(move || page.wait_for_url_change(&text, exclude, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (text, exclude=false, timeout_ms=10000))]
@@ -873,7 +913,7 @@ impl PyPage {
         let page = self.page()?.clone();
         let text = text.to_string();
         py.detach(move || page.wait_for_title_change(&text, exclude, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locators, timeout_ms=10000, any_one=false))]
@@ -886,7 +926,7 @@ impl PyPage {
     ) -> PyResult<bool> {
         let page = self.page()?.clone();
         py.detach(move || page.wait_for_elements_loaded(&locators, any_one, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locator, timeout_ms=10000))]
@@ -899,7 +939,7 @@ impl PyPage {
         let page = self.page()?.clone();
         let locator = locator.to_string();
         py.detach(move || page.wait_for_ele_displayed(&locator, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locator, timeout_ms=10000))]
@@ -912,7 +952,7 @@ impl PyPage {
         let page = self.page()?.clone();
         let locator = locator.to_string();
         py.detach(move || page.wait_for_ele_hidden(&locator, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locator, timeout_ms=10000))]
@@ -925,7 +965,7 @@ impl PyPage {
         let page = self.page()?.clone();
         let locator = locator.to_string();
         py.detach(move || page.wait_for_ele_enabled(&locator, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locator, timeout_ms=10000))]
@@ -938,7 +978,7 @@ impl PyPage {
         let page = self.page()?.clone();
         let locator = locator.to_string();
         py.detach(move || page.wait_for_ele_deleted(&locator, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locator, timeout_ms=10000))]
@@ -951,21 +991,21 @@ impl PyPage {
         let page = self.page()?.clone();
         let locator = locator.to_string();
         py.detach(move || page.wait_for_ele_clickable(&locator, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_for_load_start(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
         let page = self.page()?.clone();
         py.detach(move || page.wait_for_load_start(timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_for_doc_loaded(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
         let page = self.page()?.clone();
         py.detach(move || page.wait_for_doc_loaded(timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000, cancel_it=false))]
@@ -976,7 +1016,8 @@ impl PyPage {
         cancel_it: bool,
     ) -> PyResult<Option<Py<PyDownloadMission>>> {
         let page = self.page()?.clone();
-        py.detach(move || page.wait_for_download_begin(timeout_ms, cancel_it))?
+        py.detach(move || page.wait_for_download_begin(timeout_ms, cancel_it))
+            .map_err(py_err)?
             .map(|inner| Py::new(py, PyDownloadMission { inner }))
             .transpose()
     }
@@ -990,39 +1031,40 @@ impl PyPage {
     ) -> PyResult<bool> {
         let page = self.page()?.clone();
         py.detach(move || page.wait_for_downloads_done(timeout_ms, cancel_if_timeout))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_for_upload_paths_inputted(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
         let page = self.page()?.clone();
         py.detach(move || page.wait_for_upload_paths_inputted(timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn cookie_header(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.page()?.clone();
-        py.detach(move || page.cookie_header()).map_err(Into::into)
+        py.detach(move || page.cookie_header()).map_err(py_err)
     }
 
     fn cookies(&self, py: Python<'_>) -> PyResult<Vec<(String, String, Option<String>)>> {
         let page = self.page()?.clone();
         py.detach(move || page.cookies())
             .map(cookie_entries_to_tuples)
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn set_cookie_header(&self, py: Python<'_>, url: &str, cookie_header: &str) -> PyResult<()> {
         let page = self.page()?.clone();
         let url = url.to_string();
         let cookie_header = cookie_header.to_string();
-        py.detach(move || page.set_cookie_header(&url, &cookie_header))?;
+        py.detach(move || page.set_cookie_header(&url, &cookie_header))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn close(&mut self, py: Python<'_>) -> PyResult<()> {
         if let Some(page) = self.inner.take() {
-            py.detach(move || page.close())?;
+            py.detach(move || page.close()).map_err(py_err)?;
         }
         Ok(())
     }
@@ -1031,7 +1073,7 @@ impl PyPage {
 #[pymethods]
 impl PyElement {
     fn click(&self) -> PyResult<()> {
-        self.inner.click()?;
+        self.inner.click().map_err(py_err)?;
         Ok(())
     }
 
@@ -1045,99 +1087,103 @@ impl PyElement {
     ) -> PyResult<()> {
         self.inner
             .click_at(offset_x, offset_y, button, count)
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (times=2))]
     fn click_multi(&self, times: u32) -> PyResult<()> {
-        self.inner.click_multi(times).map_err(Into::into)
+        self.inner.click_multi(times).map_err(py_err)
     }
 
     fn click_left(&self) -> PyResult<()> {
-        self.inner.click_left().map_err(Into::into)
+        self.inner.click_left().map_err(py_err)
     }
 
     fn click_middle(&self) -> PyResult<()> {
-        self.inner.click_middle().map_err(Into::into)
+        self.inner.click_middle().map_err(py_err)
     }
 
     fn click_right(&self) -> PyResult<()> {
-        self.inner.click_right().map_err(Into::into)
+        self.inner.click_right().map_err(py_err)
     }
 
     #[pyo3(signature = (text, clear=false, by_js=false))]
     fn input(&self, text: &str, clear: bool, by_js: bool) -> PyResult<()> {
-        self.inner.input_with_options(text, clear, by_js)?;
+        self.inner
+            .input_with_options(text, clear, by_js)
+            .map_err(py_err)?;
         Ok(())
     }
 
     #[pyo3(signature = (values, clear=false, by_js=false))]
     fn input_keys(&self, values: Vec<String>, clear: bool, by_js: bool) -> PyResult<()> {
-        self.inner.input_keys_with_options(&values, clear, by_js)?;
+        self.inner
+            .input_keys_with_options(&values, clear, by_js)
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn clear(&self) -> PyResult<()> {
-        self.inner.clear()?;
+        self.inner.clear().map_err(py_err)?;
         Ok(())
     }
 
     fn focus(&self) -> PyResult<()> {
-        self.inner.focus()?;
+        self.inner.focus().map_err(py_err)?;
         Ok(())
     }
 
     #[pyo3(signature = (offset_x=None, offset_y=None))]
     fn hover(&self, offset_x: Option<f64>, offset_y: Option<f64>) -> PyResult<()> {
         if offset_x.is_none() && offset_y.is_none() {
-            self.inner.hover().map_err(Into::into)
+            self.inner.hover().map_err(py_err)
         } else {
             self.inner
                 .hover_with_offset(offset_x, offset_y)
-                .map_err(Into::into)
+                .map_err(py_err)
         }
     }
 
     fn press_key(&self, key: &str) -> PyResult<()> {
-        self.inner.press_key(key)?;
+        self.inner.press_key(key).map_err(py_err)?;
         Ok(())
     }
 
     fn text(&self) -> PyResult<Option<String>> {
-        self.inner.text().map_err(Into::into)
+        self.inner.text().map_err(py_err)
     }
 
     fn html(&self) -> PyResult<Option<String>> {
-        self.inner.html().map_err(Into::into)
+        self.inner.html().map_err(py_err)
     }
 
     fn attr(&self, name: &str) -> PyResult<Option<String>> {
-        self.inner.attr(name).map_err(Into::into)
+        self.inner.attr(name).map_err(py_err)
     }
 
     fn link(&self) -> PyResult<Option<String>> {
-        self.inner.link().map_err(Into::into)
+        self.inner.link().map_err(py_err)
     }
 
     fn child_count(&self) -> PyResult<usize> {
-        self.inner.child_count().map_err(Into::into)
+        self.inner.child_count().map_err(py_err)
     }
 
     fn css_path(&self) -> PyResult<String> {
-        self.inner.css_path().map_err(Into::into)
+        self.inner.css_path().map_err(py_err)
     }
 
     fn xpath(&self) -> PyResult<String> {
-        self.inner.xpath().map_err(Into::into)
+        self.inner.xpath().map_err(py_err)
     }
 
     fn comments(&self) -> PyResult<Vec<String>> {
-        self.inner.comments().map_err(Into::into)
+        self.inner.comments().map_err(py_err)
     }
 
     #[pyo3(signature = (text_node_only=false))]
     fn texts(&self, text_node_only: bool) -> PyResult<Vec<String>> {
-        self.inner.texts(text_node_only).map_err(Into::into)
+        self.inner.texts(text_node_only).map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000, base64_to_bytes=true))]
@@ -1148,7 +1194,8 @@ impl PyElement {
         base64_to_bytes: bool,
     ) -> PyResult<Option<Py<PyAny>>> {
         self.inner
-            .src(timeout_ms, base64_to_bytes)?
+            .src(timeout_ms, base64_to_bytes)
+            .map_err(py_err)?
             .map(|resource| element_resource_to_py(py, resource))
             .transpose()
     }
@@ -1162,37 +1209,47 @@ impl PyElement {
         rename: bool,
     ) -> PyResult<String> {
         let path = path.map(PathBuf::from);
-        let saved = self.inner.save(path.as_deref(), name, timeout_ms, rename)?;
+        let saved = self
+            .inner
+            .save(path.as_deref(), name, timeout_ms, rename)
+            .map_err(py_err)?;
         Ok(saved.to_string_lossy().into_owned())
     }
 
     fn save_screenshot(&self, path: &str) -> PyResult<()> {
-        self.inner.save_screenshot(path)?;
+        self.inner.save_screenshot(path).map_err(py_err)?;
         Ok(())
     }
 
     #[pyo3(signature = (offset_x=0.0, offset_y=0.0, duration_secs=0.5))]
     fn drag(&self, offset_x: f64, offset_y: f64, duration_secs: f64) -> PyResult<()> {
-        self.inner.drag(offset_x, offset_y, duration_secs)?;
+        self.inner
+            .drag(offset_x, offset_y, duration_secs)
+            .map_err(py_err)?;
         Ok(())
     }
 
     #[pyo3(signature = (target, duration_secs=0.5))]
     fn drag_to(&self, target: &Bound<'_, PyAny>, duration_secs: f64) -> PyResult<()> {
         if let Ok(target) = target.extract::<PyRef<'_, PyElement>>() {
-            self.inner.drag_to(&target.inner, duration_secs)?;
+            self.inner
+                .drag_to(&target.inner, duration_secs)
+                .map_err(py_err)?;
             return Ok(());
         }
 
         if let Ok((x, y)) = target.extract::<(f64, f64)>() {
-            self.inner.drag_to_point(x, y, duration_secs)?;
+            self.inner
+                .drag_to_point(x, y, duration_secs)
+                .map_err(py_err)?;
             return Ok(());
         }
 
         if let Ok(coords) = target.extract::<Vec<f64>>() {
             if coords.len() == 2 {
                 self.inner
-                    .drag_to_point(coords[0], coords[1], duration_secs)?;
+                    .drag_to_point(coords[0], coords[1], duration_secs)
+                    .map_err(py_err)?;
                 return Ok(());
             }
         }
@@ -1203,138 +1260,125 @@ impl PyElement {
     }
 
     fn run_js(&self, script: &str) -> PyResult<String> {
-        let value = self.inner.run_js(script)?;
+        let value = self.inner.run_js(script).map_err(py_err)?;
         serde_json::to_string(&value)
-            .map_err(|err| OpenPageError::Serialization(err.to_string()).into())
+            .map_err(|err| py_err(OpenPageError::Serialization(err.to_string())))
     }
 
     fn is_selected(&self) -> PyResult<bool> {
-        self.inner.is_selected().map_err(Into::into)
+        self.inner.is_selected().map_err(py_err)
     }
 
     fn is_checked(&self) -> PyResult<bool> {
-        self.inner.is_checked().map_err(Into::into)
+        self.inner.is_checked().map_err(py_err)
     }
 
     fn is_displayed(&self) -> PyResult<bool> {
-        self.inner.is_displayed().map_err(Into::into)
+        self.inner.is_displayed().map_err(py_err)
     }
 
     fn is_enabled(&self) -> PyResult<bool> {
-        self.inner.is_enabled().map_err(Into::into)
+        self.inner.is_enabled().map_err(py_err)
     }
 
     fn is_alive(&self) -> PyResult<bool> {
-        self.inner.is_alive().map_err(Into::into)
+        self.inner.is_alive().map_err(py_err)
     }
 
     fn has_rect(&self) -> PyResult<Option<Vec<(f64, f64)>>> {
-        self.inner.rect_corners().map_err(Into::into)
+        self.inner.rect_corners().map_err(py_err)
     }
 
     fn is_in_viewport(&self) -> PyResult<bool> {
-        self.inner.is_in_viewport().map_err(Into::into)
+        self.inner.is_in_viewport().map_err(py_err)
     }
 
     fn is_whole_in_viewport(&self) -> PyResult<bool> {
-        self.inner.is_whole_in_viewport().map_err(Into::into)
+        self.inner.is_whole_in_viewport().map_err(py_err)
     }
 
     fn is_covered(&self) -> PyResult<bool> {
-        self.inner.is_covered().map_err(Into::into)
+        self.inner.is_covered().map_err(py_err)
     }
 
     fn is_clickable(&self) -> PyResult<bool> {
-        self.inner.is_clickable().map_err(Into::into)
+        self.inner.is_clickable().map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_until_displayed(&self, timeout_ms: u64) -> PyResult<bool> {
-        self.inner
-            .wait_until_displayed(timeout_ms)
-            .map_err(Into::into)
+        self.inner.wait_until_displayed(timeout_ms).map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_until_hidden(&self, timeout_ms: u64) -> PyResult<bool> {
-        self.inner.wait_until_hidden(timeout_ms).map_err(Into::into)
+        self.inner.wait_until_hidden(timeout_ms).map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_until_enabled(&self, timeout_ms: u64) -> PyResult<bool> {
-        self.inner
-            .wait_until_enabled(timeout_ms)
-            .map_err(Into::into)
+        self.inner.wait_until_enabled(timeout_ms).map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_until_disabled(&self, timeout_ms: u64) -> PyResult<bool> {
-        self.inner
-            .wait_until_disabled(timeout_ms)
-            .map_err(Into::into)
+        self.inner.wait_until_disabled(timeout_ms).map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_until_deleted(&self, timeout_ms: u64) -> PyResult<bool> {
-        self.inner
-            .wait_until_deleted(timeout_ms)
-            .map_err(Into::into)
+        self.inner.wait_until_deleted(timeout_ms).map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_until_clickable(&self, timeout_ms: u64) -> PyResult<bool> {
-        self.inner
-            .wait_until_clickable(timeout_ms)
-            .map_err(Into::into)
+        self.inner.wait_until_clickable(timeout_ms).map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_until_has_rect(&self, timeout_ms: u64) -> PyResult<bool> {
-        self.inner
-            .wait_until_has_rect(timeout_ms)
-            .map_err(Into::into)
+        self.inner.wait_until_has_rect(timeout_ms).map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_until_covered(&self, timeout_ms: u64) -> PyResult<bool> {
-        self.inner
-            .wait_until_covered(timeout_ms)
-            .map_err(Into::into)
+        self.inner.wait_until_covered(timeout_ms).map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_until_not_covered(&self, timeout_ms: u64) -> PyResult<bool> {
         self.inner
             .wait_until_not_covered(timeout_ms)
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_until_disabled_or_deleted(&self, timeout_ms: u64) -> PyResult<bool> {
         self.inner
             .wait_until_disabled_or_deleted(timeout_ms)
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_until_stop_moving(&self, timeout_ms: u64) -> PyResult<bool> {
         self.inner
             .wait_until_stop_moving(timeout_ms)
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PyElement>> {
         Py::new(
             py,
             PyElement {
-                inner: self.inner.find(locator)?,
+                inner: self.inner.find(locator).map_err(py_err)?,
             },
         )
     }
 
     fn find_all(&self, py: Python<'_>, locator: &str) -> PyResult<Vec<Py<PyElement>>> {
         self.inner
-            .find_all(locator)?
+            .find_all(locator)
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PyElement { inner }))
             .collect()
@@ -1342,7 +1386,8 @@ impl PyElement {
 
     fn snapshot_query_xpath(&self, py: Python<'_>, expression: &str) -> PyResult<Vec<Py<PyAny>>> {
         self.inner
-            .snapshot_query_xpath(expression)?
+            .snapshot_query_xpath(expression)
+            .map_err(py_err)?
             .into_iter()
             .map(|item| session_xpath_result_to_py(py, item))
             .collect()
@@ -1357,7 +1402,8 @@ impl PyElement {
         first_match_only: bool,
     ) -> PyResult<Vec<(String, Vec<Py<PyElement>>)>> {
         self.inner
-            .find_locators(&locators, any_one, first_match_only)?
+            .find_locators(&locators, any_one, first_match_only)
+            .map_err(py_err)?
             .into_iter()
             .map(|item| locator_match_element_to_py(py, item))
             .collect()
@@ -1374,20 +1420,22 @@ impl PySessionPage {
             user_agent,
             ..SessionOptions::default()
         };
-        let inner = py.detach(move || SessionPage::new(options))?;
+        let inner = py
+            .detach(move || SessionPage::new(options))
+            .map_err(py_err)?;
         Ok(Self { inner })
     }
 
     fn get(&self, py: Python<'_>, url: &str) -> PyResult<bool> {
         let page = self.inner.clone();
         let url = url.to_string();
-        py.detach(move || page.get(&url)).map_err(Into::into)
+        py.detach(move || page.get(&url)).map_err(py_err)
     }
 
     fn post(&self, py: Python<'_>, url: &str) -> PyResult<bool> {
         let page = self.inner.clone();
         let url = url.to_string();
-        py.detach(move || page.post(&url)).map_err(Into::into)
+        py.detach(move || page.post(&url)).map_err(py_err)
     }
 
     #[pyo3(signature = (url, payload_json=None))]
@@ -1395,37 +1443,38 @@ impl PySessionPage {
         let payload = payload_json
             .map(|value| serde_json::from_str(value))
             .transpose()
-            .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
+            .map_err(|err| OpenPageError::Serialization(err.to_string()))
+            .map_err(py_err)?;
         let page = self.inner.clone();
         let url = url.to_string();
         py.detach(move || page.post_json(&url, payload))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn url(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.inner.clone();
-        py.detach(move || page.url()).map_err(Into::into)
+        py.detach(move || page.url()).map_err(py_err)
     }
 
     fn status_code(&self, py: Python<'_>) -> PyResult<Option<u16>> {
         let page = self.inner.clone();
-        py.detach(move || page.status_code()).map_err(Into::into)
+        py.detach(move || page.status_code()).map_err(py_err)
     }
 
     fn raw_data(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
         let page = self.inner.clone();
-        let raw = py.detach(move || page.raw_data())?;
+        let raw = py.detach(move || page.raw_data()).map_err(py_err)?;
         Ok(PyBytes::new(py, &raw).into())
     }
 
     fn encoding(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.inner.clone();
-        py.detach(move || page.encoding()).map_err(Into::into)
+        py.detach(move || page.encoding()).map_err(py_err)
     }
 
     fn html(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.inner.clone();
-        py.detach(move || page.html()).map_err(Into::into)
+        py.detach(move || page.html()).map_err(py_err)
     }
 
     fn json(&self, py: Python<'_>) -> PyResult<Option<String>> {
@@ -1437,32 +1486,32 @@ impl PySessionPage {
                     .transpose()
                     .map_err(|err| OpenPageError::Serialization(err.to_string()))
             })
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn title(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.inner.clone();
-        py.detach(move || page.title()).map_err(Into::into)
+        py.detach(move || page.title()).map_err(py_err)
     }
 
     fn user_agent(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.inner.clone();
-        py.detach(move || page.user_agent()).map_err(Into::into)
+        py.detach(move || page.user_agent()).map_err(py_err)
     }
 
     fn is_alive(&self, py: Python<'_>) -> PyResult<bool> {
         let page = self.inner.clone();
-        py.detach(move || page.is_alive()).map_err(Into::into)
+        py.detach(move || page.is_alive()).map_err(py_err)
     }
 
     fn is_loading(&self, py: Python<'_>) -> PyResult<bool> {
         let page = self.inner.clone();
-        py.detach(move || page.is_loading()).map_err(Into::into)
+        py.detach(move || page.is_loading()).map_err(py_err)
     }
 
     fn ready_state(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.inner.clone();
-        py.detach(move || page.ready_state()).map_err(Into::into)
+        py.detach(move || page.ready_state()).map_err(py_err)
     }
 
     fn is_headless(&self) -> PyResult<bool> {
@@ -1471,50 +1520,53 @@ impl PySessionPage {
 
     fn set_user_agent(&self, py: Python<'_>, user_agent: Option<String>) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.set_user_agent(user_agent))?;
+        py.detach(move || page.set_user_agent(user_agent))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn set_headers(&self, py: Python<'_>, headers: HashMap<String, String>) -> PyResult<()> {
         let page = self.inner.clone();
         let headers = headers.into_iter().collect::<Vec<_>>();
-        py.detach(move || page.set_headers(&headers))?;
+        py.detach(move || page.set_headers(&headers))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn cookie_header(&self, py: Python<'_>, url: &str) -> PyResult<Option<String>> {
         let page = self.inner.clone();
         let url = url.to_string();
-        py.detach(move || page.cookie_header(&url))
-            .map_err(Into::into)
+        py.detach(move || page.cookie_header(&url)).map_err(py_err)
     }
 
     fn cookies(&self, py: Python<'_>) -> PyResult<Vec<(String, String, Option<String>)>> {
         let page = self.inner.clone();
         py.detach(move || page.cookies())
             .map(cookie_entries_to_tuples)
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn set_cookie_header(&self, py: Python<'_>, url: &str, cookie_header: &str) -> PyResult<()> {
         let page = self.inner.clone();
         let url = url.to_string();
         let cookie_header = cookie_header.to_string();
-        py.detach(move || page.set_cookie_header(&url, &cookie_header))?;
+        py.detach(move || page.set_cookie_header(&url, &cookie_header))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PySessionElement>> {
         let page = self.inner.clone();
         let locator = locator.to_string();
-        let element = py.detach(move || page.find(&locator))?;
+        let element = py.detach(move || page.find(&locator)).map_err(py_err)?;
         Py::new(py, PySessionElement { inner: element })
     }
 
     fn find_all(&self, py: Python<'_>, locator: &str) -> PyResult<Vec<Py<PySessionElement>>> {
         let page = self.inner.clone();
         let locator = locator.to_string();
-        py.detach(move || page.find_all(&locator))?
+        py.detach(move || page.find_all(&locator))
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
@@ -1523,7 +1575,8 @@ impl PySessionPage {
     fn query_xpath(&self, py: Python<'_>, expression: &str) -> PyResult<Vec<Py<PyAny>>> {
         let page = self.inner.clone();
         let expression = expression.to_string();
-        py.detach(move || page.query_xpath(&expression))?
+        py.detach(move || page.query_xpath(&expression))
+            .map_err(py_err)?
             .into_iter()
             .map(|item| session_xpath_result_to_py(py, item))
             .collect()
@@ -1538,7 +1591,8 @@ impl PySessionPage {
         first_match_only: bool,
     ) -> PyResult<Vec<(String, Vec<Py<PySessionElement>>)>> {
         let page = self.inner.clone();
-        py.detach(move || page.find_locators(&locators, any_one, first_match_only))?
+        py.detach(move || page.find_locators(&locators, any_one, first_match_only))
+            .map_err(py_err)?
             .into_iter()
             .map(|item| locator_match_session_to_py(py, item))
             .collect()
@@ -1546,7 +1600,7 @@ impl PySessionPage {
 
     fn root(&self, py: Python<'_>) -> PyResult<Py<PySessionElement>> {
         let page = self.inner.clone();
-        let element = py.detach(move || page.root())?;
+        let element = py.detach(move || page.root()).map_err(py_err)?;
         Py::new(py, PySessionElement { inner: element })
     }
 }
@@ -1554,66 +1608,67 @@ impl PySessionPage {
 #[pymethods]
 impl PySessionElement {
     fn tag(&self) -> PyResult<String> {
-        self.inner.tag().map_err(Into::into)
+        self.inner.tag().map_err(py_err)
     }
 
     fn text(&self) -> PyResult<Option<String>> {
-        self.inner.text().map_err(Into::into)
+        self.inner.text().map_err(py_err)
     }
 
     fn html(&self) -> PyResult<Option<String>> {
-        self.inner.html().map_err(Into::into)
+        self.inner.html().map_err(py_err)
     }
 
     fn inner_html(&self) -> PyResult<Option<String>> {
-        self.inner.inner_html().map_err(Into::into)
+        self.inner.inner_html().map_err(py_err)
     }
 
     fn raw_text(&self) -> PyResult<Option<String>> {
-        self.inner.raw_text().map_err(Into::into)
+        self.inner.raw_text().map_err(py_err)
     }
 
     fn attrs(&self) -> PyResult<Vec<(String, String)>> {
-        self.inner.attrs().map_err(Into::into)
+        self.inner.attrs().map_err(py_err)
     }
 
     fn attr(&self, name: &str) -> PyResult<Option<String>> {
-        self.inner.attr(name).map_err(Into::into)
+        self.inner.attr(name).map_err(py_err)
     }
 
     fn link(&self) -> PyResult<Option<String>> {
-        self.inner.link().map_err(Into::into)
+        self.inner.link().map_err(py_err)
     }
 
     fn child_count(&self) -> PyResult<usize> {
-        self.inner.child_count().map_err(Into::into)
+        self.inner.child_count().map_err(py_err)
     }
 
     fn css_path(&self) -> PyResult<String> {
-        self.inner.css_path().map_err(Into::into)
+        self.inner.css_path().map_err(py_err)
     }
 
     fn xpath(&self) -> PyResult<String> {
-        self.inner.xpath().map_err(Into::into)
+        self.inner.xpath().map_err(py_err)
     }
 
     fn comments(&self) -> PyResult<Vec<String>> {
-        self.inner.comments().map_err(Into::into)
+        self.inner.comments().map_err(py_err)
     }
 
     #[pyo3(signature = (text_node_only=false))]
     fn texts(&self, text_node_only: bool) -> PyResult<Vec<String>> {
-        self.inner.texts(text_node_only).map_err(Into::into)
+        self.inner.texts(text_node_only).map_err(py_err)
     }
 
     fn find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PySessionElement>> {
-        let element = self.inner.find(locator)?;
+        let element = self.inner.find(locator).map_err(py_err)?;
         Py::new(py, PySessionElement { inner: element })
     }
 
     fn find_all(&self, py: Python<'_>, locator: &str) -> PyResult<Vec<Py<PySessionElement>>> {
         self.inner
-            .find_all(locator)?
+            .find_all(locator)
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
@@ -1621,7 +1676,8 @@ impl PySessionElement {
 
     fn query_xpath(&self, py: Python<'_>, expression: &str) -> PyResult<Vec<Py<PyAny>>> {
         self.inner
-            .query_xpath(expression)?
+            .query_xpath(expression)
+            .map_err(py_err)?
             .into_iter()
             .map(|item| session_xpath_result_to_py(py, item))
             .collect()
@@ -1636,7 +1692,8 @@ impl PySessionElement {
         first_match_only: bool,
     ) -> PyResult<Vec<(String, Vec<Py<PySessionElement>>)>> {
         self.inner
-            .find_locators(&locators, any_one, first_match_only)?
+            .find_locators(&locators, any_one, first_match_only)
+            .map_err(py_err)?
             .into_iter()
             .map(|item| locator_match_session_to_py(py, item))
             .collect()
@@ -1646,7 +1703,7 @@ impl PySessionElement {
         Py::new(
             py,
             PySessionElement {
-                inner: self.inner.parent()?,
+                inner: self.inner.parent().map_err(py_err)?,
             },
         )
     }
@@ -1655,7 +1712,7 @@ impl PySessionElement {
         Py::new(
             py,
             PySessionElement {
-                inner: self.inner.parent_level(level)?,
+                inner: self.inner.parent_level(level).map_err(py_err)?,
             },
         )
     }
@@ -1669,7 +1726,7 @@ impl PySessionElement {
         Py::new(
             py,
             PySessionElement {
-                inner: self.inner.parent_with(locator, index)?,
+                inner: self.inner.parent_with(locator, index).map_err(py_err)?,
             },
         )
     }
@@ -1685,7 +1742,7 @@ impl PySessionElement {
         Py::new(
             py,
             PySessionElement {
-                inner: self.inner.child_with(normalized, index)?,
+                inner: self.inner.child_with(normalized, index).map_err(py_err)?,
             },
         )
     }
@@ -1698,7 +1755,8 @@ impl PySessionElement {
     ) -> PyResult<Vec<Py<PySessionElement>>> {
         let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
         self.inner
-            .children_with(normalized)?
+            .children_with(normalized)
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
@@ -1715,7 +1773,7 @@ impl PySessionElement {
         Py::new(
             py,
             PySessionElement {
-                inner: self.inner.prev_with(normalized, index)?,
+                inner: self.inner.prev_with(normalized, index).map_err(py_err)?,
             },
         )
     }
@@ -1731,7 +1789,7 @@ impl PySessionElement {
         Py::new(
             py,
             PySessionElement {
-                inner: self.inner.next_with(normalized, index)?,
+                inner: self.inner.next_with(normalized, index).map_err(py_err)?,
             },
         )
     }
@@ -1747,7 +1805,7 @@ impl PySessionElement {
         Py::new(
             py,
             PySessionElement {
-                inner: self.inner.before_with(normalized, index)?,
+                inner: self.inner.before_with(normalized, index).map_err(py_err)?,
             },
         )
     }
@@ -1763,7 +1821,7 @@ impl PySessionElement {
         Py::new(
             py,
             PySessionElement {
-                inner: self.inner.after_with(normalized, index)?,
+                inner: self.inner.after_with(normalized, index).map_err(py_err)?,
             },
         )
     }
@@ -1772,7 +1830,8 @@ impl PySessionElement {
     fn prevs(&self, py: Python<'_>, locator: Option<&str>) -> PyResult<Vec<Py<PySessionElement>>> {
         let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
         self.inner
-            .prevs_with(normalized)?
+            .prevs_with(normalized)
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
@@ -1782,7 +1841,8 @@ impl PySessionElement {
     fn nexts(&self, py: Python<'_>, locator: Option<&str>) -> PyResult<Vec<Py<PySessionElement>>> {
         let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
         self.inner
-            .nexts_with(normalized)?
+            .nexts_with(normalized)
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
@@ -1796,7 +1856,8 @@ impl PySessionElement {
     ) -> PyResult<Vec<Py<PySessionElement>>> {
         let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
         self.inner
-            .befores_with(normalized)?
+            .befores_with(normalized)
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
@@ -1806,7 +1867,8 @@ impl PySessionElement {
     fn afters(&self, py: Python<'_>, locator: Option<&str>) -> PyResult<Vec<Py<PySessionElement>>> {
         let normalized = locator.map(str::trim).filter(|locator| !locator.is_empty());
         self.inner
-            .afters_with(normalized)?
+            .afters_with(normalized)
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
@@ -1832,12 +1894,13 @@ impl PyWebPage {
         timeout_secs: u64,
         user_agent: Option<String>,
     ) -> PyResult<Self> {
-        let mode = WebMode::parse(mode)?;
+        let mode = WebMode::parse(mode).map_err(py_err)?;
         let launch_options = LaunchOptions {
             browser_path: browser_path.map(PathBuf::from),
             download_path: download_path.map(PathBuf::from),
-            download_file_exists: DownloadFileExistsMode::parse(download_file_exists_mode)?,
-            load_mode: LoadMode::parse(load_mode)?,
+            download_file_exists: DownloadFileExistsMode::parse(download_file_exists_mode)
+                .map_err(py_err)?,
+            load_mode: LoadMode::parse(load_mode).map_err(py_err)?,
             user_data_dir: user_data_dir.map(PathBuf::from),
             headless,
             width,
@@ -1850,7 +1913,9 @@ impl PyWebPage {
             user_agent,
             ..SessionOptions::default()
         };
-        let inner = py.detach(move || WebPage::new(mode, launch_options, session_options))?;
+        let inner = py
+            .detach(move || WebPage::new(mode, launch_options, session_options))
+            .map_err(py_err)?;
         Ok(Self { inner })
     }
 
@@ -1858,67 +1923,71 @@ impl PyWebPage {
         self.inner
             .mode()
             .map(|mode| mode.as_str().to_string())
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn tabs_count(&self, py: Python<'_>) -> PyResult<usize> {
         let page = self.inner.clone();
-        py.detach(move || page.tabs_count()).map_err(Into::into)
+        py.detach(move || page.tabs_count()).map_err(py_err)
     }
 
     fn tab_ids(&self, py: Python<'_>) -> PyResult<Vec<String>> {
         let page = self.inner.clone();
-        py.detach(move || page.tab_ids()).map_err(Into::into)
+        py.detach(move || page.tab_ids()).map_err(py_err)
     }
 
     fn download_path(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.inner.clone();
-        py.detach(move || page.download_path()).map_err(Into::into)
+        py.detach(move || page.download_path()).map_err(py_err)
     }
 
     fn set_download_path(&self, py: Python<'_>, path: &str) -> PyResult<()> {
         let page = self.inner.clone();
         let path = path.to_string();
-        py.detach(move || page.set_download_path(&path))?;
+        py.detach(move || page.set_download_path(&path))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn current_tab_download_path(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.inner.clone();
         py.detach(move || page.current_tab_download_path())
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn set_current_tab_download_path(&self, py: Python<'_>, path: &str) -> PyResult<()> {
         let page = self.inner.clone();
         let path = path.to_string();
-        py.detach(move || page.set_current_tab_download_path(&path))?;
+        py.detach(move || page.set_current_tab_download_path(&path))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn set_blocked_urls(&self, py: Python<'_>, patterns: Vec<String>) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.set_blocked_urls(&patterns))?;
+        py.detach(move || page.set_blocked_urls(&patterns))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn download_file_exists_mode(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.inner.clone();
         py.detach(move || page.download_file_exists_mode())
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn set_download_file_exists_mode(&self, py: Python<'_>, mode: &str) -> PyResult<()> {
         let page = self.inner.clone();
-        let mode = DownloadFileExistsMode::parse(mode)?;
-        py.detach(move || page.set_download_file_exists_mode(mode))?;
+        let mode = DownloadFileExistsMode::parse(mode).map_err(py_err)?;
+        py.detach(move || page.set_download_file_exists_mode(mode))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn current_tab_download_file_exists_mode(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.inner.clone();
         py.detach(move || page.current_tab_download_file_exists_mode())
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn set_current_tab_download_file_exists_mode(
@@ -1927,8 +1996,9 @@ impl PyWebPage {
         mode: &str,
     ) -> PyResult<()> {
         let page = self.inner.clone();
-        let mode = DownloadFileExistsMode::parse(mode)?;
-        py.detach(move || page.set_current_tab_download_file_exists_mode(mode))?;
+        let mode = DownloadFileExistsMode::parse(mode).map_err(py_err)?;
+        py.detach(move || page.set_current_tab_download_file_exists_mode(mode))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -1949,7 +2019,8 @@ impl PyWebPage {
                 suffix.as_deref(),
                 suffix_specified,
             )
-        })?;
+        })
+        .map_err(py_err)?;
         Ok(())
     }
 
@@ -1963,7 +2034,7 @@ impl PyWebPage {
         let page = self.inner.clone();
         let filename = filename.map(str::to_string);
         py.detach(move || page.wait_for_download(filename.as_deref(), timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locator, save_path=None, rename=None, suffix=None, suffix_specified=false, timeout_ms=None, by_js=false, new_tab=false))]
@@ -1995,7 +2066,8 @@ impl PyWebPage {
                 by_js,
                 new_tab,
             )
-        })?
+        })
+        .map_err(py_err)?
         .map(|inner| Py::new(py, PyDownloadMission { inner }))
         .transpose()
     }
@@ -2012,7 +2084,7 @@ impl PyWebPage {
         let page = self.inner.clone();
         let locator = locator.to_string();
         py.detach(move || page.click_to_upload(&locator, &files, timeout_ms, by_js))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locator, timeout_ms=None, by_js=false))]
@@ -2022,11 +2094,12 @@ impl PyWebPage {
         locator: &str,
         timeout_ms: Option<u64>,
         by_js: bool,
-    ) -> PyResult<Option<Py<PyPage>>> {
+    ) -> PyResult<Option<Py<PyWebPage>>> {
         let page = self.inner.clone();
         let locator = locator.to_string();
-        py.detach(move || page.click_for_new_tab(&locator, timeout_ms, by_js))?
-            .map(|inner| Py::new(py, PyPage { inner: Some(inner) }))
+        py.detach(move || page.click_for_new_tab(&locator, timeout_ms, by_js))
+            .map_err(py_err)?
+            .map(|inner| Py::new(py, PyWebPage { inner }))
             .transpose()
     }
 
@@ -2037,17 +2110,19 @@ impl PyWebPage {
         locator: &str,
         timeout_ms: Option<u64>,
         get_tab: bool,
-    ) -> PyResult<Option<Py<PyPage>>> {
+    ) -> PyResult<Option<Py<PyWebPage>>> {
         let page = self.inner.clone();
         let locator = locator.to_string();
-        py.detach(move || page.click_middle(&locator, timeout_ms, get_tab))?
-            .map(|inner| Py::new(py, PyPage { inner: Some(inner) }))
+        py.detach(move || page.click_middle(&locator, timeout_ms, get_tab))
+            .map_err(py_err)?
+            .map(|inner| Py::new(py, PyWebPage { inner }))
             .transpose()
     }
 
     fn download_missions(&self, py: Python<'_>) -> PyResult<Vec<Py<PyDownloadMission>>> {
         let page = self.inner.clone();
-        py.detach(move || page.download_missions())?
+        py.detach(move || page.download_missions())
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PyDownloadMission { inner }))
             .collect()
@@ -2055,7 +2130,8 @@ impl PyWebPage {
 
     fn last_download(&self, py: Python<'_>) -> PyResult<Option<Py<PyDownloadMission>>> {
         let page = self.inner.clone();
-        py.detach(move || page.last_download())?
+        py.detach(move || page.last_download())
+            .map_err(py_err)?
             .map(|inner| Py::new(py, PyDownloadMission { inner }))
             .transpose()
     }
@@ -2070,7 +2146,7 @@ impl PyWebPage {
         let page = self.inner.clone();
         let current_tab_id = current_tab_id.map(str::to_string);
         py.detach(move || page.wait_for_new_tab(current_tab_id.as_deref(), timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000, cancel_it=false))]
@@ -2081,7 +2157,8 @@ impl PyWebPage {
         cancel_it: bool,
     ) -> PyResult<Option<Py<PyDownloadMission>>> {
         let page = self.inner.clone();
-        py.detach(move || page.wait_for_download_begin(timeout_ms, cancel_it))?
+        py.detach(move || page.wait_for_download_begin(timeout_ms, cancel_it))
+            .map_err(py_err)?
             .map(|inner| Py::new(py, PyDownloadMission { inner }))
             .transpose()
     }
@@ -2095,14 +2172,14 @@ impl PyWebPage {
     ) -> PyResult<bool> {
         let page = self.inner.clone();
         py.detach(move || page.wait_for_downloads_done(timeout_ms, cancel_if_timeout))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_for_upload_paths_inputted(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
         let page = self.inner.clone();
         py.detach(move || page.wait_for_upload_paths_inputted(timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn listener(&self, py: Python<'_>) -> PyResult<Py<PyListener>> {
@@ -2123,13 +2200,13 @@ impl PyWebPage {
     fn get(&self, py: Python<'_>, url: &str) -> PyResult<bool> {
         let page = self.inner.clone();
         let url = url.to_string();
-        py.detach(move || page.get(&url)).map_err(Into::into)
+        py.detach(move || page.get(&url)).map_err(py_err)
     }
 
     fn post(&self, py: Python<'_>, url: &str) -> PyResult<bool> {
         let page = self.inner.clone();
         let url = url.to_string();
-        py.detach(move || page.post(&url)).map_err(Into::into)
+        py.detach(move || page.post(&url)).map_err(py_err)
     }
 
     #[pyo3(signature = (url, payload_json=None))]
@@ -2137,54 +2214,55 @@ impl PyWebPage {
         let payload = payload_json
             .map(|value| serde_json::from_str(value))
             .transpose()
-            .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
+            .map_err(|err| OpenPageError::Serialization(err.to_string()))
+            .map_err(py_err)?;
         let page = self.inner.clone();
         let url = url.to_string();
         py.detach(move || page.post_json(&url, payload))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn url(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.inner.clone();
-        py.detach(move || page.url()).map_err(Into::into)
+        py.detach(move || page.url()).map_err(py_err)
     }
 
     fn title(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.inner.clone();
-        py.detach(move || page.title()).map_err(Into::into)
+        py.detach(move || page.title()).map_err(py_err)
     }
 
     fn user_agent(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.inner.clone();
-        py.detach(move || page.user_agent()).map_err(Into::into)
+        py.detach(move || page.user_agent()).map_err(py_err)
     }
 
     fn status_code(&self, py: Python<'_>) -> PyResult<Option<u16>> {
         let page = self.inner.clone();
-        py.detach(move || page.status_code()).map_err(Into::into)
+        py.detach(move || page.status_code()).map_err(py_err)
     }
 
     fn cookies(&self, py: Python<'_>) -> PyResult<Vec<(String, String, Option<String>)>> {
         let page = self.inner.clone();
         py.detach(move || page.cookies())
             .map(cookie_entries_to_tuples)
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn html(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.inner.clone();
-        py.detach(move || page.html()).map_err(Into::into)
+        py.detach(move || page.html()).map_err(py_err)
     }
 
     fn raw_data(&self, py: Python<'_>) -> PyResult<Py<PyBytes>> {
         let page = self.inner.clone();
-        let raw = py.detach(move || page.raw_data())?;
+        let raw = py.detach(move || page.raw_data()).map_err(py_err)?;
         Ok(PyBytes::new(py, &raw).into())
     }
 
     fn encoding(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.inner.clone();
-        py.detach(move || page.encoding()).map_err(Into::into)
+        py.detach(move || page.encoding()).map_err(py_err)
     }
 
     fn json(&self, py: Python<'_>) -> PyResult<Option<String>> {
@@ -2196,22 +2274,22 @@ impl PyWebPage {
                     .transpose()
                     .map_err(|err| OpenPageError::Serialization(err.to_string()))
             })
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn is_alive(&self, py: Python<'_>) -> PyResult<bool> {
         let page = self.inner.clone();
-        py.detach(move || page.is_alive()).map_err(Into::into)
+        py.detach(move || page.is_alive()).map_err(py_err)
     }
 
     fn is_loading(&self, py: Python<'_>) -> PyResult<bool> {
         let page = self.inner.clone();
-        py.detach(move || page.is_loading()).map_err(Into::into)
+        py.detach(move || page.is_loading()).map_err(py_err)
     }
 
     fn ready_state(&self, py: Python<'_>) -> PyResult<Option<String>> {
         let page = self.inner.clone();
-        py.detach(move || page.ready_state()).map_err(Into::into)
+        py.detach(move || page.ready_state()).map_err(py_err)
     }
 
     fn is_headless(&self) -> PyResult<bool> {
@@ -2220,17 +2298,17 @@ impl PyWebPage {
 
     fn has_alert(&self, py: Python<'_>) -> PyResult<bool> {
         let page = self.inner.clone();
-        py.detach(move || page.has_alert()).map_err(Into::into)
+        py.detach(move || page.has_alert()).map_err(py_err)
     }
 
     fn is_existed(&self, py: Python<'_>) -> PyResult<bool> {
         let page = self.inner.clone();
-        py.detach(move || page.is_existed()).map_err(Into::into)
+        py.detach(move || page.is_existed()).map_err(py_err)
     }
 
     fn is_incognito(&self, py: Python<'_>) -> PyResult<bool> {
         let page = self.inner.clone();
-        py.detach(move || page.is_incognito()).map_err(Into::into)
+        py.detach(move || page.is_incognito()).map_err(py_err)
     }
 
     #[pyo3(signature = (accept=true, prompt_text=None, timeout_ms=10000))]
@@ -2244,7 +2322,7 @@ impl PyWebPage {
         let page = self.inner.clone();
         let prompt_text = prompt_text.map(str::to_string);
         py.detach(move || page.handle_alert(accept, prompt_text.as_deref(), timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (accept=true, prompt_text=None))]
@@ -2256,7 +2334,8 @@ impl PyWebPage {
     ) -> PyResult<()> {
         let page = self.inner.clone();
         let prompt_text = prompt_text.map(str::to_string);
-        py.detach(move || page.set_next_alert_action(accept, prompt_text.as_deref()))?;
+        py.detach(move || page.set_next_alert_action(accept, prompt_text.as_deref()))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -2269,7 +2348,8 @@ impl PyWebPage {
     ) -> PyResult<()> {
         let page = self.inner.clone();
         let prompt_text = prompt_text.map(str::to_string);
-        py.detach(move || page.set_auto_alert_action(accept, prompt_text.as_deref()))?;
+        py.detach(move || page.set_auto_alert_action(accept, prompt_text.as_deref()))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -2277,7 +2357,7 @@ impl PyWebPage {
     fn wait_for_alert_closed(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
         let page = self.inner.clone();
         py.detach(move || page.wait_for_alert_closed(timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (user_agent, platform=None))]
@@ -2290,14 +2370,16 @@ impl PyWebPage {
         let page = self.inner.clone();
         let user_agent = user_agent.to_string();
         let platform = platform.map(str::to_string);
-        py.detach(move || page.set_user_agent(&user_agent, platform.as_deref()))?;
+        py.detach(move || page.set_user_agent(&user_agent, platform.as_deref()))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn set_headers(&self, py: Python<'_>, headers: HashMap<String, String>) -> PyResult<()> {
         let page = self.inner.clone();
         let headers = headers.into_iter().collect::<Vec<_>>();
-        py.detach(move || page.set_headers(&headers))?;
+        py.detach(move || page.set_headers(&headers))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -2305,7 +2387,8 @@ impl PyWebPage {
         let page = self.inner.clone();
         let item = item.to_string();
         let value = value.map(str::to_string);
-        py.detach(move || page.set_session_storage(&item, value.as_deref()))?;
+        py.detach(move || page.set_session_storage(&item, value.as_deref()))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -2313,77 +2396,79 @@ impl PyWebPage {
         let page = self.inner.clone();
         let item = item.to_string();
         let value = value.map(str::to_string);
-        py.detach(move || page.set_local_storage(&item, value.as_deref()))?;
+        py.detach(move || page.set_local_storage(&item, value.as_deref()))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn set_upload_files(&self, py: Python<'_>, files: Vec<String>) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.set_upload_files(&files))?;
+        py.detach(move || page.set_upload_files(&files))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn load_mode(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.inner.clone();
-        py.detach(move || page.load_mode()).map_err(Into::into)
+        py.detach(move || page.load_mode()).map_err(py_err)
     }
 
     fn set_load_mode(&self, py: Python<'_>, mode: &str) -> PyResult<()> {
         let page = self.inner.clone();
-        let mode = LoadMode::parse(mode)?;
-        py.detach(move || page.set_load_mode(mode))?;
+        let mode = LoadMode::parse(mode).map_err(py_err)?;
+        py.detach(move || page.set_load_mode(mode))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn window_state(&self, py: Python<'_>) -> PyResult<String> {
         let page = self.inner.clone();
-        py.detach(move || page.window_state()).map_err(Into::into)
+        py.detach(move || page.window_state()).map_err(py_err)
     }
 
     fn window_size(&self, py: Python<'_>) -> PyResult<(i64, i64)> {
         let page = self.inner.clone();
-        py.detach(move || page.window_size()).map_err(Into::into)
+        py.detach(move || page.window_size()).map_err(py_err)
     }
 
     fn window_location(&self, py: Python<'_>) -> PyResult<(i64, i64)> {
         let page = self.inner.clone();
-        py.detach(move || page.window_location())
-            .map_err(Into::into)
+        py.detach(move || page.window_location()).map_err(py_err)
     }
 
     fn window_max(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.window_max())?;
+        py.detach(move || page.window_max()).map_err(py_err)?;
         Ok(())
     }
 
     fn window_min(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.window_min())?;
+        py.detach(move || page.window_min()).map_err(py_err)?;
         Ok(())
     }
 
     fn window_full(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.window_full())?;
+        py.detach(move || page.window_full()).map_err(py_err)?;
         Ok(())
     }
 
     fn window_normal(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.window_normal())?;
+        py.detach(move || page.window_normal()).map_err(py_err)?;
         Ok(())
     }
 
     fn window_hide(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.window_hide())?;
+        py.detach(move || page.window_hide()).map_err(py_err)?;
         Ok(())
     }
 
     fn window_show(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.window_show())?;
+        py.detach(move || page.window_show()).map_err(py_err)?;
         Ok(())
     }
 
@@ -2395,7 +2480,8 @@ impl PyWebPage {
         height: Option<i64>,
     ) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.window_size_set(width, height))?;
+        py.detach(move || page.window_size_set(width, height))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -2407,13 +2493,14 @@ impl PyWebPage {
         top: Option<i64>,
     ) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.window_location_set(left, top))?;
+        py.detach(move || page.window_location_set(left, top))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn activate(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.activate())?;
+        py.detach(move || page.activate()).map_err(py_err)?;
         Ok(())
     }
 
@@ -2424,14 +2511,15 @@ impl PyWebPage {
     fn find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PyAny>> {
         let page = self.inner.clone();
         let locator = locator.to_string();
-        let element = py.detach(move || page.find(&locator))?;
+        let element = py.detach(move || page.find(&locator)).map_err(py_err)?;
         wrap_web_element(py, element)
     }
 
     fn find_all(&self, py: Python<'_>, locator: &str) -> PyResult<Vec<Py<PyAny>>> {
         let page = self.inner.clone();
         let locator = locator.to_string();
-        py.detach(move || page.find_all(&locator))?
+        py.detach(move || page.find_all(&locator))
+            .map_err(py_err)?
             .into_iter()
             .map(|element| wrap_web_element(py, element))
             .collect()
@@ -2440,7 +2528,9 @@ impl PyWebPage {
     fn snapshot_find(&self, py: Python<'_>, locator: &str) -> PyResult<Py<PySessionElement>> {
         let page = self.inner.clone();
         let locator = locator.to_string();
-        let element = py.detach(move || page.snapshot_find(&locator))?;
+        let element = py
+            .detach(move || page.snapshot_find(&locator))
+            .map_err(py_err)?;
         Py::new(py, PySessionElement { inner: element })
     }
 
@@ -2451,7 +2541,8 @@ impl PyWebPage {
     ) -> PyResult<Vec<Py<PySessionElement>>> {
         let page = self.inner.clone();
         let locator = locator.to_string();
-        py.detach(move || page.snapshot_find_all(&locator))?
+        py.detach(move || page.snapshot_find_all(&locator))
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PySessionElement { inner }))
             .collect()
@@ -2459,14 +2550,15 @@ impl PyWebPage {
 
     fn snapshot_root(&self, py: Python<'_>) -> PyResult<Py<PySessionElement>> {
         let page = self.inner.clone();
-        let element = py.detach(move || page.snapshot_root())?;
+        let element = py.detach(move || page.snapshot_root()).map_err(py_err)?;
         Py::new(py, PySessionElement { inner: element })
     }
 
     fn snapshot_query_xpath(&self, py: Python<'_>, expression: &str) -> PyResult<Vec<Py<PyAny>>> {
         let page = self.inner.clone();
         let expression = expression.to_string();
-        py.detach(move || page.snapshot_query_xpath(&expression))?
+        py.detach(move || page.snapshot_query_xpath(&expression))
+            .map_err(py_err)?
             .into_iter()
             .map(|item| session_xpath_result_to_py(py, item))
             .collect()
@@ -2481,7 +2573,8 @@ impl PyWebPage {
         first_match_only: bool,
     ) -> PyResult<Vec<(String, Vec<Py<PyAny>>)>> {
         let page = self.inner.clone();
-        py.detach(move || page.find_locators(&locators, any_one, first_match_only))?
+        py.detach(move || page.find_locators(&locators, any_one, first_match_only))
+            .map_err(py_err)?
             .into_iter()
             .map(|item| locator_match_web_to_py(py, item))
             .collect()
@@ -2490,9 +2583,11 @@ impl PyWebPage {
     fn run_js(&self, py: Python<'_>, expression: &str) -> PyResult<String> {
         let page = self.inner.clone();
         let expression = expression.to_string();
-        let value = py.detach(move || page.run_js(&expression))?;
+        let value = py
+            .detach(move || page.run_js(&expression))
+            .map_err(py_err)?;
         serde_json::to_string(&value)
-            .map_err(|err| OpenPageError::Serialization(err.to_string()).into())
+            .map_err(|err| py_err(OpenPageError::Serialization(err.to_string())))
     }
 
     #[pyo3(signature = (text, exclude=false, timeout_ms=10000))]
@@ -2506,7 +2601,7 @@ impl PyWebPage {
         let page = self.inner.clone();
         let text = text.to_string();
         py.detach(move || page.wait_for_url_change(&text, exclude, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (text, exclude=false, timeout_ms=10000))]
@@ -2520,21 +2615,21 @@ impl PyWebPage {
         let page = self.inner.clone();
         let text = text.to_string();
         py.detach(move || page.wait_for_title_change(&text, exclude, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_for_load_start(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
         let page = self.inner.clone();
         py.detach(move || page.wait_for_load_start(timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (timeout_ms=10000))]
     fn wait_for_doc_loaded(&self, py: Python<'_>, timeout_ms: u64) -> PyResult<bool> {
         let page = self.inner.clone();
         py.detach(move || page.wait_for_doc_loaded(timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locators, timeout_ms=10000, any_one=false))]
@@ -2547,7 +2642,7 @@ impl PyWebPage {
     ) -> PyResult<bool> {
         let page = self.inner.clone();
         py.detach(move || page.wait_for_elements_loaded(&locators, any_one, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locator, timeout_ms=10000))]
@@ -2560,7 +2655,7 @@ impl PyWebPage {
         let page = self.inner.clone();
         let locator = locator.to_string();
         py.detach(move || page.wait_for_ele_displayed(&locator, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locator, timeout_ms=10000))]
@@ -2573,7 +2668,7 @@ impl PyWebPage {
         let page = self.inner.clone();
         let locator = locator.to_string();
         py.detach(move || page.wait_for_ele_hidden(&locator, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locator, timeout_ms=10000))]
@@ -2586,7 +2681,7 @@ impl PyWebPage {
         let page = self.inner.clone();
         let locator = locator.to_string();
         py.detach(move || page.wait_for_ele_enabled(&locator, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locator, timeout_ms=10000))]
@@ -2599,7 +2694,7 @@ impl PyWebPage {
         let page = self.inner.clone();
         let locator = locator.to_string();
         py.detach(move || page.wait_for_ele_deleted(&locator, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (locator, timeout_ms=10000))]
@@ -2612,7 +2707,7 @@ impl PyWebPage {
         let page = self.inner.clone();
         let locator = locator.to_string();
         py.detach(move || page.wait_for_ele_clickable(&locator, timeout_ms))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     #[pyo3(signature = (mode=None, go=true, copy_cookies=true))]
@@ -2624,27 +2719,30 @@ impl PyWebPage {
         copy_cookies: bool,
     ) -> PyResult<()> {
         let page = self.inner.clone();
-        let mode = mode.map(WebMode::parse).transpose()?;
-        py.detach(move || page.change_mode(mode, go, copy_cookies))?;
+        let mode = mode.map(WebMode::parse).transpose().map_err(py_err)?;
+        py.detach(move || page.change_mode(mode, go, copy_cookies))
+            .map_err(py_err)?;
         Ok(())
     }
 
     #[pyo3(signature = (copy_user_agent=true))]
     fn cookies_to_session(&self, py: Python<'_>, copy_user_agent: bool) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.cookies_to_session(copy_user_agent))?;
+        py.detach(move || page.cookies_to_session(copy_user_agent))
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn cookies_to_browser(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.cookies_to_browser())?;
+        py.detach(move || page.cookies_to_browser())
+            .map_err(py_err)?;
         Ok(())
     }
 
     fn quit(&self, py: Python<'_>) -> PyResult<()> {
         let page = self.inner.clone();
-        py.detach(move || page.quit())?;
+        py.detach(move || page.quit()).map_err(py_err)?;
         Ok(())
     }
 }
@@ -2661,7 +2759,8 @@ impl PyListener {
         resource_types: Option<Vec<String>>,
     ) -> PyResult<()> {
         let listener = self.inner.clone();
-        py.detach(move || listener.start(targets, is_regex, methods, resource_types))?;
+        py.detach(move || listener.start(targets, is_regex, methods, resource_types))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -2675,7 +2774,8 @@ impl PyListener {
         resource_types: Option<Vec<String>>,
     ) -> PyResult<()> {
         let listener = self.inner.clone();
-        py.detach(move || listener.set_targets(targets, is_regex, methods, resource_types))?;
+        py.detach(move || listener.set_targets(targets, is_regex, methods, resource_types))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -2688,7 +2788,8 @@ impl PyListener {
         fit_count: bool,
     ) -> PyResult<Vec<Py<PyListenerPacket>>> {
         let listener = self.inner.clone();
-        py.detach(move || listener.wait(count, timeout_ms, fit_count))?
+        py.detach(move || listener.wait(count, timeout_ms, fit_count))
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PyListenerPacket { inner }))
             .collect()
@@ -2696,20 +2797,20 @@ impl PyListener {
 
     fn clear(&self, py: Python<'_>) -> PyResult<()> {
         let listener = self.inner.clone();
-        py.detach(move || listener.clear())?;
+        py.detach(move || listener.clear()).map_err(py_err)?;
         Ok(())
     }
 
     #[pyo3(signature = (clear=true))]
     fn pause(&self, py: Python<'_>, clear: bool) -> PyResult<()> {
         let listener = self.inner.clone();
-        py.detach(move || listener.pause(clear))?;
+        py.detach(move || listener.pause(clear)).map_err(py_err)?;
         Ok(())
     }
 
     fn resume(&self, py: Python<'_>) -> PyResult<()> {
         let listener = self.inner.clone();
-        py.detach(move || listener.resume())?;
+        py.detach(move || listener.resume()).map_err(py_err)?;
         Ok(())
     }
 
@@ -2722,17 +2823,17 @@ impl PyListener {
     ) -> PyResult<bool> {
         let listener = self.inner.clone();
         py.detach(move || listener.wait_until_idle(timeout_ms, targets_only))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn stop(&self, py: Python<'_>) -> PyResult<()> {
         let listener = self.inner.clone();
-        py.detach(move || listener.stop())?;
+        py.detach(move || listener.stop()).map_err(py_err)?;
         Ok(())
     }
 
     fn is_listening(&self) -> PyResult<bool> {
-        self.inner.is_listening().map_err(Into::into)
+        self.inner.is_listening().map_err(py_err)
     }
 }
 
@@ -2740,13 +2841,13 @@ impl PyListener {
 impl PyConsole {
     fn start(&self, py: Python<'_>) -> PyResult<()> {
         let console = self.inner.clone();
-        py.detach(move || console.start())?;
+        py.detach(move || console.start()).map_err(py_err)?;
         Ok(())
     }
 
     fn stop(&self, py: Python<'_>) -> PyResult<()> {
         let console = self.inner.clone();
-        py.detach(move || console.stop())?;
+        py.detach(move || console.stop()).map_err(py_err)?;
         Ok(())
     }
 
@@ -2757,24 +2858,26 @@ impl PyConsole {
         timeout_ms: Option<u64>,
     ) -> PyResult<Option<Py<PyConsoleMessage>>> {
         let console = self.inner.clone();
-        py.detach(move || console.wait(timeout_ms))?
+        py.detach(move || console.wait(timeout_ms))
+            .map_err(py_err)?
             .map(|inner| Py::new(py, PyConsoleMessage { inner }))
             .transpose()
     }
 
     fn is_listening(&self) -> PyResult<bool> {
-        self.inner.is_listening().map_err(Into::into)
+        self.inner.is_listening().map_err(py_err)
     }
 
     fn clear(&self, py: Python<'_>) -> PyResult<()> {
         let console = self.inner.clone();
-        py.detach(move || console.clear())?;
+        py.detach(move || console.clear()).map_err(py_err)?;
         Ok(())
     }
 
     fn messages(&self, py: Python<'_>) -> PyResult<Vec<Py<PyConsoleMessage>>> {
         let console = self.inner.clone();
-        py.detach(move || console.messages())?
+        py.detach(move || console.messages())
+            .map_err(py_err)?
             .into_iter()
             .map(|inner| Py::new(py, PyConsoleMessage { inner }))
             .collect()
@@ -2793,7 +2896,8 @@ impl PyInterceptor {
         resource_types: Option<Vec<String>>,
     ) -> PyResult<()> {
         let interceptor = self.inner.clone();
-        py.detach(move || interceptor.start(targets, is_regex, methods, resource_types))?;
+        py.detach(move || interceptor.start(targets, is_regex, methods, resource_types))
+            .map_err(py_err)?;
         Ok(())
     }
 
@@ -2804,19 +2908,20 @@ impl PyInterceptor {
         timeout_ms: Option<u64>,
     ) -> PyResult<Option<Py<PyInterceptedRequest>>> {
         let interceptor = self.inner.clone();
-        py.detach(move || interceptor.wait(timeout_ms))?
+        py.detach(move || interceptor.wait(timeout_ms))
+            .map_err(py_err)?
             .map(|inner| Py::new(py, PyInterceptedRequest { inner }))
             .transpose()
     }
 
     fn stop(&self, py: Python<'_>) -> PyResult<()> {
         let interceptor = self.inner.clone();
-        py.detach(move || interceptor.stop())?;
+        py.detach(move || interceptor.stop()).map_err(py_err)?;
         Ok(())
     }
 
     fn is_listening(&self) -> PyResult<bool> {
-        self.inner.is_listening().map_err(Into::into)
+        self.inner.is_listening().map_err(py_err)
     }
 }
 
@@ -2874,15 +2979,19 @@ impl PyInterceptedRequest {
                 headers,
                 post_data.as_deref(),
             )
-        })?;
+        })
+        .map_err(py_err)?;
         Ok(())
     }
 
     #[pyo3(signature = (reason="BlockedByClient"))]
     fn fail(&self, py: Python<'_>, reason: &str) -> PyResult<()> {
         let request = self.inner.clone();
-        let reason = reason.parse().map_err(OpenPageError::BrowserOperation)?;
-        py.detach(move || request.fail(reason))?;
+        let reason = reason
+            .parse()
+            .map_err(OpenPageError::BrowserOperation)
+            .map_err(py_err)?;
+        py.detach(move || request.fail(reason)).map_err(py_err)?;
         Ok(())
     }
 
@@ -2926,7 +3035,8 @@ impl PyInterceptedRequest {
                 headers,
                 response_phrase.as_deref(),
             )
-        })?;
+        })
+        .map_err(py_err)?;
         Ok(())
     }
 }
@@ -2987,7 +3097,7 @@ impl PyListenerPacket {
 impl PyConsoleMessage {
     fn all_info(&self) -> PyResult<String> {
         serde_json::to_string(&self.inner.all_info)
-            .map_err(|err| OpenPageError::Serialization(err.to_string()).into())
+            .map_err(|err| py_err(OpenPageError::Serialization(err.to_string())))
     }
 
     fn source(&self) -> String {
@@ -3004,7 +3114,7 @@ impl PyConsoleMessage {
 
     fn body(&self) -> PyResult<String> {
         serde_json::to_string(&self.inner.body())
-            .map_err(|err| OpenPageError::Serialization(err.to_string()).into())
+            .map_err(|err| py_err(OpenPageError::Serialization(err.to_string())))
     }
 
     fn url(&self) -> Option<String> {
@@ -3134,51 +3244,51 @@ impl PyDownloadMission {
     }
 
     fn tab_id(&self) -> PyResult<String> {
-        self.inner.tab_id().map_err(Into::into)
+        self.inner.tab_id().map_err(py_err)
     }
 
     fn url(&self) -> PyResult<String> {
-        self.inner.url().map_err(Into::into)
+        self.inner.url().map_err(py_err)
     }
 
     fn folder(&self) -> PyResult<String> {
-        self.inner.folder().map_err(Into::into)
+        self.inner.folder().map_err(py_err)
     }
 
     fn name(&self) -> PyResult<String> {
-        self.inner.name().map_err(Into::into)
+        self.inner.name().map_err(py_err)
     }
 
     fn suggested_filename(&self) -> PyResult<String> {
-        self.inner.suggested_filename().map_err(Into::into)
+        self.inner.suggested_filename().map_err(py_err)
     }
 
     fn tmp_path(&self) -> PyResult<String> {
-        self.inner.tmp_path().map_err(Into::into)
+        self.inner.tmp_path().map_err(py_err)
     }
 
     fn state(&self) -> PyResult<String> {
-        self.inner.state().map_err(Into::into)
+        self.inner.state().map_err(py_err)
     }
 
     fn received_bytes(&self) -> PyResult<u64> {
-        self.inner.received_bytes().map_err(Into::into)
+        self.inner.received_bytes().map_err(py_err)
     }
 
     fn total_bytes(&self) -> PyResult<Option<u64>> {
-        self.inner.total_bytes().map_err(Into::into)
+        self.inner.total_bytes().map_err(py_err)
     }
 
     fn rate(&self) -> PyResult<Option<f64>> {
-        self.inner.rate().map_err(Into::into)
+        self.inner.rate().map_err(py_err)
     }
 
     fn final_path(&self) -> PyResult<Option<String>> {
-        self.inner.final_path().map_err(Into::into)
+        self.inner.final_path().map_err(py_err)
     }
 
     fn is_done(&self) -> PyResult<bool> {
-        self.inner.is_done().map_err(Into::into)
+        self.inner.is_done().map_err(py_err)
     }
 
     #[pyo3(signature = (show=true, timeout_ms=None, cancel_if_timeout=true))]
@@ -3191,12 +3301,12 @@ impl PyDownloadMission {
     ) -> PyResult<Option<String>> {
         let mission = self.inner.clone();
         py.detach(move || mission.wait(show, timeout_ms, cancel_if_timeout))
-            .map_err(Into::into)
+            .map_err(py_err)
     }
 
     fn cancel(&self, py: Python<'_>) -> PyResult<()> {
         let mission = self.inner.clone();
-        py.detach(move || mission.cancel())?;
+        py.detach(move || mission.cancel()).map_err(py_err)?;
         Ok(())
     }
 }
@@ -3213,6 +3323,9 @@ fn wrap_web_element(py: Python<'_>, element: WebElement) -> PyResult<Py<PyAny>> 
     match element {
         WebElement::Browser(inner) => Ok(Py::new(py, PyElement { inner })?.into_any()),
         WebElement::Session(inner) => Ok(Py::new(py, PySessionElement { inner })?.into_any()),
+        WebElement::Mix { element, .. } => {
+            Ok(Py::new(py, PyElement { inner: element })?.into_any())
+        }
     }
 }
 
@@ -3220,7 +3333,7 @@ fn session_xpath_result_to_py(py: Python<'_>, item: SessionXPathResult) -> PyRes
     match item {
         SessionXPathResult::Document => {
             let dict = PyDict::new(py);
-            dict.set_item("type", "document")?;
+            dict.set_item("type", "document").map_err(py_err)?;
             Ok(dict.into_any().unbind())
         }
         SessionXPathResult::Element(inner) => {
@@ -3229,22 +3342,23 @@ fn session_xpath_result_to_py(py: Python<'_>, item: SessionXPathResult) -> PyRes
         SessionXPathResult::Text(value) => Ok(PyString::new(py, &value).into_any().unbind()),
         SessionXPathResult::Comment(value) => {
             let dict = PyDict::new(py);
-            dict.set_item("type", "comment")?;
-            dict.set_item("value", value)?;
+            dict.set_item("type", "comment").map_err(py_err)?;
+            dict.set_item("value", value).map_err(py_err)?;
             Ok(dict.into_any().unbind())
         }
         SessionXPathResult::Attribute { name, value } => {
             let dict = PyDict::new(py);
-            dict.set_item("type", "attribute")?;
-            dict.set_item("name", name)?;
-            dict.set_item("value", value)?;
+            dict.set_item("type", "attribute").map_err(py_err)?;
+            dict.set_item("name", name).map_err(py_err)?;
+            dict.set_item("value", value).map_err(py_err)?;
             Ok(dict.into_any().unbind())
         }
         SessionXPathResult::ProcessingInstruction { target, data } => {
             let dict = PyDict::new(py);
-            dict.set_item("type", "processing_instruction")?;
-            dict.set_item("target", target)?;
-            dict.set_item("data", data)?;
+            dict.set_item("type", "processing_instruction")
+                .map_err(py_err)?;
+            dict.set_item("target", target).map_err(py_err)?;
+            dict.set_item("data", data).map_err(py_err)?;
             Ok(dict.into_any().unbind())
         }
         SessionXPathResult::Doctype {
@@ -3253,10 +3367,10 @@ fn session_xpath_result_to_py(py: Python<'_>, item: SessionXPathResult) -> PyRes
             system_id,
         } => {
             let dict = PyDict::new(py);
-            dict.set_item("type", "doctype")?;
-            dict.set_item("name", name)?;
-            dict.set_item("public_id", public_id)?;
-            dict.set_item("system_id", system_id)?;
+            dict.set_item("type", "doctype").map_err(py_err)?;
+            dict.set_item("name", name).map_err(py_err)?;
+            dict.set_item("public_id", public_id).map_err(py_err)?;
+            dict.set_item("system_id", system_id).map_err(py_err)?;
             Ok(dict.into_any().unbind())
         }
         SessionXPathResult::Boolean(value) => {
@@ -3271,16 +3385,17 @@ fn session_xpath_result_to_py(py: Python<'_>, item: SessionXPathResult) -> PyRes
             prefix,
         } => {
             let dict = PyDict::new(py);
-            dict.set_item("type", "qname")?;
-            dict.set_item("namespace_uri", namespace_uri)?;
-            dict.set_item("local_name", local_name)?;
-            dict.set_item("prefix", prefix)?;
+            dict.set_item("type", "qname").map_err(py_err)?;
+            dict.set_item("namespace_uri", namespace_uri)
+                .map_err(py_err)?;
+            dict.set_item("local_name", local_name).map_err(py_err)?;
+            dict.set_item("prefix", prefix).map_err(py_err)?;
             Ok(dict.into_any().unbind())
         }
         SessionXPathResult::Function(value) => {
             let dict = PyDict::new(py);
-            dict.set_item("type", "function")?;
-            dict.set_item("value", value)?;
+            dict.set_item("type", "function").map_err(py_err)?;
+            dict.set_item("value", value).map_err(py_err)?;
             Ok(dict.into_any().unbind())
         }
     }
@@ -3294,7 +3409,8 @@ fn locator_match_session_to_py(
         .elements
         .into_iter()
         .map(|inner| Py::new(py, PySessionElement { inner }))
-        .collect::<PyResult<Vec<_>>>()?;
+        .collect::<PyResult<Vec<_>>>()
+        .map_err(py_err)?;
     Ok((item.locator, elements))
 }
 
@@ -3306,7 +3422,8 @@ fn locator_match_element_to_py(
         .elements
         .into_iter()
         .map(|inner| Py::new(py, PyElement { inner }))
-        .collect::<PyResult<Vec<_>>>()?;
+        .collect::<PyResult<Vec<_>>>()
+        .map_err(py_err)?;
     Ok((item.locator, elements))
 }
 
@@ -3318,7 +3435,8 @@ fn locator_match_web_to_py(
         .elements
         .into_iter()
         .map(|inner| wrap_web_element(py, inner))
-        .collect::<PyResult<Vec<_>>>()?;
+        .collect::<PyResult<Vec<_>>>()
+        .map_err(py_err)?;
     Ok((item.locator, elements))
 }
 
@@ -3346,23 +3464,25 @@ fn header_tuples(headers: &HashMap<String, String>) -> Vec<(String, String)> {
 }
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<PyBrowser>()?;
-    m.add_class::<PyPage>()?;
-    m.add_class::<PyElement>()?;
-    m.add_class::<PySessionPage>()?;
-    m.add_class::<PySessionElement>()?;
-    m.add_class::<PyWebPage>()?;
-    m.add_class::<PyConsole>()?;
-    m.add_class::<PyConsoleMessage>()?;
-    m.add_class::<PyListener>()?;
-    m.add_class::<PyInterceptor>()?;
-    m.add_class::<PyInterceptedRequest>()?;
-    m.add_class::<PyListenerPacket>()?;
-    m.add_class::<PyListenerRequest>()?;
-    m.add_class::<PyListenerRequestExtraInfo>()?;
-    m.add_class::<PyListenerResponse>()?;
-    m.add_class::<PyListenerResponseExtraInfo>()?;
-    m.add_class::<PyListenerFailInfo>()?;
-    m.add_class::<PyDownloadMission>()?;
+    m.add_class::<PyBrowser>().map_err(py_err)?;
+    m.add_class::<PyPage>().map_err(py_err)?;
+    m.add_class::<PyElement>().map_err(py_err)?;
+    m.add_class::<PySessionPage>().map_err(py_err)?;
+    m.add_class::<PySessionElement>().map_err(py_err)?;
+    m.add_class::<PyWebPage>().map_err(py_err)?;
+    m.add_class::<PyConsole>().map_err(py_err)?;
+    m.add_class::<PyConsoleMessage>().map_err(py_err)?;
+    m.add_class::<PyListener>().map_err(py_err)?;
+    m.add_class::<PyInterceptor>().map_err(py_err)?;
+    m.add_class::<PyInterceptedRequest>().map_err(py_err)?;
+    m.add_class::<PyListenerPacket>().map_err(py_err)?;
+    m.add_class::<PyListenerRequest>().map_err(py_err)?;
+    m.add_class::<PyListenerRequestExtraInfo>()
+        .map_err(py_err)?;
+    m.add_class::<PyListenerResponse>().map_err(py_err)?;
+    m.add_class::<PyListenerResponseExtraInfo>()
+        .map_err(py_err)?;
+    m.add_class::<PyListenerFailInfo>().map_err(py_err)?;
+    m.add_class::<PyDownloadMission>().map_err(py_err)?;
     Ok(())
 }
