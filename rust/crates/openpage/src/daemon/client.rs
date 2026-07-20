@@ -16,7 +16,7 @@ use windows_sys::Win32::Foundation::CloseHandle;
 use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
 use crate::error::{OpenPageError, OpenPageResult};
-use openpage::protocol::{Request, Response, openpage_error_from_structured_context};
+use crate::protocol::{Request, Response, openpage_error_from_structured_context};
 
 const CONNECT_TIMEOUT_MS: u64 = 200;
 const READ_TIMEOUT_SECS: u64 = 30;
@@ -30,31 +30,31 @@ const SHUTDOWN_POLL_ATTEMPTS: u32 = 20;
 const SHUTDOWN_POLL_DELAY_MS: u64 = 100;
 const READY_RECHECK_DELAY_MS: u64 = 150;
 
-pub(crate) fn openpage_home() -> OpenPageResult<PathBuf> {
+pub fn openpage_home() -> OpenPageResult<PathBuf> {
     crate::config::openpage_home()
 }
 
-pub(crate) fn daemon_dir() -> OpenPageResult<PathBuf> {
+pub fn daemon_dir() -> OpenPageResult<PathBuf> {
     Ok(openpage_home()?.join("daemon"))
 }
 
-pub(crate) fn port_path(session: &str) -> OpenPageResult<PathBuf> {
+pub fn port_path(session: &str) -> OpenPageResult<PathBuf> {
     Ok(daemon_dir()?.join(format!("{session}.port")))
 }
 
-pub(crate) fn pid_path(session: &str) -> OpenPageResult<PathBuf> {
+pub fn pid_path(session: &str) -> OpenPageResult<PathBuf> {
     Ok(daemon_dir()?.join(format!("{session}.pid")))
 }
 
-pub(crate) fn version_path(session: &str) -> OpenPageResult<PathBuf> {
+pub fn version_path(session: &str) -> OpenPageResult<PathBuf> {
     Ok(daemon_dir()?.join(format!("{session}.version")))
 }
 
-pub(crate) fn log_path(session: &str) -> OpenPageResult<PathBuf> {
+pub fn log_path(session: &str) -> OpenPageResult<PathBuf> {
     Ok(daemon_dir()?.join(format!("{session}.log")))
 }
 
-pub(crate) fn write_tcp_sidecars(session: &str, port: u16) -> OpenPageResult<SidecarGuard> {
+pub fn write_tcp_sidecars(session: &str, port: u16) -> OpenPageResult<SidecarGuard> {
     let dir = daemon_dir()?;
     fs::create_dir_all(&dir)?;
 
@@ -71,7 +71,7 @@ pub(crate) fn write_tcp_sidecars(session: &str, port: u16) -> OpenPageResult<Sid
     })
 }
 
-pub(crate) fn cleanup_sidecars(session: &str) -> OpenPageResult<()> {
+pub fn cleanup_sidecars(session: &str) -> OpenPageResult<()> {
     for path in [
         port_path(session)?,
         pid_path(session)?,
@@ -86,7 +86,7 @@ pub(crate) fn cleanup_sidecars(session: &str) -> OpenPageResult<()> {
     Ok(())
 }
 
-pub(crate) fn read_port(session: &str) -> OpenPageResult<Option<u16>> {
+pub fn read_port(session: &str) -> OpenPageResult<Option<u16>> {
     let path = port_path(session)?;
     match fs::read_to_string(&path) {
         Ok(content) => content
@@ -112,7 +112,7 @@ fn read_pid(session: &str) -> OpenPageResult<Option<u32>> {
     }
 }
 
-pub(crate) fn read_version(session: &str) -> OpenPageResult<Option<String>> {
+pub fn read_version(session: &str) -> OpenPageResult<Option<String>> {
     let path = version_path(session)?;
     match fs::read_to_string(&path) {
         Ok(content) => {
@@ -129,7 +129,7 @@ pub(crate) fn read_version(session: &str) -> OpenPageResult<Option<String>> {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct DaemonSessionInfo {
+pub struct DaemonSessionInfo {
     pub session: String,
     pub port: Option<u16>,
     pub pid: Option<u32>,
@@ -141,7 +141,7 @@ pub(crate) struct DaemonSessionInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct IncompleteDaemonSession {
+pub struct IncompleteDaemonSession {
     pub session: String,
     pub pid_present: bool,
     pub port_present: bool,
@@ -157,7 +157,7 @@ pub(crate) struct IncompleteDaemonSession {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct CleanedDaemonSession {
+pub struct CleanedDaemonSession {
     pub session: String,
     pub reason: String,
     pub reasons: Vec<&'static str>,
@@ -166,13 +166,13 @@ pub(crate) struct CleanedDaemonSession {
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
-pub(crate) struct DaemonInventory {
+pub struct DaemonInventory {
     pub sessions: Vec<DaemonSessionInfo>,
     pub incomplete: Vec<IncompleteDaemonSession>,
     pub cleaned: Vec<CleanedDaemonSession>,
 }
 
-pub(crate) fn incomplete_daemon_reasons(incomplete: &IncompleteDaemonSession) -> Vec<&'static str> {
+pub fn incomplete_daemon_reasons(incomplete: &IncompleteDaemonSession) -> Vec<&'static str> {
     let mut reasons = Vec::new();
     if !incomplete.pid_present {
         reasons.push("missing_pid");
@@ -200,7 +200,7 @@ fn version_matches_current_cli(version: Option<&str>) -> bool {
     matches!(version, Some(value) if value == env!("CARGO_PKG_VERSION"))
 }
 
-pub(crate) fn daemon_session_state(session: &DaemonSessionInfo) -> &'static str {
+pub fn daemon_session_state(session: &DaemonSessionInfo) -> &'static str {
     if version_matches_current_cli(session.version.as_deref()) {
         "healthy"
     } else {
@@ -208,7 +208,7 @@ pub(crate) fn daemon_session_state(session: &DaemonSessionInfo) -> &'static str 
     }
 }
 
-pub(crate) fn daemon_session_reasons(session: &DaemonSessionInfo) -> Vec<&'static str> {
+pub fn daemon_session_reasons(session: &DaemonSessionInfo) -> Vec<&'static str> {
     let mut reasons = Vec::new();
     if !version_matches_current_cli(session.version.as_deref()) {
         reasons.push("version_mismatch");
@@ -216,7 +216,7 @@ pub(crate) fn daemon_session_reasons(session: &DaemonSessionInfo) -> Vec<&'stati
     reasons
 }
 
-pub(crate) fn daemon_session_fix(session: &DaemonSessionInfo) -> Option<String> {
+pub fn daemon_session_fix(session: &DaemonSessionInfo) -> Option<String> {
     if !version_matches_current_cli(session.version.as_deref()) {
         return Some(format!(
             "Run `openpage browser stop --session {0}` and then restart that session with the current CLI so its daemon sidecars are recreated with version {1}. Or run `openpage doctor --quick --fix` if you want the CLI to stop the stale daemon for you.",
@@ -235,7 +235,7 @@ pub(crate) fn daemon_session_fix(session: &DaemonSessionInfo) -> Option<String> 
     None
 }
 
-pub(crate) fn incomplete_daemon_fix(incomplete: &IncompleteDaemonSession) -> String {
+pub fn incomplete_daemon_fix(incomplete: &IncompleteDaemonSession) -> String {
     if incomplete.runtime_issue == Some("missing_target") {
         return missing_target_fix(&incomplete.session);
     }
@@ -275,7 +275,7 @@ pub(crate) fn incomplete_daemon_fix(incomplete: &IncompleteDaemonSession) -> Str
     }
 }
 
-pub(crate) fn cleaned_daemon_fix(cleaned: &CleanedDaemonSession) -> String {
+pub fn cleaned_daemon_fix(cleaned: &CleanedDaemonSession) -> String {
     if cleaned.log_exists {
         format!(
             "If you need to understand why this stale session was cleaned, run `openpage browser logs --session {0} --tail 20` and inspect {1}. If you still need that session, start it again with `openpage browser start --session {0}`.",
@@ -324,7 +324,7 @@ fn daemon_status_fix(status: &DaemonSessionInfo, inventory: &DaemonInventory) ->
     Some(inactive_daemon_fix(&status.session))
 }
 
-pub(crate) fn daemon_inventory_summary_json(inventory: &DaemonInventory) -> Value {
+pub fn daemon_inventory_summary_json(inventory: &DaemonInventory) -> Value {
     let healthy = inventory
         .sessions
         .iter()
@@ -340,7 +340,7 @@ pub(crate) fn daemon_inventory_summary_json(inventory: &DaemonInventory) -> Valu
     })
 }
 
-pub(crate) fn daemon_inventory_payload_json(inventory: &DaemonInventory) -> Value {
+pub fn daemon_inventory_payload_json(inventory: &DaemonInventory) -> Value {
     json!({
         "summary": daemon_inventory_summary_json(inventory),
         "sessions": inventory.sessions.iter().map(|session| {
@@ -400,7 +400,7 @@ pub(crate) fn daemon_inventory_payload_json(inventory: &DaemonInventory) -> Valu
     })
 }
 
-pub(crate) fn daemon_status_payload_json(
+pub fn daemon_status_payload_json(
     status: &DaemonSessionInfo,
     inventory: &DaemonInventory,
 ) -> Value {
@@ -498,7 +498,7 @@ fn daemon_status_payload_json_with_target(
     payload
 }
 
-pub(crate) fn daemon_status_payload_for_session(session: &str) -> OpenPageResult<Value> {
+pub fn daemon_status_payload_for_session(session: &str) -> OpenPageResult<Value> {
     let status = daemon_status(session)?;
     let inventory = daemon_inventory()?;
     let target_state = session_target_state(&status)?;
@@ -706,7 +706,7 @@ fn existing_daemon_action(session: &str) -> OpenPageResult<ExistingDaemonAction>
     existing_daemon_action_with_retry(session, STARTUP_POLL_ATTEMPTS, STARTUP_POLL_DELAY_MS)
 }
 
-pub(crate) fn daemon_ready(session: &str) -> bool {
+pub fn daemon_ready(session: &str) -> bool {
     let Ok(Some(port)) = read_port(session) else {
         return false;
     };
@@ -714,7 +714,7 @@ pub(crate) fn daemon_ready(session: &str) -> bool {
     TcpStream::connect_timeout(&socket, Duration::from_millis(CONNECT_TIMEOUT_MS)).is_ok()
 }
 
-pub(crate) fn daemon_status(session: &str) -> OpenPageResult<DaemonSessionInfo> {
+pub fn daemon_status(session: &str) -> OpenPageResult<DaemonSessionInfo> {
     let port = read_port(session)?;
     let pid = read_pid(session)?;
     let version = read_version(session)?;
@@ -734,20 +734,20 @@ pub(crate) fn daemon_status(session: &str) -> OpenPageResult<DaemonSessionInfo> 
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct DaemonShutdown {
+pub struct DaemonShutdown {
     pub had_daemon: bool,
     pub forced: bool,
 }
 
-pub(crate) fn list_daemons() -> OpenPageResult<Vec<DaemonSessionInfo>> {
+pub fn list_daemons() -> OpenPageResult<Vec<DaemonSessionInfo>> {
     Ok(daemon_inventory()?.sessions)
 }
 
-pub(crate) fn daemon_inventory() -> OpenPageResult<DaemonInventory> {
+pub fn daemon_inventory() -> OpenPageResult<DaemonInventory> {
     daemon_inventory_with_mode(DaemonInventoryMode::CleanupStale)
 }
 
-pub(crate) fn daemon_inventory_readonly() -> OpenPageResult<DaemonInventory> {
+pub fn daemon_inventory_readonly() -> OpenPageResult<DaemonInventory> {
     daemon_inventory_with_mode(DaemonInventoryMode::ObserveOnly)
 }
 
@@ -979,7 +979,7 @@ fn cleaned_reason_codes(
     reasons
 }
 
-pub(crate) fn ensure_daemon(session: &str) -> OpenPageResult<DaemonStatus> {
+pub fn ensure_daemon(session: &str) -> OpenPageResult<DaemonStatus> {
     match existing_daemon_action(session)? {
         ExistingDaemonAction::Reuse => {
             return Ok(DaemonStatus {
@@ -1063,7 +1063,7 @@ fn startup_timeout_error(session: &str, log_path: &std::path::Path) -> OpenPageE
     ))
 }
 
-pub(crate) fn ensure_existing_daemon(session: &str) -> OpenPageResult<()> {
+pub fn ensure_existing_daemon(session: &str) -> OpenPageResult<()> {
     let status = daemon_status(session)?;
     let inventory = daemon_inventory()?;
     if status.ready {
@@ -1097,11 +1097,11 @@ pub(crate) fn ensure_existing_daemon(session: &str) -> OpenPageResult<()> {
     )))
 }
 
-pub(crate) fn force_cleanup_daemon(session: &str) -> OpenPageResult<()> {
+pub fn force_cleanup_daemon(session: &str) -> OpenPageResult<()> {
     kill_stale_daemon(session)
 }
 
-pub(crate) fn send_request(session: &str, request: &Request) -> OpenPageResult<Response> {
+pub fn send_request(session: &str, request: &Request) -> OpenPageResult<Response> {
     send_request_with_retry(
         session,
         request,
@@ -1110,7 +1110,7 @@ pub(crate) fn send_request(session: &str, request: &Request) -> OpenPageResult<R
     )
 }
 
-pub(crate) fn send_request_existing(session: &str, request: &Request) -> OpenPageResult<Response> {
+pub fn send_request_existing(session: &str, request: &Request) -> OpenPageResult<Response> {
     send_request_with_retry(
         session,
         request,
@@ -1219,7 +1219,7 @@ fn daemon_unresponsive_error(status: &DaemonSessionInfo) -> OpenPageError {
     )
 }
 
-pub(crate) fn shutdown_daemon(session: &str) -> OpenPageResult<DaemonShutdown> {
+pub fn shutdown_daemon(session: &str) -> OpenPageResult<DaemonShutdown> {
     let status = daemon_status(session)?;
     let had_daemon = status.alive;
 
@@ -1389,11 +1389,11 @@ where
     }
 }
 
-pub(crate) struct SidecarGuard {
+pub struct SidecarGuard {
     paths: Vec<PathBuf>,
 }
 
-pub(crate) struct DaemonStatus {
+pub struct DaemonStatus {
     pub already_running: bool,
 }
 
@@ -1416,7 +1416,7 @@ mod tests {
         startup_exit_error, startup_timeout_error, version_path,
     };
     use crate::error::OpenPageError;
-    use openpage::protocol::{Request, Response, simple_openpage_error};
+    use crate::protocol::{Request, Response, simple_openpage_error};
     use serde_json::{Value, json};
     use std::fs;
     use std::net::TcpListener;

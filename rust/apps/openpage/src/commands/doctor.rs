@@ -7,13 +7,13 @@ use serde_json::{Value, json};
 
 use crate::browser::{Browser, OPENPAGE_BROWSER_PATH_ENV};
 use crate::cli::args::DoctorArgs;
-use crate::cli::connection::{
+use crate::config::{ConfigValueSource, load_resolved_config, resolve_browser_executable_path};
+use crate::error::{OpenPageError, OpenPageResult};
+use openpage::daemon::client::{
     daemon_dir, daemon_inventory, daemon_inventory_payload_json, daemon_inventory_readonly,
     daemon_session_fix, daemon_session_reasons, daemon_session_state, force_cleanup_daemon,
     incomplete_daemon_fix, incomplete_daemon_reasons, openpage_home,
 };
-use crate::config::{ConfigValueSource, load_resolved_config, resolve_browser_executable_path};
-use crate::error::{OpenPageError, OpenPageResult};
 use openpage::protocol::print_output_json;
 
 #[derive(Clone, Copy)]
@@ -158,7 +158,7 @@ impl Check {
 
     fn with_daemon_session_info(
         mut self,
-        session: &crate::cli::connection::DaemonSessionInfo,
+        session: &openpage::daemon::client::DaemonSessionInfo,
     ) -> Self {
         self.alive = Some(session.alive);
         self.ready = Some(session.ready);
@@ -174,7 +174,7 @@ impl Check {
 
     fn with_incomplete_daemon_info(
         mut self,
-        incomplete: &crate::cli::connection::IncompleteDaemonSession,
+        incomplete: &openpage::daemon::client::IncompleteDaemonSession,
     ) -> Self {
         self.alive = Some(incomplete.alive);
         self.ready = Some(incomplete.ready);
@@ -390,7 +390,7 @@ fn summarize(checks: &[Check]) -> Summary {
     summary
 }
 
-fn doctor_inventory_payload(inventory: &crate::cli::connection::DaemonInventory) -> Value {
+fn doctor_inventory_payload(inventory: &openpage::daemon::client::DaemonInventory) -> Value {
     let mut payload = daemon_inventory_payload_json(inventory);
     if let Some(cleaned_entries) = payload.get_mut("cleaned").and_then(Value::as_array_mut) {
         for entry in cleaned_entries {
@@ -650,7 +650,7 @@ fn environment_checks(checks: &mut Vec<Check>) {
     }
 }
 
-fn daemon_checks(checks: &mut Vec<Check>) -> Option<crate::cli::connection::DaemonInventory> {
+fn daemon_checks(checks: &mut Vec<Check>) -> Option<openpage::daemon::client::DaemonInventory> {
     let category = "Daemon";
     let path = match daemon_dir() {
         Ok(path) => path,
@@ -676,7 +676,7 @@ fn daemon_checks(checks: &mut Vec<Check>) -> Option<crate::cli::connection::Daem
             )
             .with_kind("daemon_sessions"),
         );
-        return Some(crate::cli::connection::DaemonInventory::default());
+        return Some(openpage::daemon::client::DaemonInventory::default());
     }
 
     let inventory = match daemon_inventory_readonly() {
@@ -1427,7 +1427,7 @@ mod tests {
         shell_safe_browser_path_arg, suggested_browser_executable_from_known_paths,
     };
     use crate::cli::args::DoctorArgs;
-    use crate::cli::connection::{
+    use openpage::daemon::client::{
         DaemonSessionInfo, daemon_dir, daemon_session_fix, pid_path, port_path, version_path,
     };
     use serde_json::json;
@@ -2681,8 +2681,8 @@ mod tests {
 
     #[test]
     fn doctor_inventory_payload_includes_state_and_reasons() {
-        let inventory = crate::cli::connection::DaemonInventory {
-            sessions: vec![crate::cli::connection::DaemonSessionInfo {
+        let inventory = openpage::daemon::client::DaemonInventory {
+            sessions: vec![openpage::daemon::client::DaemonSessionInfo {
                 session: "alpha".to_string(),
                 port: Some(1111),
                 pid: Some(2222),
@@ -2692,7 +2692,7 @@ mod tests {
                 log_path: "/tmp/alpha.log".to_string(),
                 log_exists: true,
             }],
-            incomplete: vec![crate::cli::connection::IncompleteDaemonSession {
+            incomplete: vec![openpage::daemon::client::IncompleteDaemonSession {
                 session: "beta".to_string(),
                 pid_present: true,
                 port_present: true,
@@ -2705,7 +2705,7 @@ mod tests {
                 log_exists: false,
                 runtime_issue: None,
             }],
-            cleaned: vec![crate::cli::connection::CleanedDaemonSession {
+            cleaned: vec![openpage::daemon::client::CleanedDaemonSession {
                 session: "gamma".to_string(),
                 reason: "missing version".to_string(),
                 reasons: vec!["missing_version"],

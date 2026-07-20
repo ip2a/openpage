@@ -25,13 +25,13 @@ use crate::cli::args::{
     WaitForTextArgs, WaitForTitleArgs, WaitForUrlArgs, WaitTimeoutArgs, WindowCloseArgs,
     WindowCommand, WindowMoveArgs, WindowSwitchArgs, ZoomCommand, ZoomSetArgs, ZoomStepArgs,
 };
-use crate::cli::connection::{
+use crate::error::{OpenPageError, OpenPageResult};
+use openpage::daemon::client::{
     daemon_dir, daemon_inventory, daemon_inventory_payload_json, daemon_status_payload_for_session,
     read_port, send_request, send_request_existing, shutdown_daemon,
 };
 #[cfg(test)]
-use crate::cli::connection::{daemon_inventory_summary_json, incomplete_daemon_reasons};
-use crate::error::{OpenPageError, OpenPageResult};
+use openpage::daemon::client::{daemon_inventory_summary_json, incomplete_daemon_reasons};
 use openpage::protocol::{Request, Response, print_output_json, simple_ok};
 
 pub fn run(command: Command) -> OpenPageResult<i32> {
@@ -263,7 +263,7 @@ fn run_browser(command: BrowserCommand) -> OpenPageResult<()> {
     }
 }
 
-fn browser_stop_all_sessions(inventory: &crate::cli::connection::DaemonInventory) -> Vec<String> {
+fn browser_stop_all_sessions(inventory: &openpage::daemon::client::DaemonInventory) -> Vec<String> {
     let mut sessions = std::collections::BTreeSet::new();
     for session in &inventory.sessions {
         sessions.insert(session.session.clone());
@@ -278,20 +278,20 @@ fn browser_stop_all_sessions(inventory: &crate::cli::connection::DaemonInventory
 
 #[cfg(test)]
 fn browser_inventory_summary(
-    inventory: &crate::cli::connection::DaemonInventory,
+    inventory: &openpage::daemon::client::DaemonInventory,
 ) -> serde_json::Value {
     daemon_inventory_summary_json(inventory)
 }
 
 fn browser_inventory_payload(
-    inventory: &crate::cli::connection::DaemonInventory,
+    inventory: &openpage::daemon::client::DaemonInventory,
 ) -> serde_json::Value {
     daemon_inventory_payload_json(inventory)
 }
 
 #[cfg(test)]
 fn incomplete_session_reasons(
-    incomplete: &crate::cli::connection::IncompleteDaemonSession,
+    incomplete: &openpage::daemon::client::IncompleteDaemonSession,
 ) -> Vec<&'static str> {
     incomplete_daemon_reasons(incomplete)
 }
@@ -3150,8 +3150,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use crate::cli::args::{BrowserCommand, Cli, Command};
-    use crate::cli::connection::{daemon_dir, pid_path, port_path, version_path};
     use crate::error::OpenPageError;
+    use openpage::daemon::client::{daemon_dir, pid_path, port_path, version_path};
 
     struct EnvVarGuard {
         key: &'static str,
@@ -3251,8 +3251,8 @@ mod tests {
 
     #[test]
     fn browser_stop_all_sessions_deduplicates_and_keeps_alive_incomplete_sessions() {
-        let inventory = crate::cli::connection::DaemonInventory {
-            sessions: vec![crate::cli::connection::DaemonSessionInfo {
+        let inventory = openpage::daemon::client::DaemonInventory {
+            sessions: vec![openpage::daemon::client::DaemonSessionInfo {
                 session: "alpha".to_string(),
                 port: Some(1111),
                 pid: Some(2222),
@@ -3263,7 +3263,7 @@ mod tests {
                 log_exists: true,
             }],
             incomplete: vec![
-                crate::cli::connection::IncompleteDaemonSession {
+                openpage::daemon::client::IncompleteDaemonSession {
                     session: "beta".to_string(),
                     pid_present: true,
                     port_present: true,
@@ -3276,7 +3276,7 @@ mod tests {
                     log_exists: false,
                     runtime_issue: None,
                 },
-                crate::cli::connection::IncompleteDaemonSession {
+                openpage::daemon::client::IncompleteDaemonSession {
                     session: "alpha".to_string(),
                     pid_present: true,
                     port_present: true,
@@ -3289,7 +3289,7 @@ mod tests {
                     log_exists: true,
                     runtime_issue: None,
                 },
-                crate::cli::connection::IncompleteDaemonSession {
+                openpage::daemon::client::IncompleteDaemonSession {
                     session: "gamma".to_string(),
                     pid_present: true,
                     port_present: true,
@@ -3314,8 +3314,8 @@ mod tests {
 
     #[test]
     fn browser_inventory_summary_counts_all_categories() {
-        let inventory = crate::cli::connection::DaemonInventory {
-            sessions: vec![crate::cli::connection::DaemonSessionInfo {
+        let inventory = openpage::daemon::client::DaemonInventory {
+            sessions: vec![openpage::daemon::client::DaemonSessionInfo {
                 session: "alpha".to_string(),
                 port: Some(1111),
                 pid: Some(2222),
@@ -3325,7 +3325,7 @@ mod tests {
                 log_path: "/tmp/alpha.log".to_string(),
                 log_exists: true,
             }],
-            incomplete: vec![crate::cli::connection::IncompleteDaemonSession {
+            incomplete: vec![openpage::daemon::client::IncompleteDaemonSession {
                 session: "beta".to_string(),
                 pid_present: true,
                 port_present: true,
@@ -3338,7 +3338,7 @@ mod tests {
                 log_exists: false,
                 runtime_issue: None,
             }],
-            cleaned: vec![crate::cli::connection::CleanedDaemonSession {
+            cleaned: vec![openpage::daemon::client::CleanedDaemonSession {
                 session: "gamma".to_string(),
                 reason: "missing version".to_string(),
                 reasons: vec!["missing_version"],
@@ -3357,8 +3357,8 @@ mod tests {
 
     #[test]
     fn browser_inventory_payload_includes_state_and_reasons() {
-        let inventory = crate::cli::connection::DaemonInventory {
-            sessions: vec![crate::cli::connection::DaemonSessionInfo {
+        let inventory = openpage::daemon::client::DaemonInventory {
+            sessions: vec![openpage::daemon::client::DaemonSessionInfo {
                 session: "alpha".to_string(),
                 port: Some(1111),
                 pid: Some(2222),
@@ -3368,7 +3368,7 @@ mod tests {
                 log_path: "/tmp/alpha.log".to_string(),
                 log_exists: true,
             }],
-            incomplete: vec![crate::cli::connection::IncompleteDaemonSession {
+            incomplete: vec![openpage::daemon::client::IncompleteDaemonSession {
                 session: "beta".to_string(),
                 pid_present: true,
                 port_present: true,
@@ -3381,7 +3381,7 @@ mod tests {
                 log_exists: false,
                 runtime_issue: None,
             }],
-            cleaned: vec![crate::cli::connection::CleanedDaemonSession {
+            cleaned: vec![openpage::daemon::client::CleanedDaemonSession {
                 session: "gamma".to_string(),
                 reason: "missing version".to_string(),
                 reasons: vec!["missing_version"],
@@ -3426,7 +3426,7 @@ mod tests {
 
     #[test]
     fn incomplete_session_reasons_report_missing_version_and_not_ready() {
-        let incomplete = crate::cli::connection::IncompleteDaemonSession {
+        let incomplete = openpage::daemon::client::IncompleteDaemonSession {
             session: "beta".to_string(),
             pid_present: true,
             port_present: true,

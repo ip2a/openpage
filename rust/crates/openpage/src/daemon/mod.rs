@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::rc::Rc;
@@ -23,49 +22,17 @@ use crate::session::SessionOptions;
 use crate::settings::wait_timeout_result;
 use crate::webpage::{WebElement, WebFrame, WebMode, WebPage};
 
+pub mod client;
 mod operations;
 
 pub fn run_tcp(port: u16, session: &str) -> OpenPageResult<()> {
     run_tcp_inner(port, session)
 }
 
-fn daemon_dir() -> OpenPageResult<std::path::PathBuf> {
-    Ok(crate::config::openpage_home()?.join("daemon"))
-}
-
-fn sidecar_path(session: &str, suffix: &str) -> OpenPageResult<std::path::PathBuf> {
-    Ok(daemon_dir()?.join(format!("{session}.{suffix}")))
-}
-
-struct SidecarGuard {
-    paths: Vec<std::path::PathBuf>,
-}
-
-impl Drop for SidecarGuard {
-    fn drop(&mut self) {
-        for path in &self.paths {
-            let _ = fs::remove_file(path);
-        }
-    }
-}
-
-fn write_tcp_sidecars(session: &str, port: u16) -> OpenPageResult<SidecarGuard> {
-    let dir = daemon_dir()?;
-    fs::create_dir_all(&dir)?;
-    let paths = ["port", "pid", "version"]
-        .into_iter()
-        .map(|suffix| sidecar_path(session, suffix))
-        .collect::<OpenPageResult<Vec<_>>>()?;
-    fs::write(&paths[0], port.to_string())?;
-    fs::write(&paths[1], std::process::id().to_string())?;
-    fs::write(&paths[2], env!("CARGO_PKG_VERSION"))?;
-    Ok(SidecarGuard { paths })
-}
-
 fn run_tcp_inner(port: u16, session: &str) -> OpenPageResult<()> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     let address = listener.local_addr()?;
-    let _sidecars = write_tcp_sidecars(session, address.port())?;
+    let _sidecars = client::write_tcp_sidecars(session, address.port())?;
     println!(
         "{}",
         serde_json::to_string(&json!({
