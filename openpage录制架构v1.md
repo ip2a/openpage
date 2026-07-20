@@ -1002,3 +1002,35 @@ cargo run --manifest-path rust/apps/openpage/Cargo.toml -- record --help
 ```
 
 下一里程碑：基于 `RecordedFlow` 实现 daemon/Core 回放，并补充不依赖真实浏览器的协议测试。
+
+## 里程碑 5：Core/daemon 回放
+
+状态：**已完成**
+
+完成内容：
+
+- daemon 新增 `recorder.replay` 操作。
+- 回放复用现有 `Page.goto`、locator chain、元素输入/点击/选择/勾选和键盘操作能力。
+- `RecordedAction::Goto`、`Click`、`Fill`、`Select`、`Check`、`Press` 均有对应执行路径。
+- `RecordedValue::Secret` 默认拒绝直接回放，不把敏感值写入 flow，也不静默猜测密码。
+- CLI 新增：
+
+```bash
+openpage record replay flow.json --session demo
+```
+
+- 回放结果返回已执行步骤数量和 flow 版本。
+
+验证证据：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check
+cargo check --manifest-path rust/Cargo.toml -p openpage
+cargo check --manifest-path rust/Cargo.toml -p openpage-app
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib
+cargo run --manifest-path rust/apps/openpage/Cargo.toml -- record replay --help
+```
+
+说明：当前尚未把 secret 的运行时注入纳入 v1；后续可以在 RPC 参数中增加显式 `secrets` 映射，但必须保持 flow 文件本身不保存真实密码。
+
+下一里程碑：补充真实 Chromium 录制/回放验收，并开始 React + Tauri 桌面端最小闭环。

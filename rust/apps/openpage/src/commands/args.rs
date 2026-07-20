@@ -341,12 +341,21 @@ pub enum RecorderCommand {
     Start(SessionArgs),
     /// Stop recording and optionally save the flow JSON
     Stop(RecorderStopArgs),
+    /// Replay a flow JSON file
+    Replay(RecorderReplayArgs),
     /// Print the current recorded flow
     Steps(SessionArgs),
     /// Print recorder status
     Status(SessionArgs),
     /// Clear recorded steps
     Clear(SessionArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct RecorderReplayArgs {
+    pub flow: PathBuf,
+    #[arg(long, default_value = "default")]
+    pub session: String,
 }
 
 #[derive(Debug, Args)]

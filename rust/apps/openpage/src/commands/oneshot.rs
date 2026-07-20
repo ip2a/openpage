@@ -246,6 +246,15 @@ fn run_recorder(command: RecorderCommand) -> OpenPageResult<()> {
             "recorder.start",
             Value::Null,
         )?)),
+        RecorderCommand::Replay(args) => {
+            let flow = serde_json::from_slice::<Value>(&fs::read(&args.flow)?)
+                .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
+            print_json(simple_ok(rpc_webpage(
+                &args.session,
+                "recorder.replay",
+                flow,
+            )?))
+        }
         RecorderCommand::Stop(args) => {
             let flow = rpc_webpage(&args.session, "recorder.stop", Value::Null)?;
             if let Some(output) = args.output {
