@@ -2,6 +2,7 @@ pub mod alert;
 pub mod browser;
 pub mod config;
 pub mod console;
+pub mod daemon;
 pub mod download;
 pub mod element;
 pub mod element_list;
