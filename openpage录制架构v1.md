@@ -915,3 +915,30 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib
 ```
 
 下一里程碑：CDP 页面事件采集与原始事件归一化。
+
+## 里程碑 2：CDP 页面事件采集
+
+状态：**已完成**
+
+完成内容：
+
+- `Recorder` 绑定到 `Page`，每个页面使用自己的共享录制状态。
+- 通过 CDP `Runtime.addBinding` 接收页面事件。
+- 通过 `Page.addScriptToEvaluateOnNewDocument` 保证导航后重新注入。
+- 当前 document 启动录制时立即注入。
+- 已采集 `click`、`input`、`change`、`keydown`。
+- 支持 `fill`、`select`、`check`、`press` 事件转换。
+- password input 转换为 `RecordedValue::Secret`，不保存实际输入值。
+- 页面事件使用现有 `css:` locator 语义生成目标。
+- 连续同目标输入继续由 Core 合并。
+
+验证证据：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib
+
+2 passed; 0 failed
+```
+
+下一里程碑：将 Recorder 接入 daemon 协议和 CLI，并增加 JSON flow 的保存入口。
