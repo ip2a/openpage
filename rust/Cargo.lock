@@ -1285,6 +1285,7 @@ dependencies = [
  "ego-tree",
  "encoding_rs",
  "futures",
+ "getrandom 0.2.17",
  "image",
  "libc",
  "publicsuffix",

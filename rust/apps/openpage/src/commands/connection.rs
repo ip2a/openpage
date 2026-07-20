@@ -15,8 +15,8 @@ use windows_sys::Win32::Foundation::CloseHandle;
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
-use crate::cli::protocol::{Request, Response, openpage_error_from_structured_context};
 use crate::error::{OpenPageError, OpenPageResult};
+use openpage::protocol::{Request, Response, openpage_error_from_structured_context};
 
 const CONNECT_TIMEOUT_MS: u64 = 200;
 const READ_TIMEOUT_SECS: u64 = 30;
@@ -1415,8 +1415,8 @@ mod tests {
         remap_existing_session_request_error, send_request_with_retry, shutdown_daemon,
         startup_exit_error, startup_timeout_error, version_path,
     };
-    use crate::cli::protocol::{Request, Response, simple_openpage_error};
     use crate::error::OpenPageError;
+    use openpage::protocol::{Request, Response, simple_openpage_error};
     use serde_json::{Value, json};
     use std::fs;
     use std::net::TcpListener;

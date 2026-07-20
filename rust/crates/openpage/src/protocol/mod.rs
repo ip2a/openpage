@@ -177,7 +177,7 @@ pub fn simple_error_with_context(
     Value::Object(payload)
 }
 
-pub(crate) fn known_invalid_input_fix(detail: &str) -> Option<&'static str> {
+pub fn known_invalid_input_fix(detail: &str) -> Option<&'static str> {
     if detail.contains("unrecognized subcommand 'page'") {
         Some(
             "Use the active top-level TCP CLI instead: `openpage goto <url> --session <name>`, `openpage url --session <name>`, `openpage title --session <name>`, or `openpage html --session <name>`. The old `page ...` surface was removed.",

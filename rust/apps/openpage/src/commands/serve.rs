@@ -15,7 +15,6 @@ use serde_json::{Map, Value, json};
 use crate::browser::{BrowserTabReference, DownloadFileExistsMode, LoadMode};
 use crate::cli::args::ServeArgs;
 use crate::cli::connection::write_tcp_sidecars;
-use crate::cli::protocol::{Request, Response};
 use crate::config::{ConfigValueSource, RuntimeOverrides, load_resolved_config, openpage_home};
 use crate::download::DownloadMission;
 use crate::error::{OpenPageError, OpenPageResult};
@@ -23,6 +22,7 @@ use crate::page::{ActionsDragData, PageNavigationSnapshot};
 use crate::session::SessionOptions;
 use crate::settings::wait_timeout_result;
 use crate::webpage::{WebElement, WebFrame, WebMode, WebPage};
+use openpage::protocol::{Request, Response};
 
 pub fn run(args: ServeArgs) -> OpenPageResult<()> {
     run_tcp(args.port.unwrap_or(0), &args.session)
@@ -84,7 +84,7 @@ fn handle_client(stream: &mut TcpStream, runtime: Rc<RefCell<ServeRuntime>>) -> 
                 let mut runtime = runtime.borrow_mut();
                 match runtime.dispatch(request) {
                     Ok(result) => Response::ok(id, result),
-                    Err(err) => crate::cli::protocol::response_openpage_error(id, &err),
+                    Err(err) => openpage::protocol::response_openpage_error(id, &err),
                 }
             }
             Err(err) => Response::error(None, "invalid_json", err.to_string()),

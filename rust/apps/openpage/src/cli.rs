@@ -2,9 +2,6 @@
 pub mod args;
 #[path = "commands/connection.rs"]
 pub mod connection;
-#[path = "commands/protocol.rs"]
-pub mod protocol;
-
 #[path = "commands/doctor.rs"]
 mod doctor;
 #[path = "commands/oneshot.rs"]
@@ -19,12 +16,12 @@ use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
 use crate::cli::args::{Cli, Command, CompatCli};
-use crate::cli::protocol::{known_invalid_input_fix, print_output_json, simple_ok};
 use crate::config::{
     ensure_workspace_config_file, load_resolved_config, update_user_browser_paths,
 };
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::{Browser, LaunchOptions};
+use openpage::protocol::{known_invalid_input_fix, print_output_json, simple_ok};
 
 pub fn run() -> OpenPageResult<i32> {
     run_from_args(std::env::args_os())
@@ -55,21 +52,21 @@ where
         Command::Serve(args) => match serve::run(args) {
             Ok(()) => Ok(0),
             Err(err) => {
-                print_output_json(&protocol::simple_openpage_error(&err));
+                print_output_json(&openpage::protocol::simple_openpage_error(&err));
                 Ok(1)
             }
         },
         Command::Doctor(args) => match doctor::run(args) {
             Ok(code) => Ok(code),
             Err(err) => {
-                print_output_json(&protocol::simple_openpage_error(&err));
+                print_output_json(&openpage::protocol::simple_openpage_error(&err));
                 Ok(1)
             }
         },
         command => match oneshot::run(command) {
             Ok(code) => Ok(code),
             Err(err) => {
-                print_output_json(&protocol::simple_openpage_error(&err));
+                print_output_json(&openpage::protocol::simple_openpage_error(&err));
                 Ok(1)
             }
         },
@@ -267,7 +264,7 @@ fn clap_error_payload(err: &ClapError) -> Option<serde_json::Value> {
     }
 
     let detail = err.to_string();
-    Some(protocol::simple_error_with_fix(
+    Some(openpage::protocol::simple_error_with_fix(
         "invalid_input",
         detail.clone(),
         known_invalid_input_fix(&detail).map(str::to_string),

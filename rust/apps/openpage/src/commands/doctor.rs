@@ -12,9 +12,9 @@ use crate::cli::connection::{
     daemon_session_fix, daemon_session_reasons, daemon_session_state, force_cleanup_daemon,
     incomplete_daemon_fix, incomplete_daemon_reasons, openpage_home,
 };
-use crate::cli::protocol::print_output_json;
 use crate::config::{ConfigValueSource, load_resolved_config, resolve_browser_executable_path};
 use crate::error::{OpenPageError, OpenPageResult};
+use openpage::protocol::print_output_json;
 
 #[derive(Clone, Copy)]
 enum Status {

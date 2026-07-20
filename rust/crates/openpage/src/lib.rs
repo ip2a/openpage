@@ -11,6 +11,7 @@ pub mod listener;
 pub mod locator;
 pub mod options_manager;
 pub mod page;
+pub mod protocol;
 pub mod screencast;
 pub mod session;
 pub mod settings;

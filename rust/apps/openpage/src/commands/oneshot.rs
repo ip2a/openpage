@@ -31,8 +31,8 @@ use crate::cli::connection::{
 };
 #[cfg(test)]
 use crate::cli::connection::{daemon_inventory_summary_json, incomplete_daemon_reasons};
-use crate::cli::protocol::{Request, Response, print_output_json, simple_ok};
 use crate::error::{OpenPageError, OpenPageResult};
+use openpage::protocol::{Request, Response, print_output_json, simple_ok};
 
 pub fn run(command: Command) -> OpenPageResult<i32> {
     match command {
@@ -1637,7 +1637,7 @@ fn stop_all_browsers(quiet: bool) -> OpenPageResult<()> {
             Ok(()) => stopped.push(session),
             Err(err) => failed.push(json!({
                 "session": session,
-                "kind": crate::cli::protocol::openpage_error_kind(&err),
+                "kind": openpage::protocol::openpage_error_kind(&err),
                 "message": err.to_string(),
             })),
         }
@@ -1692,7 +1692,7 @@ fn run_batch(args: BatchArgs) -> OpenPageResult<i32> {
         };
 
         if let Err(err) = run_single(command) {
-            print_json(crate::cli::protocol::simple_openpage_error(&err))?;
+            print_json(openpage::protocol::simple_openpage_error(&err))?;
             had_error = true;
             if args.bail {
                 break;
@@ -1709,16 +1709,16 @@ fn batch_error_payload(error: &OpenPageError) -> Value {
             if detail.starts_with("invalid batch command `")
                 || detail.starts_with("invalid batch command quoting:") =>
         {
-            crate::cli::protocol::simple_error_with_fix(
+            openpage::protocol::simple_error_with_fix(
                 "invalid_input",
                 detail,
-                crate::cli::protocol::known_invalid_input_fix(detail).map(str::to_string),
+                openpage::protocol::known_invalid_input_fix(detail).map(str::to_string),
             )
         }
         OpenPageError::Serialization(detail) if detail.starts_with("invalid batch stdin JSON:") => {
-            crate::cli::protocol::simple_error("invalid_input", detail)
+            openpage::protocol::simple_error("invalid_input", detail)
         }
-        _ => crate::cli::protocol::simple_openpage_error(error),
+        _ => openpage::protocol::simple_openpage_error(error),
     }
 }
 
@@ -2041,7 +2041,7 @@ fn response_result(response: Response) -> OpenPageResult<Value> {
         let error = response
             .error
             .ok_or_else(|| OpenPageError::BrowserOperation("daemon request failed".to_string()))?;
-        Err(crate::cli::protocol::openpage_error_from_response_error(
+        Err(openpage::protocol::openpage_error_from_response_error(
             error,
         ))
     }
@@ -4701,14 +4701,14 @@ mod tests {
     #[test]
     fn response_result_preserves_structured_fix_without_double_prefix() {
         let detail = "session `inactive-review` is not active. Start it with `openpage browser start --session inactive-review` before retrying.";
-        let response = crate::cli::protocol::response_openpage_error(
+        let response = openpage::protocol::response_openpage_error(
             None,
             &OpenPageError::BrowserOperation(detail.to_string()),
         );
 
         let error =
             super::response_result(response).expect_err("daemon error should not look successful");
-        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        let payload = openpage::protocol::simple_openpage_error(&error);
         let message = payload["error"]["message"]
             .as_str()
             .expect("message should be a string");
@@ -4733,14 +4733,14 @@ mod tests {
     #[test]
     fn response_result_reconstructed_error_keeps_state_and_reasons_for_incompatible_session() {
         let detail = "session `mismatch-review` is backed by daemon version 0.0.1 but the current CLI expects 0.1.0. Run `openpage browser stop --session mismatch-review` and then restart that session with the current CLI so its daemon sidecars are recreated with version 0.1.0. Or run `openpage doctor --quick --fix` if you want the CLI to stop the stale daemon for you.";
-        let response = crate::cli::protocol::response_openpage_error(
+        let response = openpage::protocol::response_openpage_error(
             None,
             &OpenPageError::BrowserOperation(detail.to_string()),
         );
 
         let error =
             super::response_result(response).expect_err("daemon error should not look successful");
-        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        let payload = openpage::protocol::simple_openpage_error(&error);
 
         assert_eq!(payload["error"]["kind"], "browser_operation");
         assert_eq!(payload["error"]["session"], "mismatch-review");
@@ -4773,7 +4773,7 @@ mod tests {
 
         let error =
             super::response_result(response).expect_err("daemon error should not look successful");
-        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        let payload = openpage::protocol::simple_openpage_error(&error);
 
         assert_eq!(payload["error"]["kind"], "browser_operation");
         assert_eq!(payload["error"]["session"], "generic-inactive");
@@ -4806,7 +4806,7 @@ mod tests {
 
         let error =
             super::response_result(response).expect_err("daemon error should not look successful");
-        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        let payload = openpage::protocol::simple_openpage_error(&error);
 
         assert_eq!(payload["error"]["kind"], "daemon_transient");
         assert_eq!(payload["error"]["session"], "retry-review");
@@ -4837,7 +4837,7 @@ mod tests {
 
         let error =
             super::response_result(response).expect_err("daemon error should not look successful");
-        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        let payload = openpage::protocol::simple_openpage_error(&error);
 
         assert_eq!(payload["error"]["kind"], "browser_operation");
         assert_eq!(payload["error"]["session"], "generic-mismatch");
@@ -4868,7 +4868,7 @@ mod tests {
 
         let error =
             super::response_result(response).expect_err("daemon error should not look successful");
-        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        let payload = openpage::protocol::simple_openpage_error(&error);
 
         assert_eq!(payload["error"]["kind"], "browser_operation");
         assert_eq!(payload["error"]["session"], "generic-busy");
@@ -4905,7 +4905,7 @@ mod tests {
 
         let error =
             super::response_result(response).expect_err("daemon error should not look successful");
-        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        let payload = openpage::protocol::simple_openpage_error(&error);
 
         assert_eq!(payload["error"]["kind"], "io");
         assert_eq!(payload["error"]["session"], "startup-review");
@@ -4937,7 +4937,7 @@ mod tests {
 
         let error =
             super::response_result(response).expect_err("daemon error should not look successful");
-        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        let payload = openpage::protocol::simple_openpage_error(&error);
 
         assert_eq!(payload["error"]["kind"], "io");
         assert_eq!(payload["error"]["session"], "io-review");
@@ -4959,7 +4959,7 @@ mod tests {
         ))
         .expect_err("daemon error should not look successful");
 
-        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        let payload = openpage::protocol::simple_openpage_error(&error);
         assert_eq!(payload["error"]["kind"], "invalid_input");
         assert_eq!(
             payload["error"]["message"],
@@ -4976,7 +4976,7 @@ mod tests {
         ))
         .expect_err("daemon error should not look successful");
 
-        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        let payload = openpage::protocol::simple_openpage_error(&error);
         assert_eq!(payload["error"]["kind"], "invalid_input");
         assert_eq!(payload["error"]["message"], "history index must be >= 1");
         assert_eq!(
@@ -4994,7 +4994,7 @@ mod tests {
         ))
         .expect_err("daemon error should not look successful");
 
-        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        let payload = openpage::protocol::simple_openpage_error(&error);
         assert_eq!(payload["error"]["kind"], "invalid_input");
         assert_eq!(payload["error"]["message"], "missing string param: locator");
     }
@@ -5008,7 +5008,7 @@ mod tests {
         ))
         .expect_err("daemon error should not look successful");
 
-        let payload = crate::cli::protocol::simple_openpage_error(&error);
+        let payload = openpage::protocol::simple_openpage_error(&error);
         assert_eq!(payload["error"]["kind"], "invalid_input");
         assert_eq!(
             payload["error"]["message"],

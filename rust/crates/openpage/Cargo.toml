@@ -21,6 +21,7 @@ cookie_store = { workspace = true }
 encoding_rs = { workspace = true }
 ego-tree = { workspace = true }
 futures = { workspace = true }
+getrandom = { workspace = true }
 image = { workspace = true }
 reqwest = { workspace = true }
 regex = { workspace = true }
