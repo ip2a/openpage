@@ -1121,3 +1121,11 @@ src-tauri/target/release/bundle/macos/OpenPage.app
 ```
 
 Core 回放也已用真实 daemon 验证：在相同 DOM 中回放 `fill + click` flow，daemon 返回 `{"replayed":2,"version":1}`。
+
+桌面端补充：
+
+- 增加“启动/连接浏览器”入口。
+- Tauri shell 默认调用 PATH 中的 `openpage` CLI；也支持通过 `OPENPAGE_BIN` 指定 CLI 路径。
+- 浏览器生命周期仍由 OpenPage CLI/daemon 管理，React 不直接启动 Chromium。
+
+因此桌面端 MVP 已覆盖“启动或连接现有 OpenPage session”，而不是只依赖用户预先启动 daemon。

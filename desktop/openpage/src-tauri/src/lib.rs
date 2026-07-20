@@ -37,10 +37,29 @@ fn recorder_call(session: State<'_, Session>, op: String, params: Value) -> Resu
     }
 }
 
+#[tauri::command]
+fn ensure_browser(session: State<'_, Session>) -> Result<Value, String> {
+    let binary = std::env::var_os("OPENPAGE_BIN").unwrap_or_else(|| "openpage".into());
+    let output = std::process::Command::new(binary)
+        .args(["browser", "start", "--session", &session.0, "--head"])
+        .output()
+        .map_err(|e| format!("无法启动 OpenPage CLI: {e}"))?;
+    let value: Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("OpenPage CLI 输出无效: {e}"))?;
+    if output.status.success() && value["ok"] == true {
+        Ok(value["result"].clone())
+    } else {
+        Err(value["error"]["message"]
+            .as_str()
+            .unwrap_or("启动浏览器失败")
+            .to_string())
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(Session("default".to_string()))
-        .invoke_handler(tauri::generate_handler![recorder_call])
+        .invoke_handler(tauri::generate_handler![recorder_call, ensure_browser])
         .run(tauri::generate_context!())
         .expect("error while running OpenPage desktop");
 }

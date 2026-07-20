@@ -15,6 +15,11 @@ function App() {
   const [flow, setFlow] = useState<Flow>({ version: 1, steps: [] });
   const [error, setError] = useState("");
 
+  const connect = async () => {
+    try { setError(""); await invoke("ensure_browser", { session: "default" }); await refresh(); }
+    catch (value) { setError(String(value)); }
+  };
+
   const refresh = async () => {
     try {
       setError("");
@@ -40,6 +45,7 @@ function App() {
   return <main>
     <header><div><span className="eyebrow">OPENPAGE</span><h1>录制控制台</h1></div><span className={status.recording ? "badge live" : "badge"}>{status.recording ? "录制中" : "已停止"}</span></header>
     <section className="toolbar">
+      <button onClick={() => void connect()}>启动/连接浏览器</button>
       <button className="primary" onClick={() => void run("recorder.start")} disabled={status.recording}>开始录制</button>
       <button onClick={() => void run("recorder.stop")} disabled={!status.recording}>停止录制</button>
       <button onClick={() => void run("recorder.replay")} disabled={!flow.steps.length}>回放</button>
