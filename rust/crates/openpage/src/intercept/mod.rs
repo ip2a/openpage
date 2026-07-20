@@ -5,7 +5,8 @@ use std::time::{Duration, Instant};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use chromiumoxide::cdp::browser_protocol::fetch::{
-    ContinueRequestParams, EventRequestPaused, FailRequestParams, FulfillRequestParams, HeaderEntry,
+    ContinueRequestParams, DisableParams, EnableParams, EventRequestPaused, FailRequestParams,
+    FulfillRequestParams, HeaderEntry, RequestPattern,
 };
 use chromiumoxide::cdp::browser_protocol::network::{ErrorReason, Headers, ResourceType};
 use chromiumoxide::page::Page as OxPage;
@@ -164,24 +165,11 @@ pub struct InterceptedRequest {
 
 impl Interceptor {
     pub fn new(runtime: Arc<Runtime>, page: OxPage) -> Self {
-        let shared = Arc::new(InterceptShared::new());
-        let interceptor = Self {
-            runtime: Arc::clone(&runtime),
-            page: page.clone(),
-            shared: Arc::clone(&shared),
-        };
-        let shared_for_task = Arc::clone(&shared);
-        let handle = runtime.spawn(async move {
-            if let Err(err) = run_interceptor(page, Arc::clone(&shared_for_task)).await {
-                let _ = set_interceptor_stopped(&shared_for_task, Some(err.to_string()));
-            } else {
-                let _ = set_interceptor_stopped(&shared_for_task, None);
-            }
-        });
-        if let Ok(mut state) = interceptor.shared.state.lock() {
-            state.task = Some(handle);
+        Self {
+            runtime,
+            page,
+            shared: Arc::new(InterceptShared::new()),
         }
-        interceptor
     }
 
     pub fn start(
@@ -192,26 +180,66 @@ impl Interceptor {
         resource_types: Option<Vec<String>>,
     ) -> OpenPageResult<()> {
         let filters = InterceptFilters::new(targets, is_regex, methods, resource_types)?;
-        let mut state = self
-            .shared
+        {
+            let mut state = self
+                .shared
+                .state
+                .lock()
+                .map_err(|_| intercept_state_lock_poisoned_error())?;
+            state.queue.clear();
+            state.pending_request_ids.clear();
+            state.last_error = None;
+            state.filters = filters;
+            if state.task.is_some() {
+                state.listening = true;
+                self.shared.condvar.notify_all();
+                return Ok(());
+            }
+        }
+
+        let mut paused_events =
+            self.runtime
+                .block_on(register_interceptor_listener_with_cdp_timeout(
+                    self.page.event_listener::<EventRequestPaused>(),
+                    "register request paused listener",
+                ))?;
+        execute_page_command_blocking(
+            self.runtime.as_ref(),
+            &self.page,
+            EnableParams::builder()
+                .pattern(RequestPattern::builder().url_pattern("*").build())
+                .build(),
+            "Interceptor::start()",
+        )?;
+
+        {
+            let mut state = self
+                .shared
+                .state
+                .lock()
+                .map_err(|_| intercept_state_lock_poisoned_error())?;
+            state.listening = true;
+        }
+
+        let page = self.page.clone();
+        let shared = Arc::clone(&self.shared);
+        let shared_for_task = Arc::clone(&shared);
+        let handle = self.runtime.spawn(async move {
+            let result = async {
+                while let Some(event) = paused_events.next().await {
+                    on_request_paused(&page, &shared_for_task, &event).await?;
+                }
+                Ok(())
+            }
+            .await;
+            let error = result.err().map(|err: OpenPageError| err.to_string());
+            let _ = set_interceptor_stopped(&shared_for_task, error);
+        });
+        self.shared
             .state
             .lock()
-            .map_err(|_| intercept_state_lock_poisoned_error())?;
-
-        state.queue.clear();
-        state.pending_request_ids.clear();
-        state.last_error = None;
-        state.filters = filters;
-
-        if state.task.is_none() {
-            return Err(interceptor_not_running_error(&state));
-        }
-        if state.listening {
-            state.listening = true;
-            self.shared.condvar.notify_all();
-            return Ok(());
-        }
-        state.listening = true;
+            .map_err(|_| intercept_state_lock_poisoned_error())?
+            .task = Some(handle);
         self.shared.condvar.notify_all();
         Ok(())
     }
@@ -305,6 +333,22 @@ impl Interceptor {
                 None,
                 None,
             );
+        }
+        execute_page_command_blocking(
+            self.runtime.as_ref(),
+            &self.page,
+            DisableParams::default(),
+            "Interceptor::stop()",
+        )?;
+        if let Some(task) = self
+            .shared
+            .state
+            .lock()
+            .map_err(|_| intercept_state_lock_poisoned_error())?
+            .task
+            .take()
+        {
+            task.abort();
         }
 
         self.shared.condvar.notify_all();
@@ -448,20 +492,6 @@ impl InterceptedRequest {
             Ok(())
         })
     }
-}
-
-async fn run_interceptor(page: OxPage, shared: Arc<InterceptShared>) -> OpenPageResult<()> {
-    let mut paused_events = register_interceptor_listener_with_cdp_timeout(
-        page.event_listener::<EventRequestPaused>(),
-        "register request paused listener",
-    )
-    .await?;
-
-    while let Some(event) = paused_events.next().await {
-        on_request_paused(&page, &shared, &event).await?;
-    }
-
-    Ok(())
 }
 
 async fn on_request_paused(

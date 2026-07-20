@@ -19,7 +19,7 @@ pub(super) fn build_browser_config(
     let mut builder = BrowserConfig::builder()
         .window_size(options.width, options.height)
         .viewport(None);
-    builder = builder.enable_request_intercept().disable_cache();
+    builder = builder.disable_cache();
 
     if options.headless {
         builder = builder.new_headless_mode();
