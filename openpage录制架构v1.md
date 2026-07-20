@@ -969,3 +969,36 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib
 说明：daemon 全量测试中已有与本次改动无关的 sidecar/临时目录测试失败；录制模块测试和 crate 编译通过。后续增加专门的 daemon recorder 协议测试，避免依赖真实浏览器启动。
 
 下一里程碑：CLI `record` / `replay` 入口和 flow JSON 文件保存。
+
+## 里程碑 4：CLI 录制控制
+
+状态：**已完成**
+
+完成内容：
+
+- 新增 `openpage record start --session <name>`。
+- 新增 `openpage record stop --session <name>`。
+- `record stop --output <file>` 可以保存 flow JSON。
+- 新增 `openpage record steps --session <name>`。
+- 新增 `openpage record status --session <name>`。
+- 新增 `openpage record clear --session <name>`。
+- CLI 通过现有 daemon RPC 调用，不直接接触浏览器/CDP。
+
+使用方式：
+
+```bash
+openpage browser start --session demo --head
+openpage record start --session demo
+# 手动操作 Chromium
+openpage record stop --session demo --output flow.json
+openpage record steps --session demo
+```
+
+验证证据：
+
+```text
+cargo check --manifest-path rust/Cargo.toml -p openpage-app
+cargo run --manifest-path rust/apps/openpage/Cargo.toml -- record --help
+```
+
+下一里程碑：基于 `RecordedFlow` 实现 daemon/Core 回放，并补充不依赖真实浏览器的协议测试。

@@ -322,6 +322,9 @@ pub enum Command {
     /// Manage frames
     #[command(subcommand)]
     Frame(FrameCommand),
+    /// Record browser actions into a versioned flow
+    #[command(subcommand)]
+    Record(RecorderCommand),
     /// Diagnose the local OpenPage CLI environment
     Doctor(DoctorArgs),
     /// Execute multiple commands in one invocation
@@ -330,6 +333,28 @@ pub enum Command {
     Serve(ServeArgs),
     /// Start the MCP stdio server
     Mcp(McpArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RecorderCommand {
+    /// Start recording actions in an active browser session
+    Start(SessionArgs),
+    /// Stop recording and optionally save the flow JSON
+    Stop(RecorderStopArgs),
+    /// Print the current recorded flow
+    Steps(SessionArgs),
+    /// Print recorder status
+    Status(SessionArgs),
+    /// Clear recorded steps
+    Clear(SessionArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct RecorderStopArgs {
+    #[arg(long, default_value = "default")]
+    pub session: String,
+    #[arg(long)]
+    pub output: Option<PathBuf>,
 }
 
 #[derive(Debug, Subcommand)]

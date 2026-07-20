@@ -17,13 +17,14 @@ use crate::cli::args::{
     DragArgs, DragInArgs, DragToArgs, DragToPointArgs, ElementArgs, ElementScrollArgs, FillArgs,
     FindInPageArgs, FrameCommand, GotoArgs, HistoryCommand, HoverAtArgs, InterceptCommand, JsArgs,
     KeyArgs, LocateArgs, OpenLinkArgs, PageTextArgs, PdfArgs, PermissionSetArgs,
-    PermissionsCommand, PressArgs, ReloadArgs, SaveArgs, ScreenshotArgs, ScreenshotElementArgs,
-    ScrollArgs, ScrollIntoViewArgs, SelectArgs, SelectRangeArgs, SelectTextArgs, SessionArgs,
-    ShortcutArgs, SnapshotArgs, StorageCommand, StorageScope, TabCommand, TabDuplicateArgs,
-    TabReopenArgs, TypeWithIntervalArgs, UploadArgs, WaitArgs, WaitElementArgs,
-    WaitElementsLoadedArgs, WaitForDownloadArgs, WaitForFunctionArgs, WaitForNavigationArgs,
-    WaitForTextArgs, WaitForTitleArgs, WaitForUrlArgs, WaitTimeoutArgs, WindowCloseArgs,
-    WindowCommand, WindowMoveArgs, WindowSwitchArgs, ZoomCommand, ZoomSetArgs, ZoomStepArgs,
+    PermissionsCommand, PressArgs, RecorderCommand, ReloadArgs, SaveArgs, ScreenshotArgs,
+    ScreenshotElementArgs, ScrollArgs, ScrollIntoViewArgs, SelectArgs, SelectRangeArgs,
+    SelectTextArgs, SessionArgs, ShortcutArgs, SnapshotArgs, StorageCommand, StorageScope,
+    TabCommand, TabDuplicateArgs, TabReopenArgs, TypeWithIntervalArgs, UploadArgs, WaitArgs,
+    WaitElementArgs, WaitElementsLoadedArgs, WaitForDownloadArgs, WaitForFunctionArgs,
+    WaitForNavigationArgs, WaitForTextArgs, WaitForTitleArgs, WaitForUrlArgs, WaitTimeoutArgs,
+    WindowCloseArgs, WindowCommand, WindowMoveArgs, WindowSwitchArgs, ZoomCommand, ZoomSetArgs,
+    ZoomStepArgs,
 };
 use crate::error::{OpenPageError, OpenPageResult};
 use openpage::daemon::client::{
@@ -47,6 +48,7 @@ pub fn run(command: Command) -> OpenPageResult<i32> {
 fn run_single(command: Command) -> OpenPageResult<()> {
     match command {
         Command::Browser(command) => run_browser(command),
+        Command::Record(command) => run_recorder(command),
         Command::Goto(args) => run_goto(args),
         Command::Back(args) => run_back(args),
         Command::Forward(args) => run_forward(args),
@@ -235,6 +237,42 @@ fn run_scroll_element_position(args: ElementArgs) -> OpenPageResult<()> {
         "element.scroll_position",
         json!({"locator": args.locator}),
     )?))
+}
+
+fn run_recorder(command: RecorderCommand) -> OpenPageResult<()> {
+    match command {
+        RecorderCommand::Start(args) => print_json(simple_ok(rpc_webpage(
+            &args.session,
+            "recorder.start",
+            Value::Null,
+        )?)),
+        RecorderCommand::Stop(args) => {
+            let flow = rpc_webpage(&args.session, "recorder.stop", Value::Null)?;
+            if let Some(output) = args.output {
+                let bytes = serde_json::to_vec_pretty(&flow)
+                    .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
+                std::fs::write(&output, bytes)?;
+                print_json(simple_ok(json!({"output": output, "flow": flow})))
+            } else {
+                print_json(simple_ok(flow))
+            }
+        }
+        RecorderCommand::Steps(args) => print_json(simple_ok(rpc_webpage(
+            &args.session,
+            "recorder.steps",
+            Value::Null,
+        )?)),
+        RecorderCommand::Status(args) => print_json(simple_ok(rpc_webpage(
+            &args.session,
+            "recorder.status",
+            Value::Null,
+        )?)),
+        RecorderCommand::Clear(args) => print_json(simple_ok(rpc_webpage(
+            &args.session,
+            "recorder.clear",
+            Value::Null,
+        )?)),
+    }
 }
 
 fn run_browser(command: BrowserCommand) -> OpenPageResult<()> {
@@ -5190,7 +5228,7 @@ mod tests {
         let daemon = daemon_dir().expect("daemon dir path");
         assert!(!daemon.exists(), "test should start without daemon dir");
 
-        let error = super::rpc_webpage_existing("inactive-review", "webpage.title", Value::Null)
+        let error = super::rpc_webpage("inactive-review", "webpage.title", Value::Null)
             .expect_err("inactive session should fail instead of starting a fresh daemon/browser");
 
         match error {
