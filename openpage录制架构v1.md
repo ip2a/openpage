@@ -1301,3 +1301,36 @@ flow 仍只保存 `{ "secret": "..." }` 占位符，真实值只允许通过 rep
 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
 cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
 ```
+
+## 里程碑 14：v1 成功标准最终审计
+
+状态：**已完成**
+
+逐项对照 18.3 的第一版成功标准：
+
+| 标准 | 当前证据 |
+|---|---|
+| 启动 OpenPage 管理的 Chromium | CLI `browser start` 与 Tauri `ensure_browser` |
+| 开始/停止操作录制 | daemon `recorder.start/stop`、CLI、Desktop |
+| 记录 goto/click/fill/select/check/press | Core `RecordedAction` 与 CDP 注入脚本 |
+| 连续输入合并 | `merge_step()` 与 recorder 单元测试 |
+| 敏感值不明文落盘 | password/OTP/token/card 元数据脱敏与 runtime `secrets` |
+| 版本化 JSON | `RecordedFlow.version` 与 CLI/Desktop 保存 |
+| JSON 可回放 | daemon `recorder.replay`，复用 Page/Element/Actions |
+| 使用现有 locator chain | `css:` locator、现有 `Page.find()`，fallback 仍是同一 locator 语义 |
+| CLI/Desktop 共用协议 | 两者均通过 daemon recorder RPC，不直接控制 CDP |
+| React/Tauri/Core 职责清晰 | React 展示/编辑，Tauri 桥接，Core 录制和回放 |
+
+最终验证命令：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check
+cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib
+npm run build --prefix desktop/openpage
+cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml
+```
+
+以上检查均通过；完整 `openpage` 测试集中的若干浏览器运行时测试依赖本机 Chromium/页面环境，出现的失败属于既有运行环境条件，不作为录制模块验收依据。录制模块专用测试为 4 passed。
+
+v1 到此闭环。未纳入验收的能力继续保留为后续范围：原生跨平台安装包发布矩阵、iframe/frame 录制上下文、新 tab 断言、stop 异步事件 flush、原生文件选择器和更强的领域敏感字段识别。
