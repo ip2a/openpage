@@ -1241,3 +1241,24 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib # 4 pass
 - iframe/frame 路由录制与回放。
 
 这些属于后续 v1.1 或平台发布验收，不影响当前源码链路和 session 选择功能的闭环。
+
+## 里程碑 11：桌面端流程编辑与导出
+
+状态：**已完成**
+
+在已有 React + Tauri 控制台上补齐流程管理入口：
+
+- 在线编辑步骤的 primary locator。
+- 删除步骤。
+- 上移/下移步骤，保持 flow 仍为结构化 JSON。
+- 保存 JSON。
+- 导出 Python、Rust 和 CLI shell 示例文件。
+- 回放使用当前编辑后的 flow，而不是重新从 daemon 拉取后覆盖本地修改。
+
+导出文件是共享 `RecordedFlow` 的轻量包装，不在 React 中复制浏览器控制逻辑；真正执行仍由 daemon/Core 完成。Python/Rust 导出当前是可继续接入项目 SDK/daemon 的模板，CLI 导出包含完整 `flow.json` 和回放命令。
+
+验证：
+
+```text
+npm run build --prefix desktop/openpage  # 通过
+```
