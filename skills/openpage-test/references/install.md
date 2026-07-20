@@ -43,7 +43,7 @@ If you want a built binary instead of `cargo run`:
 
 ```bash
 cargo build --manifest-path rust/Cargo.toml --bin openpage
-bash ./scripts/smoke_test.sh rust/target/debug/openpage
+bash ./scripts/test/smoke_test.sh rust/target/debug/openpage
 ```
 
 ## Full Local Install With Thin Python Wrapper
@@ -51,7 +51,7 @@ bash ./scripts/smoke_test.sh rust/target/debug/openpage
 Only do this after the Rust path passes:
 
 ```bash
-bash ./scripts/dev_install.sh
+bash ./scripts/dev/dev_install.sh
 ```
 
 That script:
@@ -65,7 +65,7 @@ That script:
 If you want the repository's full validation path:
 
 ```bash
-bash ./scripts/run_checks.sh
+bash ./scripts/test/run_checks.sh
 ```
 
 This includes Rust checks, Python wrapper install, Python tests/examples, and the Rust example program.
@@ -75,9 +75,9 @@ This includes Rust checks, Python wrapper install, Python tests/examples, and th
 Python should stay secondary. Run it only after Rust passes:
 
 ```bash
-python/.venv/bin/python -m unittest discover -s python/tests -v
-python/.venv/bin/python python/examples/basic_usage.py
-python/.venv/bin/python python/examples/webpage_modes.py
+python/.venv/bin/python -m unittest discover -s tests/python -v
+python/.venv/bin/python examples/python/basic_usage.py
+python/.venv/bin/python examples/python/webpage_modes.py
 ```
 
 Interpretation:

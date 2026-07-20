@@ -572,7 +572,7 @@ fn load_default_configs_ini_contents() -> OpenPageResult<String> {
     let default_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("configs.ini");
     match std::fs::read_to_string(default_path) {
         Ok(content) => Ok(content),
-        Err(_) => Ok(include_str!("../configs.ini").to_string()),
+        Err(_) => Ok(include_str!("../../configs.ini").to_string()),
     }
 }
 
@@ -1301,6 +1301,9 @@ mod tests {
 
     #[test]
     fn make_session_ele_rejects_unknown_by_values() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+
         let error = make_session_ele(HTML, Some(("unsupported", "demo")), Some(1))
             .expect_err("unsupported by should fail");
 
@@ -1314,6 +1317,9 @@ mod tests {
 
     #[test]
     fn make_session_ele_by_rejects_unknown_by_values() {
+        let _guard = crate::settings::scoped_test_settings();
+        crate::Settings::reset();
+
         let error = make_session_ele_by(HTML, Some(("unsupported", "demo")), Some(1))
             .expect_err("unsupported by should fail");
 

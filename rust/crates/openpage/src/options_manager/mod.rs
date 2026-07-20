@@ -205,7 +205,7 @@ fn resolve_options_manager_save_path(
 }
 
 fn built_in_options_manager_document() -> IniDocument {
-    parse_ini_document(include_str!("../configs.ini"))
+    parse_ini_document(include_str!("../../configs.ini"))
 }
 
 fn parse_ini_document(content: &str) -> IniDocument {

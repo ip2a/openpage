@@ -9,7 +9,7 @@ from unittest import mock
 from pathlib import Path
 
 
-PYTHON_DIR = Path(__file__).resolve().parents[1]
+PYTHON_DIR = Path(__file__).resolve().parents[2] / "python"
 if str(PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(PYTHON_DIR))
 

@@ -38,8 +38,8 @@ The crates.io surface is now the pure Rust `openpage` library crate. The agent-f
 ## Local development
 
 ```bash
-./scripts/dev_install.sh
-./scripts/run_checks.sh
+./scripts/dev/dev_install.sh
+./scripts/test/run_checks.sh
 ```
 
 ## Pure Rust Build
@@ -495,8 +495,8 @@ This first version is intentionally browser-first:
 ## Verification
 
 ```bash
-./scripts/dev_install.sh
-./scripts/run_checks.sh
+./scripts/dev/dev_install.sh
+./scripts/test/run_checks.sh
 ```
 
 Current integration checks cover:

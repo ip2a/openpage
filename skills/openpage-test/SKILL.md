@@ -58,7 +58,7 @@ This skill is the repo-local testing playbook for OpenPage. It treats the Rust c
 
 ## Decision Rules
 
-- Use repo scripts `./scripts/dev_install.sh` and `./scripts/run_checks.sh` only when you want the full repo workflow. They are not required for Rust-only CLI verification.
+- Use repo scripts `./scripts/dev/dev_install.sh` and `./scripts/test/run_checks.sh` only when you want the full repo workflow. They are not required for Rust-only CLI verification.
 - If raw TCP daemon control and named-session CLI disagree, treat that as a CLI-wrapper regression first.
 - If a task needs repeated page interaction, prefer the `snapshot -> act on @eN -> re-snapshot` loop over raw HTML parsing.
 - If a task needs multiple states or roles, prefer named sessions over trying to reconstruct context per command.

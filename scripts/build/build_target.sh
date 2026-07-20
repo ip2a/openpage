@@ -11,7 +11,7 @@ PLATFORM_ID="$2"
 ARTIFACT_BINARY="$3"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 SRC_BIN="${REPO_ROOT}/rust/target/${TARGET_TRIPLE}/release/${ARTIFACT_BINARY}"
 DST_DIR="${REPO_ROOT}/dist/${PLATFORM_ID}"
 DST_BIN="${DST_DIR}/${ARTIFACT_BINARY}"

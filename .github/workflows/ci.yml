@@ -23,7 +23,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Verify release metadata
-        run: python3 scripts/sync_version.py --check
+        run: python3 scripts/release/sync_version.py --check
 
       - name: Run project checks
-        run: bash ./scripts/run_checks.sh
+        run: bash ./scripts/test/run_checks.sh

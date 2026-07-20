@@ -7,7 +7,7 @@ import re
 import tomllib
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 NPM_REPOSITORY_URL = "https://github.com/ip2a/openpage"
 
 

@@ -51,20 +51,20 @@ jobs:
       - name: Build target artifact
         if: matrix.platform_id != 'darwin'
         shell: bash
-        run: ./scripts/build_target.sh "${{ matrix.target }}" "${{ matrix.platform_id }}" "${{ matrix.artifact_binary }}"
+        run: ./scripts/build/build_target.sh "${{ matrix.target }}" "${{ matrix.platform_id }}" "${{ matrix.artifact_binary }}"
 
       - name: Build macOS artifacts
         if: matrix.platform_id == 'darwin'
         shell: bash
         run: |
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
-          ./scripts/build_target.sh aarch64-apple-darwin darwin-arm64 openpage
-          ./scripts/build_target.sh x86_64-apple-darwin darwin-x64 openpage
+          ./scripts/build/build_target.sh aarch64-apple-darwin darwin-arm64 openpage
+          ./scripts/build/build_target.sh x86_64-apple-darwin darwin-x64 openpage
 
       - name: Run smoke test
         if: matrix.platform_id != 'darwin'
         shell: bash
-        run: ./scripts/smoke_test.sh "dist/${{ matrix.platform_id }}/${{ matrix.artifact_binary }}"
+        run: ./scripts/test/smoke_test.sh "dist/${{ matrix.platform_id }}/${{ matrix.artifact_binary }}"
 
       - name: Verify Linux x64 binary is not glibc-linked
         if: matrix.target == 'x86_64-unknown-linux-musl'
@@ -82,8 +82,8 @@ jobs:
         if: matrix.platform_id == 'darwin'
         shell: bash
         run: |
-          ./scripts/smoke_test.sh "dist/darwin-arm64/openpage"
-          ./scripts/smoke_test.sh "dist/darwin-x64/openpage"
+          ./scripts/test/smoke_test.sh "dist/darwin-arm64/openpage"
+          ./scripts/test/smoke_test.sh "dist/darwin-x64/openpage"
 
       - name: Generate checksums
         if: matrix.platform_id != 'darwin'

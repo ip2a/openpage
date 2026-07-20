@@ -29,7 +29,7 @@ jobs:
         shell: bash
         run: |
           test -f npm/packages/openpage/package.json || { echo "[error] Missing npm/packages/openpage/package.json"; exit 1; }
-          grep -q 'ROOT / "npm" / "packages"' scripts/sync_version.py || { echo "[error] scripts/sync_version.py is outdated"; exit 1; }
+          grep -q 'ROOT / "npm" / "packages"' scripts/release/sync_version.py || { echo "[error] scripts/release/sync_version.py is outdated"; exit 1; }
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -38,7 +38,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Sync versions
-        run: python3 scripts/sync_version.py
+        run: python3 scripts/release/sync_version.py
 
       - name: Download release-build artifacts
         run: |
@@ -48,16 +48,16 @@ jobs:
           done
 
       - name: Assemble npm platform packages
-        run: python3 scripts/assemble_npm_packages.py --dist-root dist
+        run: python3 scripts/release/assemble_npm_packages.py --dist-root dist
 
       - name: Publish npm platform packages
         run: |
           for pkg in \
-            npm/packages/openpage-bin-darwin-arm64 \
-            npm/packages/openpage-bin-darwin-x64 \
-            npm/packages/openpage-bin-linux-x64-gnu \
-            npm/packages/openpage-bin-linux-arm64-gnu \
-            npm/packages/openpage-bin-win32-x64-msvc; do
+            npm/packages/internal/openpage-bin-darwin-arm64 \
+            npm/packages/internal/openpage-bin-darwin-x64 \
+            npm/packages/internal/openpage-bin-linux-x64-gnu \
+            npm/packages/internal/openpage-bin-linux-arm64-gnu \
+            npm/packages/internal/openpage-bin-win32-x64-msvc; do
             (cd "$pkg" && npm publish --access public --provenance)
           done
 

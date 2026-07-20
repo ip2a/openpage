@@ -6,7 +6,7 @@ import shutil
 import tomllib
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def load_platforms() -> list[dict[str, str]]:
@@ -19,7 +19,7 @@ def copy_binary(dist_root: Path, platform: dict[str, str]) -> None:
     if not source.exists():
         raise FileNotFoundError(f"Platform artifact not found: {source}")
 
-    target_dir = ROOT / "npm" / "packages" / platform["npm_dir"] / "bin"
+    target_dir = ROOT / "npm" / "packages" / "internal" / platform["npm_dir"] / "bin"
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / platform["artifact_binary"]
 
