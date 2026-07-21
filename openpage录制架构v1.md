@@ -1360,3 +1360,24 @@ v1 到此闭环。未纳入验收的能力继续保留为后续范围：原生�
 ```text
 npm run build --prefix desktop/openpage  # 通过
 ```
+
+## 里程碑 17：停止录制时 flush 待处理 CDP 事件
+
+状态：**已完成**
+
+`Recorder::stop()` 不再直接 abort listener：
+
+- 先向 listener task 发送停止信号；
+- 在有限窗口内继续消费 binding 和主 frame navigation 队列；
+- 完成 drain 后再把 recording 状态置为 false；
+- 超过 250ms 才强制终止异常卡住的 listener，避免 stop 永久阻塞。
+
+这样 stop 返回的 flow 会包含停止请求前已经进入 CDP listener 队列的事件，同时保留有界退出保障。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
+cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
+```

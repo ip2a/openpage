@@ -6,6 +6,7 @@ use chromiumoxide::page::Page as OxPage;
 use futures::StreamExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::runtime::Runtime;
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use serde::{Deserialize, Serialize};
@@ -114,6 +115,7 @@ struct RecorderState {
     started_at_ms: Option<u64>,
     flow: RecordedFlow,
     task: Option<JoinHandle<()>>,
+    stop: Option<oneshot::Sender<()>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -152,11 +154,25 @@ impl Recorder {
     }
 
     pub fn stop(&self) -> OpenPageResult<RecordedFlow> {
+        let (stop, task) = {
+            let mut state = self.lock()?;
+            (state.stop.take(), state.task.take())
+        };
+        if let Some(stop) = stop {
+            let _ = stop.send(());
+        }
+        if let (Some(runtime), Some(mut task)) = (&self.runtime, task) {
+            runtime.block_on(async {
+                if tokio::time::timeout(std::time::Duration::from_millis(250), &mut task)
+                    .await
+                    .is_err()
+                {
+                    task.abort();
+                }
+            });
+        }
         let mut state = self.lock()?;
         state.recording = false;
-        if let Some(task) = state.task.take() {
-            task.abort();
-        }
         Ok(state.flow.clone())
     }
 
@@ -221,9 +237,40 @@ impl Recorder {
             Ok::<_, OpenPageError>((events, navigations))
         })?;
         let recorder = self.clone();
+        let (stop, mut stopped) = oneshot::channel();
         let task = runtime.spawn(async move {
             loop {
                 tokio::select! {
+                    _ = &mut stopped => {
+                        loop {
+                            let pending = tokio::time::timeout(
+                                std::time::Duration::from_millis(10),
+                                async {
+                                    tokio::select! {
+                                        event = events.next() => Some((event, None)),
+                                        navigation = navigations.next() => Some((None, navigation)),
+                                    }
+                                },
+                            ).await;
+                            let Ok(Some((event, navigation))) = pending else { break };
+                            if event.is_none() && navigation.is_none() { break; }
+                            if let Some(event) = event
+                                && event.name == RECORDER_BINDING
+                                && let Ok(action) = serde_json::from_str::<RecordedAction>(&event.payload)
+                            {
+                                let _ = recorder.record(action);
+                            }
+                            if let Some(navigation) = navigation
+                                && navigation.frame.parent_id.is_none()
+                                && !navigation.frame.url.is_empty()
+                            {
+                                let _ = recorder.record(RecordedAction::Goto {
+                                    url: navigation.frame.url.clone(),
+                                });
+                            }
+                        }
+                        break;
+                    }
                     event = events.next() => {
                         let Some(event) = event else { break };
                         if event.name == RECORDER_BINDING {
@@ -241,7 +288,9 @@ impl Recorder {
                 }
             }
         });
-        self.lock()?.task = Some(task);
+        let mut state = self.lock()?;
+        state.task = Some(task);
+        state.stop = Some(stop);
         Ok(())
     }
 
