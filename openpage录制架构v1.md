@@ -1430,3 +1430,16 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 pas
 cargo fmt --all --manifest-path rust/Cargo.toml
 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
 ```
+
+## 里程碑 21：Windows Tauri 打包前置检查
+
+状态：**配置已补齐，构建环境阻断已明确**
+
+补充 `src-tauri/icons/icon.ico`，解决 Windows `tauri-build` 首个真实错误：缺少 Windows Resource 所需图标。当前 macOS 工作站已完成：
+
+```text
+npm run build --prefix desktop/openpage  # 通过
+cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml  # 通过
+```
+
+Windows target 检查已实际启动，但当前机器缺少 Windows 资源编译器 `llvm-rc`，因此不能把交叉检查结果冒充 Windows 构建通过。真正的 Windows 安装包验收必须在安装了 WebView2/Windows SDK/`llvm-rc` 的 Windows 构建机执行。
