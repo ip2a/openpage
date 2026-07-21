@@ -1628,3 +1628,16 @@ cargo clean --manifest-path desktop/openpage/src-tauri/Cargo.toml
 ```
 
 释放约 1.0 GiB。该次失败不修改跨平台 CI 的验收结论，原生安装包仍以对应 GitHub Actions runner 的实际结果为准。
+
+## 里程碑 32：低并发本机 Tauri bundle 复测
+
+状态：**仍被本机编译资源限制阻断**
+
+为排除并发过高导致的临时空间峰值，使用：
+
+```text
+CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 \
+npm run tauri --prefix desktop/openpage -- build --debug
+```
+
+React 构建再次成功，但 Tauri Rust 编译仍因 `No space left on device` 失败。随后再次清理 `desktop/openpage/src-tauri/target`。这说明当前机器的有效构建配额不足以完成本地 macOS bundle，不应继续反复消耗磁盘；跨平台 bundle 交给已提交的原生 CI 矩阵执行。
