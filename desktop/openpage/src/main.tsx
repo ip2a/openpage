@@ -7,6 +7,7 @@ type Target = { locator?: string; fallbacks?: string[] };
 type Step = { action?: string; target?: Target; [key: string]: unknown };
 type Flow = { version: number; steps: Step[] };
 type Result = { recording: boolean; step_count: number; started_at_ms?: number };
+type UrlResult = { url: string };
 
 async function call(session: string, op: string, params: unknown = null): Promise<unknown> {
   return invoke("recorder_call", { session, op, params });
@@ -36,6 +37,7 @@ function App() {
   const [session, setSession] = useState("default");
   const [status, setStatus] = useState<Result>({ recording: false, step_count: 0 });
   const [flow, setFlow] = useState<Flow>({ version: 1, steps: [] });
+  const [url, setUrl] = useState("");
   const [error, setError] = useState("");
 
   const refresh = async () => {
@@ -43,6 +45,7 @@ function App() {
       setError("");
       setStatus((await call(session, "recorder.status")) as Result);
       setFlow((await call(session, "recorder.steps")) as Flow);
+      setUrl(((await call(session, "webpage.url")) as UrlResult).url);
     } catch (value) {
       setError(String(value));
     }
@@ -90,7 +93,7 @@ function App() {
 
   return <main>
     <header><div><span className="eyebrow">OPENPAGE</span><h1>录制控制台</h1></div><span className={status.recording ? "badge live" : "badge"}>{status.recording ? "录制中" : "已停止"}</span></header>
-    <section className="session"><label>Session <input value={session} onChange={(event) => setSession(event.target.value)} /></label></section>
+    <section className="session"><label>Session <input value={session} onChange={(event) => setSession(event.target.value)} /></label><span className="current-url" title={url}>{url || "未连接"}</span></section>
     <section className="toolbar">
       <button onClick={() => void connect()}>启动/连接浏览器</button>
       <button className="primary" onClick={() => void run("recorder.start")} disabled={status.recording}>开始录制</button>

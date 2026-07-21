@@ -8,3 +8,4 @@ ol { list-style: none; padding: 0; margin: 0; } li { display: grid; grid-templat
 
 .session { margin-bottom: 12px; color: #9ba8bb; }.session input { margin-left: 8px; border: 1px solid #394557; border-radius: 6px; padding: 7px 9px; color: #e8edf5; background: #1b2330; }
 .step-body { min-width: 0; }.locator { width: 100%; box-sizing: border-box; border: 1px solid #394557; border-radius: 6px; padding: 7px 9px; color: #e8edf5; background: #1b2330; margin-bottom: 8px; }.step-actions { grid-column: 3; display: flex; gap: 6px; }.step-actions button { padding: 4px 8px; font-size: 12px; }
+.current-url { display: block; margin-top: 8px; color: #7f8ca3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

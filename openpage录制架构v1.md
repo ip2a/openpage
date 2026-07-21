@@ -1348,3 +1348,15 @@ v1 到此闭环。未纳入验收的能力继续保留为后续范围：原生�
 - stop 时异步事件 flush；
 - Tauri 原生文件选择器；
 - 更强的领域敏感字段识别。
+
+## 里程碑 16：桌面端当前 URL 展示
+
+状态：**已完成**
+
+桌面端刷新录制状态时同时调用现有 `webpage.url`，展示当前 OpenPage Chromium 页面地址。没有把 URL 探测放进 React 或新增 recorder 专用接口，继续复用 daemon 已有页面协议。
+
+验证：
+
+```text
+npm run build --prefix desktop/openpage  # 通过
+```
