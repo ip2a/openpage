@@ -1508,3 +1508,16 @@ cargo test --manifest-path rust/Cargo.toml -p openpage --lib
 ```
 
 结果：`713 passed; 24 failed`。失败集中在既有浏览器启动/daemon sidecar/运行时 Chromium 和跨进程环境测试；录制专用测试仍为 `4 passed; 0 failed`，且 Core、daemon、Desktop 的定向编译均通过。全量测试结果已保留，不能将定向测试结果扩大解释为整个 OpenPage 测试集无失败。
+
+## 里程碑 26：新 tab 归一化单元验收
+
+状态：**已完成**
+
+补充 Recorder 单元测试，验证新增 tab 事实到达后只给最近步骤设置 `wait_after: "new_tab"`，不新增伪造动作步骤。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 5 passed
+```

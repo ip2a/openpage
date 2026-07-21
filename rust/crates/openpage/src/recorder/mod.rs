@@ -540,6 +540,20 @@ mod tests {
     }
 
     #[test]
+    fn recorder_marks_new_tab_after_latest_step() {
+        let recorder = Recorder::default();
+        let target = RecordedTarget::new("css:a[target=_blank]");
+
+        recorder.start().unwrap();
+        recorder.record(RecordedAction::Click { target }).unwrap();
+        recorder.record_new_tab().unwrap();
+
+        let flow = recorder.stop().unwrap();
+        assert_eq!(flow.steps.len(), 1);
+        assert_eq!(flow.steps[0].wait_after, Some(RecordedWait::NewTab));
+    }
+
+    #[test]
     fn recorder_ignores_events_until_started_and_never_serializes_secret_values_as_text() {
         let recorder = Recorder::default();
         let target = RecordedTarget::new("css:input[type=password]");
