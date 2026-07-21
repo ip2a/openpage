@@ -1496,3 +1496,15 @@ PATH="/opt/homebrew/opt/llvm/bin:$PATH" cargo check --manifest-path desktop/open
 ```
 
 Windows target 已通过 Tauri Rust 交叉检查；此前的 `llvm-rc` 问题已通过使用本机 LLVM 工具链解决。Linux target 检查已启动，但 macOS 工作站没有 Linux GTK/WebKit sysroot，`pkg-config` 无法提供 `gdk-pixbuf`、`atk`、`cairo` 等原生依赖。因此 Linux 安装包仍必须在 Linux 构建机完成，不能把 macOS 交叉检查冒充 Linux 发布验收。
+
+## 里程碑 25：全量 Core 测试审计
+
+状态：**已完成录制范围审计**
+
+执行：
+
+```text
+cargo test --manifest-path rust/Cargo.toml -p openpage --lib
+```
+
+结果：`713 passed; 24 failed`。失败集中在既有浏览器启动/daemon sidecar/运行时 Chromium 和跨进程环境测试；录制专用测试仍为 `4 passed; 0 failed`，且 Core、daemon、Desktop 的定向编译均通过。全量测试结果已保留，不能将定向测试结果扩大解释为整个 OpenPage 测试集无失败。
