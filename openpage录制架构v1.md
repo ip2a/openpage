@@ -1229,7 +1229,7 @@ npm run build --prefix desktop/openpage       # 通过
 cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml  # 通过
 cargo fmt --all --manifest-path rust/Cargo.toml -- --check         # 通过
 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app # 通过
-cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib # 4 passed
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib # 5 passed
 ```
 
 当前仍未声称完成的事项：
@@ -1507,7 +1507,7 @@ Windows target 已通过 Tauri Rust 交叉检查；此前的 `llvm-rc` 问题已
 cargo test --manifest-path rust/Cargo.toml -p openpage --lib
 ```
 
-结果：`713 passed; 24 failed`。失败集中在既有浏览器启动/daemon sidecar/运行时 Chromium 和跨进程环境测试；录制专用测试仍为 `4 passed; 0 failed`，且 Core、daemon、Desktop 的定向编译均通过。全量测试结果已保留，不能将定向测试结果扩大解释为整个 OpenPage 测试集无失败。
+结果：`713 passed; 24 failed`。失败集中在既有浏览器启动/daemon sidecar/运行时 Chromium 和跨进程环境测试；录制专用测试仍为 `5 passed; 0 failed`，且 Core、daemon、Desktop 的定向编译均通过。全量测试结果已保留，不能将定向测试结果扩大解释为整个 OpenPage 测试集无失败。
 
 ## 里程碑 26：新 tab 归一化单元验收
 
