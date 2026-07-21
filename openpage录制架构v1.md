@@ -1554,3 +1554,16 @@ record status --session recorder-check12                           # recording=f
 ```
 
 daemon 日志没有出现 `Cannot start a runtime from within a runtime`。
+
+## 里程碑 28：桌面端最终构建复核
+
+状态：**已完成（当前 macOS 工作站可验证范围）**
+
+录制链路修复后重新验证桌面端，确认 React/Tauri 工程仍可构建：
+
+```text
+npm run build --prefix desktop/openpage  # 通过
+CARGO_INCREMENTAL=0 cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml  # 通过
+```
+
+本次未将 `dist`、Cargo target 或其他构建产物纳入 Git。Windows/Linux 原生安装包仍按里程碑 24 的环境边界，在对应原生构建机验收。
