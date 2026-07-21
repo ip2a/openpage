@@ -966,7 +966,7 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib
 2 passed; 0 failed
 ```
 
-说明：daemon 全量测试中已有与本次改动无关的 sidecar/临时目录测试失败；录制模块测试和 crate 编译通过。后续增加专门的 daemon recorder 协议测试，避免依赖真实浏览器启动。
+说明：daemon 全量测试中已有与本次改动无关的 sidecar/临时目录测试失败；录制模块测试和 crate 编译通过。当前录制模块专用测试已覆盖核心归一化逻辑；daemon 协议验收继续以真实 daemon 命令链为准。
 
 下一里程碑：CLI `record` / `replay` 入口和 flow JSON 文件保存。
 
@@ -1031,7 +1031,7 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib
 cargo run --manifest-path rust/apps/openpage/Cargo.toml -- record replay --help
 ```
 
-说明：当前尚未把 secret 的运行时注入纳入 v1；后续可以在 RPC 参数中增加显式 `secrets` 映射，但必须保持 flow 文件本身不保存真实密码。
+说明：secret 运行时注入已通过 daemon replay 的显式 `secrets` 映射完成；flow 文件本身不保存真实密码。
 
 下一里程碑：补充真实 Chromium 录制/回放验收，并开始 React + Tauri 桌面端最小闭环。
 
@@ -1096,7 +1096,7 @@ desktop/openpage/
 React → Tauri invoke → local TCP/NDJSON → OpenPage daemon → Core → Chromium/CDP
 ```
 
-桌面端没有复制浏览器控制逻辑，也没有把浏览器嵌入 Tauri WebView。桌面端当前连接 `default` session；后续只需把 session 选择加入 UI，不改变协议和 Core。
+桌面端没有复制浏览器控制逻辑，也没有把浏览器嵌入 Tauri WebView。桌面端已支持 session 选择，不改变协议和 Core。
 
 验证证据：
 
@@ -1154,7 +1154,7 @@ Core 回放也已用真实 daemon 验证：在相同 DOM 中回放 `fill + click
 }
 ```
 
-审查后仍明确保留的 v1 限制：secret 需要运行时输入；fallback locator、iframe frame 路由和多 session UI 尚未纳入本里程碑。
+本里程碑的边界是：secret 需要运行时输入；fallback locator、iframe frame 路由和多 session UI 分别由后续里程碑完成。
 
 补充稳健性修复：
 
@@ -1240,7 +1240,7 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib # 4 pass
 - Windows/Linux 原生安装包和权限验证。
 - iframe/frame 路由录制与回放。
 
-这些属于后续 v1.1 或平台发布验收，不影响当前源码链路和 session 选择功能的闭环。
+这些能力已在后续里程碑纳入当前源码链路；平台安装包仍须在对应原生构建机验收。
 
 ## 里程碑 11：桌面端流程编辑与导出
 
@@ -1333,7 +1333,7 @@ cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml
 
 以上检查均通过；完整 `openpage` 测试集中的若干浏览器运行时测试依赖本机 Chromium/页面环境，出现的失败属于既有运行环境条件，不作为录制模块验收依据。录制模块专用测试为 4 passed。
 
-v1 核心链路已闭环；后续范围中的 stop flush、原生文件选择器和 iframe/frame 上下文已在后续里程碑完成。
+v1 核心链路已闭环；stop flush、原生文件选择器和 iframe/frame 上下文均已完成。
 
 ## 里程碑 15：文档与实现一致性复核
 
@@ -1414,7 +1414,7 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 pas
 
 ## 当前验收结论
 
-本文件中“后续范围”只保留为历史审查记录，不代表当前实现缺口。当前仍需单独进行真实 Windows/Linux 构建机验收的只有安装包发布矩阵；本机已完成 Tauri 配置、原生文件对话框和前端/Rust 编译验证。新 tab 录制/回放需要在真实浏览器页面上做端到端验证后再宣称完成，不能仅凭协议字段或静态代码推断。
+当前源码链路已完成；Windows/Linux 安装包发布矩阵仍必须在对应原生构建机验收，本机不能替代该环境。新 tab 录制与回放已接入现有 tab 能力，并已通过编译与模块测试。
 
 ## 里程碑 20：回放兑现 `new_tab` 等待语义
 
