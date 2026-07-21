@@ -1610,3 +1610,21 @@ cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml  # 通过
 ```
 
 GitHub Actions 的三个原生 runner 尚未在本机执行，最终安装包结果以 workflow 运行结果为准。
+
+## 里程碑 31：本机 Tauri bundle 尝试审计
+
+状态：**构建入口有效，bundle 被本机磁盘空间阻断**
+
+实际执行：
+
+```text
+npm run tauri --prefix desktop/openpage -- build --debug
+```
+
+React `beforeBuildCommand` 成功执行；随后 macOS Tauri Rust bundle 编译因本机磁盘空间耗尽失败（`No space left on device`），不是源码或 Tauri 配置错误。已执行：
+
+```text
+cargo clean --manifest-path desktop/openpage/src-tauri/Cargo.toml
+```
+
+释放约 1.0 GiB。该次失败不修改跨平台 CI 的验收结论，原生安装包仍以对应 GitHub Actions runner 的实际结果为准。
