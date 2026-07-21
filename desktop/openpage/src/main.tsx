@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
@@ -11,6 +12,17 @@ type UrlResult = { url: string };
 
 async function call(session: string, op: string, params: unknown = null): Promise<unknown> {
   return invoke("recorder_call", { session, op, params });
+}
+
+async function saveFlowFile(flow: Flow) {
+  const path = await save({ defaultPath: "flow.json", filters: [{ name: "OpenPage Flow", extensions: ["json"] }] });
+  if (path) await invoke("save_flow", { path, content: JSON.stringify(flow, null, 2) });
+}
+
+async function openFlowFile(): Promise<Flow | null> {
+  const path = await open({ filters: [{ name: "OpenPage Flow", extensions: ["json"] }] });
+  if (typeof path !== "string") return null;
+  return JSON.parse(await invoke<string>("read_flow", { path }));
 }
 
 function download(name: string, content: string, type = "text/plain") {
@@ -99,7 +111,8 @@ function App() {
       <button className="primary" onClick={() => void run("recorder.start")} disabled={status.recording}>开始录制</button>
       <button onClick={() => void run("recorder.stop")} disabled={!status.recording}>停止录制</button>
       <button onClick={() => void run("recorder.replay")} disabled={!flow.steps.length}>回放</button>
-      <button onClick={() => download("flow.json", JSON.stringify(flow, null, 2), "application/json")}>保存 JSON</button>
+      <button onClick={() => void saveFlowFile(flow)}>保存 JSON</button>
+      <button onClick={() => void openFlowFile().then((next) => { if (next) setFlow(next); }).catch((value) => setError(String(value)))}>打开 JSON</button>
       <button onClick={() => download("flow.py", exportPython(flow))}>导出 Python</button>
       <button onClick={() => download("flow.rs", exportRust(flow))}>导出 Rust</button>
       <button onClick={() => download("replay-flow.sh", exportCli(flow))}>导出 CLI</button>

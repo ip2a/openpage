@@ -42,6 +42,16 @@ fn recorder_call(session: String, op: String, params: Value) -> Result<Value, St
 }
 
 #[tauri::command]
+fn save_flow(path: String, content: String) -> Result<(), String> {
+    fs::write(path, content).map_err(|e| format!("保存 flow 失败: {e}"))
+}
+
+#[tauri::command]
+fn read_flow(path: String) -> Result<String, String> {
+    fs::read_to_string(path).map_err(|e| format!("读取 flow 失败: {e}"))
+}
+
+#[tauri::command]
 fn ensure_browser(session: String) -> Result<Value, String> {
     let binary = std::env::var_os("OPENPAGE_BIN").unwrap_or_else(|| "openpage".into());
     let output = std::process::Command::new(binary)
@@ -62,7 +72,8 @@ fn ensure_browser(session: String) -> Result<Value, String> {
 
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![recorder_call, ensure_browser])
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![recorder_call, save_flow, read_flow, ensure_browser])
         .run(tauri::generate_context!())
         .expect("error while running OpenPage desktop");
 }

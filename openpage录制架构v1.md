@@ -1381,3 +1381,23 @@ cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
 cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
 ```
+
+## 里程碑 18：Tauri 原生 flow 文件打开与保存
+
+状态：**已完成**
+
+桌面端不再依赖 WebView 下载保存 flow：
+
+- 接入 Tauri Dialog plugin；
+- “保存 JSON”打开系统保存对话框，再由 Tauri Rust `save_flow` 写入用户选择路径；
+- 新增“打开 JSON”，通过系统打开对话框选择 flow，再由 Tauri Rust `read_flow` 读取；
+- 增加 `dialog:default` capability，保持 macOS/Windows/Linux 使用系统对话框的路径。
+
+浏览器下载导出仍保留用于 Python、Rust 和 CLI 示例文件；结构化 flow 的主保存/打开路径已切换为原生桌面能力。
+
+验证：
+
+```text
+npm run build --prefix desktop/openpage  # 通过
+cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml  # 通过
+```
