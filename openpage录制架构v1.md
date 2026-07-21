@@ -1581,3 +1581,32 @@ CARGO_INCREMENTAL=0 cargo test --manifest-path rust/Cargo.toml -p openpage --lib
 结果：`716 passed; 22 failed`，共 738 项测试。失败仍集中在已有的配置环境、daemon sidecar 临时目录、Chromium runtime、端口占用和页面运行时测试；录制专用测试未失败，仍为 `5 passed; 0 failed`。
 
 本结果不会被解释为全量测试通过，也不会把环境相关失败归因到 Recorder。录制验收继续同时依赖录制专用测试、Core 编译检查和真实 daemon CLI 链路。
+
+## 里程碑 30：桌面端跨平台 CI 验收入口
+
+状态：**源码与流水线已补齐，等待对应 CI runner 实际执行**
+
+为避免把 macOS 本机检查冒充 Windows/Linux 安装包验收，新增：
+
+```text
+.github/workflows/desktop-build.yml
+```
+
+流水线使用原生 runner 构建 Tauri 桌面端：
+
+- Ubuntu 24.04：安装 WebKitGTK/GTK 原生依赖后执行 `npm run tauri build`；
+- Windows：使用 Windows 原生 runner 执行 Tauri 构建；
+- macOS：使用 macOS 原生 runner 执行 Tauri 构建。
+
+同时补齐 `tauri.conf.json` 的 `beforeBuildCommand`，确保 CI 从干净 checkout 开始时先构建 React `dist`，不会依赖本地构建产物。
+
+本机验证：
+
+```text
+node JSON.parse 校验 tauri.conf.json       # 通过
+Ruby YAML 校验 desktop-build.yml           # 通过
+npm run build --prefix desktop/openpage     # 通过
+cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml  # 通过
+```
+
+GitHub Actions 的三个原生 runner 尚未在本机执行，最终安装包结果以 workflow 运行结果为准。
