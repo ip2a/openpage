@@ -1279,7 +1279,7 @@ npm run build --prefix desktop/openpage  # 通过
 ```text
 cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
-cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 5 passed
 ```
 
 ## 里程碑 13：敏感字段识别扩展
@@ -1299,7 +1299,7 @@ flow 仍只保存 `{ "secret": "..." }` 占位符，真实值只允许通过 rep
 
 ```text
 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
-cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 5 passed
 ```
 
 ## 里程碑 14：v1 成功标准最终审计
@@ -1331,7 +1331,7 @@ npm run build --prefix desktop/openpage
 cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml
 ```
 
-以上检查均通过；完整 `openpage` 测试集中的若干浏览器运行时测试依赖本机 Chromium/页面环境，出现的失败属于既有运行环境条件，不作为录制模块验收依据。录制模块专用测试为 4 passed。
+以上检查均通过；完整 `openpage` 测试集中的若干浏览器运行时测试依赖本机 Chromium/页面环境，出现的失败属于既有运行环境条件，不作为录制模块验收依据。录制模块专用测试为 5 passed。
 
 v1 核心链路已闭环；stop flush、原生文件选择器和 iframe/frame 上下文均已完成。
 
@@ -1373,7 +1373,7 @@ npm run build --prefix desktop/openpage  # 通过
 ```text
 cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
-cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 5 passed
 ```
 
 ## 里程碑 18：Tauri 原生 flow 文件打开与保存
@@ -1409,7 +1409,7 @@ cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml  # 通过
 ```text
 cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
-cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 5 passed
 ```
 
 ## 当前验收结论
@@ -1462,7 +1462,7 @@ Recorder 在绑定事件与主 frame 导航之外复用现有 `Browser::tab_ids(
 ```text
 cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
-cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 5 passed
 ```
 
 ## 里程碑 23：敏感字段识别补强
@@ -1482,7 +1482,7 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 pas
 ```text
 cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
-cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 5 passed
 ```
 
 ## 里程碑 24：跨平台 target 检查复核
@@ -1547,7 +1547,7 @@ CARGO_INCREMENTAL=0 cargo check --manifest-path rust/Cargo.toml -p openpage -p o
 browser start --session recorder-check12 --headless https://example.com  # 返回 session、port、target
 record start --session recorder-check12                            # recording=true
 record status --session recorder-check12                           # recording=true
- goto https://example.org --session recorder-check12                # 返回 loaded=true
+goto https://example.org --session recorder-check12                # 返回 loaded=true
 record steps --session recorder-check12                            # 返回 goto https://example.org/
 record stop --session recorder-check12                             # 返回同一条 goto 步骤
 record status --session recorder-check12                           # recording=false, step_count=1
