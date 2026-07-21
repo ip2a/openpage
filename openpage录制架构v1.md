@@ -1415,3 +1415,18 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 pas
 ## 当前验收结论
 
 本文件中“后续范围”只保留为历史审查记录，不代表当前实现缺口。当前仍需单独进行真实 Windows/Linux 构建机验收的只有安装包发布矩阵；本机已完成 Tauri 配置、原生文件对话框和前端/Rust 编译验证。新 tab 录制/回放需要在真实浏览器页面上做端到端验证后再宣称完成，不能仅凭协议字段或静态代码推断。
+
+## 里程碑 20：回放兑现 `new_tab` 等待语义
+
+状态：**已完成（回放侧）**
+
+回放遇到 `wait_after: "new_tab"` 时，复用现有 `WebPage::wait_for_new_tab`，以当前 tab target id 建立基线，等待新 tab 出现并调用现有 `activate_tab` 激活。没有新增 tab 管理器或第二套回放执行器。
+
+录制侧的新 tab 自动判定仍不能仅依赖当前页面的 binding/navigation 事件；它需要浏览器 target 生命周期事件或真实页面端到端采集验证。本里程碑只提交已经可验证的回放能力，不把未验证的自动录制宣称为完成。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
+```

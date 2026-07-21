@@ -4043,6 +4043,16 @@ fn replay_recorded_flow(state: &mut ServeWebPage, params: &Value) -> OpenPageRes
                 }
             }
         }
+        if step.wait_after == Some(RecordedWait::NewTab) {
+            let current_tab_id = state.page.target_id();
+            let target = state
+                .page
+                .wait_for_new_tab(Some(&current_tab_id), 30_000)?
+                .ok_or_else(|| {
+                    OpenPageError::Timeout("recorded new-tab wait timed out".to_string())
+                })?;
+            state.page.activate_tab(target.as_str())?;
+        }
         replayed += 1;
     }
     Ok(json!({"replayed": replayed, "version": flow.version}))
