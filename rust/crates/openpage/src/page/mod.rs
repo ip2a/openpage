@@ -4221,6 +4221,7 @@ impl Page {
     }
 
     pub(crate) fn with_browser(mut self, browser: Browser) -> Self {
+        self.recorder = self.recorder.clone().with_browser(browser.clone());
         self.browser = Some(browser);
         self
     }

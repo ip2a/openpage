@@ -1443,3 +1443,24 @@ cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml  # 通过
 ```
 
 Windows target 检查已实际启动，但当前机器缺少 Windows 资源编译器 `llvm-rc`，因此不能把交叉检查结果冒充 Windows 构建通过。真正的 Windows 安装包验收必须在安装了 WebView2/Windows SDK/`llvm-rc` 的 Windows 构建机执行。
+
+## 里程碑 22：录制侧新 tab 自动识别
+
+状态：**已完成（浏览器连接场景）**
+
+Recorder 在绑定事件与主 frame 导航之外复用现有 `Browser::tab_ids()` 做低频 target 列表观察：
+
+- 录制开始时建立当前 tab 列表基线；
+- 发现新增 tab 后，将最近一个已录制步骤标记为 `wait_after: "new_tab"`；
+- 回放侧继续复用 `wait_for_new_tab` 和 `activate_tab`；
+- 没有新增 tab 管理器、兼容层或第二套录制引擎。
+
+这是事实识别，不猜测新 tab 的业务 URL，也不把新 tab 伪造成额外的 `goto` 步骤。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
+cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
+```

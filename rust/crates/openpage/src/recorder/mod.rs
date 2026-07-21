@@ -11,6 +11,7 @@ use tokio::task::JoinHandle;
 
 use serde::{Deserialize, Serialize};
 
+use crate::browser::Browser;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::page::execute_page_command_async;
 
@@ -122,6 +123,7 @@ struct RecorderState {
 pub struct Recorder {
     runtime: Option<Arc<Runtime>>,
     page: Option<OxPage>,
+    browser: Option<Browser>,
     state: Arc<Mutex<RecorderState>>,
 }
 
@@ -130,8 +132,14 @@ impl Recorder {
         Self {
             runtime: Some(runtime),
             page: Some(page),
+            browser: None,
             state: Arc::new(Mutex::new(RecorderState::default())),
         }
+    }
+
+    pub(crate) fn with_browser(mut self, browser: Browser) -> Self {
+        self.browser = Some(browser);
+        self
     }
 
     pub fn start(&self) -> OpenPageResult<()> {
@@ -216,11 +224,24 @@ impl Recorder {
         Ok(true)
     }
 
+    fn record_new_tab(&self) -> OpenPageResult<()> {
+        let mut state = self.lock()?;
+        if !state.recording {
+            return Ok(());
+        }
+        if let Some(step) = state.flow.steps.last_mut() {
+            step.wait_after = Some(RecordedWait::NewTab);
+        }
+        Ok(())
+    }
+
     fn start_page_listener(&self) -> OpenPageResult<()> {
         let (runtime, page) = match (&self.runtime, &self.page) {
             (Some(runtime), Some(page)) => (Arc::clone(runtime), page.clone()),
             _ => return Ok(()),
         };
+        let browser = self.browser.clone();
+        let initial_tabs = browser.as_ref().and_then(|browser| browser.tab_ids().ok());
         let (mut events, mut navigations) = runtime.block_on(async {
             let events = page.event_listener::<EventBindingCalled>().await
                 .map_err(|err| OpenPageError::PageOperation(format!("register recorder listener: {err}")))?;
@@ -239,6 +260,8 @@ impl Recorder {
         let recorder = self.clone();
         let (stop, mut stopped) = oneshot::channel();
         let task = runtime.spawn(async move {
+            let mut tab_poll = tokio::time::interval(std::time::Duration::from_millis(100));
+            let mut known_tabs = initial_tabs.unwrap_or_default();
             loop {
                 tokio::select! {
                     _ = &mut stopped => {
@@ -270,6 +293,15 @@ impl Recorder {
                             }
                         }
                         break;
+                    }
+                    _ = tab_poll.tick(), if browser.is_some() => {
+                        if let Some(browser) = browser.as_ref()
+                            && let Ok(tabs) = browser.tab_ids()
+                            && tabs.iter().any(|tab| !known_tabs.contains(tab))
+                        {
+                            let _ = recorder.record_new_tab();
+                            known_tabs = tabs;
+                        }
                     }
                     event = events.next() => {
                         let Some(event) = event else { break };
