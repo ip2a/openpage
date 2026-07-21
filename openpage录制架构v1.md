@@ -1522,7 +1522,7 @@ cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
 cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 5 passed
 ```
 
-## 里程碑 27：录制启动运行时审查（进行中）
+## 里程碑 27：录制启动运行时审查
 
 本轮审查发现，Recorder 启动路径会在 daemon 的 Tokio 异步处理线程中调用 Chromiumoxide 的同步包装 API。直接调用 `runtime.block_on(...)` 或 `Browser::tab_ids()` 会触发 `Cannot start a runtime from within a runtime`，并可能阻塞后续 RPC。
 
@@ -1541,4 +1541,16 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 5 pas
 CARGO_INCREMENTAL=0 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
 ```
 
-真实 daemon/CLI 链路仍需在新进程上复测；在完成前，不能宣称“真实录制启动与后续 RPC 已通过”。
+真实 daemon/CLI 链路已在新进程上复测通过。验证命令使用已构建的 `rust/target/debug/openpage`，避免把 Cargo 编译耗时混入运行验证：
+
+```text
+browser start --session recorder-check12 --headless https://example.com  # 返回 session、port、target
+record start --session recorder-check12                            # recording=true
+record status --session recorder-check12                           # recording=true
+ goto https://example.org --session recorder-check12                # 返回 loaded=true
+record steps --session recorder-check12                            # 返回 goto https://example.org/
+record stop --session recorder-check12                             # 返回同一条 goto 步骤
+record status --session recorder-check12                           # recording=false, step_count=1
+```
+
+daemon 日志没有出现 `Cannot start a runtime from within a runtime`。

@@ -170,14 +170,19 @@ impl Recorder {
             let _ = stop.send(());
         }
         if let (Some(runtime), Some(mut task)) = (&self.runtime, task) {
-            runtime.block_on(async {
+            let wait = async {
                 if tokio::time::timeout(std::time::Duration::from_millis(250), &mut task)
                     .await
                     .is_err()
                 {
                     task.abort();
                 }
-            });
+            };
+            if tokio::runtime::Handle::try_current().is_ok() {
+                tokio::task::block_in_place(|| runtime.block_on(wait));
+            } else {
+                runtime.block_on(wait);
+            }
         }
         let mut state = self.lock()?;
         state.recording = false;
