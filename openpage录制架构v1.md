@@ -1464,3 +1464,23 @@ cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
 cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
 ```
+
+## 里程碑 23：敏感字段识别补强
+
+状态：**已完成**
+
+在原有 password、OTP、token、API key、信用卡字段启发式之外，录制脚本补充识别：
+
+- `cc-number`、卡号缩写和安全码字段；
+- credential、auth code、private key 等字段元数据；
+- `data-sensitive="true"` 与 `data-secret` 页面显式标记。
+
+仍保持保守策略：识别到的值只写入 `RecordedValue::Secret` 占位符，真实值只能通过 replay 的运行时 `secrets` 注入；无法从 DOM 元数据判断的业务敏感值不会被猜测。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
+cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
+```

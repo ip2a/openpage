@@ -425,7 +425,9 @@ const RECORDER_SCRIPT: &str = r#"(() => {
     if (element.type === "password" || /pass(word)?/.test(metadata)) return "PASSWORD";
     if (/otp|one[-_ ]?time|verification/.test(metadata)) return "OTP";
     if (/token|secret|api[-_ ]?key/.test(metadata)) return "TOKEN";
-    if (/credit|card[-_ ]?number/.test(metadata)) return "CARD_NUMBER";
+    if (/credit|card[-_ ]?number|cc[-_ ]?(number|num)|cvv|cvc|security[-_ ]?code/.test(metadata)) return "CARD_NUMBER";
+    if (/secret|credential|auth[-_ ]?code|private[-_ ]?key/.test(metadata)) return "TOKEN";
+    if (element.dataset.sensitive === "true" || element.getAttribute("data-secret") !== null) return "TOKEN";
     return null;
   };
   document.addEventListener("click", (event) => {
