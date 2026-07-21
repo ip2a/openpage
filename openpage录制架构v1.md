@@ -1567,3 +1567,17 @@ CARGO_INCREMENTAL=0 cargo check --manifest-path desktop/openpage/src-tauri/Cargo
 ```
 
 本次未将 `dist`、Cargo target 或其他构建产物纳入 Git。Windows/Linux 原生安装包仍按里程碑 24 的环境边界，在对应原生构建机验收。
+
+## 里程碑 29：Core 全量测试结果复核
+
+状态：**已完成审计，非录制阻断项已明确**
+
+在最新代码状态下重新执行：
+
+```text
+CARGO_INCREMENTAL=0 cargo test --manifest-path rust/Cargo.toml -p openpage --lib
+```
+
+结果：`716 passed; 22 failed`，共 738 项测试。失败仍集中在已有的配置环境、daemon sidecar 临时目录、Chromium runtime、端口占用和页面运行时测试；录制专用测试未失败，仍为 `5 passed; 0 failed`。
+
+本结果不会被解释为全量测试通过，也不会把环境相关失败归因到 Recorder。录制验收继续同时依赖录制专用测试、Core 编译检查和真实 daemon CLI 链路。
