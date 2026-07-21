@@ -1521,3 +1521,24 @@ cargo test --manifest-path rust/Cargo.toml -p openpage --lib
 cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
 cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 5 passed
 ```
+
+## 里程碑 27：录制启动运行时审查（进行中）
+
+本轮审查发现，Recorder 启动路径会在 daemon 的 Tokio 异步处理线程中调用 Chromiumoxide 的同步包装 API。直接调用 `runtime.block_on(...)` 或 `Browser::tab_ids()` 会触发 `Cannot start a runtime from within a runtime`，并可能阻塞后续 RPC。
+
+当前修复方向保持最小化：
+
+- 录制初始化阶段，在已有异步 runtime 中使用 `block_in_place` 包裹必要的同步等待；
+- `Browser::tab_ids()` 放入现有 Tokio runtime 的 `spawn_blocking`，避免把同步 CDP 等待阻塞 daemon worker；
+- 页面 URL 观察继续使用已有异步 `page.url().await`；
+- 不新增 Recorder、TabManager、Adapter 或第二套事件系统。
+
+已经验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 5 passed
+CARGO_INCREMENTAL=0 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
+```
+
+真实 daemon/CLI 链路仍需在新进程上复测；在完成前，不能宣称“真实录制启动与后续 RPC 已通过”。

@@ -241,27 +241,60 @@ impl Recorder {
             _ => return Ok(()),
         };
         let browser = self.browser.clone();
-        let initial_tabs = browser.as_ref().and_then(|browser| browser.tab_ids().ok());
-        let (mut events, mut navigations) = runtime.block_on(async {
-            let events = page.event_listener::<EventBindingCalled>().await
-                .map_err(|err| OpenPageError::PageOperation(format!("register recorder listener: {err}")))?;
-            execute_page_command_async(&page, AddBindingParams::new(RECORDER_BINDING), "add recorder binding").await?;
+        let initial_tabs = browser.as_ref().and_then(|browser| {
+            let browser = browser.clone();
+            let read = || async move {
+                tokio::task::spawn_blocking(move || browser.tab_ids().ok())
+                    .await
+                    .ok()
+                    .flatten()
+            };
+            if tokio::runtime::Handle::try_current().is_ok() {
+                tokio::task::block_in_place(|| runtime.block_on(read()))
+            } else {
+                runtime.block_on(read())
+            }
+        });
+        let register = || async {
+            let events = page
+                .event_listener::<EventBindingCalled>()
+                .await
+                .map_err(|err| {
+                    OpenPageError::PageOperation(format!("register recorder listener: {err}"))
+                })?;
+            execute_page_command_async(
+                &page,
+                AddBindingParams::new(RECORDER_BINDING),
+                "add recorder binding",
+            )
+            .await?;
             execute_page_command_async(
                 &page,
                 chromiumoxide::cdp::browser_protocol::page::AddScriptToEvaluateOnNewDocumentParams::new(RECORDER_SCRIPT),
                 "install recorder script",
             ).await?;
-            page.evaluate(RECORDER_SCRIPT).await
-                .map_err(|err| OpenPageError::PageOperation(format!("install recorder script: {err}")))?;
-            let navigations = page.event_listener::<EventFrameNavigated>().await
-                .map_err(|err| OpenPageError::PageOperation(format!("register navigation listener: {err}")))?;
+            page.evaluate(RECORDER_SCRIPT).await.map_err(|err| {
+                OpenPageError::PageOperation(format!("install recorder script: {err}"))
+            })?;
+            let navigations =
+                page.event_listener::<EventFrameNavigated>()
+                    .await
+                    .map_err(|err| {
+                        OpenPageError::PageOperation(format!("register navigation listener: {err}"))
+                    })?;
             Ok::<_, OpenPageError>((events, navigations))
-        })?;
+        };
+        let (mut events, mut navigations) = if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::block_in_place(|| runtime.block_on(register()))?
+        } else {
+            runtime.block_on(register())?
+        };
         let recorder = self.clone();
         let (stop, mut stopped) = oneshot::channel();
         let task = runtime.spawn(async move {
             let mut tab_poll = tokio::time::interval(std::time::Duration::from_millis(100));
             let mut known_tabs = initial_tabs.unwrap_or_default();
+            let mut last_url = page.url().await.ok().flatten();
             loop {
                 tokio::select! {
                     _ = &mut stopped => {
@@ -294,13 +327,23 @@ impl Recorder {
                         }
                         break;
                     }
-                    _ = tab_poll.tick(), if browser.is_some() => {
+                    _ = tab_poll.tick() => {
                         if let Some(browser) = browser.as_ref()
-                            && let Ok(tabs) = browser.tab_ids()
+                            && let Ok(Ok(tabs)) = tokio::task::spawn_blocking({
+                                let browser = browser.clone();
+                                move || browser.tab_ids()
+                            }).await
                             && tabs.iter().any(|tab| !known_tabs.contains(tab))
                         {
                             let _ = recorder.record_new_tab();
                             known_tabs = tabs;
+                        }
+                        if let Ok(Some(url)) = page.url().await
+                            && !url.is_empty()
+                            && last_url.as_deref() != Some(url.as_str())
+                        {
+                            let _ = recorder.record(RecordedAction::Goto { url: url.clone() });
+                            last_url = Some(url);
                         }
                     }
                     event = events.next() => {
@@ -314,6 +357,7 @@ impl Recorder {
                     navigation = navigations.next() => {
                         let Some(navigation) = navigation else { break };
                         if navigation.frame.parent_id.is_none() && !navigation.frame.url.is_empty() {
+                            last_url = Some(navigation.frame.url.clone());
                             let _ = recorder.record(RecordedAction::Goto { url: navigation.frame.url.clone() });
                         }
                     }
