@@ -151,6 +151,21 @@ impl ServeWebPage {
 
     fn current_frame(&self) -> OpenPageResult<Option<WebFrame>> {
         match self.active_frame_target.as_deref() {
+            Some(target) if target.starts_with("frames:") => {
+                let mut frames = target
+                    .strip_prefix("frames:")
+                    .unwrap_or_default()
+                    .split('\u{1f}');
+                let first = frames.next().filter(|value| !value.is_empty());
+                let mut current = match first {
+                    Some(locator) => self.page.get_frame_context(locator)?,
+                    None => return Ok(None),
+                };
+                for locator in frames {
+                    current = current.get_frame_context(locator)?;
+                }
+                Ok(Some(current))
+            }
             Some(target) if !target.is_empty() => {
                 if let Some(frame_id) = target.strip_prefix("id:") {
                     return self
@@ -3938,6 +3953,20 @@ fn wait_for_locator(
     }
 }
 
+fn step_target_frames(action: &RecordedAction) -> Option<&[String]> {
+    match action {
+        RecordedAction::Click { target }
+        | RecordedAction::Fill { target, .. }
+        | RecordedAction::Select { target, .. }
+        | RecordedAction::Check { target, .. } => Some(&target.frames),
+        RecordedAction::Press {
+            target: Some(target),
+            ..
+        } => Some(&target.frames),
+        RecordedAction::Goto { .. } | RecordedAction::Press { target: None, .. } => None,
+    }
+}
+
 fn replay_recorded_flow(state: &mut ServeWebPage, params: &Value) -> OpenPageResult<Value> {
     let flow_value = params
         .get("flow")
@@ -3964,6 +3993,12 @@ fn replay_recorded_flow(state: &mut ServeWebPage, params: &Value) -> OpenPageRes
     };
     let mut replayed = 0;
     for step in flow.steps {
+        if step_target_frames(&step.action).is_some() {
+            let frames = step_target_frames(&step.action).unwrap_or_default();
+            state.switch_frame(Some(format!("frames:{}", frames.join("\u{1f}"))));
+        } else {
+            state.clear_frame();
+        }
         match step.action {
             RecordedAction::Goto { url } => {
                 state.page.goto(&url)?;

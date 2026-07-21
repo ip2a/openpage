@@ -370,7 +370,22 @@ const RECORDER_SCRIPT: &str = r#"(() => {
     }
     return `css:${parts.join(" > ")}`;
   };
-  const target = (element) => ({ locator: locator(element) });
+  const frameContext = () => {
+    const frames = [];
+    let current = window;
+    while (current !== current.parent) {
+      try {
+        const frame = current.frameElement;
+        if (!frame) break;
+        frames.unshift(locator(frame));
+        current = current.parent;
+      } catch (_) {
+        break;
+      }
+    }
+    return frames;
+  };
+  const target = (element) => ({ locator: locator(element), frames: frameContext() });
   const sensitiveKey = (element) => {
     const metadata = [element.type, element.autocomplete, element.name, element.id,
       element.getAttribute("aria-label"), element.getAttribute("placeholder")]

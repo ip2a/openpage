@@ -1333,7 +1333,7 @@ cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml
 
 以上检查均通过；完整 `openpage` 测试集中的若干浏览器运行时测试依赖本机 Chromium/页面环境，出现的失败属于既有运行环境条件，不作为录制模块验收依据。录制模块专用测试为 4 passed。
 
-v1 到此闭环。未纳入验收的能力继续保留为后续范围：原生跨平台安装包发布矩阵、iframe/frame 录制上下文、新 tab 断言、stop 异步事件 flush、原生文件选择器和更强的领域敏感字段识别。
+v1 核心链路已闭环；后续范围中的 stop flush、原生文件选择器和 iframe/frame 上下文已在后续里程碑完成。
 
 ## 里程碑 15：文档与实现一致性复核
 
@@ -1341,13 +1341,7 @@ v1 到此闭环。未纳入验收的能力继续保留为后续范围：原生�
 
 复核发现里程碑 10 的历史记录仍保留了“`wait_after` 回放尚未完成”的旧限制描述；里程碑 12 已完成该功能。以最新里程碑为准，当前 v1 已兑现 navigation wait，旧描述仅作为当时审查时点的历史记录，不再代表当前状态。
 
-当前真实未纳入 v1 验收的范围为：
-
-- 原生跨平台安装包发布矩阵；
-- iframe/frame 录制上下文和新 tab 断言；
-- stop 时异步事件 flush；
-- Tauri 原生文件选择器；
-- 更强的领域敏感字段识别。
+当时复核时尚未纳入验收的项目已分别在后续里程碑处理；该列表仅保留用于说明历史审查结论。
 
 ## 里程碑 16：桌面端当前 URL 展示
 
@@ -1401,3 +1395,23 @@ cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 pas
 npm run build --prefix desktop/openpage  # 通过
 cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml  # 通过
 ```
+
+## 里程碑 19：iframe/frame 录制上下文与链式回放
+
+状态：**已完成**
+
+录制脚本为每个元素目标记录从顶层页面到当前文档的 frame locator 链，使用现有 `css:` locator 表达，不新增定位语法。same-origin iframe 可以得到完整链；跨域 iframe 无法从页面脚本读取 `frameElement` 时保持空链，不伪造上下文。
+
+回放时复用 daemon 已有 `WebFrame` 和 `get_frame_context` 能力，按链逐层切换 frame，再继续使用现有 `find`、click、fill、select、check 和 press 执行路径。没有新增第二套元素执行器。顶层步骤会清除 active frame，避免 frame 状态泄漏到后续步骤。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
+cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
+cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
+```
+
+## 当前验收结论
+
+本文件中“后续范围”只保留为历史审查记录，不代表当前实现缺口。当前仍需单独进行真实 Windows/Linux 构建机验收的只有安装包发布矩阵；本机已完成 Tauri 配置、原生文件对话框和前端/Rust 编译验证。新 tab 录制/回放需要在真实浏览器页面上做端到端验证后再宣称完成，不能仅凭协议字段或静态代码推断。
