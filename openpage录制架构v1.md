@@ -1484,3 +1484,15 @@ cargo fmt --all --manifest-path rust/Cargo.toml -- --check  # 通过
 cargo check --manifest-path rust/Cargo.toml -p openpage -p openpage-app  # 通过
 cargo test --manifest-path rust/Cargo.toml -p openpage recorder:: --lib  # 4 passed
 ```
+
+## 里程碑 24：跨平台 target 检查复核
+
+状态：**已验证当前工作站可验证范围**
+
+补充验证结果：
+
+```text
+PATH="/opt/homebrew/opt/llvm/bin:$PATH" cargo check --manifest-path desktop/openpage/src-tauri/Cargo.toml --target x86_64-pc-windows-msvc  # 通过
+```
+
+Windows target 已通过 Tauri Rust 交叉检查；此前的 `llvm-rc` 问题已通过使用本机 LLVM 工具链解决。Linux target 检查已启动，但 macOS 工作站没有 Linux GTK/WebKit sysroot，`pkg-config` 无法提供 `gdk-pixbuf`、`atk`、`cairo` 等原生依赖。因此 Linux 安装包仍必须在 Linux 构建机完成，不能把 macOS 交叉检查冒充 Linux 发布验收。
