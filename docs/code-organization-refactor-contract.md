@@ -296,3 +296,11 @@ element_list/mod.rs
 - `cargo fmt --check`：通过；
 - `cargo check`：通过；
 - Rust：`738 + 206 = 944` 个测试通过。
+
+### 2026-07-22 Page cookies 里程碑
+
+- 已新增 `page/cookies.rs`，原样迁移 `Page::cookie_header` 与 `Page::cookies`；
+- 方法签名多重集合与基线一致，公开方法无新增、无丢失；
+- `cargo fmt --check`：通过；
+- `cargo check`：通过；
+- Rust：`738 + 206 = 944` 个测试通过。
