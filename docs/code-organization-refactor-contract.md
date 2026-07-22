@@ -88,6 +88,7 @@ covered_by: <test names>
 | 创建、关闭、销毁、状态检查 | `page/lifecycle.rs` | 资源释放、重复关闭、连接状态 |
 | Frame 操作及其滚动、设置、状态、等待、矩形包装 | `page/frame.rs` | Frame 归属、元素上下文、等待和坐标语义 |
 | Page 滚动与设置包装 | `page/settings.rs` | 设置委托、Cookie/窗口/加载模式及链式返回语义 |
+| Page 核心运行操作 | `page/operations.rs` | 查询、脚本、Frame 查找、存储及内部调用语义 |
 | 类型、字段、构造函数、模块导出 | `page/mod.rs` | 可见性和公共 API |
 
 ### 4.2 WebPage
@@ -420,6 +421,17 @@ element_list/mod.rs
 ### 2026-07-22 Page settings 里程碑
 
 - 已新增 `page/settings.rs`，原样迁移 Page 滚动包装以及 Page、Cookie、窗口和加载模式设置包装共 48 个方法；
+- 公开符号对比：590 / 590，无新增、无丢失；
+- 函数签名对比：946 / 946，无新增、无丢失；
+- `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
+- Rust：`738 + 206 = 944` 个测试通过。
+
+
+### 2026-07-22 Page operations 里程碑
+
+- 已新增 `page/operations.rs`，原样迁移 `Page` 的 168 个非构造方法；`new`、`new_with_load_mode` 和 3 个内部构造入口仍保留在 `page/mod.rs`；
+- 为允许已有兄弟模块继续调用，19 个原私有内部方法仅将可见性调整为契约允许的 `pub(super)`，函数体与签名参数未改写；
+- `page/mod.rs` 从 5,137 行降至 2,817 行，现主要保留类型、字段、转换、构造函数和模块导出；
 - 公开符号对比：590 / 590，无新增、无丢失；
 - 函数签名对比：946 / 946，无新增、无丢失；
 - `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
