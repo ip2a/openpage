@@ -320,3 +320,11 @@ element_list/mod.rs
 - 函数签名对比：946 / 946，无新增、无丢失；
 - `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
 - Rust：`738 + 206 = 944` 个测试通过。
+
+### 2026-07-22 Page lifecycle 里程碑
+
+- 已新增 `page/lifecycle.rs`，原样迁移 10 个浏览器关联、连接、断开、退出和存活检查方法；构造函数仍保留在 `page/mod.rs`；
+- 公开符号对比：590 / 590，无新增、无丢失；
+- 函数签名对比：946 / 946，无新增、无丢失；
+- `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
+- Rust 完整测试首次为 943 / 944：`page_actions_type_supports_modifier_events_and_interval_at_runtime` 在关闭无头浏览器时发生 30 秒超时；该失败用例随即单独重跑通过，未修改业务或测试代码。
