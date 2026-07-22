@@ -312,3 +312,11 @@ element_list/mod.rs
 - 函数签名对比：946 / 946，无新增、无丢失；
 - `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
 - Rust：`738 + 206 = 944` 个测试通过。
+
+### 2026-07-22 Page dialogs 里程碑
+
+- 已新增 `page/dialogs.rs`，原样迁移 6 个 alert、confirm、prompt 处理与等待方法；
+- 公开符号对比：590 / 590，无新增、无丢失；
+- 函数签名对比：946 / 946，无新增、无丢失；
+- `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
+- Rust：`738 + 206 = 944` 个测试通过。
