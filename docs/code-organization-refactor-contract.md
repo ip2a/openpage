@@ -85,6 +85,7 @@ covered_by: <test names>
 | 截图和图片输出 | `page/screenshot.rs` | 格式、尺寸、输出路径 |
 | alert、confirm、prompt | `page/dialogs.rs` | 监听注册、响应时序、超时 |
 | 创建、关闭、销毁、状态检查 | `page/lifecycle.rs` | 资源释放、重复关闭、连接状态 |
+| Frame 操作及其滚动、设置、状态、等待、矩形包装 | `page/frame.rs` | Frame 归属、元素上下文、等待和坐标语义 |
 | 类型、字段、构造函数、模块导出 | `page/mod.rs` | 可见性和公共 API |
 
 ### 4.2 WebPage
@@ -391,5 +392,15 @@ element_list/mod.rs
 - 已新增 `webpage/extraction.rs`，原样迁移 URL、标题、User-Agent、文本和属性读取 5 个方法；
 - 公开符号对比：817 / 817，无新增、无丢失；
 - 函数签名对比：985 / 985，无新增、无丢失；
+- `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
+- Rust：`738 + 206 = 944` 个测试通过。
+
+
+### 2026-07-22 Page frame 里程碑
+
+- 已新增 `page/frame.rs`，原样迁移 `Frame` 除构造函数外的 218 个方法，以及 Frame 的滚动、设置、Cookie、状态、等待和矩形包装实现；`Frame::new` 仍保留在 `page/mod.rs`；
+- `page/mod.rs` 从 7,905 行降至 5,901 行，未改写 Frame 业务逻辑；
+- 公开符号对比：590 / 590，无新增、无丢失；
+- 函数签名对比：946 / 946，无新增、无丢失；
 - `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
 - Rust：`738 + 206 = 944` 个测试通过。
