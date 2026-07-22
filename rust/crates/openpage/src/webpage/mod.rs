@@ -1,5 +1,6 @@
 mod assets;
 mod cookies;
+mod extraction;
 mod html;
 mod parsing;
 mod request;
@@ -4719,34 +4720,6 @@ impl WebPage {
         self.session.download(url)
     }
 
-    pub fn url(&self) -> OpenPageResult<Option<String>> {
-        match self.mode()? {
-            WebMode::Driver => {
-                let url = self.driver.url()?;
-                if url.is_empty() {
-                    Ok(None)
-                } else {
-                    Ok(Some(url))
-                }
-            }
-            WebMode::Session => self.session.url(),
-        }
-    }
-
-    pub fn title(&self) -> OpenPageResult<Option<String>> {
-        match self.mode()? {
-            WebMode::Driver => {
-                let title = self.driver.title()?;
-                if title.is_empty() {
-                    Ok(None)
-                } else {
-                    Ok(Some(title))
-                }
-            }
-            WebMode::Session => self.session.title(),
-        }
-    }
-
     pub fn browser(&self) -> Option<&Browser> {
         Some(&self.browser)
     }
@@ -4765,13 +4738,6 @@ impl WebPage {
 
     pub fn address(&self) -> OpenPageResult<String> {
         self.driver.address()
-    }
-
-    pub fn user_agent(&self) -> OpenPageResult<Option<String>> {
-        match self.mode()? {
-            WebMode::Driver => Ok(Some(self.driver.user_agent()?)),
-            WebMode::Session => self.session.user_agent(),
-        }
     }
 
     pub fn evaluate(&self, expression: &str) -> OpenPageResult<Value> {
@@ -5330,22 +5296,6 @@ impl WebPage {
     {
         self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
             .input(text)
-    }
-
-    pub fn text<'a, L>(&self, locator: L) -> OpenPageResult<Option<String>>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
-            .text()
-    }
-
-    pub fn attr<'a, L>(&self, locator: L, name: &str) -> OpenPageResult<Option<String>>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
-            .attr(name)
     }
 
     pub fn active_element(&self) -> OpenPageResult<Option<WebElement>> {
