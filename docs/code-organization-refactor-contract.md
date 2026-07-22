@@ -328,3 +328,12 @@ element_list/mod.rs
 - 函数签名对比：946 / 946，无新增、无丢失；
 - `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
 - Rust 完整测试首次为 943 / 944：`page_actions_type_supports_modifier_events_and_interval_at_runtime` 在关闭无头浏览器时发生 30 秒超时；该失败用例随即单独重跑通过，未修改业务或测试代码。
+
+### 2026-07-22 WebPage tests 里程碑
+
+- 已将 `webpage/mod.rs` 中完整的内联测试模块原样迁移到 `webpage/tests.rs`，父模块仅保留 `#[cfg(test)] mod tests;`；
+- `webpage/mod.rs` 从 14,393 行降至 7,390 行，生产代码逻辑未改写；
+- 公开符号对比：817 / 817，无新增、无丢失；
+- 函数签名对比：985 / 985，无新增、无丢失；两个测试局部函数仅由 `rustfmt` 去除末尾参数逗号，签名语义未变；
+- `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
+- Rust：`738 + 206 = 944` 个测试通过。
