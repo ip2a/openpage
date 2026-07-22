@@ -102,6 +102,7 @@ covered_by: <test names>
 | 文本、链接、表格等提取 | `webpage/extraction.rs` | 返回结构和空值语义 |
 | Cookie jar 和 Cookie header | `webpage/cookies.rs` | domain、过期和隔离 |
 | 图片、脚本、样式等资源 | `webpage/assets.rs` | URL 解析、下载错误 |
+| WebFrame 混合模式操作 | `webpage/frame.rs` | Driver/Session 上下文、Frame 归属与包装返回类型 |
 | 类型、构造函数、导出 | `webpage/mod.rs` | 可见性和公共 API |
 
 ## 5. 每个拆分提交的强制流程
@@ -434,5 +435,15 @@ element_list/mod.rs
 - `page/mod.rs` 从 5,137 行降至 2,817 行，现主要保留类型、字段、转换、构造函数和模块导出；
 - 公开符号对比：590 / 590，无新增、无丢失；
 - 函数签名对比：946 / 946，无新增、无丢失；
+- `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
+- Rust：`738 + 206 = 944` 个测试通过。
+
+
+### 2026-07-22 WebPage frame 里程碑
+
+- 已新增 `webpage/frame.rs`，原样迁移 `WebFrame` 的 224 个混合模式 Frame 方法；
+- `webpage/mod.rs` 从 6,889 行降至 5,411 行，未改写 Driver/Session 分派逻辑；
+- 公开符号对比：817 / 817，无新增、无丢失；
+- 函数签名对比：985 / 985，无新增、无丢失；
 - `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
 - Rust：`738 + 206 = 944` 个测试通过。
