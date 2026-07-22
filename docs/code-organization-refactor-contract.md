@@ -237,7 +237,7 @@ element_list/mod.rs
 |---|---|---|---|
 | 建立整理契约 | 已完成 | 文档已落盘 | 本里程碑提交 |
 | 建立 page/webpage 符号基线 | 已完成 | `cargo check`、944 个 Rust 测试、MCP、Python 兼容测试、桌面构建通过；Python 集成套件 1 个下载时序用例首次失败，单独重跑通过 | 本里程碑提交 |
-| 拆分 page | 未开始 | - | - |
+| 拆分 page | 进行中 | navigation 已完成；公开符号与函数签名无丢失；944 个 Rust 测试通过 | navigation 里程碑提交 |
 | 拆分 webpage | 未开始 | - | - |
 | 全量验收 | 未开始 | - | - |
 
@@ -256,3 +256,14 @@ element_list/mod.rs
 - Python 兼容测试：89 个通过；
 - Python 集成测试：66 个中 1 个下载开始时序用例首次失败；该用例单独重跑通过，记录为现有时序波动，不在整理提交中修改；
 - 桌面 TypeScript/Vite 生产构建：通过。
+
+### 2026-07-22 Page navigation 里程碑
+
+- 已新增 `page/navigation.rs`，原样迁移 15 个导航相关方法；
+- `page/mod.rs` 减少 201 行；
+- 公开符号对比：590 / 590，无新增、无丢失；
+- 函数签名对比：946 / 946，无新增、无丢失；
+- 唯一可见性调整：`navigation_page_load_timeout_ms` 从模块私有改为 `pub(super)`，仅用于维持父模块内既有调用，不构成公开 API；
+- `cargo fmt --check`：通过；
+- `cargo check`：通过；
+- Rust：944 个测试通过。
