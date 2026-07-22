@@ -237,7 +237,7 @@ element_list/mod.rs
 |---|---|---|---|
 | 建立整理契约 | 已完成 | 文档已落盘 | 本里程碑提交 |
 | 建立 page/webpage 符号基线 | 已完成 | `cargo check`、944 个 Rust 测试、MCP、Python 兼容测试、桌面构建通过；Python 集成套件 1 个下载时序用例首次失败，单独重跑通过 | 本里程碑提交 |
-| 拆分 page | 进行中 | navigation 已完成；公开符号与函数签名无丢失；944 个 Rust 测试通过 | navigation 里程碑提交 |
+| 拆分 page | 进行中 | 第一批 navigation、tabs、interaction 已完成；公开符号与函数签名无丢失；各里程碑 944 个 Rust 测试通过 | 761c2bb、035948d、本里程碑提交 |
 | 拆分 webpage | 未开始 | - | - |
 | 全量验收 | 未开始 | - | - |
 
@@ -276,3 +276,13 @@ element_list/mod.rs
 - `cargo fmt --check`：通过；
 - `cargo check`：通过；
 - Rust：944 个测试通过。
+
+### 2026-07-22 Page interaction 里程碑
+
+- 已新增 `page/interaction.rs`，原样迁移 31 个页面交互、元素读写、滚动、上传和点击衍生方法；
+- 公开符号对比：590 / 590，无新增、无丢失；
+- 函数签名对比：946 / 946，无新增、无丢失；
+- `cargo fmt --check`：通过；
+- `cargo check`：通过；
+- Rust：944 个测试通过；
+- 第一批 `navigation`、`tabs`、`interaction` 已按契约完成。
