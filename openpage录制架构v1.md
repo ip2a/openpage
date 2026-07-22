@@ -1665,3 +1665,21 @@ bash -n run_debug.sh  # 通过
 ```text
 npm run build --prefix desktop/openpage  # 通过
 ```
+
+## 里程碑 35：Debug App 与本地 Core 版本对齐
+
+状态：**已完成**
+
+启动后出现 `unsupported op: recorder.status` 的原因是桌面端连接到了 PATH 中旧版 OpenPage daemon。`run_debug.sh` 现在会：
+
+- 构建当前源码的 `rust/target/debug/openpage`；
+- 通过 `OPENPAGE_BIN` 强制桌面端使用该本地二进制；
+- 使用独立的 `/tmp/openpage-desktop-debug-$USER` 作为 `OPENPAGE_HOME`；
+- 启动前停止该隔离环境中的旧 `default` session，避免复用不支持 Recorder RPC 的 daemon。
+
+验证：
+
+```text
+bash -n run_debug.sh  # 通过
+CARGO_INCREMENTAL=0 cargo build --manifest-path rust/apps/openpage/Cargo.toml --bin openpage  # 通过
+```
