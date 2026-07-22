@@ -1653,3 +1653,15 @@ React 构建再次成功，但 Tauri Rust 编译仍因 `No space left on device`
 ```text
 bash -n run_debug.sh  # 通过
 ```
+
+## 里程碑 34：Tauri 开发服务端口对齐
+
+状态：**已完成**
+
+将 Vite 开发服务固定到 `1420` 并启用 `strictPort`，与 Tauri `devUrl: http://localhost:1420` 保持一致，避免 Tauri 在 Vite 已启动于 `5173` 时持续等待。
+
+验证：
+
+```text
+npm run build --prefix desktop/openpage  # 通过
+```
