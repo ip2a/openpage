@@ -1,0 +1,1088 @@
+# Symbol baseline: rust/crates/openpage/src/page/mod.rs
+# Generated: 2026-07-22
+# Format: line | kind | owner | visibility | role | normalized signature
+# Count: 1081
+114 | item | - | private | code | const PAGE_MARKER_ATTRIBUTE: &str = "data-openpage-page-marker";
+115 | item | - | private | code | static NEXT_PAGE_MARKER: AtomicU64 = AtomicU64::new(1);
+116 | item | - | private | code | const DEFAULT_PAGE_LOAD_TIMEOUT_MS: u64 = 30_000;
+117 | item | - | private | code | const DEFAULT_SCRIPT_TIMEOUT_MS: u64 = 30_000;
+118 | item | - | private | code | const ACTION_MODIFIER_ALT: i64 = 1;
+119 | item | - | private | code | const ACTION_MODIFIER_CTRL: i64 = 2;
+120 | item | - | private | code | const ACTION_MODIFIER_META: i64 = 4;
+121 | item | - | private | code | const ACTION_MODIFIER_SHIFT: i64 = 8;
+122 | item | - | private | code | const PAGE_ZOOM_MANAGED_ATTRIBUTE: &str = "data-openpage-zoom-managed";
+123 | item | - | private | code | const PAGE_ZOOM_ORIGINAL_ATTRIBUTE: &str = "data-openpage-zoom-original";
+125 | item | - | pub(crate) | code | pub(crate) type FrameCacheHandle = Arc<std::sync::Mutex<HashMap<String, Frame>>>;
+126 | item | - | pub(crate) | code | pub(crate) type FrameNoneElementConfigCacheHandle = Arc<std::sync::Mutex<HashMap<String, ElementsOneRuntimeConfigHandle>>>;
+129 | item | - | private | code | fn page_operation_error(operation: &str, err: impl ToString) -> OpenPageError
+133 | item | - | private | code | async fn run_page_future_with_cdp_timeout<Fut, T, E>( future: Fut, operation: &str, ) -> OpenPageResult<T> where Fut: Future<Output = Result<T, E>>, E: ToString,
+149 | item | - | private | code | async fn run_page_lookup_future_with_cdp_timeout<Fut, T, E>( future: Fut, operation: &str, ) -> OpenPageResult<T> where Fut: Future<Output = Result<T, E>>, E: ToString,
+170 | item | - | private | code | async fn register_navigation_listener_with_cdp_timeout<Fut, T, E>( future: Fut, operation: &str, ) -> OpenPageResult<T> where Fut: Future<Output = Result<T, E>>, E: ToString,
+182 | item | - | pub | code | pub struct Page
+202 | item | - | pub | code | pub struct Frame
+210 | method | impl std::fmt::Debug for Frame | private | code | fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
+222 | item | - | pub | code | pub struct DisconnectedPage
+228 | method | impl DisconnectedPage | pub | code | pub fn target_id(&self) -> &str
+232 | method | impl DisconnectedPage | pub | code | pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<Page>
+242 | item | - | pub | code | pub struct DisconnectedFrame
+254 | item | - | pub | code | pub struct PageNavigationSnapshot
+263 | item | - | private | code | struct NavigationState
+273 | item | - | private | code | struct NavigationShared
+278 | method | impl NavigationShared | private | code | fn new(snapshot: PageNavigationSnapshot) -> Self
+289 | item | - | private | code | struct NavigationTracker
+294 | method | impl DisconnectedFrame | pub | code | pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<Frame>
+348 | method | impl NavigationTracker | private | code | fn new(runtime: Arc<Runtime>, page: OxPage) -> Self
+441 | method | impl NavigationTracker | private | code | fn snapshot(&self) -> OpenPageResult<PageNavigationSnapshot>
+455 | item | - | private | code | fn initial_navigation_snapshot( runtime: &Runtime, page: &OxPage, ) -> OpenPageResult<PageNavigationSnapshot>
+473 | item | - | private | code | fn set_navigation_last_error(shared: &Arc<NavigationShared>, detail: String)
+479 | item | - | private | code | fn navigation_state_lock<'a>( shared: &'a Arc<NavigationShared>, ) -> Option<StdMutexGuard<'a, NavigationState>>
+485 | item | - | private | code | fn is_main_frame_event(state: &NavigationState, frame_id: &str) -> bool
+494 | item | - | private | code | fn mark_navigation_started( state: &mut NavigationState, loader_id: Option<&str>, url: Option<String>, ) -> u64
+521 | item | - | private | code | fn mark_navigation_settled(state: &mut NavigationState, seq: u64)
+526 | item | - | private | code | fn settle_loader(state: &mut NavigationState, loader_id: &str)
+532 | item | - | private | code | fn update_navigation_from_frame_navigated( shared: &Arc<NavigationShared>, event: &EventFrameNavigated, )
+549 | item | - | private | code | fn update_navigation_from_lifecycle(shared: &Arc<NavigationShared>, event: &EventLifecycleEvent)
+573 | item | - | private | code | fn update_navigation_from_same_document( shared: &Arc<NavigationShared>, event: &EventNavigatedWithinDocument, )
+592 | item | - | private | code | fn cdp_frame_url(frame: &CdpPageFrame) -> String
+599 | item | - | pub | code | pub struct PageScroller<'a>
+603 | item | - | pub | code | pub struct PageSetter<'a>
+607 | item | - | pub | code | pub struct PageCookieSetter<'a>
+611 | item | - | pub | code | pub struct PageWindowSetter<'a>
+615 | item | - | pub | code | pub struct PageLoadModeSetter<'a>
+619 | item | - | pub | code | pub struct FrameScroller<'a>
+623 | item | - | pub | code | pub struct FrameSetter<'a>
+627 | item | - | pub | code | pub struct FrameCookieSetter<'a>
+631 | item | - | pub | code | pub struct FrameStates<'a>
+635 | item | - | pub | code | pub struct FrameWait<'a>
+639 | item | - | pub | code | pub struct FrameRect<'a>
+643 | item | - | pub | code | pub struct Actions
+652 | item | - | private | code | struct DispatchDragEventParams
+663 | item | - | private | code | struct ActionsDragPayload
+672 | item | - | private | code | struct ActionsDragItem
+682 | item | - | pub | code | pub enum PageElementTarget<'a>
+692 | item | - | pub | code | pub enum ActionsTarget<'a>
+702 | item | - | pub | code | pub enum ActionsInput<'a>
+708 | item | - | pub | code | pub enum ActionsDragData<'a>
+718 | item | - | pub | code | pub enum PageFrameTarget<'a>
+729 | item | - | pub | code | pub trait FrameIndexInput
+730 | item | - | private | code | fn into_frame_index(self) -> isize;
+734 | method | impl FrameIndexInput for usize | private | code | fn into_frame_index(self) -> isize
+740 | method | impl FrameIndexInput for isize | private | code | fn into_frame_index(self) -> isize
+746 | method | impl FrameIndexInput for i32 | private | code | fn into_frame_index(self) -> isize
+752 | method | impl FrameIndexInput for i64 | private | code | fn into_frame_index(self) -> isize
+758 | item | - | pub | code | pub struct PageElementInfo
+764 | item | - | pub | code | pub enum PageElementContent<'a>
+770 | item | - | pub | code | pub enum PageSaveContent
+775 | item | - | private | code | enum ResolvedPageElementTarget<'a>
+781 | method | impl<'a> From<&'a str> for PageElementTarget<'a> | private | code | fn from(value: &'a str) -> Self
+787 | method | impl<'a> From<&'a String> for PageElementTarget<'a> | private | code | fn from(value: &'a String) -> Self
+793 | method | impl<'a> From<(&'a str, &'a str)> for PageElementTarget<'a> | private | code | fn from(value: (&'a str, &'a str)) -> Self
+799 | method | impl<'a> From<&'a Element> for PageElementTarget<'a> | private | code | fn from(value: &'a Element) -> Self
+805 | method | impl From<Element> for PageElementTarget<'_> | private | code | fn from(value: Element) -> Self
+811 | method | impl<'a> From<&'a SessionElement> for PageElementTarget<'a> | private | code | fn from(value: &'a SessionElement) -> Self
+817 | method | impl From<SessionElement> for PageElementTarget<'_> | private | code | fn from(value: SessionElement) -> Self
+823 | method | impl<'a> From<&'a WebElement> for PageElementTarget<'a> | private | code | fn from(value: &'a WebElement) -> Self
+829 | method | impl From<WebElement> for PageElementTarget<'_> | private | code | fn from(value: WebElement) -> Self
+835 | method | impl<'a> From<&'a str> for ActionsTarget<'a> | private | code | fn from(value: &'a str) -> Self
+841 | method | impl<'a> From<&'a String> for ActionsTarget<'a> | private | code | fn from(value: &'a String) -> Self
+847 | method | impl<'a> From<(&'a str, &'a str)> for ActionsTarget<'a> | private | code | fn from(value: (&'a str, &'a str)) -> Self
+853 | method | impl<'a> From<&'a Element> for ActionsTarget<'a> | private | code | fn from(value: &'a Element) -> Self
+859 | method | impl From<Element> for ActionsTarget<'_> | private | code | fn from(value: Element) -> Self
+865 | method | impl<'a> From<&'a WebElement> for ActionsTarget<'a> | private | code | fn from(value: &'a WebElement) -> Self
+871 | method | impl From<WebElement> for ActionsTarget<'_> | private | code | fn from(value: WebElement) -> Self
+877 | method | impl From<(i32, i32)> for ActionsTarget<'_> | private | code | fn from(value: (i32, i32)) -> Self
+883 | method | impl From<(i64, i64)> for ActionsTarget<'_> | private | code | fn from(value: (i64, i64)) -> Self
+889 | method | impl From<(usize, usize)> for ActionsTarget<'_> | private | code | fn from(value: (usize, usize)) -> Self
+895 | method | impl From<(f64, f64)> for ActionsTarget<'_> | private | code | fn from(value: (f64, f64)) -> Self
+901 | method | impl<'a> From<&'a str> for ActionsInput<'a> | private | code | fn from(value: &'a str) -> Self
+907 | method | impl<'a> ActionsDragData<'a> | pub | code | pub fn files<I>(files: I) -> Self where I: Into<ActionsInput<'a>>,
+914 | method | impl<'a> ActionsDragData<'a> | pub | code | pub fn text<S>(text: S) -> Self where S: Into<Cow<'a, str>>,
+925 | method | impl<'a> ActionsDragData<'a> | pub | code | pub fn link<S, T>(text: S, title: T) -> Self where S: Into<Cow<'a, str>>, T: Into<Cow<'a, str>>,
+937 | method | impl<'a> ActionsDragData<'a> | pub | code | pub fn html<S, B>(text: S, base_url: B) -> Self where S: Into<Cow<'a, str>>, B: Into<Cow<'a, str>>,
+951 | method | impl Method for DispatchDragEventParams | private | code | fn identifier(&self) -> Cow<'static, str>
+957 | method | impl Command for DispatchDragEventParams | private | code | type Response = Value;
+961 | method | impl<'a> From<&'a String> for ActionsInput<'a> | private | code | fn from(value: &'a String) -> Self
+967 | method | impl From<String> for ActionsInput<'_> | private | code | fn from(value: String) -> Self
+973 | method | impl<'a> From<&'a [String]> for ActionsInput<'a> | private | code | fn from(value: &'a [String]) -> Self
+984 | method | impl<'a> From<&'a Vec<String>> for ActionsInput<'a> | private | code | fn from(value: &'a Vec<String>) -> Self
+990 | method | impl From<Vec<String>> for ActionsInput<'_> | private | code | fn from(value: Vec<String>) -> Self
+996 | method | impl<'a> From<&'a [&'a str]> for ActionsInput<'a> | private | code | fn from(value: &'a [&'a str]) -> Self
+1002 | method | impl<'a> From<Vec<&'a str>> for ActionsInput<'a> | private | code | fn from(value: Vec<&'a str>) -> Self
+1008 | method | impl<'a, const N: usize> From<[&'a str; N]> for ActionsInput<'a> | private | code | fn from(value: [&'a str; N]) -> Self
+1014 | method | impl<'a, const N: usize> From<&'a [&'a str; N]> for ActionsInput<'a> | private | code | fn from(value: &'a [&'a str; N]) -> Self
+1020 | method | impl<'a> From<&'a str> for PageFrameTarget<'a> | private | code | fn from(value: &'a str) -> Self
+1026 | method | impl<'a> From<&'a String> for PageFrameTarget<'a> | private | code | fn from(value: &'a String) -> Self
+1032 | method | impl<'a> From<(&'a str, &'a str)> for PageFrameTarget<'a> | private | code | fn from(value: (&'a str, &'a str)) -> Self
+1038 | method | impl From<usize> for PageFrameTarget<'_> | private | code | fn from(value: usize) -> Self
+1044 | method | impl From<isize> for PageFrameTarget<'_> | private | code | fn from(value: isize) -> Self
+1050 | method | impl From<i32> for PageFrameTarget<'_> | private | code | fn from(value: i32) -> Self
+1056 | method | impl From<i64> for PageFrameTarget<'_> | private | code | fn from(value: i64) -> Self
+1062 | method | impl<'a> From<&'a Element> for PageFrameTarget<'a> | private | code | fn from(value: &'a Element) -> Self
+1068 | method | impl<'a> From<&'a WebElement> for PageFrameTarget<'a> | private | code | fn from(value: &'a WebElement) -> Self
+1074 | method | impl<'a> From<&'a Frame> for PageFrameTarget<'a> | private | code | fn from(value: &'a Frame) -> Self
+1080 | method | impl From<Frame> for PageFrameTarget<'_> | private | code | fn from(value: Frame) -> Self
+1086 | method | impl<'a> From<&'a WebFrame> for PageFrameTarget<'a> | private | code | fn from(value: &'a WebFrame) -> Self
+1092 | method | impl From<WebFrame> for PageFrameTarget<'_> | private | code | fn from(value: WebFrame) -> Self
+1098 | method | impl<'a> From<&'a Page> for BrowserTabSelector<'a> | private | code | fn from(value: &'a Page) -> Self
+1104 | method | impl From<Page> for BrowserTabSelector<'_> | private | code | fn from(value: Page) -> Self
+1110 | method | impl<'a> From<&'a Page> for BrowserTabTargetsInput<'a> | private | code | fn from(value: &'a Page) -> Self
+1116 | method | impl From<Page> for BrowserTabTargetsInput<'_> | private | code | fn from(value: Page) -> Self
+1122 | method | impl<'a> From<&'a [&'a Page]> for BrowserTabTargetsInput<'a> | private | code | fn from(value: &'a [&'a Page]) -> Self
+1133 | method | impl<'a> From<&'a Vec<&'a Page>> for BrowserTabTargetsInput<'a> | private | code | fn from(value: &'a Vec<&'a Page>) -> Self
+1139 | method | impl<'a> From<&'a str> for PageElementContent<'a> | private | code | fn from(value: &'a str) -> Self
+1145 | method | impl<'a> From<&'a String> for PageElementContent<'a> | private | code | fn from(value: &'a String) -> Self
+1151 | method | impl From<String> for PageElementContent<'_> | private | code | fn from(value: String) -> Self
+1160 | method | impl<'a, T> From<T> for PageElementContent<'a> where T: Into<PageElementInfo>, | private | code | fn from(value: T) -> Self
+1166 | method | impl PageElementInfo | private | code | fn from_string_pairs<K, V, I>(tag: impl Into<String>, properties: I) -> Self where K: AsRef<str>, V: AsRef<str>, I: IntoIterator<Item = (K, V)>,
+1186 | method | impl PageElementInfo | private | code | fn from_value_pairs<K, V, I>(tag: impl Into<String>, properties: I) -> Self where K: AsRef<str>, V: Into<Value>, I: IntoIterator<Item = (K, V)>,
+1201 | method | impl PageElementInfo | private | code | fn tag(&self) -> &str
+1207 | method | impl<'a> From<(&'a str, &'a [(&'a str, &'a str)])> for PageElementInfo | private | code | fn from(value: (&'a str, &'a [(&'a str, &'a str)])) -> Self
+1213 | method | impl<'a> From<(&'a str, &'a Vec<(&'a str, &'a str)>)> for PageElementInfo | private | code | fn from(value: (&'a str, &'a Vec<(&'a str, &'a str)>)) -> Self
+1219 | method | impl<'a> From<(&'a str, Vec<(&'a str, &'a str)>)> for PageElementInfo | private | code | fn from(value: (&'a str, Vec<(&'a str, &'a str)>)) -> Self
+1225 | method | impl<'a, const N: usize> From<(&'a str, [(&'a str, &'a str); N])> for PageElementInfo | private | code | fn from(value: (&'a str, [(&'a str, &'a str); N])) -> Self
+1231 | method | impl<'a, const N: usize> From<(&'a str, &'a [(&'a str, &'a str); N])> for PageElementInfo | private | code | fn from(value: (&'a str, &'a [(&'a str, &'a str); N])) -> Self
+1237 | method | impl<'a> From<(&'a str, &'a [(String, String)])> for PageElementInfo | private | code | fn from(value: (&'a str, &'a [(String, String)])) -> Self
+1249 | method | impl<'a> From<(&'a str, &'a Vec<(String, String)>)> for PageElementInfo | private | code | fn from(value: (&'a str, &'a Vec<(String, String)>)) -> Self
+1255 | method | impl<'a> From<(&'a str, &'a HashMap<String, String>)> for PageElementInfo | private | code | fn from(value: (&'a str, &'a HashMap<String, String>)) -> Self
+1267 | method | impl From<(String, Vec<(String, String)>)> for PageElementInfo | private | code | fn from(value: (String, Vec<(String, String)>)) -> Self
+1276 | method | impl<'a> From<(&'a str, &'a [(&'a str, Value)])> for PageElementInfo | private | code | fn from(value: (&'a str, &'a [(&'a str, Value)])) -> Self
+1285 | method | impl<'a> From<(&'a str, &'a Vec<(&'a str, Value)>)> for PageElementInfo | private | code | fn from(value: (&'a str, &'a Vec<(&'a str, Value)>)) -> Self
+1291 | method | impl<'a> From<(&'a str, Vec<(&'a str, Value)>)> for PageElementInfo | private | code | fn from(value: (&'a str, Vec<(&'a str, Value)>)) -> Self
+1297 | method | impl<'a, const N: usize> From<(&'a str, [(&'a str, Value); N])> for PageElementInfo | private | code | fn from(value: (&'a str, [(&'a str, Value); N])) -> Self
+1303 | method | impl<'a, const N: usize> From<(&'a str, &'a [(&'a str, Value); N])> for PageElementInfo | private | code | fn from(value: (&'a str, &'a [(&'a str, Value); N])) -> Self
+1309 | method | impl<'a> From<(&'a str, &'a [(String, Value)])> for PageElementInfo | private | code | fn from(value: (&'a str, &'a [(String, Value)])) -> Self
+1321 | method | impl<'a> From<(&'a str, &'a Vec<(String, Value)>)> for PageElementInfo | private | code | fn from(value: (&'a str, &'a Vec<(String, Value)>)) -> Self
+1327 | method | impl<'a> From<(&'a str, &'a HashMap<String, Value>)> for PageElementInfo | private | code | fn from(value: (&'a str, &'a HashMap<String, Value>)) -> Self
+1339 | method | impl From<(String, Vec<(String, Value)>)> for PageElementInfo | private | code | fn from(value: (String, Vec<(String, Value)>)) -> Self
+1348 | method | impl ResolvedPageElementTarget<'_> | private | code | fn element(&self) -> &Element
+1355 | method | impl ResolvedPageElementTarget<'_> | private | code | fn set_attr(&self, name: &str, value: &str) -> OpenPageResult<()>
+1359 | method | impl ResolvedPageElementTarget<'_> | private | code | fn remove_attr(&self, name: &str) -> OpenPageResult<()>
+1365 | method | impl Frame | pub(crate) | code | pub(crate) fn new( page: Page, frame_id: String, frame_element: Element, none_element_config: ElementsOneRuntimeConfigHandle, ) -> Self
+1379 | method | impl Frame | pub | code | pub fn id(&self) -> &str
+1383 | method | impl Frame | pub | code | pub fn frame_id(&self) -> &str
+1387 | method | impl Frame | pub | code | pub fn frame_element(&self) -> &Element
+1391 | method | impl Frame | pub | code | pub fn frame_ele(&self) -> &Element
+1395 | method | impl Frame | pub | code | pub fn owner(&self) -> &Page
+1399 | method | impl Frame | pub | code | pub fn page(&self) -> &Page
+1403 | method | impl Frame | pub | code | pub fn tab(&self) -> &Page
+1407 | method | impl Frame | pub | code | pub fn tab_id(&self) -> String
+1411 | method | impl Frame | pub | code | pub fn scroll(&self) -> FrameScroller<'_>
+1415 | method | impl Frame | pub | code | pub fn set(&self) -> FrameSetter<'_>
+1419 | method | impl Frame | pub | code | pub fn states(&self) -> FrameStates<'_>
+1423 | method | impl Frame | pub | code | pub fn wait(&self) -> FrameWait<'_>
+1427 | method | impl Frame | pub | code | pub fn rect(&self) -> FrameRect<'_>
+1431 | method | impl Frame | pub | code | pub fn link(&self) -> OpenPageResult<Option<String>>
+1435 | method | impl Frame | pub | code | pub fn tag(&self) -> OpenPageResult<String>
+1439 | method | impl Frame | pub | code | pub fn attrs(&self) -> OpenPageResult<Vec<(String, String)>>
+1443 | method | impl Frame | pub | code | pub fn attr(&self, name: &str) -> OpenPageResult<Option<String>>
+1447 | method | impl Frame | pub | code | pub fn property(&self, name: &str) -> OpenPageResult<Option<Value>>
+1451 | method | impl Frame | pub | code | pub fn text(&self) -> OpenPageResult<Option<String>>
+1455 | method | impl Frame | pub | code | pub fn raw_text(&self) -> OpenPageResult<Option<String>>
+1459 | method | impl Frame | pub | code | pub fn value(&self) -> OpenPageResult<Option<String>>
+1463 | method | impl Frame | pub | code | pub fn comments(&self) -> OpenPageResult<Vec<String>>
+1467 | method | impl Frame | pub | code | pub fn texts(&self, text_node_only: bool) -> OpenPageResult<Vec<String>>
+1471 | method | impl Frame | pub | code | pub fn src( &self, timeout_ms: u64, base64_to_bytes: bool, ) -> OpenPageResult<Option<ElementResource>>
+1479 | method | impl Frame | pub | code | pub fn save( &self, path: Option<&Path>, name: Option<&str>, timeout_ms: u64, rename: bool, ) -> OpenPageResult<PathBuf>
+1489 | method | impl Frame | pub | code | pub fn style(&self, name: &str, pseudo: Option<&str>) -> OpenPageResult<String>
+1493 | method | impl Frame | pub | code | pub fn pseudo_before(&self) -> OpenPageResult<String>
+1497 | method | impl Frame | pub | code | pub fn pseudo_after(&self) -> OpenPageResult<String>
+1501 | method | impl Frame | pub | code | pub fn scroll_to_see(&self, center: Option<bool>) -> OpenPageResult<()>
+1505 | method | impl Frame | pub | code | pub fn scroll_to_center(&self) -> OpenPageResult<()>
+1509 | method | impl Frame | pub | code | pub fn css_path(&self) -> OpenPageResult<String>
+1513 | method | impl Frame | pub | code | pub fn xpath(&self) -> OpenPageResult<String>
+1517 | method | impl Frame | pub | code | pub fn child_count(&self) -> OpenPageResult<usize>
+1521 | method | impl Frame | pub | code | pub fn sr(&self) -> OpenPageResult<Option<ShadowRoot>>
+1525 | method | impl Frame | pub | code | pub fn shadow_root(&self) -> OpenPageResult<Option<ShadowRoot>>
+1529 | method | impl Frame | pub | code | pub fn name(&self) -> OpenPageResult<Option<String>>
+1533 | method | impl Frame | pub | code | pub fn url(&self) -> OpenPageResult<Option<String>>
+1537 | method | impl Frame | pub | code | pub fn parent_id(&self) -> OpenPageResult<Option<String>>
+1541 | method | impl Frame | pub | code | pub fn title(&self) -> OpenPageResult<Option<String>>
+1545 | method | impl Frame | pub | code | pub fn download_path(&self) -> OpenPageResult<Option<String>>
+1549 | method | impl Frame | pub | code | pub fn download(&self, url: &str) -> OpenPageResult<String>
+1555 | method | impl Frame | pub | code | pub fn download_to(&self, url: &str, path: impl AsRef<Path>) -> OpenPageResult<String>
+1561 | method | impl Frame | pub | code | pub fn inner_html(&self) -> OpenPageResult<String>
+1568 | method | impl Frame | pub | code | pub fn html(&self) -> OpenPageResult<String>
+1578 | method | impl Frame | pub | code | pub fn run_js(&self, expression: &str) -> OpenPageResult<Value>
+1586 | method | impl Frame | pub | code | pub fn run_js_with_args( &self, script: &str, args: &[Value], as_expr: bool, ) -> OpenPageResult<Value>
+1595 | method | impl Frame | pub | code | pub fn run_js_with_options( &self, script: &str, args: &[Value], as_expr: bool, timeout_ms: Option<u64>, ) -> OpenPageResult<Value>
+1608 | method | impl Frame | pub | code | pub fn run_js_loaded(&self, script: &str) -> OpenPageResult<Value>
+1612 | method | impl Frame | pub | code | pub fn run_js_loaded_with_args( &self, script: &str, args: &[Value], as_expr: bool, ) -> OpenPageResult<Value>
+1621 | method | impl Frame | pub | code | pub fn run_js_loaded_with_options( &self, script: &str, args: &[Value], as_expr: bool, timeout_ms: Option<u64>, ) -> OpenPageResult<Value>
+1632 | method | impl Frame | pub | code | pub fn run_async_js(&self, script: &str) -> OpenPageResult<()>
+1636 | method | impl Frame | pub | code | pub fn run_async_js_with_args( &self, script: &str, args: &[Value], as_expr: bool, ) -> OpenPageResult<()>
+1645 | method | impl Frame | pub | code | pub fn run_async_js_with_options( &self, script: &str, args: &[Value], as_expr: bool, timeout_ms: Option<u64>, ) -> OpenPageResult<()>
+1659 | method | impl Frame | pub | code | pub fn add_init_js(&self, script: &str) -> OpenPageResult<String>
+1663 | method | impl Frame | pub | code | pub fn remove_init_js(&self, script_id: Option<&str>) -> OpenPageResult<()>
+1667 | method | impl Frame | pub | code | pub fn refresh(&self) -> OpenPageResult<()>
+1671 | method | impl Frame | pub | code | pub fn refresh_with_options(&self, ignore_cache: bool) -> OpenPageResult<()>
+1679 | method | impl Frame | pub | code | pub fn get(&self, url: &str) -> OpenPageResult<bool>
+1683 | method | impl Frame | pub | code | pub fn goto(&self, url: &str) -> OpenPageResult<()>
+1719 | method | impl Frame | pub | code | pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<Self>
+1765 | method | impl Frame | pub | code | pub fn disconnect(self) -> OpenPageResult<DisconnectedFrame>
+1790 | method | impl Frame | pub | code | pub fn remove_attr(&self, name: &str) -> OpenPageResult<()>
+1794 | method | impl Frame | pub | code | pub fn set_attr(&self, name: &str, value: &str) -> OpenPageResult<()>
+1798 | method | impl Frame | pub | code | pub fn set_property(&self, name: &str, value: &Value) -> OpenPageResult<()>
+1802 | method | impl Frame | pub | code | pub fn set_style(&self, name: &str, value: &str) -> OpenPageResult<()>
+1806 | method | impl Frame | pub | code | pub fn click(&self) -> OpenPageResult<()>
+1810 | method | impl Frame | pub | code | pub fn click_with_options( &self, by_js: Option<bool>, timeout_ms: Option<u64>, wait_stop: bool, ) -> OpenPageResult<bool>
+1820 | method | impl Frame | pub | code | pub fn click_left_with_options( &self, by_js: Option<bool>, timeout_ms: Option<u64>, wait_stop: bool, ) -> OpenPageResult<bool>
+1830 | method | impl Frame | pub | code | pub fn click_at( &self, offset_x: Option<f64>, offset_y: Option<f64>, button: &str, count: u32, ) -> OpenPageResult<()>
+1841 | method | impl Frame | pub | code | pub fn click_multi(&self, times: u32) -> OpenPageResult<()>
+1845 | method | impl Frame | pub | code | pub fn click_left(&self) -> OpenPageResult<()>
+1849 | method | impl Frame | pub | code | pub fn click_right(&self) -> OpenPageResult<()>
+1853 | method | impl Frame | pub | code | pub fn input<'a, I>(&self, text: I) -> OpenPageResult<()> where I: Into<ActionsInput<'a>>,
+1860 | method | impl Frame | pub | code | pub fn input_with_options<'a, I>(&self, text: I, clear: bool, by_js: bool) -> OpenPageResult<()> where I: Into<ActionsInput<'a>>,
+1867 | method | impl Frame | pub | code | pub fn input_keys_with_options<'a, I>( &self, values: I, clear: bool, by_js: bool, ) -> OpenPageResult<()> where I: Into<ActionsInput<'a>>,
+1880 | method | impl Frame | pub | code | pub fn press_key(&self, key: &str) -> OpenPageResult<()>
+1884 | method | impl Frame | pub | code | pub fn clear(&self) -> OpenPageResult<()>
+1888 | method | impl Frame | pub | code | pub fn clear_with_mode(&self, by_js: bool) -> OpenPageResult<()>
+1892 | method | impl Frame | pub | code | pub fn submit(&self) -> OpenPageResult<()>
+1896 | method | impl Frame | pub | code | pub fn focus(&self) -> OpenPageResult<()>
+1900 | method | impl Frame | pub | code | pub fn hover(&self) -> OpenPageResult<()>
+1904 | method | impl Frame | pub | code | pub fn hover_with_offset( &self, offset_x: Option<f64>, offset_y: Option<f64>, ) -> OpenPageResult<()>
+1912 | method | impl Frame | pub | code | pub fn drag(&self, offset_x: f64, offset_y: f64, duration_secs: f64) -> OpenPageResult<()>
+1916 | method | impl Frame | pub | code | pub fn drag_to<'a, T>(&self, target: T, duration_secs: f64) -> OpenPageResult<()> where T: Into<ElementDragTarget<'a>>,
+1923 | method | impl Frame | pub | code | pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<()>
+1927 | method | impl Frame | pub | code | pub fn set_checked(&self, checked: bool) -> OpenPageResult<()>
+1931 | method | impl Frame | pub | code | pub fn check(&self, uncheck: bool, by_js: bool) -> OpenPageResult<()>
+1935 | method | impl Frame | pub | code | pub fn uncheck(&self, by_js: bool) -> OpenPageResult<()>
+1939 | method | impl Frame | pub | code | pub fn set_upload_files<'a, F>(&self, files: F) -> OpenPageResult<()> where F: Into<UploadFilesInput<'a>>,
+1946 | method | impl Frame | pub | code | pub fn set_upload_paths<'a, F>(&self, files: F) -> OpenPageResult<()> where F: Into<UploadFilesInput<'a>>,
+1953 | method | impl Frame | pub | code | pub fn set_cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()> where C: Into<CookieInput<'a>>,
+1960 | method | impl Frame | pub | code | pub fn remove_cookie( &self, name: &str, url: Option<&str>, domain: Option<&str>, path: Option<&str>, ) -> OpenPageResult<()>
+1970 | method | impl Frame | pub | code | pub fn clear_cookies(&self) -> OpenPageResult<()>
+1974 | method | impl Frame | pub | code | pub fn set_download_path(&self, path: &str) -> OpenPageResult<()>
+1978 | method | impl Frame | pub | code | pub fn set_none_element_value(&self, value: Option<&str>, on_off: bool) -> OpenPageResult<()>
+1993 | method | impl Frame | pub | code | pub fn set_raise_when_ele_not_found(&self, on_off: bool) -> OpenPageResult<()>
+2007 | method | impl Frame | pub | code | pub fn set_download_file_exists_mode( &self, mode: DownloadFileExistsMode, ) -> OpenPageResult<()>
+2014 | method | impl Frame | pub | code | pub fn set_when_download_file_exists(&self, mode: &str) -> OpenPageResult<()>
+2018 | method | impl Frame | pub | code | pub fn set_download_filename( &self, rename: Option<&str>, suffix: Option<&str>, suffix_specified: bool, ) -> OpenPageResult<()>
+2028 | method | impl Frame | pub | code | pub fn set_download_file_name( &self, rename: Option<&str>, suffix: Option<&str>, suffix_specified: bool, ) -> OpenPageResult<()>
+2037 | method | impl Frame | pub | code | pub fn click_to_download<'a, L>( &self, locator: L, save_path: Option<&str>, rename: Option<&str>, suffix: Option<&str>, suffix_specified: bool, timeout_ms: Option<u64>, by_js: bool, new_tab: bool, ) -> OpenPageResult<Option<DownloadMission>> where L: Into<LocatorInput<'a>>,
+2063 | method | impl Frame | pub | code | pub fn click_to_upload<'a, 'b, L, F>( &self, locator: L, files: F, timeout_ms: Option<u64>, by_js: bool, ) -> OpenPageResult<bool> where L: Into<LocatorInput<'a>>, F: Into<UploadFilesInput<'b>>,
+2077 | method | impl Frame | pub | code | pub fn click_for_new_tab<'a, L>( &self, locator: L, timeout_ms: Option<u64>, by_js: bool, ) -> OpenPageResult<Option<Page>> where L: Into<LocatorInput<'a>>,
+2089 | method | impl Frame | pub | code | pub fn click_middle<'a, L>( &self, locator: L, timeout_ms: Option<u64>, get_tab: bool, ) -> OpenPageResult<Option<Page>> where L: Into<LocatorInput<'a>>,
+2101 | method | impl Frame | pub | code | pub fn wait_for_upload_paths_inputted(&self, timeout_ms: u64) -> OpenPageResult<bool>
+2105 | method | impl Frame | pub | code | pub fn wait_for_download_begin( &self, timeout_ms: u64, cancel_it: bool, ) -> OpenPageResult<Option<DownloadMission>>
+2113 | method | impl Frame | pub | code | pub fn wait_for_downloads_done( &self, timeout_ms: u64, cancel_if_timeout: bool, ) -> OpenPageResult<bool>
+2122 | method | impl Frame | private | code | fn bind_element_runtime_config(&self, element: Element) -> Element
+2130 | method | impl Frame | pub | code | pub fn active_element(&self) -> OpenPageResult<Option<Element>>
+2134 | method | impl Frame | private | code | const active = document.activeElement;
+2158 | method | impl Frame | pub | code | pub fn active_ele(&self) -> OpenPageResult<Option<Element>>
+2162 | method | impl Frame | pub | code | pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>> where L: Into<LocatorInput<'a>>,
+2184 | method | impl Frame | pub | code | pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<Element>> where L: Into<LocatorInput<'a>>,
+2191 | method | impl Frame | pub | code | pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+2216 | method | impl Frame | pub | code | pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<Element>> where L: Into<LocatorInput<'a>>,
+2233 | method | impl Frame | pub | code | pub fn get_frame<'a, L>(&self, target: L) -> OpenPageResult<Frame> where L: Into<PageFrameTarget<'a>>,
+2263 | method | impl Frame | pub | code | pub fn get_frame_with_timeout<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<Frame> where L: Into<PageFrameTarget<'a>>,
+2285 | method | impl Frame | pub | code | pub fn get_frame_by_index<I>(&self, index: I) -> OpenPageResult<Frame> where I: FrameIndexInput,
+2292 | method | impl Frame | pub | code | pub fn get_frame_by_index_with_timeout<I>( &self, index: I, timeout_ms: u64, ) -> OpenPageResult<Frame> where I: FrameIndexInput,
+2303 | method | impl Frame | pub | code | pub fn get_frame_ele<'a, L>(&self, target: L) -> OpenPageResult<Element> where L: Into<PageFrameTarget<'a>>,
+2310 | method | impl Frame | pub | code | pub fn get_frame_ele_with_timeout<'a, L>( &self, target: L, timeout_ms: u64, ) -> OpenPageResult<Element> where L: Into<PageFrameTarget<'a>>,
+2336 | method | impl Frame | pub | code | pub fn get_frame_ele_by_index<I>(&self, index: I) -> OpenPageResult<Element> where I: FrameIndexInput,
+2343 | method | impl Frame | pub | code | pub fn get_frame_ele_by_index_with_timeout<I>( &self, index: I, timeout_ms: u64, ) -> OpenPageResult<Element> where I: FrameIndexInput,
+2354 | method | impl Frame | pub | code | pub fn get_frames<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Frame>> where L: Into<LocatorInput<'a>>,
+2367 | method | impl Frame | pub | code | pub fn get_frames_with_timeout<'a, L>( &self, locator: Option<L>, timeout_ms: u64, ) -> OpenPageResult<Vec<Frame>> where L: Into<LocatorInput<'a>>,
+2400 | method | impl Frame | pub | code | pub fn get_frame_eles<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>> where L: Into<LocatorInput<'a>>,
+2408 | method | impl Frame | pub | code | pub fn get_frame_eles_with_timeout<'a, L>( &self, locator: Option<L>, timeout_ms: u64, ) -> OpenPageResult<Vec<Element>> where L: Into<LocatorInput<'a>>,
+2441 | method | impl Frame | pub | code | pub fn get_frame_context<'a, L>(&self, target: L) -> OpenPageResult<Frame> where L: Into<PageFrameTarget<'a>>,
+2448 | method | impl Frame | pub | code | pub fn get_frame_context_by_index<I>(&self, index: I) -> OpenPageResult<Frame> where I: FrameIndexInput,
+2455 | method | impl Frame | pub | code | pub fn get_frame_contexts<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Frame>> where L: Into<LocatorInput<'a>>,
+2462 | method | impl Frame | pub | code | pub fn parent(&self) -> OpenPageResult<Element>
+2466 | method | impl Frame | pub | code | pub fn parent_level(&self, level: usize) -> OpenPageResult<Element>
+2470 | method | impl Frame | pub | code | pub fn parent_with<'a, L>(&self, locator: L, index: usize) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+2477 | method | impl Frame | pub | code | pub fn child(&self) -> OpenPageResult<Element>
+2481 | method | impl Frame | pub | code | pub fn child_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+2488 | method | impl Frame | pub | code | pub fn children(&self) -> OpenPageResult<Vec<Element>>
+2492 | method | impl Frame | pub | code | pub fn children_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>> where L: Into<LocatorInput<'a>>,
+2499 | method | impl Frame | pub | code | pub fn prev(&self) -> OpenPageResult<Element>
+2503 | method | impl Frame | pub | code | pub fn prev_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+2510 | method | impl Frame | pub | code | pub fn next(&self) -> OpenPageResult<Element>
+2514 | method | impl Frame | pub | code | pub fn next_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+2521 | method | impl Frame | pub | code | pub fn before(&self) -> OpenPageResult<Element>
+2525 | method | impl Frame | pub | code | pub fn before_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+2532 | method | impl Frame | pub | code | pub fn after(&self) -> OpenPageResult<Element>
+2536 | method | impl Frame | pub | code | pub fn after_with<'a, L>(&self, locator: Option<L>, index: usize) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+2543 | method | impl Frame | pub | code | pub fn prevs(&self) -> OpenPageResult<Vec<Element>>
+2547 | method | impl Frame | pub | code | pub fn prevs_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>> where L: Into<LocatorInput<'a>>,
+2554 | method | impl Frame | pub | code | pub fn nexts(&self) -> OpenPageResult<Vec<Element>>
+2558 | method | impl Frame | pub | code | pub fn nexts_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>> where L: Into<LocatorInput<'a>>,
+2565 | method | impl Frame | pub | code | pub fn befores(&self) -> OpenPageResult<Vec<Element>>
+2569 | method | impl Frame | pub | code | pub fn befores_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>> where L: Into<LocatorInput<'a>>,
+2576 | method | impl Frame | pub | code | pub fn afters(&self) -> OpenPageResult<Vec<Element>>
+2580 | method | impl Frame | pub | code | pub fn afters_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>> where L: Into<LocatorInput<'a>>,
+2587 | method | impl Frame | pub | code | pub fn over(&self) -> OpenPageResult<Option<Element>>
+2591 | method | impl Frame | pub | code | pub fn over_with_timeout(&self, timeout_ms: u64) -> OpenPageResult<Option<Element>>
+2595 | method | impl Frame | pub | code | pub fn offset<'a, L>( &self, locator: Option<L>, x: Option<f64>, y: Option<f64>, timeout_ms: u64, ) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+2608 | method | impl Frame | pub | code | pub fn east<'a, L>( &self, locator: Option<L>, pixels: Option<i64>, index: usize, ) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+2620 | method | impl Frame | pub | code | pub fn south<'a, L>( &self, locator: Option<L>, pixels: Option<i64>, index: usize, ) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+2632 | method | impl Frame | pub | code | pub fn west<'a, L>( &self, locator: Option<L>, pixels: Option<i64>, index: usize, ) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+2644 | method | impl Frame | pub | code | pub fn north<'a, L>( &self, locator: Option<L>, pixels: Option<i64>, index: usize, ) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+2656 | method | impl Frame | pub | code | pub fn screenshot_bytes( &self, scroll_to_center: bool, timeout_ms: u64, ) -> OpenPageResult<Vec<u8>>
+2665 | method | impl Frame | pub | code | pub fn screenshot_base64( &self, scroll_to_center: bool, timeout_ms: u64, ) -> OpenPageResult<String>
+2674 | method | impl Frame | pub | code | pub fn get_screenshot( &self, path: Option<&Path>, name: Option<&str>, scroll_to_center: bool, timeout_ms: u64, ) -> OpenPageResult<PathBuf>
+2685 | method | impl Frame | pub | code | pub fn save_screenshot(&self, path: impl AsRef<Path>) -> OpenPageResult<()>
+2689 | method | impl Frame | pub | code | pub fn scroll_to_top(&self) -> OpenPageResult<()>
+2696 | method | impl Frame | pub | code | pub fn scroll_to_bottom(&self) -> OpenPageResult<()>
+2703 | method | impl Frame | pub | code | pub fn scroll_to_half(&self) -> OpenPageResult<()>
+2710 | method | impl Frame | pub | code | pub fn scroll_to_rightmost(&self) -> OpenPageResult<()>
+2717 | method | impl Frame | pub | code | pub fn scroll_to_leftmost(&self) -> OpenPageResult<()>
+2724 | method | impl Frame | pub | code | pub fn scroll_to_location(&self, x: f64, y: f64) -> OpenPageResult<()>
+2731 | method | impl Frame | pub | code | pub fn scroll_up(&self, pixels: f64) -> OpenPageResult<()>
+2739 | method | impl Frame | pub | code | pub fn scroll_down(&self, pixels: f64) -> OpenPageResult<()>
+2746 | method | impl Frame | pub | code | pub fn scroll_left(&self, pixels: f64) -> OpenPageResult<()>
+2754 | method | impl Frame | pub | code | pub fn scroll_right(&self, pixels: f64) -> OpenPageResult<()>
+2761 | method | impl Frame | pub | code | pub fn scroll_position(&self) -> OpenPageResult<(f64, f64)>
+2770 | method | impl Frame | pub | code | pub fn viewport_location(&self) -> OpenPageResult<Option<(f64, f64)>>
+2779 | method | impl Frame | pub | code | pub fn screen_location(&self) -> OpenPageResult<Option<(f64, f64)>>
+2783 | method | impl Frame | pub | code | pub fn viewport_size(&self) -> OpenPageResult<Option<(f64, f64)>>
+2787 | method | impl Frame | pub | code | pub fn location(&self) -> OpenPageResult<Option<(f64, f64)>>
+2791 | method | impl Frame | pub | code | pub fn size(&self) -> OpenPageResult<Option<(f64, f64)>>
+2795 | method | impl Frame | private | code | const doc = document.documentElement;
+2796 | method | impl Frame | private | code | const body = document.body;
+2797 | method | impl Frame | private | code | const width = Math.max(doc ? doc.scrollWidth : 0, body ? body.scrollWidth : 0);
+2798 | method | impl Frame | private | code | const height = Math.max(doc ? doc.scrollHeight : 0, body ? body.scrollHeight : 0);
+2806 | method | impl Frame | pub | code | pub fn viewport_corners(&self) -> OpenPageResult<Option<[(f64, f64); 4]>>
+2821 | method | impl Frame | pub | code | pub fn corners(&self) -> OpenPageResult<Option<[(f64, f64); 4]>>
+2836 | method | impl Frame | pub | code | pub fn ready_state(&self) -> OpenPageResult<Option<String>>
+2840 | method | impl Frame | pub | code | pub fn is_loading(&self) -> OpenPageResult<bool>
+2844 | method | impl Frame | pub | code | pub fn is_alive(&self) -> OpenPageResult<bool>
+2848 | method | impl Frame | pub | code | pub fn is_displayed(&self) -> OpenPageResult<bool>
+2852 | method | impl Frame | pub | code | pub fn is_enabled(&self) -> OpenPageResult<bool>
+2856 | method | impl Frame | pub | code | pub fn has_rect(&self) -> OpenPageResult<bool>
+2860 | method | impl Frame | pub | code | pub fn is_in_viewport(&self) -> OpenPageResult<bool>
+2864 | method | impl Frame | pub | code | pub fn is_whole_in_viewport(&self) -> OpenPageResult<bool>
+2868 | method | impl Frame | pub | code | pub fn is_covered(&self) -> OpenPageResult<bool>
+2872 | method | impl Frame | pub | code | pub fn is_clickable(&self) -> OpenPageResult<bool>
+2876 | method | impl Frame | pub | code | pub fn has_alert(&self) -> OpenPageResult<bool>
+2880 | method | impl Frame | pub | code | pub fn wait_for_doc_loaded(&self, timeout_ms: u64) -> OpenPageResult<bool>
+2893 | method | impl Frame | pub | code | pub fn wait_until_displayed(&self, timeout_ms: u64) -> OpenPageResult<bool>
+2897 | method | impl Frame | pub | code | pub fn wait_until_hidden(&self, timeout_ms: u64) -> OpenPageResult<bool>
+2901 | method | impl Frame | pub | code | pub fn wait_until_enabled(&self, timeout_ms: u64) -> OpenPageResult<bool>
+2905 | method | impl Frame | pub | code | pub fn wait_until_disabled(&self, timeout_ms: u64) -> OpenPageResult<bool>
+2909 | method | impl Frame | pub | code | pub fn wait_until_deleted(&self, timeout_ms: u64) -> OpenPageResult<bool>
+2913 | method | impl Frame | pub | code | pub fn wait_until_clickable(&self, timeout_ms: u64) -> OpenPageResult<bool>
+2917 | method | impl Frame | pub | code | pub fn wait_until_has_rect(&self, timeout_ms: u64) -> OpenPageResult<bool>
+2921 | method | impl Frame | pub | code | pub fn wait_until_covered(&self, timeout_ms: u64) -> OpenPageResult<bool>
+2925 | method | impl Frame | pub | code | pub fn wait_until_not_covered(&self, timeout_ms: u64) -> OpenPageResult<bool>
+2929 | method | impl Frame | pub | code | pub fn wait_until_disabled_or_deleted(&self, timeout_ms: u64) -> OpenPageResult<bool>
+2934 | method | impl Frame | pub | code | pub fn wait_until_stop_moving(&self, timeout_ms: u64) -> OpenPageResult<bool>
+2959 | method | impl Frame | pub | code | pub fn snapshot_root(&self) -> OpenPageResult<SessionElement>
+2963 | method | impl Frame | pub | code | pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement> where L: Into<LocatorInput<'a>>,
+2971 | method | impl Frame | pub | code | pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement> where L: Into<LocatorInput<'a>>,
+2979 | method | impl Frame | pub | code | pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>> where L: Into<LocatorInput<'a>>,
+2987 | method | impl Frame | pub | code | pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>> where L: Into<LocatorInput<'a>>,
+2995 | method | impl Frame | pub | code | pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement>
+3000 | method | impl Frame | pub | code | pub fn snapshot_find_all_by( &self, by: &str, value: &str, ) -> OpenPageResult<Vec<SessionElement>>
+3009 | method | impl Frame | pub | code | pub fn snapshot_query_xpath( &self, expression: &str, ) -> OpenPageResult<Vec<SessionXPathResult>>
+3016 | method | impl Frame | pub | code | pub fn find_locators<'a, L>( &self, locators: L, any_one: bool, first_match_only: bool, ) -> OpenPageResult<Vec<LocatorMatch<Element>>> where L: Into<LocatorBatchInput<'a>>,
+3031 | method | impl Frame | pub | code | pub fn listener(&self) -> Listener
+3039 | method | impl Frame | pub | code | pub fn listen(&self) -> Listener
+3043 | method | impl Frame | pub | code | pub fn console(&self) -> Console
+3047 | method | impl Frame | private | code | fn resolve_frame_target<'a>(&self, target: PageFrameTarget<'a>) -> OpenPageResult<Element>
+3084 | method | impl Frame | private | code | fn frame_element_by_index(&self, index: isize) -> OpenPageResult<Element>
+3103 | method | impl FrameScroller<'_> | pub | code | pub fn to_top(&self) -> OpenPageResult<()>
+3107 | method | impl FrameScroller<'_> | pub | code | pub fn to_bottom(&self) -> OpenPageResult<()>
+3111 | method | impl FrameScroller<'_> | pub | code | pub fn to_half(&self) -> OpenPageResult<()>
+3115 | method | impl FrameScroller<'_> | pub | code | pub fn to_rightmost(&self) -> OpenPageResult<()>
+3119 | method | impl FrameScroller<'_> | pub | code | pub fn to_leftmost(&self) -> OpenPageResult<()>
+3123 | method | impl FrameScroller<'_> | pub | code | pub fn to_location(&self, x: f64, y: f64) -> OpenPageResult<()>
+3127 | method | impl FrameScroller<'_> | pub | code | pub fn up(&self, pixels: f64) -> OpenPageResult<()>
+3131 | method | impl FrameScroller<'_> | pub | code | pub fn down(&self, pixels: f64) -> OpenPageResult<()>
+3135 | method | impl FrameScroller<'_> | pub | code | pub fn left(&self, pixels: f64) -> OpenPageResult<()>
+3139 | method | impl FrameScroller<'_> | pub | code | pub fn right(&self, pixels: f64) -> OpenPageResult<()>
+3143 | method | impl FrameScroller<'_> | pub | code | pub fn to_see(&self, element: &Element, center: Option<bool>) -> OpenPageResult<()>
+3147 | method | impl FrameScroller<'_> | pub | code | pub fn to_center(&self, element: &Element) -> OpenPageResult<()>
+3153 | method | impl PageScroller<'_> | pub | code | pub fn to_top(&self) -> OpenPageResult<()>
+3157 | method | impl PageScroller<'_> | pub | code | pub fn to_bottom(&self) -> OpenPageResult<()>
+3161 | method | impl PageScroller<'_> | pub | code | pub fn to_half(&self) -> OpenPageResult<()>
+3165 | method | impl PageScroller<'_> | pub | code | pub fn to_rightmost(&self) -> OpenPageResult<()>
+3169 | method | impl PageScroller<'_> | pub | code | pub fn to_leftmost(&self) -> OpenPageResult<()>
+3173 | method | impl PageScroller<'_> | pub | code | pub fn to_location(&self, x: f64, y: f64) -> OpenPageResult<()>
+3177 | method | impl PageScroller<'_> | pub | code | pub fn up(&self, pixels: f64) -> OpenPageResult<()>
+3181 | method | impl PageScroller<'_> | pub | code | pub fn down(&self, pixels: f64) -> OpenPageResult<()>
+3185 | method | impl PageScroller<'_> | pub | code | pub fn left(&self, pixels: f64) -> OpenPageResult<()>
+3189 | method | impl PageScroller<'_> | pub | code | pub fn right(&self, pixels: f64) -> OpenPageResult<()>
+3195 | method | impl PageSetter<'_> | pub | code | pub fn window(&self) -> PageWindowSetter<'_>
+3199 | method | impl PageSetter<'_> | pub | code | pub fn cookie(&self) -> PageCookieSetter<'_>
+3203 | method | impl PageSetter<'_> | pub | code | pub fn load_mode(&self) -> PageLoadModeSetter<'_>
+3207 | method | impl PageSetter<'_> | pub | code | pub fn blocked_urls<'a, I>(&self, patterns: I) -> OpenPageResult<()> where I: Into<ActionsInput<'a>>,
+3214 | method | impl PageSetter<'_> | pub | code | pub fn headers<'a, H>(&self, headers: H) -> OpenPageResult<()> where H: Into<HeadersInput<'a>>,
+3221 | method | impl PageSetter<'_> | pub | code | pub fn user_agent(&self, user_agent: &str, platform: Option<&str>) -> OpenPageResult<()>
+3225 | method | impl PageSetter<'_> | pub | code | pub fn session_storage(&self, item: &str, value: Option<&str>) -> OpenPageResult<()>
+3229 | method | impl PageSetter<'_> | pub | code | pub fn local_storage(&self, item: &str, value: Option<&str>) -> OpenPageResult<()>
+3233 | method | impl PageSetter<'_> | pub | code | pub fn auto_handle_alert( &self, accept: Option<bool>, prompt_text: Option<&str>, ) -> OpenPageResult<()>
+3241 | method | impl PageSetter<'_> | pub | code | pub fn cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()> where C: Into<CookieInput<'a>>,
+3248 | method | impl PageSetter<'_> | pub | code | pub fn clear_cookies(&self) -> OpenPageResult<()>
+3252 | method | impl PageSetter<'_> | pub | code | pub fn remove_cookie( &self, name: &str, url: Option<&str>, domain: Option<&str>, path: Option<&str>, ) -> OpenPageResult<()>
+3262 | method | impl PageSetter<'_> | pub | code | pub fn download_path(&self, path: &str) -> OpenPageResult<()>
+3266 | method | impl PageSetter<'_> | pub | code | pub fn download_file_exists(&self, mode: DownloadFileExistsMode) -> OpenPageResult<()>
+3270 | method | impl PageSetter<'_> | pub | code | pub fn when_download_file_exists(&self, mode: &str) -> OpenPageResult<()>
+3274 | method | impl PageSetter<'_> | pub | code | pub fn download_file_name( &self, rename: Option<&str>, suffix: Option<&str>, ) -> OpenPageResult<()>
+3283 | method | impl PageSetter<'_> | pub | code | pub fn upload_files<'a, F>(&self, files: F) -> OpenPageResult<()> where F: Into<UploadFilesInput<'a>>,
+3290 | method | impl PageSetter<'_> | pub | code | pub fn upload_paths<'a, F>(&self, files: F) -> OpenPageResult<()> where F: Into<UploadFilesInput<'a>>,
+3297 | method | impl PageSetter<'_> | pub | code | pub fn activate(&self) -> OpenPageResult<()>
+3301 | method | impl PageSetter<'_> | pub | code | pub fn retry( &self, retry_times: Option<usize>, retry_interval_secs: Option<f64>, ) -> OpenPageResult<()>
+3309 | method | impl PageSetter<'_> | pub | code | pub fn retry_times(&self, times: usize) -> OpenPageResult<()>
+3313 | method | impl PageSetter<'_> | pub | code | pub fn retry_interval(&self, interval_secs: f64) -> OpenPageResult<()>
+3317 | method | impl PageSetter<'_> | pub | code | pub fn timeout(&self, timeout_secs: f64) -> OpenPageResult<()>
+3321 | method | impl PageSetter<'_> | pub | code | pub fn timeouts( &self, base_secs: Option<f64>, page_load_secs: Option<f64>, script_secs: Option<f64>, ) -> OpenPageResult<()>
+3333 | method | impl PageCookieSetter<'_> | pub | code | pub fn set<'a, C>(&self, cookies: C) -> OpenPageResult<()> where C: Into<CookieInput<'a>>,
+3340 | method | impl PageCookieSetter<'_> | pub | code | pub fn clear(&self) -> OpenPageResult<()>
+3344 | method | impl PageCookieSetter<'_> | pub | code | pub fn remove( &self, name: &str, url: Option<&str>, domain: Option<&str>, path: Option<&str>, ) -> OpenPageResult<()>
+3356 | method | impl PageWindowSetter<'_> | pub | code | pub fn max(&self) -> OpenPageResult<()>
+3360 | method | impl PageWindowSetter<'_> | pub | code | pub fn mini(&self) -> OpenPageResult<()>
+3364 | method | impl PageWindowSetter<'_> | pub | code | pub fn full(&self) -> OpenPageResult<()>
+3368 | method | impl PageWindowSetter<'_> | pub | code | pub fn normal(&self) -> OpenPageResult<()>
+3372 | method | impl PageWindowSetter<'_> | pub | code | pub fn size(&self, width: Option<i64>, height: Option<i64>) -> OpenPageResult<()>
+3376 | method | impl PageWindowSetter<'_> | pub | code | pub fn location(&self, x: Option<i64>, y: Option<i64>) -> OpenPageResult<()>
+3380 | method | impl PageWindowSetter<'_> | pub | code | pub fn hide(&self) -> OpenPageResult<()>
+3384 | method | impl PageWindowSetter<'_> | pub | code | pub fn show(&self) -> OpenPageResult<()>
+3390 | method | impl PageLoadModeSetter<'_> | pub | code | pub fn normal(&self) -> OpenPageResult<()>
+3394 | method | impl PageLoadModeSetter<'_> | pub | code | pub fn eager(&self) -> OpenPageResult<()>
+3398 | method | impl PageLoadModeSetter<'_> | pub | code | pub fn none(&self) -> OpenPageResult<()>
+3404 | method | impl FrameSetter<'_> | pub | code | pub fn cookie(&self) -> FrameCookieSetter<'_>
+3408 | method | impl FrameSetter<'_> | pub | code | pub fn cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()> where C: Into<CookieInput<'a>>,
+3415 | method | impl FrameSetter<'_> | pub | code | pub fn clear_cookies(&self) -> OpenPageResult<()>
+3419 | method | impl FrameSetter<'_> | pub | code | pub fn remove_cookie( &self, name: &str, url: Option<&str>, domain: Option<&str>, path: Option<&str>, ) -> OpenPageResult<()>
+3429 | method | impl FrameSetter<'_> | pub | code | pub fn attr(&self, name: &str, value: &str) -> OpenPageResult<()>
+3433 | method | impl FrameSetter<'_> | pub | code | pub fn property(&self, name: &str, value: &Value) -> OpenPageResult<()>
+3437 | method | impl FrameSetter<'_> | pub | code | pub fn style(&self, name: &str, value: &str) -> OpenPageResult<()>
+3441 | method | impl FrameSetter<'_> | pub | code | pub fn upload_files<'a, F>(&self, files: F) -> OpenPageResult<()> where F: Into<UploadFilesInput<'a>>,
+3448 | method | impl FrameSetter<'_> | pub | code | pub fn upload_paths<'a, F>(&self, files: F) -> OpenPageResult<()> where F: Into<UploadFilesInput<'a>>,
+3455 | method | impl FrameSetter<'_> | pub | code | pub fn download_path(&self, path: &str) -> OpenPageResult<()>
+3459 | method | impl FrameSetter<'_> | pub | code | pub fn download_file_exists(&self, mode: DownloadFileExistsMode) -> OpenPageResult<()>
+3463 | method | impl FrameSetter<'_> | pub | code | pub fn when_download_file_exists(&self, mode: &str) -> OpenPageResult<()>
+3467 | method | impl FrameSetter<'_> | pub | code | pub fn download_file_name( &self, name: Option<&str>, suffix: Option<&str>, suffix_specified: bool, ) -> OpenPageResult<()>
+3479 | method | impl FrameCookieSetter<'_> | pub | code | pub fn set<'a, C>(&self, cookies: C) -> OpenPageResult<()> where C: Into<CookieInput<'a>>,
+3486 | method | impl FrameCookieSetter<'_> | pub | code | pub fn clear(&self) -> OpenPageResult<()>
+3490 | method | impl FrameCookieSetter<'_> | pub | code | pub fn remove( &self, name: &str, url: Option<&str>, domain: Option<&str>, path: Option<&str>, ) -> OpenPageResult<()>
+3502 | method | impl FrameStates<'_> | pub | code | pub fn is_loading(&self) -> OpenPageResult<bool>
+3506 | method | impl FrameStates<'_> | pub | code | pub fn is_alive(&self) -> OpenPageResult<bool>
+3510 | method | impl FrameStates<'_> | pub | code | pub fn ready_state(&self) -> OpenPageResult<Option<String>>
+3514 | method | impl FrameStates<'_> | pub | code | pub fn is_displayed(&self) -> OpenPageResult<bool>
+3518 | method | impl FrameStates<'_> | pub | code | pub fn is_enabled(&self) -> OpenPageResult<bool>
+3522 | method | impl FrameStates<'_> | pub | code | pub fn has_rect(&self) -> OpenPageResult<bool>
+3526 | method | impl FrameStates<'_> | pub | code | pub fn is_in_viewport(&self) -> OpenPageResult<bool>
+3530 | method | impl FrameStates<'_> | pub | code | pub fn is_whole_in_viewport(&self) -> OpenPageResult<bool>
+3534 | method | impl FrameStates<'_> | pub | code | pub fn is_covered(&self) -> OpenPageResult<bool>
+3538 | method | impl FrameStates<'_> | pub | code | pub fn is_clickable(&self) -> OpenPageResult<bool>
+3542 | method | impl FrameStates<'_> | pub | code | pub fn has_alert(&self) -> OpenPageResult<bool>
+3548 | method | impl FrameWait<'_> | pub | code | pub fn doc_loaded(&self, timeout_ms: u64) -> OpenPageResult<bool>
+3552 | method | impl FrameWait<'_> | pub | code | pub fn download_begin( &self, timeout_ms: u64, cancel_it: bool, ) -> OpenPageResult<Option<DownloadMission>>
+3560 | method | impl FrameWait<'_> | pub | code | pub fn downloads_done(&self, timeout_ms: u64, cancel_if_timeout: bool) -> OpenPageResult<bool>
+3565 | method | impl FrameWait<'_> | pub | code | pub fn displayed(&self, timeout_ms: u64) -> OpenPageResult<bool>
+3569 | method | impl FrameWait<'_> | pub | code | pub fn hidden(&self, timeout_ms: u64) -> OpenPageResult<bool>
+3573 | method | impl FrameWait<'_> | pub | code | pub fn enabled(&self, timeout_ms: u64) -> OpenPageResult<bool>
+3577 | method | impl FrameWait<'_> | pub | code | pub fn disabled(&self, timeout_ms: u64) -> OpenPageResult<bool>
+3581 | method | impl FrameWait<'_> | pub | code | pub fn deleted(&self, timeout_ms: u64) -> OpenPageResult<bool>
+3585 | method | impl FrameWait<'_> | pub | code | pub fn clickable(&self, timeout_ms: u64) -> OpenPageResult<bool>
+3589 | method | impl FrameWait<'_> | pub | code | pub fn has_rect(&self, timeout_ms: u64) -> OpenPageResult<bool>
+3593 | method | impl FrameWait<'_> | pub | code | pub fn covered(&self, timeout_ms: u64) -> OpenPageResult<bool>
+3597 | method | impl FrameWait<'_> | pub | code | pub fn not_covered(&self, timeout_ms: u64) -> OpenPageResult<bool>
+3601 | method | impl FrameWait<'_> | pub | code | pub fn disabled_or_deleted(&self, timeout_ms: u64) -> OpenPageResult<bool>
+3605 | method | impl FrameWait<'_> | pub | code | pub fn stop_moving(&self, timeout_ms: u64) -> OpenPageResult<bool>
+3609 | method | impl FrameWait<'_> | pub | code | pub fn upload_paths_inputted(&self, timeout_ms: u64) -> OpenPageResult<bool>
+3615 | method | impl FrameRect<'_> | pub | code | pub fn location(&self) -> OpenPageResult<Option<(f64, f64)>>
+3619 | method | impl FrameRect<'_> | pub | code | pub fn viewport_location(&self) -> OpenPageResult<Option<(f64, f64)>>
+3623 | method | impl FrameRect<'_> | pub | code | pub fn screen_location(&self) -> OpenPageResult<Option<(f64, f64)>>
+3627 | method | impl FrameRect<'_> | pub | code | pub fn size(&self) -> OpenPageResult<Option<(f64, f64)>>
+3631 | method | impl FrameRect<'_> | pub | code | pub fn viewport_size(&self) -> OpenPageResult<Option<(f64, f64)>>
+3635 | method | impl FrameRect<'_> | pub | code | pub fn corners(&self) -> OpenPageResult<Option<[(f64, f64); 4]>>
+3639 | method | impl FrameRect<'_> | pub | code | pub fn viewport_corners(&self) -> OpenPageResult<Option<[(f64, f64); 4]>>
+3643 | method | impl FrameRect<'_> | pub | code | pub fn scroll_position(&self) -> OpenPageResult<(f64, f64)>
+3649 | method | impl Actions | pub | code | pub fn new(page: Page) -> Self
+3659 | method | impl Actions | pub | code | pub fn owner(&self) -> &Page
+3663 | method | impl Actions | pub | code | pub fn curr_x(&self) -> i64
+3667 | method | impl Actions | pub | code | pub fn curr_y(&self) -> i64
+3671 | method | impl Actions | pub | code | pub fn move_to<'a, T>( &mut self, target: T, offset_x: Option<f64>, offset_y: Option<f64>, duration_secs: f64, ) -> OpenPageResult<&mut Self> where T: Into<ActionsTarget<'a>>,
+3686 | method | impl Actions | pub | code | pub fn r#move( &mut self, offset_x: f64, offset_y: f64, duration_secs: f64, ) -> OpenPageResult<&mut Self>
+3700 | method | impl Actions | pub | code | pub fn move_by( &mut self, offset_x: f64, offset_y: f64, duration_secs: f64, ) -> OpenPageResult<&mut Self>
+3709 | method | impl Actions | pub | code | pub fn up(&mut self, pixels: f64) -> OpenPageResult<&mut Self>
+3713 | method | impl Actions | pub | code | pub fn down(&mut self, pixels: f64) -> OpenPageResult<&mut Self>
+3717 | method | impl Actions | pub | code | pub fn left(&mut self, pixels: f64) -> OpenPageResult<&mut Self>
+3721 | method | impl Actions | pub | code | pub fn right(&mut self, pixels: f64) -> OpenPageResult<&mut Self>
+3725 | method | impl Actions | pub | code | pub fn click<'a, T>(&mut self, on_target: Option<T>, times: u32) -> OpenPageResult<&mut Self> where T: Into<ActionsTarget<'a>>,
+3736 | method | impl Actions | pub | code | pub fn r_click<'a, T>(&mut self, on_target: Option<T>, times: u32) -> OpenPageResult<&mut Self> where T: Into<ActionsTarget<'a>>,
+3747 | method | impl Actions | pub | code | pub fn m_click<'a, T>(&mut self, on_target: Option<T>, times: u32) -> OpenPageResult<&mut Self> where T: Into<ActionsTarget<'a>>,
+3758 | method | impl Actions | pub | code | pub fn hold<'a, T>(&mut self, on_target: Option<T>) -> OpenPageResult<&mut Self> where T: Into<ActionsTarget<'a>>,
+3769 | method | impl Actions | pub | code | pub fn release<'a, T>(&mut self, on_target: Option<T>) -> OpenPageResult<&mut Self> where T: Into<ActionsTarget<'a>>,
+3780 | method | impl Actions | pub | code | pub fn r_hold<'a, T>(&mut self, on_target: Option<T>) -> OpenPageResult<&mut Self> where T: Into<ActionsTarget<'a>>,
+3791 | method | impl Actions | pub | code | pub fn r_release<'a, T>(&mut self, on_target: Option<T>) -> OpenPageResult<&mut Self> where T: Into<ActionsTarget<'a>>,
+3802 | method | impl Actions | pub | code | pub fn m_hold<'a, T>(&mut self, on_target: Option<T>) -> OpenPageResult<&mut Self> where T: Into<ActionsTarget<'a>>,
+3813 | method | impl Actions | pub | code | pub fn m_release<'a, T>(&mut self, on_target: Option<T>) -> OpenPageResult<&mut Self> where T: Into<ActionsTarget<'a>>,
+3824 | method | impl Actions | pub | code | pub fn scroll<'a, T>( &mut self, delta_y: f64, delta_x: f64, on_target: Option<T>, ) -> OpenPageResult<&mut Self> where T: Into<ActionsTarget<'a>>,
+3849 | method | impl Actions | pub | code | pub fn key_down(&mut self, key: &str) -> OpenPageResult<&mut Self>
+3858 | method | impl Actions | pub | code | pub fn key_up(&mut self, key: &str) -> OpenPageResult<&mut Self>
+3867 | method | impl Actions | pub | code | pub fn input<'a, I>(&mut self, input: I) -> OpenPageResult<&mut Self> where I: Into<ActionsInput<'a>>,
+3875 | method | impl Actions | pub | code | pub fn r#type<'a, I>(&mut self, input: I) -> OpenPageResult<&mut Self> where I: Into<ActionsInput<'a>>,
+3883 | method | impl Actions | pub | code | pub fn type_with_interval<'a, I>( &mut self, input: I, interval_secs: f64, ) -> OpenPageResult<&mut Self> where I: Into<ActionsInput<'a>>,
+3895 | method | impl Actions | pub | code | pub fn type_keys<'a, I>(&mut self, input: I) -> OpenPageResult<&mut Self> where I: Into<ActionsInput<'a>>,
+3902 | method | impl Actions | pub | code | pub fn type_keys_with_interval<'a, I>( &mut self, input: I, interval_secs: f64, ) -> OpenPageResult<&mut Self> where I: Into<ActionsInput<'a>>,
+3913 | method | impl Actions | pub | code | pub fn wait(&mut self, second: f64, scope: Option<f64>) -> OpenPageResult<&mut Self>
+3927 | method | impl Actions | pub | code | pub fn drag_in<'a, T>( &mut self, target: T, data: ActionsDragData<'a>, ) -> OpenPageResult<&mut Self> where T: Into<ActionsTarget<'a>>,
+3943 | method | impl Actions | private | code | fn perform_actions_input( &mut self, input: ActionsInput<'_>, prefer_insert_text: bool, interval_secs: Option<f64>, ) -> OpenPageResult<()>
+4015 | method | impl Actions | private | code | fn move_pointer_to( &mut self, target_x: f64, target_y: f64, duration_secs: f64, ) -> OpenPageResult<()>
+4041 | method | impl Actions | private | code | fn press_button(&mut self, button: MouseButton) -> OpenPageResult<()>
+4057 | method | impl Actions | private | code | fn release_button(&mut self, button: MouseButton) -> OpenPageResult<()>
+4073 | method | impl Actions | private | code | fn dispatch_click(&mut self, button: MouseButton, times: u32) -> OpenPageResult<()>
+4106 | method | impl Actions | private | code | fn dispatch_mouse_event(&self, event: DispatchMouseEventParams) -> OpenPageResult<()>
+4116 | method | impl Actions | private | code | fn dispatch_key_event(&self, event: DispatchKeyEventParams) -> OpenPageResult<()>
+4126 | method | impl Actions | private | code | fn dispatch_drag_event( &self, event_type: &'static str, x: f64, y: f64, data: ActionsDragPayload, ) -> OpenPageResult<()>
+4149 | method | impl Actions | private | code | fn insert_text_value(&self, value: &str) -> OpenPageResult<()>
+4159 | method | impl Actions | private | code | fn type_text_value(&self, value: &str, interval_secs: Option<f64>) -> OpenPageResult<()>
+4167 | method | impl Actions | private | code | fn press_key_value(&self, value: &str, modifiers: i64) -> OpenPageResult<()>
+4175 | item | - | private | code | fn browser_backed_page_method_message(method_name: &str) -> String
+4180 | method | impl Page | pub(crate) | code | pub(crate) fn new(runtime: Arc<Runtime>, inner: OxPage) -> Self
+4184 | method | impl Page | pub(crate) | code | pub(crate) fn new_with_load_mode( runtime: Arc<Runtime>, inner: OxPage, load_mode: LoadMode, ) -> Self
+4218 | method | impl Page | pub(crate) | code | pub(crate) fn with_browser_pid(mut self, browser_pid: Option<u32>) -> Self
+4223 | method | impl Page | pub(crate) | code | pub(crate) fn with_browser(mut self, browser: Browser) -> Self
+4229 | method | impl Page | pub(crate) | code | pub(crate) fn with_frame_caches( mut self, frame_cache: FrameCacheHandle, frame_none_element_configs: FrameNoneElementConfigCacheHandle, ) -> Self
+4239 | method | impl Page | pub(crate) | code | pub(crate) fn set_runtime_load_mode(&self, load_mode: LoadMode) -> OpenPageResult<()>
+4251 | method | impl Page | pub | code | pub fn browser(&self) -> Option<&Browser>
+4255 | method | impl Page | pub | code | pub fn navigation_snapshot(&self) -> OpenPageResult<PageNavigationSnapshot>
+4259 | method | impl Page | private | code | fn browser_backed_ref(&self, method_name: &str) -> OpenPageResult<&Browser>
+4265 | method | impl Page | private | code | fn cloned_none_element_config( &self, handle: &ElementsOneRuntimeConfigHandle, ) -> OpenPageResult<ElementsOneRuntimeConfigHandle>
+4280 | method | impl Page | private | code | fn frame_none_element_config_from( &self, frame_id: &str, source: &ElementsOneRuntimeConfigHandle, ) -> OpenPageResult<ElementsOneRuntimeConfigHandle>
+4304 | method | impl Page | private | code | fn cached_frame(&self, frame_id: &str) -> OpenPageResult<Option<Frame>>
+4321 | method | impl Page | private | code | fn cache_frame(&self, frame: &Frame) -> OpenPageResult<()>
+4339 | method | impl Page | private | code | fn prune_frame_none_element_configs(&self) -> OpenPageResult<()>
+4345 | method | impl Page | private | code | fn prune_frame_caches(&self) -> OpenPageResult<()>
+4351 | method | impl Page | private | code | fn prune_frame_caches_for_live_ids( &self, live_frame_ids: &HashSet<String>, ) -> OpenPageResult<()>
+4374 | method | impl Page | pub | code | pub fn set_none_element_value(&self, value: Option<&str>, on_off: bool) -> OpenPageResult<()>
+4389 | method | impl Page | pub | code | pub fn set_raise_when_ele_not_found(&self, on_off: bool) -> OpenPageResult<()>
+4403 | method | impl Page | pub | code | pub fn actions(&self) -> OpenPageResult<Actions>
+4408 | method | impl Page | pub | code | pub fn new_actions(&self) -> Actions
+4412 | method | impl Page | pub | code | pub fn goto(&self, url: &str) -> OpenPageResult<()>
+4438 | method | impl Page | private | code | fn goto_once(&self, url: &str, load_mode: LoadMode) -> OpenPageResult<()>
+4486 | method | impl Page | private | code | fn navigation_retry_config(&self) -> OpenPageResult<(usize, u64)>
+4493 | method | impl Page | private | code | fn navigation_page_load_timeout_ms(&self) -> OpenPageResult<u64>
+4500 | method | impl Page | private | code | fn javascript_timeout_ms(&self) -> OpenPageResult<u64>
+4507 | method | impl Page | private | code | fn implicit_wait_timeout_ms(&self) -> OpenPageResult<u64>
+4516 | method | impl Page | pub | code | pub fn url(&self) -> OpenPageResult<String>
+4526 | method | impl Page | pub | code | pub fn title(&self) -> OpenPageResult<String>
+4536 | method | impl Page | pub | code | pub fn target_id(&self) -> String
+4540 | method | impl Page | pub | code | pub fn tabs_count(&self) -> OpenPageResult<usize>
+4544 | method | impl Page | pub | code | pub fn tab_ids(&self) -> OpenPageResult<Vec<String>>
+4548 | method | impl Page | pub | code | pub fn get_tab<'a, I, T>( &self, id_or_num: Option<I>, title: Option<&str>, url: Option<&str>, tab_type: Option<T>, as_id: bool, ) -> OpenPageResult<Option<BrowserTabReference>> where I: Into<BrowserTabSelector<'a>>, T: Into<BrowserTabTypeInput<'a>>,
+4564 | method | impl Page | pub | code | pub fn get_tabs<'a, T>( &self, title: Option<&str>, url: Option<&str>, tab_type: Option<T>, as_id: bool, ) -> OpenPageResult<Vec<BrowserTabReference>> where T: Into<BrowserTabTypeInput<'a>>,
+4578 | method | impl Page | pub | code | pub fn latest_tab(&self) -> OpenPageResult<Option<BrowserTabReference>>
+4582 | method | impl Page | pub | code | pub fn new_tab( &self, url: Option<&str>, new_window: bool, background: bool, new_context: bool, ) -> OpenPageResult<Page>
+4593 | method | impl Page | pub | code | pub fn activate_tab<'a, T>(&self, target: T) -> OpenPageResult<()> where T: Into<BrowserTabSelector<'a>>,
+4601 | method | impl Page | pub | code | pub fn close_tabs<'a, T>(&self, targets: T, others: bool) -> OpenPageResult<usize> where T: Into<BrowserTabTargetsInput<'a>>,
+4609 | method | impl Page | pub | code | pub fn close_with_options(&self, others: bool, _session: bool) -> OpenPageResult<()>
+4618 | method | impl Page | pub | code | pub fn download_path(&self) -> OpenPageResult<Option<String>>
+4625 | method | impl Page | pub | code | pub fn download_file_exists_mode(&self) -> OpenPageResult<String>
+4634 | method | impl Page | pub | code | pub fn download(&self, url: &str) -> OpenPageResult<String>
+4639 | method | impl Page | pub | code | pub fn download_to(&self, url: &str, path: impl AsRef<Path>) -> OpenPageResult<String>
+4644 | method | impl Page | pub | code | pub fn browser_pid(&self) -> Option<u32>
+4648 | method | impl Page | pub | code | pub fn process_id(&self) -> Option<u32>
+4652 | method | impl Page | pub | code | pub fn browser_version(&self) -> OpenPageResult<String>
+4656 | method | impl Page | pub | code | pub fn address(&self) -> OpenPageResult<String>
+4660 | method | impl Page | pub | code | pub fn quit(&self) -> OpenPageResult<()>
+4664 | method | impl Page | pub | code | pub fn reconnect(&self, wait_ms: u64) -> OpenPageResult<Self>
+4672 | method | impl Page | pub | code | pub fn disconnect(self) -> OpenPageResult<DisconnectedPage>
+4678 | method | impl Page | pub | code | pub fn html(&self) -> OpenPageResult<String>
+4684 | method | impl Page | pub | code | pub fn evaluate(&self, expression: &str) -> OpenPageResult<Value>
+4702 | method | impl Page | private | code | fn evaluate_with_options( &self, expression: &str, timeout_ms: Option<u64>, await_promise: bool, ) -> OpenPageResult<Value>
+4717 | method | impl Page | private | code | fn evaluate_params_with_timeout( &self, params: EvaluateParams, timeout_ms: u64, ) -> OpenPageResult<Value>
+4740 | method | impl Page | pub | code | pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>> where L: Into<LocatorInput<'a>>,
+4762 | method | impl Page | pub | code | pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<Element>> where L: Into<LocatorInput<'a>>,
+4769 | method | impl Page | pub | code | pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+4806 | method | impl Page | pub | code | pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<Element>> where L: Into<LocatorInput<'a>>,
+4848 | method | impl Page | pub | code | pub fn wait_for<'a, L>(&self, locator: L, timeout_ms: u64) -> OpenPageResult<Element> where L: Into<LocatorInput<'a>>,
+4856 | method | impl Page | private | code | fn wait_for_raw(&self, locator: &str, timeout_ms: u64) -> OpenPageResult<Element>
+4874 | method | impl Page | pub | code | pub fn wait_for_elements_loaded<'a, L>( &self, locators: L, any_one: bool, timeout_ms: u64, ) -> OpenPageResult<bool> where L: Into<LocatorBatchInput<'a>>,
+4903 | method | impl Page | pub | code | pub fn wait_for_ele_displayed<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<bool> where L: Into<PageElementTarget<'a>>,
+4912 | method | impl Page | pub | code | pub fn wait_for_ele_hidden<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<bool> where L: Into<PageElementTarget<'a>>,
+4921 | method | impl Page | pub | code | pub fn wait_for_ele_enabled<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<bool> where L: Into<PageElementTarget<'a>>,
+4930 | method | impl Page | pub | code | pub fn wait_for_ele_deleted<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<bool> where L: Into<PageElementTarget<'a>>,
+4939 | method | impl Page | pub | code | pub fn wait_for_ele_clickable<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<bool> where L: Into<PageElementTarget<'a>>,
+4948 | method | impl Page | private | code | fn wait_for_ele_state<'a, L, F>( &self, target: L, timeout_ms: u64, wait_fn: F, ) -> OpenPageResult<bool> where L: Into<PageElementTarget<'a>>, F: FnOnce(&Element, u64) -> OpenPageResult<bool>,
+4970 | method | impl Page | private | code | fn wait_for_ele_state_raw<F>( &self, locator: &str, timeout_ms: u64, wait_fn: F, ) -> OpenPageResult<bool> where F: FnOnce(&Element, u64) -> OpenPageResult<bool>,
+4998 | method | impl Page | pub | code | pub fn click<'a, L>(&self, locator: L) -> OpenPageResult<()> where L: Into<LocatorInput<'a>>,
+5006 | method | impl Page | pub | code | pub fn fill<'a, L>(&self, locator: L, text: &str) -> OpenPageResult<()> where L: Into<LocatorInput<'a>>,
+5014 | method | impl Page | pub | code | pub fn text<'a, L>(&self, locator: L) -> OpenPageResult<Option<String>> where L: Into<LocatorInput<'a>>,
+5022 | method | impl Page | pub | code | pub fn attr<'a, L>(&self, locator: L, name: &str) -> OpenPageResult<Option<String>> where L: Into<LocatorInput<'a>>,
+5030 | method | impl Page | pub | code | pub fn active_element(&self) -> OpenPageResult<Option<Element>>
+5034 | method | impl Page | private | code | const active = document.activeElement;
+5052 | method | impl Page | pub | code | pub fn remove_element<'a, L>(&self, target: L) -> OpenPageResult<bool> where L: Into<PageElementTarget<'a>>,
+5076 | method | impl Page | pub | code | pub fn remove_ele<'a, L>(&self, target: L) -> OpenPageResult<bool> where L: Into<PageElementTarget<'a>>,
+5083 | method | impl Page | pub | code | pub fn add_element_html<'a, 'b, I, B>( &self, html: &str, insert_to: Option<I>, before: Option<B>, ) -> OpenPageResult<Element> where I: Into<PageElementTarget<'a>>, B: Into<PageElementTarget<'b>>,
+5112 | method | impl Page | private | code | const markerAttr =
+5113 | method | impl Page | private | code | const insertMarker =
+5114 | method | impl Page | private | code | const parent =
+5115 | method | impl Page | private | code | const before =
+5116 | method | impl Page | private | code | const template = document.createElement('template');
+5118 | method | impl Page | private | code | const element = template.content.firstElementChild;
+5148 | method | impl Page | pub | code | pub fn add_element<'a, 'b, 'c, C, I, B>( &self, content: C, insert_to: Option<I>, before: Option<B>, ) -> OpenPageResult<Element> where C: Into<PageElementContent<'c>>, I: Into<PageElementTarget<'a>>, B: Into<PageElementTarget<'b>>,
+5167 | method | impl Page | pub | code | pub fn add_ele<'a, 'b, 'c, C, I, B>( &self, content: C, insert_to: Option<I>, before: Option<B>, ) -> OpenPageResult<Element> where C: Into<PageElementContent<'c>>, I: Into<PageElementTarget<'a>>, B: Into<PageElementTarget<'b>>,
+5181 | method | impl Page | pub | code | pub fn add_element_info<'a, 'b, I, B, H>( &self, info: H, insert_to: Option<I>, before: Option<B>, ) -> OpenPageResult<Element> where I: Into<PageElementTarget<'a>>, B: Into<PageElementTarget<'b>>, H: Into<PageElementInfo>,
+5213 | method | impl Page | private | code | const markerAttr =
+5214 | method | impl Page | private | code | const insertMarker =
+5215 | method | impl Page | private | code | const parent =
+5216 | method | impl Page | private | code | const before =
+5217 | method | impl Page | private | code | const data =
+5218 | method | impl Page | private | code | const element = document.createElement(
+5236 | method | impl Page | private | code | const root = document.body || document.documentElement;
+5266 | method | impl Page | pub | code | pub fn get_frame<'a, L>(&self, target: L) -> OpenPageResult<Frame> where L: Into<PageFrameTarget<'a>>,
+5293 | method | impl Page | pub | code | pub fn get_frame_with_timeout<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<Frame> where L: Into<PageFrameTarget<'a>>,
+5315 | method | impl Page | pub | code | pub fn get_frame_by_index<I>(&self, index: I) -> OpenPageResult<Frame> where I: FrameIndexInput,
+5322 | method | impl Page | pub | code | pub fn get_frame_by_index_with_timeout<I>( &self, index: I, timeout_ms: u64, ) -> OpenPageResult<Frame> where I: FrameIndexInput,
+5333 | method | impl Page | pub | code | pub fn get_frame_ele<'a, L>(&self, target: L) -> OpenPageResult<Element> where L: Into<PageFrameTarget<'a>>,
+5340 | method | impl Page | pub | code | pub fn get_frame_ele_with_timeout<'a, L>( &self, target: L, timeout_ms: u64, ) -> OpenPageResult<Element> where L: Into<PageFrameTarget<'a>>,
+5366 | method | impl Page | pub | code | pub fn get_frame_ele_by_index<I>(&self, index: I) -> OpenPageResult<Element> where I: FrameIndexInput,
+5373 | method | impl Page | pub | code | pub fn get_frame_ele_by_index_with_timeout<I>( &self, index: I, timeout_ms: u64, ) -> OpenPageResult<Element> where I: FrameIndexInput,
+5384 | method | impl Page | pub | code | pub fn get_frames<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Frame>> where L: Into<LocatorInput<'a>>,
+5394 | method | impl Page | pub | code | pub fn get_frames_with_timeout<'a, L>( &self, locator: Option<L>, timeout_ms: u64, ) -> OpenPageResult<Vec<Frame>> where L: Into<LocatorInput<'a>>,
+5427 | method | impl Page | pub | code | pub fn get_frame_eles<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>> where L: Into<LocatorInput<'a>>,
+5444 | method | impl Page | pub | code | pub fn get_frame_eles_with_timeout<'a, L>( &self, locator: Option<L>, timeout_ms: u64, ) -> OpenPageResult<Vec<Element>> where L: Into<LocatorInput<'a>>,
+5477 | method | impl Page | pub | code | pub fn get_frame_context<'a, L>(&self, target: L) -> OpenPageResult<Frame> where L: Into<PageFrameTarget<'a>>,
+5484 | method | impl Page | pub | code | pub fn get_frame_context_by_index<I>(&self, index: I) -> OpenPageResult<Frame> where I: FrameIndexInput,
+5491 | method | impl Page | pub | code | pub fn get_frame_contexts<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Frame>> where L: Into<LocatorInput<'a>>,
+5498 | method | impl Page | pub | code | pub fn set_blocked_urls<'a, I>(&self, patterns: I) -> OpenPageResult<()> where I: Into<ActionsInput<'a>>,
+5526 | method | impl Page | pub | code | pub fn save_screenshot(&self, path: impl AsRef<Path>, full_page: bool) -> OpenPageResult<()>
+5542 | method | impl Page | pub | code | pub fn screenshot_bytes( &self, full_page: bool, left_top: Option<(f64, f64)>, right_bottom: Option<(f64, f64)>, ) -> OpenPageResult<Vec<u8>>
+5555 | method | impl Page | pub | code | pub fn screenshot_base64( &self, full_page: bool, left_top: Option<(f64, f64)>, right_bottom: Option<(f64, f64)>, ) -> OpenPageResult<String>
+5564 | method | impl Page | pub | code | pub fn get_screenshot( &self, path: Option<&Path>, name: Option<&str>, full_page: bool, left_top: Option<(f64, f64)>, right_bottom: Option<(f64, f64)>, ) -> OpenPageResult<PathBuf>
+5579 | method | impl Page | pub | code | pub fn save( &self, path: Option<&Path>, name: Option<&str>, as_pdf: bool, ) -> OpenPageResult<PageSaveContent>
+5588 | method | impl Page | pub | code | pub fn save_with_options( &self, path: Option<&Path>, name: Option<&str>, as_pdf: bool, pdf_options: Option<PrintToPdfParams>, ) -> OpenPageResult<PageSaveContent>
+5639 | method | impl Page | pub | code | pub fn save_pdf(&self, path: impl AsRef<Path>) -> OpenPageResult<()>
+5650 | method | impl Page | pub | code | pub fn refresh(&self, ignore_cache: bool) -> OpenPageResult<()>
+5661 | method | impl Page | pub | code | pub fn back(&self, steps: usize) -> OpenPageResult<bool>
+5665 | method | impl Page | pub | code | pub fn forward(&self, steps: usize) -> OpenPageResult<bool>
+5669 | method | impl Page | pub | code | pub fn run_js(&self, script: &str) -> OpenPageResult<Value>
+5677 | method | impl Page | pub | code | pub fn run_js_with_args( &self, script: &str, args: &[Value], as_expr: bool, ) -> OpenPageResult<Value>
+5686 | method | impl Page | pub | code | pub fn run_js_with_options( &self, script: &str, args: &[Value], as_expr: bool, timeout_ms: Option<u64>, ) -> OpenPageResult<Value>
+5698 | method | impl Page | pub | code | pub fn run_js_loaded(&self, script: &str) -> OpenPageResult<Value>
+5702 | method | impl Page | pub | code | pub fn run_js_loaded_with_args( &self, script: &str, args: &[Value], as_expr: bool, ) -> OpenPageResult<Value>
+5711 | method | impl Page | pub | code | pub fn run_js_loaded_with_options( &self, script: &str, args: &[Value], as_expr: bool, timeout_ms: Option<u64>, ) -> OpenPageResult<Value>
+5722 | method | impl Page | pub | code | pub fn run_async_js(&self, script: &str) -> OpenPageResult<()>
+5726 | method | impl Page | pub | code | pub fn run_async_js_with_args( &self, script: &str, args: &[Value], as_expr: bool, ) -> OpenPageResult<()>
+5735 | method | impl Page | pub | code | pub fn run_async_js_with_options( &self, script: &str, args: &[Value], as_expr: bool, timeout_ms: Option<u64>, ) -> OpenPageResult<()>
+5748 | method | impl Page | pub | code | pub fn scroll(&self) -> PageScroller<'_>
+5752 | method | impl Page | pub | code | pub fn set(&self) -> PageSetter<'_>
+5756 | method | impl Page | pub | code | pub fn scroll_to_top(&self) -> OpenPageResult<()>
+5763 | method | impl Page | pub | code | pub fn scroll_to_bottom(&self) -> OpenPageResult<()>
+5770 | method | impl Page | pub | code | pub fn scroll_to_half(&self) -> OpenPageResult<()>
+5777 | method | impl Page | pub | code | pub fn scroll_to_rightmost(&self) -> OpenPageResult<()>
+5784 | method | impl Page | pub | code | pub fn scroll_to_leftmost(&self) -> OpenPageResult<()>
+5791 | method | impl Page | pub | code | pub fn scroll_to_location(&self, x: f64, y: f64) -> OpenPageResult<()>
+5798 | method | impl Page | pub | code | pub fn scroll_up(&self, pixels: f64) -> OpenPageResult<()>
+5806 | method | impl Page | pub | code | pub fn scroll_down(&self, pixels: f64) -> OpenPageResult<()>
+5813 | method | impl Page | pub | code | pub fn scroll_left(&self, pixels: f64) -> OpenPageResult<()>
+5821 | method | impl Page | pub | code | pub fn scroll_right(&self, pixels: f64) -> OpenPageResult<()>
+5828 | method | impl Page | pub | code | pub fn execute_cdp<T>(&self, command: T) -> OpenPageResult<T::Response> where T: Command,
+5840 | method | impl Page | pub | code | pub fn run_cdp<T>(&self, command: T) -> OpenPageResult<T::Response> where T: Command,
+5847 | method | impl Page | pub | code | pub fn execute_cdp_loaded<T>(&self, command: T) -> OpenPageResult<T::Response> where T: Command,
+5855 | method | impl Page | pub | code | pub fn run_cdp_loaded<T>(&self, command: T) -> OpenPageResult<T::Response> where T: Command,
+5862 | method | impl Page | pub | code | pub fn activate(&self) -> OpenPageResult<()>
+5878 | method | impl Page | pub | code | pub fn window_hide(&self) -> OpenPageResult<()>
+5887 | method | impl Page | pub | code | pub fn window_show(&self) -> OpenPageResult<()>
+5896 | method | impl Page | pub | code | pub fn set_upload_files<'a, F>(&self, files: F) -> OpenPageResult<()> where F: Into<UploadFilesInput<'a>>,
+5903 | method | impl Page | pub | code | pub fn set_upload_paths<'a, F>(&self, files: F) -> OpenPageResult<()> where F: Into<UploadFilesInput<'a>>,
+5910 | method | impl Page | pub | code | pub fn set_tab_download_path(&self, path: &str) -> OpenPageResult<()>
+5919 | method | impl Page | pub | code | pub fn set_download_path(&self, path: &str) -> OpenPageResult<()>
+5923 | method | impl Page | pub | code | pub fn set_tab_download_file_exists_mode( &self, mode: DownloadFileExistsMode, ) -> OpenPageResult<()>
+5935 | method | impl Page | pub | code | pub fn set_download_file_exists_mode( &self, mode: DownloadFileExistsMode, ) -> OpenPageResult<()>
+5942 | method | impl Page | pub | code | pub fn set_tab_when_download_file_exists(&self, mode: &str) -> OpenPageResult<()>
+5946 | method | impl Page | pub | code | pub fn when_download_file_exists(&self, mode: &str) -> OpenPageResult<()>
+5950 | method | impl Page | pub | code | pub fn set_tab_download_filename( &self, rename: Option<&str>, suffix: Option<&str>, suffix_specified: bool, ) -> OpenPageResult<()>
+5964 | method | impl Page | pub | code | pub fn set_tab_download_file_name( &self, rename: Option<&str>, suffix: Option<&str>, suffix_specified: bool, ) -> OpenPageResult<()>
+5973 | method | impl Page | pub | code | pub fn set_download_filename( &self, rename: Option<&str>, suffix: Option<&str>, suffix_specified: bool, ) -> OpenPageResult<()>
+5982 | method | impl Page | pub | code | pub fn set_download_file_name( &self, rename: Option<&str>, suffix: Option<&str>, suffix_specified: bool, ) -> OpenPageResult<()>
+5991 | method | impl Page | pub | code | pub fn click_to_download<'a, L>( &self, locator: L, save_path: Option<&str>, rename: Option<&str>, suffix: Option<&str>, suffix_specified: bool, timeout_ms: Option<u64>, by_js: bool, new_tab: bool, ) -> OpenPageResult<Option<DownloadMission>> where L: Into<LocatorInput<'a>>,
+6082 | method | impl Page | pub | code | pub fn click_to_upload<'a, 'b, L, F>( &self, locator: L, files: F, timeout_ms: Option<u64>, by_js: bool, ) -> OpenPageResult<bool> where L: Into<LocatorInput<'a>>, F: Into<UploadFilesInput<'b>>,
+6105 | method | impl Page | pub | code | pub fn click_for_new_tab<'a, L>( &self, locator: L, timeout_ms: Option<u64>, by_js: bool, ) -> OpenPageResult<Option<Page>> where L: Into<LocatorInput<'a>>,
+6139 | method | impl Page | pub | code | pub fn click_middle<'a, L>( &self, locator: L, timeout_ms: Option<u64>, get_tab: bool, ) -> OpenPageResult<Option<Page>> where L: Into<LocatorInput<'a>>,
+6194 | method | impl Page | pub | code | pub fn wait_for_upload_paths_inputted(&self, timeout_ms: u64) -> OpenPageResult<bool>
+6198 | method | impl Page | pub | code | pub fn retry_times(&self) -> OpenPageResult<usize>
+6209 | method | impl Page | pub | code | pub fn retry_interval(&self) -> OpenPageResult<f64>
+6221 | method | impl Page | pub | code | pub fn set_retry( &self, retry_times: Option<usize>, retry_interval_secs: Option<f64>, ) -> OpenPageResult<()>
+6237 | method | impl Page | pub | code | pub fn timeouts(&self) -> OpenPageResult<HashMap<&'static str, f64>>
+6252 | method | impl Page | pub | code | pub fn set_timeouts( &self, base_secs: Option<f64>, page_load_secs: Option<f64>, script_secs: Option<f64>, ) -> OpenPageResult<()>
+6274 | method | impl Page | pub | code | pub fn load_mode(&self) -> OpenPageResult<String>
+6278 | method | impl Page | pub | code | pub fn set_load_mode(&self, mode: LoadMode) -> OpenPageResult<()>
+6288 | method | impl Page | pub | code | pub fn window_id(&self) -> OpenPageResult<i64>
+6292 | method | impl Page | pub | code | pub fn window_state(&self) -> OpenPageResult<String>
+6301 | method | impl Page | pub | code | pub fn window_size(&self) -> OpenPageResult<(i64, i64)>
+6309 | method | impl Page | pub | code | pub fn window_location(&self) -> OpenPageResult<(i64, i64)>
+6317 | method | impl Page | pub | code | pub fn scroll_position(&self) -> OpenPageResult<(f64, f64)>
+6327 | method | impl Page | pub | code | pub fn viewport_size(&self) -> OpenPageResult<Option<(f64, f64)>>
+6331 | method | impl Page | private | code | const doc = document.documentElement;
+6332 | method | impl Page | private | code | const width = Number(window.innerWidth ?? (doc ? doc.clientWidth : 0));
+6333 | method | impl Page | private | code | const height = Number(window.innerHeight ?? (doc ? doc.clientHeight : 0));
+6341 | method | impl Page | pub | code | pub fn window_max(&self) -> OpenPageResult<()>
+6353 | method | impl Page | pub | code | pub fn window_min(&self) -> OpenPageResult<()>
+6364 | method | impl Page | pub | code | pub fn window_full(&self) -> OpenPageResult<()>
+6375 | method | impl Page | pub | code | pub fn window_normal(&self) -> OpenPageResult<()>
+6379 | method | impl Page | pub | code | pub fn window_size_set(&self, width: Option<i64>, height: Option<i64>) -> OpenPageResult<()>
+6394 | method | impl Page | pub | code | pub fn window_location_set(&self, left: Option<i64>, top: Option<i64>) -> OpenPageResult<()>
+6409 | method | impl Page | pub | code | pub fn zoom_factor(&self) -> OpenPageResult<f64>
+6420 | method | impl Page | pub | code | pub fn set_zoom_factor(&self, factor: f64) -> OpenPageResult<()>
+6428 | method | impl Page | private | code | const root = document.documentElement;
+6435 | method | impl Page | private | code | const value = Number.parseFloat(getComputedStyle(root).zoom || root.style.zoom || '1');
+6446 | method | impl Page | pub | code | pub fn reset_zoom_factor(&self) -> OpenPageResult<()>
+6449 | method | impl Page | private | code | const root = document.documentElement;
+6452 | method | impl Page | private | code | const original = root.getAttribute('
+6470 | method | impl Page | private | code | fn managed_zoom_factor(&self) -> OpenPageResult<Option<f64>>
+6473 | method | impl Page | private | code | const root = document.documentElement;
+6475 | method | impl Page | private | code | const raw = getComputedStyle(root).zoom || root.style.zoom || '1';
+6476 | method | impl Page | private | code | const value = Number.parseFloat(raw);
+6503 | method | impl Page | private | code | fn ensure_clipboard_api_available(&self, method_name: &str) -> OpenPageResult<()>
+6519 | method | impl Page | pub | code | pub fn listener(&self) -> Listener
+6523 | method | impl Page | pub | code | pub fn listen(&self) -> Listener
+6527 | method | impl Page | pub | code | pub fn interceptor(&self) -> Interceptor
+6531 | method | impl Page | pub | code | pub fn intercept(&self) -> Interceptor
+6535 | method | impl Page | pub | code | pub fn console(&self) -> Console
+6539 | method | impl Page | pub | code | pub fn screencast(&self) -> Screencast
+6543 | method | impl Page | pub | code | pub fn recorder(&self) -> Recorder
+6547 | method | impl Page | pub | code | pub fn has_alert(&self) -> OpenPageResult<bool>
+6551 | method | impl Page | pub | code | pub fn alert_text(&self) -> OpenPageResult<Option<String>>
+6555 | method | impl Page | pub | code | pub fn handle_alert( &self, accept: bool, prompt_text: Option<&str>, timeout_ms: u64, ) -> OpenPageResult<Option<String>>
+6564 | method | impl Page | pub | code | pub fn set_next_alert_action( &self, accept: bool, prompt_text: Option<&str>, ) -> OpenPageResult<()>
+6572 | method | impl Page | pub | code | pub fn set_auto_alert_action( &self, accept: Option<bool>, prompt_text: Option<&str>, ) -> OpenPageResult<()>
+6580 | method | impl Page | pub | code | pub fn wait_for_alert_closed(&self, timeout_ms: u64) -> OpenPageResult<bool>
+6584 | method | impl Page | pub | code | pub fn wait_for_download_begin( &self, timeout_ms: u64, cancel_it: bool, ) -> OpenPageResult<Option<DownloadMission>>
+6601 | method | impl Page | pub | code | pub fn wait_for_downloads_done( &self, timeout_ms: u64, cancel_if_timeout: bool, ) -> OpenPageResult<bool>
+6618 | method | impl Page | pub | code | pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement> where L: Into<LocatorInput<'a>>,
+6626 | method | impl Page | pub | code | pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement> where L: Into<LocatorInput<'a>>,
+6634 | method | impl Page | pub | code | pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>> where L: Into<LocatorInput<'a>>,
+6642 | method | impl Page | pub | code | pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>> where L: Into<LocatorInput<'a>>,
+6650 | method | impl Page | pub | code | pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement>
+6655 | method | impl Page | pub | code | pub fn snapshot_find_all_by( &self, by: &str, value: &str, ) -> OpenPageResult<Vec<SessionElement>>
+6664 | method | impl Page | pub | code | pub fn snapshot_query_xpath( &self, expression: &str, ) -> OpenPageResult<Vec<SessionXPathResult>>
+6671 | method | impl Page | pub | code | pub fn find_locators<'a, L>( &self, locators: L, any_one: bool, first_match_only: bool, ) -> OpenPageResult<Vec<LocatorMatch<Element>>> where L: Into<LocatorBatchInput<'a>>,
+6686 | method | impl Page | pub | code | pub fn snapshot_root(&self) -> OpenPageResult<SessionElement>
+6690 | method | impl Page | pub | code | pub fn user_agent(&self) -> OpenPageResult<String>
+6702 | method | impl Page | pub | code | pub fn set_user_agent(&self, user_agent: &str, platform: Option<&str>) -> OpenPageResult<()>
+6716 | method | impl Page | pub | code | pub fn set_headers<'a, H>(&self, headers: H) -> OpenPageResult<()> where H: Into<HeadersInput<'a>>,
+6742 | method | impl Page | pub | code | pub fn set_session_storage(&self, item: &str, value: Option<&str>) -> OpenPageResult<()>
+6761 | method | impl Page | pub | code | pub fn session_storage(&self, item: Option<&str>) -> OpenPageResult<Value>
+6765 | method | impl Page | pub | code | pub fn set_local_storage(&self, item: &str, value: Option<&str>) -> OpenPageResult<()>
+6784 | method | impl Page | pub | code | pub fn local_storage(&self, item: Option<&str>) -> OpenPageResult<Value>
+6788 | method | impl Page | pub | code | pub fn add_init_js(&self, script: &str) -> OpenPageResult<String>
+6810 | method | impl Page | pub | code | pub fn remove_init_js(&self, script_id: Option<&str>) -> OpenPageResult<()>
+6850 | method | impl Page | pub | code | pub fn clear_cache( &self, session_storage: bool, local_storage: bool, cache: bool, cookies: bool, ) -> OpenPageResult<()>
+6882 | method | impl Page | pub | code | pub fn ready_state(&self) -> OpenPageResult<String>
+6894 | method | impl Page | pub | code | pub fn is_loading(&self) -> OpenPageResult<bool>
+6898 | method | impl Page | pub | code | pub fn is_alive(&self) -> OpenPageResult<bool>
+6915 | method | impl Page | pub | code | pub fn wait_for_url_change( &self, text: &str, exclude: bool, timeout_ms: u64, ) -> OpenPageResult<bool>
+6931 | method | impl Page | pub | code | pub fn wait_for_title_change( &self, text: &str, exclude: bool, timeout_ms: u64, ) -> OpenPageResult<bool>
+6947 | method | impl Page | pub | code | pub fn wait_for_load_start(&self, timeout_ms: u64) -> OpenPageResult<bool>
+6963 | method | impl Page | pub | code | pub fn wait_for_doc_loaded(&self, timeout_ms: u64) -> OpenPageResult<bool>
+6979 | method | impl Page | pub | code | pub fn stop_loading(&self) -> OpenPageResult<()>
+6989 | method | impl Page | pub | code | pub fn cookie_header(&self) -> OpenPageResult<Option<String>>
+7007 | method | impl Page | pub | code | pub fn cookies(&self) -> OpenPageResult<Vec<CookieEntry>>
+7018 | item | - | pub | code | pub fn set_cookie_header(&self, url: &str, cookie_header: &str) -> OpenPageResult<()>
+7034 | item | - | pub | code | pub fn set_cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()> where C: Into<CookieInput<'a>>,
+7058 | item | - | pub | code | pub fn set_cookie( &self, name: &str, value: &str, url: Option<&str>, domain: Option<&str>, path: Option<&str>, ) -> OpenPageResult<()>
+7073 | item | - | pub | code | pub fn remove_cookie( &self, name: &str, url: Option<&str>, domain: Option<&str>, path: Option<&str>, ) -> OpenPageResult<()>
+7088 | item | - | pub | code | pub fn clear_cookies(&self) -> OpenPageResult<()>
+7098 | item | - | pub | code | pub fn set_permission( &self, name: &str, setting: &str, origin: Option<&str>, embedded_origin: Option<&str>, ) -> OpenPageResult<String>
+7124 | item | - | pub | code | pub fn reset_permissions(&self) -> OpenPageResult<()>
+7130 | item | - | pub | code | pub fn clipboard_read_text(&self) -> OpenPageResult<String>
+7143 | item | - | pub | code | pub fn clipboard_write_text(&self, text: &str) -> OpenPageResult<()>
+7152 | item | - | pub | code | pub fn main_frame_id(&self) -> OpenPageResult<String>
+7166 | item | - | pub(crate) | code | pub(crate) fn download_scope_frame_ids(&self) -> OpenPageResult<Vec<String>>
+7178 | item | - | private | code | fn window_info(&self) -> OpenPageResult<GetWindowForTargetReturns>
+7190 | item | - | private | code | fn set_window_bounds(&self, bounds: Bounds) -> OpenPageResult<()>
+7201 | item | - | pub | code | pub fn close(self) -> OpenPageResult<()>
+7213 | item | - | private | code | fn download_with_cookie_scope( &self, url: &str, cookie_scope_url: Option<&str>, ) -> OpenPageResult<String>
+7221 | item | - | private | code | fn download_to_with_cookie_scope( &self, url: &str, path: impl AsRef<Path>, cookie_scope_url: Option<&str>, ) -> OpenPageResult<String>
+7231 | item | - | private | code | fn build_download_session( &self, cookie_scope_url: Option<&str>, ) -> OpenPageResult<SessionPage>
+7254 | item | - | private | code | fn wait_for_change<F>(&self, timeout_ms: u64, mut predicate: F) -> OpenPageResult<bool> where F: FnMut(&Self) -> OpenPageResult<bool>,
+7271 | item | - | private | code | fn load_mode_value(&self) -> OpenPageResult<LoadMode>
+7280 | item | - | private | code | fn navigate_via_cdp(&self, url: &str) -> OpenPageResult<()>
+7287 | item | - | private | code | fn navigate_via_script(&self, url: &str) -> OpenPageResult<()>
+7297 | item | - | private | code | fn navigate_history(&self, offset: isize) -> OpenPageResult<bool>
+7332 | item | - | private | code | fn wait_for_ready_state_change( &self, timeout_ms: u64, include_interactive: bool, ) -> OpenPageResult<bool>
+7353 | item | - | private | code | fn wait_for_dom_ready(&self, timeout_ms: u64) -> OpenPageResult<bool>
+7367 | item | - | pub(crate) | code | pub(crate) fn frame_from_element(&self, element: Element) -> OpenPageResult<Frame>
+7371 | item | - | private | code | fn frame_from_locator_with_config_source( &self, locator: &str, config_source: &ElementsOneRuntimeConfigHandle, ) -> OpenPageResult<Frame>
+7380 | item | - | pub(crate) | code | pub(crate) fn frame_from_element_with_config_source( &self, element: Element, config_source: &ElementsOneRuntimeConfigHandle, ) -> OpenPageResult<Frame>
+7438 | item | - | private | code | fn frame_owner_element_by_id(&self, frame_id: &str) -> OpenPageResult<Element>
+7479 | item | - | private | code | fn resolve_frame_owner_node_in_parent_frame( &self, parent_frame_id: &str, node_id: chromiumoxide::cdp::browser_protocol::dom::NodeId, ) -> OpenPageResult<Element>
+7519 | item | - | pub(crate) | code | pub(crate) fn resolve_dom_backend_node_id( &self, backend_node_id: BackendNodeId, ) -> OpenPageResult<Element>
+7548 | item | - | private | code | fn resolve_dom_node_id( &self, node_id: chromiumoxide::cdp::browser_protocol::dom::NodeId, error_message: &str, ) -> OpenPageResult<Element>
+7581 | item | - | private | code | fn frame_name_by_id(&self, frame_id: &str) -> OpenPageResult<Option<String>>
+7591 | item | - | private | code | fn frame_url_by_id(&self, frame_id: &str) -> OpenPageResult<Option<String>>
+7601 | item | - | pub(crate) | code | pub(crate) fn frame_parent_id(&self, frame_id: &str) -> OpenPageResult<Option<String>>
+7612 | item | - | private | code | fn frame_context_id(&self, frame_id: &str) -> OpenPageResult<ExecutionContextId>
+7626 | item | - | private | code | fn evaluate_in_frame(&self, frame_id: &str, expression: &str) -> OpenPageResult<Value>
+7630 | item | - | private | code | fn evaluate_in_frame_with_options( &self, frame_id: &str, expression: &str, timeout_ms: Option<u64>, await_promise: bool, ) -> OpenPageResult<Value>
+7659 | item | - | private | code | fn clear_page_markers(&self, markers: &[&str]) -> OpenPageResult<()>
+7667 | item | - | private | code | const attr =
+7668 | item | - | private | code | const markers =
+7670 | item | - | private | code | const element = document.querySelector(`[$
+7683 | item | - | private | code | fn normalize_navigation_target(target: &str) -> OpenPageResult<String>
+7698 | item | - | private | code | fn resolve_navigation_local_file_path(target: &str) -> OpenPageResult<Option<PathBuf>>
+7725 | item | - | private | code | fn history_entry_index(current_index: usize, entry_count: usize, offset: isize) -> Option<usize>
+7730 | item | - | private | code | fn page_element_info_properties_json(info: &PageElementInfo) -> OpenPageResult<String>
+7739 | item | - | private | code | fn resolve_page_element_target<'a>( page: &Page, target: PageElementTarget<'a>, ) -> OpenPageResult<ResolvedPageElementTarget<'a>>
+7790 | item | - | private | code | fn resolve_page_frame_target<'a>( page: &Page, target: PageFrameTarget<'a>, ) -> OpenPageResult<Element>
+7828 | item | - | private | code | fn page_frame_element_by_index(page: &Page, index: isize) -> OpenPageResult<Element>
+7845 | item | - | private | code | fn find_frame_element_from_object(page: &Page, element: &Element) -> OpenPageResult<Element>
+7883 | item | - | private | code | fn resolve_actions_target_point<'a>( page: &Page, target: ActionsTarget<'a>, offset_x: Option<f64>, offset_y: Option<f64>, ) -> OpenPageResult<(f64, f64)>
+7931 | item | - | private | code | fn action_point_from_element( page: &Page, element: &Element, offset_x: Option<f64>, offset_y: Option<f64>, ) -> OpenPageResult<(f64, f64)>
+7954 | item | - | private | code | fn action_point_from_page_coordinates( page: &Page, page_x: f64, page_y: f64, ) -> OpenPageResult<(f64, f64)>
+7976 | item | - | private | code | fn action_page_scroll_position(page: &Page) -> OpenPageResult<(f64, f64)>
+7983 | item | - | private | code | fn action_page_viewport_size(page: &Page) -> OpenPageResult<(f64, f64)>
+7990 | item | - | private | code | fn action_mouse_buttons(button: &MouseButton) -> i64
+8001 | item | - | private | code | fn action_modifier_bit(value: &str) -> Option<i64>
+8011 | item | - | private | code | fn action_build_key_event( definition: &keys::KeyDefinition, modifiers: i64, key_up: bool, ) -> DispatchKeyEventParams
+8063 | item | - | private | code | fn action_move_path( start_x: f64, start_y: f64, end_x: f64, end_y: f64, duration_secs: f64, ) -> Vec<Point>
+8085 | item | - | private | code | fn action_move_pause(duration_secs: f64, step_count: usize) -> Option<Duration>
+8092 | item | - | private | code | fn action_effective_key_value(value: &str, modifiers: i64) -> Cow<'_, str>
+8108 | item | - | private | code | fn action_shifted_char(ch: char) -> Option<char>
+8136 | item | - | private | code | fn action_mac_meta_commands(key: &str) -> Option<&'static [&'static str]>
+8148 | item | - | private | code | fn action_sleep_interval(interval_secs: Option<f64>)
+8157 | item | - | private | code | fn action_wait_duration_secs(start: f64, end: f64) -> f64
+8170 | item | - | private | code | fn actions_input_values(input: ActionsInput<'_>) -> Vec<String>
+8177 | item | - | private | code | fn action_drag_payload(data: ActionsDragData<'_>) -> OpenPageResult<ActionsDragPayload>
+8230 | item | - | private | code | fn action_drag_files(files: ActionsInput<'_>) -> OpenPageResult<Vec<String>>
+8245 | item | - | private | code | fn next_page_marker() -> String
+8252 | item | - | private | code | fn json_string(value: &str) -> OpenPageResult<String>
+8256 | item | - | private | code | fn marker_selector(marker: &str) -> String
+8260 | item | - | private | code | fn default_frame_locator() -> String
+8264 | item | - | private | code | fn is_explicit_locator(value: &str) -> bool
+8272 | item | - | private | code | fn frame_locator(locator: &str) -> String
+8283 | item | - | pub(crate) | code | pub(crate) fn frame_locator_input<'a, L>(locator: L) -> OpenPageResult<String> where L: Into<LocatorInput<'a>>,
+8295 | item | - | private | code | fn optional_frame_locator_input<'a, L>(locator: Option<L>) -> OpenPageResult<String> where L: Into<LocatorInput<'a>>,
+8305 | item | - | private | code | fn marker_xpath(marker: &str) -> String
+8309 | item | - | private | code | fn compose_frame_html(tag: &str, outer_html: &str, inner_html: &str) -> String
+8316 | item | - | private | code | fn frame_find_script(locator: &Locator, marker: &str) -> OpenPageResult<String>
+8320 | item | - | private | code | const element = document.querySelector(
+8331 | item | - | private | code | const result = document.evaluate(
+8332 | item | - | private | code | const element = result.singleNodeValue;
+8344 | item | - | private | code | fn frame_find_all_script(locator: &Locator, batch: &str) -> OpenPageResult<String>
+8348 | item | - | private | code | const attr =
+8349 | item | - | private | code | const batch =
+8352 | item | - | private | code | const marker = `$
+8363 | item | - | private | code | const attr =
+8364 | item | - | private | code | const batch =
+8365 | item | - | private | code | const result = [];
+8366 | item | - | private | code | const snapshot = document.evaluate(
+8369 | item | - | private | code | const node = snapshot.snapshotItem(i);
+8371 | item | - | private | code | const marker = `$
+8384 | item | - | private | code | fn page_marker_lookup_expression(marker: Option<&str>) -> OpenPageResult<String>
+8394 | item | - | private | code | fn storage_lookup_script(storage: &str, item: Option<&str>) -> OpenPageResult<String>
+8403 | item | - | private | code | const result =
+8405 | item | - | private | code | const key =
+8414 | item | - | private | code | fn value_as_string(value: Value, name: &str) -> OpenPageResult<String>
+8426 | item | - | private | code | fn value_as_optional_string(value: Value, name: &str) -> OpenPageResult<Option<String>>
+8439 | item | - | private | code | fn value_as_string_vec(value: Value, name: &str) -> OpenPageResult<Vec<String>>
+8459 | item | - | private | code | fn value_as_f64_pair(value: Value, name: &str) -> OpenPageResult<(f64, f64)>
+8478 | item | - | private | code | fn value_as_optional_f64_pair(value: Value, name: &str) -> OpenPageResult<Option<(f64, f64)>>
+8485 | item | - | private | code | fn page_screenshot_params( full_page: bool, left_top: Option<(f64, f64)>, right_bottom: Option<(f64, f64)>, ) -> OpenPageResult<ScreenshotParams>
+8499 | item | - | private | code | fn screenshot_clip( left_top: Option<(f64, f64)>, right_bottom: Option<(f64, f64)>, ) -> OpenPageResult<Option<ClipViewport>>
+8528 | item | - | private | code | fn resolve_page_screenshot_target_path( path: Option<&Path>, name: Option<&str>, title: Option<&str>, ) -> OpenPageResult<PathBuf>
+8554 | item | - | private | code | fn resolve_page_save_title( page: &Page, path: Option<&Path>, name: Option<&str>, ) -> OpenPageResult<Option<String>>
+8571 | item | - | private | code | fn resolve_page_save_target_path( path: Option<&Path>, name: Option<&str>, title: Option<&str>, extension: &str, ) -> OpenPageResult<PathBuf>
+8598 | item | - | private | code | fn sanitize_file_name(name: &str) -> String
+8616 | item | - | private | code | fn absolutize_path(path: PathBuf) -> OpenPageResult<PathBuf>
+8624 | item | - | private | code | fn cookie_header_to_params(url: &Url, cookie_header: &str) -> Vec<CookieParam>
+8638 | item | - | private | code | fn build_page_js_expression(script: &str, args: &[Value], as_expr: bool) -> OpenPageResult<String>
+8652 | item | - | private | code | fn current_cookie_scope_url(url: String) -> Option<String>
+8661 | item | - | private | code | fn load_public_suffix_list() -> Option<PublicSuffixList>
+8666 | item | - | private | code | fn fallback_registrable_domain(host: &str) -> String
+8683 | item | - | private | code | fn registrable_domain_for_host(host: &str) -> String
+8690 | item | - | private | code | fn cookie_domain_candidates_for_url(url: &Url) -> Vec<String>
+8741 | item | - | private | code | fn permission_origin_from_input(value: &str) -> OpenPageResult<String>
+8754 | item | - | private | code | fn resolve_permission_origin(origin: Option<&str>, current_url: &str) -> OpenPageResult<String>
+8762 | item | - | private | code | fn cookie_param( name: &str, value: &str, url: Option<&str>, domain: Option<&str>, path: Option<&str>, ) -> CookieParam
+8785 | item | - | private | code | fn browser_cookie_param_from_session_cookie( cookie: &SessionCookieParam, ) -> OpenPageResult<CookieParam>
+8813 | item | - | private | code | fn page_cookie_matches_scope( current_domain: &str, expected_domain: Option<&str>, expected_url: Option<&str>, current_url: Option<&Url>, ) -> bool
+8837 | item | - | private | code | async fn set_cookie_param_exact(page: &OxPage, cookie: CookieParam) -> OpenPageResult<()>
+8853 | item | - | private | code | async fn page_has_cookie( page: &OxPage, cookie: &SessionCookieParam, current_url: Option<&Url>, ) -> OpenPageResult<bool>
+8871 | item | - | private | code | async fn set_page_cookie_with_scope_fallback( page: &OxPage, cookie: &SessionCookieParam, current_url: Option<&Url>, ) -> OpenPageResult<()>
+8918 | item | - | private | code | fn collect_frame_ids(frame_tree: &FrameTree, frame_ids: &mut Vec<String>)
+8927 | item | - | private | code | fn delete_cookie_params( name: &str, url: Option<&str>, domain: Option<&str>, path: Option<&str>, ) -> DeleteCookiesParams
+8949 | item | - | private | code | fn runtime_timeout_seconds_to_millis(seconds: f64) -> OpenPageResult<u64>
+8958 | item | - | private | code | fn remaining_timeout_ms(deadline: Instant) -> u64
+8967 | item | - | private | code | fn frame_execution_context_was_stale(message: &str) -> bool
+8971 | item | - | private | code | fn resolve_implicit_wait_timeout_ms(configured_timeout_ms: Option<u64>) -> u64
+8975 | item | - | private | code | async fn run_with_timeout<T, F>( future: F, timeout_ms: u64, timeout_message: impl Into<String>, ) -> OpenPageResult<T> where F: Future<Output = OpenPageResult<T>>,
+8989 | item | - | pub(crate) | code | pub(crate) async fn execute_page_command_async<T>( page: &OxPage, command: T, operation: &str, ) -> OpenPageResult<T::Response> where T: Command,
+9006 | item | - | pub(crate) | code | pub(crate) fn execute_page_command_blocking<T>( runtime: &Runtime, page: &OxPage, command: T, operation: &str, ) -> OpenPageResult<T::Response> where T: Command,
+9064 | item | - | private | code | fn runtime_test_temp_dir(name: &str) -> PathBuf
+9072 | item | - | private | code | fn poison_mutex<T: Send + 'static>(mutex: Arc<std::sync::Mutex<T>>)
+9081 | item | - | private | code | fn launch_headless_test_browser_with_args( name: &str, extra_args: &[&str], ) -> crate::OpenPageResult<(Browser, PathBuf)>
+9101 | item | - | private | code | fn launch_headless_test_browser(name: &str) -> crate::OpenPageResult<(Browser, PathBuf)>
+9105 | item | - | private | code | fn pair_from_value(value: Value, label: &str) -> crate::OpenPageResult<(f64, f64)>
+9128 | item | - | private | code | fn expected_dp_viewport_screen_origin( page: &super::Page, ) -> crate::OpenPageResult<(f64, f64, f64)>
+9165 | item | - | private | code | fn assert_pair_close(actual: (f64, f64), expected: (f64, f64), label: &str)
+9180 | item | - | private | code | fn spawn_download_site() -> (String, thread::JoinHandle<()>)
+9253 | item | - | private | code | fn spawn_cookie_site() -> (u16, thread::JoinHandle<()>)
+9308 | item | - | private | code | fn spawn_delayed_load_site(delay: Duration) -> (String, thread::JoinHandle<()>)
+9386 | item | - | private | code | fn spawn_cross_origin_iframe_site() -> (String, thread::JoinHandle<()>, thread::JoinHandle<()>)
+9530 | item | - | private | code | fn spawn_nested_cross_origin_iframe_site() -> ( String, thread::JoinHandle<()>, thread::JoinHandle<()>, thread::JoinHandle<()>, )
+9751 | item | - | private | test | fn page_operation_errors_follow_settings_language()
+9768 | item | - | private | test | fn history_entry_index_moves_backward()
+9773 | item | - | private | test | fn history_entry_index_returns_none_when_offset_leaves_bounds()
+9779 | item | - | private | test | fn storage_lookup_script_returns_item_lookup()
+9786 | item | - | private | test | fn storage_lookup_script_returns_full_dump()
+9793 | item | - | private | test | fn frame_locator_uses_name_or_id_lookup_for_plain_strings()
+9801 | item | - | private | test | fn frame_locator_keeps_explicit_locators()
+9811 | item | - | private | test | fn frame_locator_input_accepts_by_tuples()
+9828 | item | - | private | test | fn marker_xpath_targets_global_marker_attribute()
+9836 | item | - | private | test | fn page_element_info_accepts_pairs_and_maps()
+9861 | item | - | private | test | fn page_element_info_accepts_json_value_maps()
+9897 | item | - | private | test | fn page_element_info_properties_json_serializes_json_scalars()
+9914 | item | - | private | test | fn page_element_content_accepts_html_and_info_inputs()
+9935 | item | - | private | test | fn compose_frame_html_reuses_opening_tag()
+9947 | item | - | private | test | fn remaining_timeout_ms_clamps_elapsed_deadlines()
+9958 | item | - | private | test | fn resolve_implicit_wait_timeout_ms_prefers_configured_value()
+9965 | item | - | private | test | fn run_with_timeout_times_out_slow_future()
+9982 | item | - | private | test | fn run_with_timeout_accepts_localized_timeout_message()
+10002 | item | - | private | test | fn screenshot_clip_requires_complete_bounds()
+10013 | item | - | private | test | fn resolve_page_screenshot_target_path_defaults_to_title()
+10024 | item | - | private | test | fn resolve_page_save_target_path_defaults_to_title_and_extension()
+10035 | item | - | private | test | fn cookie_param_keeps_optional_scope_fields()
+10051 | item | - | private | test | fn delete_cookie_params_skip_blank_scope_fields()
+10060 | item | - | private | test | fn cookie_domain_candidates_follow_configured_suffix_list()
+10097 | item | - | private | test | fn cookie_same_site_validation_follows_language_setting()
+10132 | item | - | private | test | fn page_navigation_validation_errors_follow_language_setting()
+10172 | item | - | private | test | fn page_host_validation_errors_follow_language_setting()
+10230 | item | - | private | test | fn page_value_type_errors_follow_language_setting()
+10270 | item | - | private | test | fn browser_backed_page_method_errors_follow_language_setting()
+10288 | item | - | private | test | fn page_browser_backed_errors_follow_language_setting()
+10432 | item | - | private | test | fn page_lock_poisoned_runtime_errors_follow_language_setting()
+10471 | item | - | private | test | fn page_set_cookies_accepts_scope_free_cookie_on_http_page()
+10511 | item | - | private | test | fn page_add_ele_info_returns_detached_element_without_dom_residue()
+10559 | item | - | private | test | fn page_and_frame_js_helper_wrappers_support_args_async_and_init_scripts()
+10713 | item | - | private | test | fn page_run_js_loaded_waits_for_loaded_document_before_evaluating()
+10771 | item | - | private | test | fn page_retry_and_timeouts_runtime_settings_update_browser_backed_page()
+10805 | item | - | private | test | fn page_set_wrapper_updates_storage_and_runtime_settings()
+10856 | item | - | private | test | fn page_scroll_wrapper_controls_page_scroll_position()
+10901 | item | - | private | test | fn page_wait_for_ele_methods_accept_element_targets_at_runtime()
+10948 | item | - | private | test | fn page_get_frame_methods_accept_element_and_frame_targets_at_runtime()
+11184 | item | - | private | test | fn page_get_frame_with_timeout_waits_for_delayed_iframe()
+11195 | item | - | private | code | const frame = document.createElement('iframe');
+11233 | item | - | private | test | fn frame_index_helpers_accept_negative_indexes_at_runtime()
+11304 | item | - | private | test | fn get_frames_with_timeout_waits_for_delayed_iframes()
+11315 | item | - | private | code | const frame = document.createElement('iframe');
+11335 | item | - | private | code | const frame = document.createElement('iframe');
+11366 | item | - | private | test | fn get_frame_eles_with_timeout_waits_for_delayed_iframe_elements()
+11377 | item | - | private | code | const frame = document.createElement('iframe');
+11398 | item | - | private | code | const frame = document.createElement('iframe');
+11426 | item | - | private | test | fn frame_get_frame_finds_nested_iframe_in_frame_context()
+11448 | item | - | private | code | const frame = document.createElement('iframe');
+11484 | item | - | private | test | fn singleton_tab_obj_reuses_nested_frame_state_when_enabled()
+11510 | item | - | private | code | const frame = document.createElement('iframe');
+11575 | item | - | private | test | fn singleton_tab_obj_drops_stale_nested_frame_after_recreation()
+11652 | item | - | private | test | fn singleton_tab_obj_prunes_nested_frame_after_parent_frame_navigation()
+11731 | item | - | private | test | fn singleton_tab_obj_reuses_shadow_root_frame_state_when_enabled()
+11745 | item | - | private | code | const host = document.getElementById('host');
+11746 | item | - | private | code | const root = host.attachShadow(
+11792 | item | - | private | test | fn frame_get_frame_with_timeout_waits_for_delayed_nested_iframe()
+11815 | item | - | private | code | const frame = document.createElement('iframe');
+11863 | item | - | private | test | fn element_get_frame_with_timeout_waits_for_delayed_iframe_child()
+11874 | item | - | private | code | const frame = document.createElement('iframe');
+11910 | item | - | private | test | fn page_save_returns_mhtml_and_pdf_content_at_runtime()
+11981 | item | - | private | test | fn page_actions_support_mouse_keyboard_and_scroll_at_runtime()
+12119 | item | - | private | test | fn page_actions_type_supports_modifier_events_and_interval_at_runtime()
+12132 | item | - | private | code | const kw = document.getElementById('kw');
+12159 | item | - | private | code | const kw = document.getElementById('kw');
+12191 | item | - | private | code | const kw = document.getElementById('kw');
+12213 | item | - | private | code | const kw = document.getElementById('kw');
+12269 | item | - | private | test | fn page_actions_shortcuts_support_cut_redo_and_held_modifiers_at_runtime()
+12283 | item | - | private | code | const kw = document.getElementById('kw');
+12310 | item | - | private | code | const kw = document.getElementById('kw');
+12386 | item | - | private | test | fn page_actions_drag_in_supports_files_and_text_at_runtime()
+12401 | item | - | private | code | const target = document.getElementById('drop');
+12402 | item | - | private | code | const capture = (type, event) =>
+12404 | item | - | private | code | const files = event.dataTransfer ? Array.from(event.dataTransfer.files || []).map(file => file.name) : [];
+12405 | item | - | private | code | const itemTypes = event.dataTransfer ? Array.from(event.dataTransfer.items || []).map(item => item.type) : [];
+12518 | item | - | private | test | fn actions_drag_payload_preserves_link_and_html_metadata()
+12551 | item | - | private | test | fn page_element_list_getter_returns_attrs_links_and_texts_at_runtime()
+12599 | item | - | private | test | fn page_and_web_element_lists_support_filter_and_filter_one_at_runtime()
+12680 | item | - | private | test | fn page_and_web_element_lists_support_extended_filters_and_search_at_runtime()
+12835 | item | - | private | test | fn elements_one_supports_common_interactions_at_runtime()
+13025 | item | - | private | test | fn elements_one_runtime_config_supports_none_value_and_raise_at_runtime()
+13098 | item | - | private | test | fn page_inherits_global_raise_when_ele_not_found_setting()
+13141 | item | - | private | test | fn singleton_tab_obj_reuses_runtime_page_state_when_enabled()
+13186 | item | - | private | test | fn singleton_tab_obj_returns_fresh_runtime_page_state_when_disabled()
+13225 | item | - | private | test | fn singleton_tab_obj_reuses_runtime_frame_state_when_enabled()
+13297 | item | - | private | test | fn singleton_frame_runtime_cache_prunes_detached_frames()
+13376 | item | - | private | test | fn singleton_tab_obj_returns_fresh_runtime_frame_state_when_disabled()
+13441 | item | - | private | test | fn singleton_tab_obj_keeps_nested_runtime_frame_state_isolated_when_disabled()
+13467 | item | - | private | code | const frame = document.createElement('iframe');
+13509 | item | - | private | test | fn frame_initial_runtime_config_inherits_current_page_setting()
+13550 | item | - | private | test | fn nested_frame_initial_runtime_config_inherits_parent_frame_setting()
+13604 | item | - | private | test | fn element_frame_initial_runtime_config_inherits_parent_frame_setting()
+13674 | item | - | private | test | fn elements_one_frame_initial_runtime_config_inherits_parent_frame_setting()
+13858 | item | - | private | test | fn singleton_tab_obj_keeps_elements_one_frame_state_isolated_when_disabled()
+13944 | item | - | private | test | fn latest_tab_returns_page_reference_when_singleton_enabled()
+13989 | item | - | private | test | fn latest_tab_returns_id_when_singleton_disabled()
+14038 | item | - | private | test | fn page_chromium_page_tab_wrapper_signatures_accept_common_inputs()
+14039 | item | - | private | code | fn assert_calls(page: &Page)
+14091 | item | - | private | test | fn page_listener_interceptor_alias_signatures_accept_calls()
+14092 | item | - | private | code | fn assert_calls(page: &Page)
+14103 | item | - | private | test | fn frame_reconnect_signature_accepts_wait_argument()
+14104 | item | - | private | code | fn assert_calls(frame: &Frame)
+14112 | item | - | private | test | fn page_and_frame_disconnect_signatures_accept_roundtrip_calls()
+14121 | item | - | private | test | fn page_exposes_chromium_page_tab_wrappers_at_runtime()
+14214 | item | - | private | test | fn page_close_with_options_controls_current_and_other_tabs()
+14261 | item | - | private | test | fn browser_page_and_frame_reconnect_rebuild_fresh_connections()
+14355 | item | - | private | test | fn frame_reconnect_preserves_runtime_config()
+14413 | item | - | private | test | fn page_new_tab_with_new_context_creates_and_closes_isolated_tab()
+14451 | item | - | private | test | fn page_wait_failures_raise_timeout_when_global_setting_enabled()
+14491 | item | - | private | test | fn page_execute_cdp_respects_global_timeout_setting()
+14529 | item | - | private | test | fn page_navigation_listener_registration_respects_global_timeout_setting()
+14556 | item | - | private | test | fn page_navigation_snapshot_reports_tracker_initialization_errors()
+14583 | item | - | private | test | fn page_is_alive_respects_global_timeout_setting()
+14611 | item | - | private | test | fn page_cookie_operations_respect_global_timeout_setting()
+14638 | item | - | private | test | fn page_url_and_title_operations_respect_global_timeout_setting()
+14678 | item | - | private | test | fn page_content_and_visual_operations_respect_global_timeout_setting()
+14718 | item | - | private | test | fn page_lookup_operations_respect_global_timeout_setting()
+14767 | item | - | private | test | fn page_cookie_pdf_and_close_operations_respect_global_timeout_setting()
+14809 | item | - | private | test | fn page_frame_metadata_operations_respect_global_timeout_setting()
+14849 | item | - | private | test | fn page_navigation_operations_respect_global_timeout_setting()
+14891 | item | - | private | test | fn page_pdf_generation_respects_global_timeout_setting()
+14917 | item | - | private | test | fn page_and_element_frame_index_errors_follow_language_setting()
+14966 | item | - | private | code | const frame = document.createElement('iframe');
+15025 | item | - | private | test | fn page_ele_runtime_config_supports_none_value_and_nested_queries()
+15103 | item | - | private | test | fn elements_one_owned_shadow_root_supports_existing_and_missing_elements()
+15116 | item | - | private | code | const host = document.getElementById('host');
+15117 | item | - | private | code | const root = host.attachShadow(
+15211 | item | - | private | test | fn elements_one_supports_set_scroll_and_select_at_runtime()
+15507 | item | - | private | test | fn elements_one_object_wrappers_support_clicker_and_select_waiting_at_runtime()
+15544 | item | - | private | code | const picker = document.getElementById('picker');
+15547 | item | - | private | code | const one = document.createElement('option');
+15551 | item | - | private | code | const two = document.createElement('option');
+15592 | item | - | private | code | const picker = document.getElementById('picker');
+15595 | item | - | private | code | const option = document.createElement('option');
+15631 | item | - | private | test | fn elements_one_supports_states_rect_and_wait_at_runtime()
+15662 | item | - | private | code | const zero = document.getElementById('no-rect');
+15865 | item | - | private | test | fn element_and_webelement_object_wrappers_work_at_runtime()
+16197 | item | - | private | test | fn element_and_webelement_states_rect_and_wait_wrappers_work_at_runtime()
+16228 | item | - | private | code | const zero = document.getElementById('no-rect');
+16432 | item | - | private | test | fn element_screen_points_follow_dp_device_pixel_ratio_formula()
+16540 | item | - | private | test | fn iframe_element_screen_points_follow_dp_device_pixel_ratio_formula()
+16669 | item | - | private | test | fn cross_origin_iframe_element_screen_points_follow_dp_device_pixel_ratio_formula()
+16780 | item | - | private | test | fn nested_cross_origin_iframe_element_screen_points_follow_dp_device_pixel_ratio_formula()
+16981 | item | - | private | test | fn select_waits_for_delayed_options_at_runtime()
+16999 | item | - | private | code | const picker = document.getElementById('picker');
+17002 | item | - | private | code | const option = document.createElement('option');
+17020 | item | - | private | code | const picker = document.getElementById('picker');
+17023 | item | - | private | code | const option = document.createElement('option');
+17046 | item | - | private | code | const picker = document.getElementById('picker');
+17050 | item | - | private | code | const option = document.createElement('option');
+17073 | item | - | private | code | const picker = document.getElementById('picker');
+17076 | item | - | private | code | const option = document.createElement('option');
+17113 | item | - | private | test | fn element_and_webelement_clicker_work_at_runtime()
+17201 | item | - | private | test | fn element_clicker_left_with_options_supports_js_fallback_and_click_failed_setting()
+17289 | item | - | private | test | fn non_left_click_helpers_share_click_failed_setting()
+17312 | item | - | private | code | const button = document.getElementById('no-rect-click');
+17507 | item | - | private | test | fn element_and_webelement_clicker_tabs_work_at_runtime()
+17516 | item | - | private | code | const newTabUrl = 'about:blank#clicker-new-tab';
+17517 | item | - | private | code | const middleUrl = 'about:blank#clicker-middle-tab';
+17569 | item | - | private | test | fn page_and_element_tab_helpers_raise_when_no_new_tab_is_opened()
+17655 | item | - | private | test | fn element_and_webelement_clicker_upload_and_download_work_at_runtime()
+17725 | item | - | private | test | fn page_zoom_css_fallback_roundtrips_at_runtime()
+17776 | item | - | private | test | fn page_clipboard_roundtrips_with_permission_override()
+17874 | item | - | private | test | fn page_window_id_distinguishes_same_and_new_window_tabs()
+
+# Cross-surface explicit references at baseline
+rust/bindings/python/src/legacy_full_binding/mod.rs:21 | use openpage::page::Page;
