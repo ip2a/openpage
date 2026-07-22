@@ -87,6 +87,7 @@ covered_by: <test names>
 | alert、confirm、prompt | `page/dialogs.rs` | 监听注册、响应时序、超时 |
 | 创建、关闭、销毁、状态检查 | `page/lifecycle.rs` | 资源释放、重复关闭、连接状态 |
 | Frame 操作及其滚动、设置、状态、等待、矩形包装 | `page/frame.rs` | Frame 归属、元素上下文、等待和坐标语义 |
+| Page 滚动与设置包装 | `page/settings.rs` | 设置委托、Cookie/窗口/加载模式及链式返回语义 |
 | 类型、字段、构造函数、模块导出 | `page/mod.rs` | 可见性和公共 API |
 
 ### 4.2 WebPage
@@ -410,6 +411,15 @@ element_list/mod.rs
 ### 2026-07-22 Page actions 里程碑
 
 - 已新增 `page/actions.rs`，原样迁移 `Actions` 的 41 个鼠标、键盘、滚动和拖放方法；
+- 公开符号对比：590 / 590，无新增、无丢失；
+- 函数签名对比：946 / 946，无新增、无丢失；
+- `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
+- Rust：`738 + 206 = 944` 个测试通过。
+
+
+### 2026-07-22 Page settings 里程碑
+
+- 已新增 `page/settings.rs`，原样迁移 Page 滚动包装以及 Page、Cookie、窗口和加载模式设置包装共 48 个方法；
 - 公开符号对比：590 / 590，无新增、无丢失；
 - 函数签名对比：946 / 946，无新增、无丢失；
 - `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
