@@ -304,10 +304,6 @@ impl DisconnectedWebFrame {
     }
 }
 
-impl WebFrame {}
-
-impl WebElement {}
-
 impl<'a> From<&'a WebPage> for BrowserTabSelector<'a> {
     fn from(value: &'a WebPage) -> Self {
         Self::Id(std::borrow::Cow::Owned(value.target_id()))

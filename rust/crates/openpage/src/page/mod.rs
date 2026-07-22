@@ -1389,30 +1389,6 @@ impl Frame {
     }
 }
 
-impl FrameScroller<'_> {}
-
-impl PageScroller<'_> {}
-
-impl PageSetter<'_> {}
-
-impl PageCookieSetter<'_> {}
-
-impl PageWindowSetter<'_> {}
-
-impl PageLoadModeSetter<'_> {}
-
-impl FrameSetter<'_> {}
-
-impl FrameCookieSetter<'_> {}
-
-impl FrameStates<'_> {}
-
-impl FrameWait<'_> {}
-
-impl FrameRect<'_> {}
-
-impl Actions {}
-
 fn browser_backed_page_method_message(method_name: &str) -> String {
     browser_backed_page_only_message(&format!("{method_name}()"))
 }
