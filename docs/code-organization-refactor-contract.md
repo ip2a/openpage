@@ -80,6 +80,7 @@ covered_by: <test names>
 |---|---|---|
 | 导航、刷新、前进后退、等待导航 | `page/navigation.rs` | URL、等待条件、超时、navigation token |
 | 点击、输入、聚焦、滚动、键盘 | `page/interaction.rs` | 元素定位、事件顺序、错误映射 |
+| 高级鼠标、键盘与拖放动作 | `page/actions.rs` | 输入序列、按键状态、坐标与拖放载荷 |
 | Tab 创建、关闭、切换、枚举 | `page/tabs.rs` | session/page 归属、生命周期 |
 | Cookie 读写和清理 | `page/cookies.rs` | domain、path、敏感数据处理 |
 | 截图和图片输出 | `page/screenshot.rs` | 格式、尺寸、输出路径 |
@@ -400,6 +401,15 @@ element_list/mod.rs
 
 - 已新增 `page/frame.rs`，原样迁移 `Frame` 除构造函数外的 218 个方法，以及 Frame 的滚动、设置、Cookie、状态、等待和矩形包装实现；`Frame::new` 仍保留在 `page/mod.rs`；
 - `page/mod.rs` 从 7,905 行降至 5,901 行，未改写 Frame 业务逻辑；
+- 公开符号对比：590 / 590，无新增、无丢失；
+- 函数签名对比：946 / 946，无新增、无丢失；
+- `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
+- Rust：`738 + 206 = 944` 个测试通过。
+
+
+### 2026-07-22 Page actions 里程碑
+
+- 已新增 `page/actions.rs`，原样迁移 `Actions` 的 41 个鼠标、键盘、滚动和拖放方法；
 - 公开符号对比：590 / 590，无新增、无丢失；
 - 函数签名对比：946 / 946，无新增、无丢失；
 - `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
