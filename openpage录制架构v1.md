@@ -1641,3 +1641,15 @@ npm run tauri --prefix desktop/openpage -- build --debug
 ```
 
 React 构建再次成功，但 Tauri Rust 编译仍因 `No space left on device` 失败。随后再次清理 `desktop/openpage/src-tauri/target`。这说明当前机器的有效构建配额不足以完成本地 macOS bundle，不应继续反复消耗磁盘；跨平台 bundle 交给已提交的原生 CI 矩阵执行。
+
+## 里程碑 33：根目录 Debug 启动菜单
+
+状态：**已完成**
+
+根目录新增可执行脚本 `run_debug.sh`。选择菜单 `1) 启动 App` 后进入 `desktop/openpage` 并执行 `npm run tauri -- dev`，用于启动 React + Tauri 桌面 App 的开发模式。
+
+验证：
+
+```text
+bash -n run_debug.sh  # 通过
+```
