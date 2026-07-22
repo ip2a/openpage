@@ -337,3 +337,11 @@ element_list/mod.rs
 - 函数签名对比：985 / 985，无新增、无丢失；两个测试局部函数仅由 `rustfmt` 去除末尾参数逗号，签名语义未变；
 - `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
 - Rust：`738 + 206 = 944` 个测试通过。
+
+### 2026-07-22 WebPage request 里程碑
+
+- 已新增 `webpage/request.rs`，原样迁移 `get`、`goto`、`post`、`post_json`、`download`、`download_to` 6 个请求方法；
+- 公开符号对比：817 / 817，无新增、无丢失；
+- 函数签名对比：985 / 985，无新增、无丢失；
+- `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
+- Rust：`738 + 206 = 944` 个测试通过。

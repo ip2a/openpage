@@ -1,3 +1,4 @@
+mod request;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -4168,23 +4169,6 @@ impl WebPage {
         self.browser.tab_infos()
     }
 
-    pub fn get_tab<'a, I, T>(
-        &self,
-        id_or_num: Option<I>,
-        title: Option<&str>,
-        url: Option<&str>,
-        tab_type: Option<T>,
-        as_id: bool,
-    ) -> OpenPageResult<Option<BrowserTabReference>>
-    where
-        I: Into<BrowserTabSelector<'a>>,
-        T: Into<BrowserTabTypeInput<'a>>,
-    {
-        self.browser
-            .get_tab(id_or_num, title, url, tab_type, as_id)
-            .map(|reference| reference.map(|reference| self.mix_tab_reference(reference)))
-    }
-
     pub fn get_tabs<'a, T>(
         &self,
         title: Option<&str>,
@@ -4234,13 +4218,6 @@ impl WebPage {
         T: Into<BrowserTabTargetsInput<'a>>,
     {
         self.browser.close_tabs(targets, others)
-    }
-
-    pub fn download_path(&self) -> OpenPageResult<Option<String>> {
-        match self.mode()? {
-            WebMode::Driver => self.browser.download_path(),
-            WebMode::Session => self.session.download_path().map(Some),
-        }
     }
 
     pub fn set_download_path(&self, path: &str) -> OpenPageResult<()> {
@@ -4730,36 +4707,11 @@ impl WebPage {
         }
     }
 
-    pub fn goto(&self, url: &str) -> OpenPageResult<()> {
-        self.get(url).map(|_| ())
-    }
-
-    pub fn post(&self, url: &str) -> OpenPageResult<bool> {
-        if self.mode()? == WebMode::Driver {
-            self.cookies_to_session(true)?;
-        }
-        self.session.post(url)
-    }
-
-    pub fn post_json(&self, url: &str, payload: Option<Value>) -> OpenPageResult<bool> {
-        if self.mode()? == WebMode::Driver {
-            self.cookies_to_session(true)?;
-        }
-        self.session.post_json(url, payload)
-    }
-
     pub fn download(&self, url: &str) -> OpenPageResult<String> {
         if self.mode()? == WebMode::Driver {
             self.cookies_to_session(true)?;
         }
         self.session.download(url)
-    }
-
-    pub fn download_to(&self, url: &str, path: impl AsRef<Path>) -> OpenPageResult<String> {
-        if self.mode()? == WebMode::Driver {
-            self.cookies_to_session(true)?;
-        }
-        self.session.download_to(url, path)
     }
 
     pub fn url(&self) -> OpenPageResult<Option<String>> {
