@@ -1,6 +1,6 @@
 # 代码整理契约：能力与函数不丢失
 
-- 状态：执行中（基线已建立，准备拆分 page）
+- 状态：已完成（全部结构拆分与跨表面验收通过）
 - 日期：2026-07-22
 - 适用范围：`rust/crates/openpage/src/page/`、`rust/crates/openpage/src/webpage/`
 - 目标：只整理代码位置，保证业务行为、公开函数和跨语言接口不发生意外变化
@@ -245,9 +245,9 @@ element_list/mod.rs
 |---|---|---|---|
 | 建立整理契约 | 已完成 | 文档已落盘 | 本里程碑提交 |
 | 建立 page/webpage 符号基线 | 已完成 | `cargo check`、944 个 Rust 测试、MCP、Python 兼容测试、桌面构建通过；Python 集成套件 1 个下载时序用例首次失败，单独重跑通过 | 本里程碑提交 |
-| 拆分 page | 进行中 | 第一批 navigation、tabs、interaction 已完成；公开符号与函数签名无丢失；各里程碑 944 个 Rust 测试通过 | 761c2bb、035948d、本里程碑提交 |
-| 拆分 webpage | 未开始 | - | - |
-| 全量验收 | 未开始 | - | - |
+| 拆分 page | 已完成 | `mod.rs` 主要保留类型、字段、转换和构造；公开符号 590 / 590、函数签名 946 / 946 | 761c2bb 至 511aef1 的独立里程碑提交 |
+| 拆分 webpage | 已完成 | `mod.rs` 主要保留类型、字段、转换和构造；公开符号 817 / 817、函数签名 985 / 985 | cae8269 至 c7c7f54 的独立里程碑提交 |
+| 最终跨表面验收 | 已完成 | Rust、MCP、Python、CLI、NPM CLI、桌面构建与 Git 清洁检查完成 | 最终验收提交 |
 
 基线文件：
 
@@ -488,3 +488,36 @@ element_list/mod.rs
 - WebPage 公开符号/函数签名：817 / 817、985 / 985，无新增、无丢失；
 - `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
 - Rust：`738 + 206 = 944` 个测试通过。
+
+
+## 12. 最终验收结果（2026-07-22）
+
+### 12.1 结构与符号
+
+- `page/mod.rs`：2,793 行，核心 `Page` 实现仅保留 5 个构造入口；其余职责位于明确子模块；
+- `webpage/mod.rs`：416 行，核心 `WebPage` 实现仅保留 5 个构造/包装入口；其余职责位于明确子模块；
+- Page 公开符号：590 / 590；函数签名：946 / 946；
+- WebPage 公开符号：817 / 817；函数签名：985 / 985；
+- 目标能力映射与实际目录一致；无生成产物被 Git 跟踪。
+
+### 12.2 编译与 Rust 行为
+
+- `cargo fmt --manifest-path rust/Cargo.toml --all -- --check`：通过；
+- `cargo check --manifest-path rust/Cargo.toml`：通过；
+- `cargo test --manifest-path rust/Cargo.toml -- --test-threads=1`：`738 + 206 = 944` 个测试通过；
+- CLI help 相关单元测试与错误 JSON 相关单元测试通过；当前无效子命令退出码为 2，错误 JSON 的 `kind` 为 `invalid_input`。
+
+### 12.3 跨语言与交付表面
+
+- `bash scripts/test/mcp_smoke_test.sh`：通过；
+- `bash scripts/dev/dev_install.sh`：通过；
+- `tests/python/test_compat_download_wait.py`：89 个测试通过；
+- `tests/python/test_openpage.py`：两次完整套件仅出现既有的下载开始事件时序波动（分别 2 个和 3 个 `wait_download_begin` 用例返回 `False`）；首次失败的两个用例曾立即单独重跑通过，后续重跑仍呈间歇性；该波动与整理前基线记录属于同一下载监听时序问题，未修改源码或测试，也未混入业务修复；
+- Python `openpage` 与 `openpage_rs`：均可导入；
+- `npm run build --prefix desktop/openpage`：通过；
+- NPM `openpage` 入口使用临时本地平台包和当前构建二进制启动，`--help` 退出码为 0；
+- 工作树在验收文档提交前保持仅有本次文档变更，生成目录均被忽略。
+
+### 12.4 结论
+
+契约中的完成标准全部满足：业务方法只移动位置，公开 API 与函数签名无丢失，Rust/Python/MCP/NPM/桌面入口均完成验证，每个结构里程碑都有独立提交，可单独回滚。
