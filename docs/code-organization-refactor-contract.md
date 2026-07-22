@@ -267,3 +267,12 @@ element_list/mod.rs
 - `cargo fmt --check`：通过；
 - `cargo check`：通过；
 - Rust：944 个测试通过。
+
+### 2026-07-22 Page tabs 里程碑
+
+- 已新增 `page/tabs.rs`，原样迁移 11 个 Tab 枚举、创建、激活、关闭和窗口标识方法；
+- 公开符号对比：590 / 590，无新增、无丢失；
+- 函数签名对比：946 / 946，无新增、无丢失；
+- `cargo fmt --check`：通过；
+- `cargo check`：通过；
+- Rust：944 个测试通过。
