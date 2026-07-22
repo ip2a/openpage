@@ -286,3 +286,13 @@ element_list/mod.rs
 - `cargo check`：通过；
 - Rust：944 个测试通过；
 - 第一批 `navigation`、`tabs`、`interaction` 已按契约完成。
+
+### 2026-07-22 Page tests 里程碑
+
+- 已将 `page/mod.rs` 中完整的内联测试模块原样迁移到 `page/tests.rs`，父模块仅保留 `#[cfg(test)] mod tests;`；
+- `page/mod.rs` 从约 17,000 行降至 8,150 行，生产代码逻辑未改写；
+- 公开符号对比：590 / 590，无新增、无丢失；
+- 函数签名集合与基线一致，无新增、无丢失；
+- `cargo fmt --check`：通过；
+- `cargo check`：通过；
+- Rust：`738 + 206 = 944` 个测试通过。
