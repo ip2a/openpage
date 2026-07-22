@@ -353,3 +353,11 @@ element_list/mod.rs
 - 函数签名对比：985 / 985，无新增、无丢失；
 - `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
 - Rust：`738 + 206 = 944` 个测试通过。
+
+### 2026-07-22 WebPage HTML 里程碑
+
+- 已新增 `webpage/html.rs`，原样迁移 HTML 获取方法；
+- 公开符号对比：817 / 817，无新增、无丢失；
+- 函数签名对比：985 / 985，无新增、无丢失；
+- `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
+- Rust：`738 + 206 = 944` 个测试通过。

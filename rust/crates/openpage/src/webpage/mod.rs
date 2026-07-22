@@ -1,3 +1,4 @@
+mod html;
 mod request;
 mod response;
 use std::collections::HashMap;
@@ -4767,13 +4768,6 @@ impl WebPage {
         match self.mode()? {
             WebMode::Driver => Ok(Some(self.driver.user_agent()?)),
             WebMode::Session => self.session.user_agent(),
-        }
-    }
-
-    pub fn html(&self) -> OpenPageResult<String> {
-        match self.mode()? {
-            WebMode::Driver => self.driver.html(),
-            WebMode::Session => self.session.html(),
         }
     }
 
