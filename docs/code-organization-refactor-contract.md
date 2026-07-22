@@ -104,6 +104,7 @@ covered_by: <test names>
 | 图片、脚本、样式等资源 | `webpage/assets.rs` | URL 解析、下载错误 |
 | WebFrame 混合模式操作 | `webpage/frame.rs` | Driver/Session 上下文、Frame 归属与包装返回类型 |
 | WebElement 及元素操作包装 | `webpage/element.rs` | 元素模式分派、交互、选择、状态、坐标和等待语义 |
+| WebPage 滚动与设置包装 | `webpage/settings.rs` | 设置委托、Cookie/窗口/加载模式及链式返回语义 |
 | 类型、构造函数、导出 | `webpage/mod.rs` | 可见性和公共 API |
 
 ## 5. 每个拆分提交的强制流程
@@ -454,6 +455,15 @@ element_list/mod.rs
 
 - 已新增 `webpage/element.rs`，原样迁移 `WebElement` 及其点击、滚动、设置、选择、状态、矩形和等待包装共 296 个方法；
 - `browser_element` 仅将可见性调整为契约允许的 `pub(super)`，供已有 WebFrame 调用，函数体未改写；
+- 公开符号对比：817 / 817，无新增、无丢失；
+- 函数签名对比：985 / 985，无新增、无丢失；
+- `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
+- Rust：`738 + 206 = 944` 个测试通过。
+
+
+### 2026-07-22 WebPage settings 里程碑
+
+- 已新增 `webpage/settings.rs`，原样迁移 WebPage 滚动以及 Page、Cookie、窗口和加载模式设置包装共 49 个方法；
 - 公开符号对比：817 / 817，无新增、无丢失；
 - 函数签名对比：985 / 985，无新增、无丢失；
 - `cargo fmt --check`、`cargo check`、`git diff --check`：通过；
