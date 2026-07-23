@@ -1132,3 +1132,18 @@ Rust Core: Browser → Page
 Rust Core: Session → Response → Document → DocumentElement
 Python:     Browser / Page / Session / open
 ```
+
+### 里程碑 20：全量测试审计结果（2026-07-23）
+
+状态：编译验收通过；全量运行测试仍需单独处理环境相关失败和耗时测试。
+
+已通过：
+
+```text
+cargo check --workspace --manifest-path rust/Cargo.toml
+cargo test --workspace --no-run --manifest-path rust/Cargo.toml
+cargo test -p openpage snapshot_relative_node_navigation_supports_non_element_nodes --manifest-path rust/Cargo.toml
+cargo test -p openpage config::tests::resolved_config_tracks_debugger_source --manifest-path rust/Cargo.toml
+```
+
+全量 `cargo test --workspace` 已启动，但出现若干配置/daemon 临时状态相关测试失败，并在 Session 测试进入长时间网络/超时路径后主动停止。当前不能把“全量测试通过”作为验收结论；后续必须隔离测试环境、逐项确认这些失败是否为环境污染或真实回归，再进行最终完成标记。
