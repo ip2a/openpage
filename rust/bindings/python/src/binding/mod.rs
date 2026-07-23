@@ -439,6 +439,63 @@ impl PySession {
             .map(|inner| PyResponse { inner })
             .map_err(error)
     }
+    fn post_body(&self, url: &str, body: &str) -> PyResult<PyResponse> {
+        self.inner
+            .post_body(url, body)
+            .map(|inner| PyResponse { inner })
+            .map_err(error)
+    }
+    fn put(&self, url: &str) -> PyResult<PyResponse> {
+        self.inner
+            .put(url)
+            .map(|inner| PyResponse { inner })
+            .map_err(error)
+    }
+    fn delete(&self, url: &str) -> PyResult<PyResponse> {
+        self.inner
+            .delete(url)
+            .map(|inner| PyResponse { inner })
+            .map_err(error)
+    }
+    fn patch(&self, url: &str) -> PyResult<PyResponse> {
+        self.inner
+            .patch(url)
+            .map(|inner| PyResponse { inner })
+            .map_err(error)
+    }
+    fn head(&self, url: &str) -> PyResult<PyResponse> {
+        self.inner
+            .head(url)
+            .map(|inner| PyResponse { inner })
+            .map_err(error)
+    }
+    fn options(&self, url: &str) -> PyResult<PyResponse> {
+        self.inner
+            .options(url)
+            .map(|inner| PyResponse { inner })
+            .map_err(error)
+    }
+    fn set_header(&self, name: &str, value: &str) -> PyResult<()> {
+        self.inner.set_header(name, value).map_err(error)
+    }
+    fn set_timeout(&self, timeout_secs: u64) -> PyResult<()> {
+        self.inner.set_timeout(timeout_secs).map_err(error)
+    }
+    fn set_user_agent(&self, user_agent: &str) -> PyResult<()> {
+        self.inner.set_user_agent(user_agent).map_err(error)
+    }
+    fn set_download_path(&self, path: &str) -> PyResult<()> {
+        self.inner.set_download_path(Path::new(path)).map_err(error)
+    }
+    fn set_verify(&self, verify: bool) -> PyResult<()> {
+        self.inner.set_verify(verify).map_err(error)
+    }
+    fn set_stream(&self, stream: bool) -> PyResult<()> {
+        self.inner.set_stream(stream).map_err(error)
+    }
+    fn set_max_redirects(&self, max_redirects: Option<usize>) -> PyResult<()> {
+        self.inner.set_max_redirects(max_redirects).map_err(error)
+    }
 }
 
 #[pymethods]

@@ -1789,3 +1789,45 @@ uv build --wheel                                                 通过
 独立 uv 虚拟环境安装 wheel                                      通过
 Browser.launch 签名检查                                         通过
 ```
+
+### 里程碑 48：补齐 Python Session HTTP 与请求设置门面（2026-07-23）
+
+状态：阶段完成。
+
+`Session` 现在公开常用 HTTP 方法：
+
+```python
+session.get(url)
+session.post(url)
+session.post_body(url, body)
+session.put(url)
+session.delete(url)
+session.patch(url)
+session.head(url)
+session.options(url)
+```
+
+新增请求级设置：
+
+```python
+session.set_header(name, value)
+session.set_timeout(timeout_secs)
+session.set_user_agent(user_agent)
+session.set_download_path(path)
+session.set_verify(verify)
+session.set_stream(stream)
+session.set_max_redirects(max_redirects)
+```
+
+返回值仍然是统一的 `Response`，没有引入新的请求包装类型或 Python 侧请求编排层。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check       通过
+cargo check -p openpage-python --manifest-path rust/Cargo.toml   通过
+uv build --wheel                                                 通过
+独立 uv 虚拟环境安装 wheel                                      通过
+Session HTTP 与设置门面检查                                     通过
+Python 顶层 __all__ 检查                                        通过
+```
