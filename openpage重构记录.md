@@ -1047,3 +1047,23 @@ rg -n '\\bs_ele\\b|\\bs_eles\\b' rust python --glob '*.rs' --glob '*.py'
 ```
 
 验收结果：Rust Core 和 Python 源码中不再存在 `s_ele` / `s_eles` 方法或调用。
+
+### 里程碑 16：打通 Python 发布包的真实导入链路（2026-07-23）
+
+状态：阶段完成。
+
+- Python 门面改为从同一包内导入 Rust 扩展：`from .openpage_rs import Browser, Page, Session`；
+- 根 `pyproject.toml` 将扩展模块命名为 `openpage.openpage_rs`，避免混合项目构建时寻找不存在的 `python/openpage_rs` 源码包；
+- 顶层 Python 公开面仍只保留 `Browser`、`Page`、`Session` 和 `open`；
+- 没有增加 Python 业务包装类、兼容层或回退路径。
+
+验证：
+
+```text
+uv build --wheel
+独立临时虚拟环境安装 dist/openpage-*.whl
+import openpage
+import openpage.openpage_rs
+```
+
+验收结果：从 wheel 安装后可以导入 Python 门面和 Rust 扩展，`Browser`、`Page`、`Session` 均可见。

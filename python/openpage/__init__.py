@@ -1,4 +1,4 @@
-from openpage_rs import Browser, Page, Session
+from .openpage_rs import Browser, Page, Session
 
 __all__ = ["Browser", "Page", "Session", "open"]
 
