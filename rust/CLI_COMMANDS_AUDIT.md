@@ -145,7 +145,7 @@
 | `history list/go/clear` | `openpage history list`, `openpage history go 2`, `openpage history clear` | CDP `GetNavigationHistory` / `NavigateToHistoryEntry` / `ResetNavigationHistory` |
 | `tab new/duplicate/reopen/close/list/switch` | `openpage tab close`, `openpage tab reopen`, `openpage tab duplicate --index 1 --background`, `openpage tab switch 1` | `Browser::new_tab/close_tabs/pages/activate_tab` + CLI-level URL duplication / recently-closed stack |
 | `frame list/switch` | `openpage frame list`, `openpage frame switch 1`, `openpage frame switch main` | `Page::get_frames/get_frame_context` + session-level frame context |
-| `browser activate/list` | `openpage browser activate`, `openpage browser list` | `webpage.activate` + daemon inventory |
+| `browser activate/list` | `openpage browser activate`, `openpage browser list` | `Browser::activate_tab` + daemon inventory |
 | `browser start --incognito` / `browser is-incognito` | `openpage browser start --incognito`, `openpage browser is-incognito` | `LaunchOptions.incognito` / `Page::is_incognito` |
 | `screenshot-element <locator> <output>` | `openpage screenshot-element "#card" /tmp/card.png` | `Element::save_screenshot` |
 | `window state/location/size/move` | `openpage window state`, `openpage window move 80 60` | `Page::window_*` |
