@@ -1719,3 +1719,42 @@ uv build --wheel                                                 通过
 标签页、Cookie、存储和下载门面检查                              通过
 Python 顶层 __all__ 检查                                        通过
 ```
+
+### 里程碑 46：补齐 Python 高级页面交互门面（2026-07-23）
+
+状态：阶段完成。
+
+Python `Page` 新增当前活动元素、元素删除、文件上传和点击打开新页面能力：
+
+```text
+Page.active_element()
+Page.remove_element(locator)
+Page.set_upload_files(files)
+Page.click_to_upload(locator, files, timeout_ms=None, by_js=False)
+Page.click_for_new_page(locator, timeout_ms=None, by_js=False)
+```
+
+其中 `click_for_new_page()` 返回新的 `Page`，沿用统一的 `Browser / Page` 模型，不引入 Tab 页面子类型。
+
+新增页面缩放和剪贴板能力：
+
+```text
+Page.zoom_factor()
+Page.set_zoom_factor(factor)
+Page.reset_zoom_factor()
+Page.clipboard_read_text()
+Page.clipboard_write_text(text)
+```
+
+这些入口全部直接调用 Rust Core 的领域方法，没有引入 Python 侧编排、helper、adapter、兼容别名或回退路径。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check       通过
+cargo check -p openpage-python --manifest-path rust/Cargo.toml   通过
+uv build --wheel                                                 通过
+独立 uv 虚拟环境安装 wheel                                      通过
+高级页面交互门面检查                                            通过
+Python 顶层 __all__ 检查                                        通过
+```

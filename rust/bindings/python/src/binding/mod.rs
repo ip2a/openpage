@@ -200,6 +200,57 @@ impl PyPage {
     fn download_to(&self, url: &str, path: &str) -> PyResult<String> {
         self.inner.download_to(url, Path::new(path)).map_err(error)
     }
+    fn active_element(&self) -> PyResult<Option<PyElement>> {
+        self.inner
+            .active_element()
+            .map(|element| element.map(|inner| PyElement { inner }))
+            .map_err(error)
+    }
+    fn remove_element(&self, locator: &str) -> PyResult<bool> {
+        self.inner.remove_element(locator).map_err(error)
+    }
+    fn set_upload_files(&self, files: Vec<String>) -> PyResult<()> {
+        self.inner.set_upload_files(files).map_err(error)
+    }
+    #[pyo3(signature = (locator, files, timeout_ms=None, by_js=false))]
+    fn click_to_upload(
+        &self,
+        locator: &str,
+        files: Vec<String>,
+        timeout_ms: Option<u64>,
+        by_js: bool,
+    ) -> PyResult<bool> {
+        self.inner
+            .click_to_upload(locator, files, timeout_ms, by_js)
+            .map_err(error)
+    }
+    #[pyo3(signature = (locator, timeout_ms=None, by_js=false))]
+    fn click_for_new_page(
+        &self,
+        locator: &str,
+        timeout_ms: Option<u64>,
+        by_js: bool,
+    ) -> PyResult<Option<PyPage>> {
+        self.inner
+            .click_for_new_tab(locator, timeout_ms, by_js)
+            .map(|page| page.map(|inner| PyPage { inner }))
+            .map_err(error)
+    }
+    fn zoom_factor(&self) -> PyResult<f64> {
+        self.inner.zoom_factor().map_err(error)
+    }
+    fn set_zoom_factor(&self, factor: f64) -> PyResult<()> {
+        self.inner.set_zoom_factor(factor).map_err(error)
+    }
+    fn reset_zoom_factor(&self) -> PyResult<()> {
+        self.inner.reset_zoom_factor().map_err(error)
+    }
+    fn clipboard_read_text(&self) -> PyResult<String> {
+        self.inner.clipboard_read_text().map_err(error)
+    }
+    fn clipboard_write_text(&self, text: &str) -> PyResult<()> {
+        self.inner.clipboard_write_text(text).map_err(error)
+    }
     fn url(&self) -> PyResult<String> {
         self.inner.url().map_err(error)
     }
