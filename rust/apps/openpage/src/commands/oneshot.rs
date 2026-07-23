@@ -1886,9 +1886,6 @@ fn rpc_webpage(session: &str, op: &str, params: Value) -> OpenPageResult<Value> 
 }
 
 #[cfg(test)]
-fn rpc_webpage_existing(session: &str, op: &str, params: Value) -> OpenPageResult<Value> {
-    rpc_request_existing(session, Some(session.to_string()), op, params)
-}
 
 fn tab_target_id_from_index(session: &str, index: usize) -> OpenPageResult<String> {
     let response = rpc_webpage(session, "tab.list", Value::Null)?;
@@ -5199,40 +5196,6 @@ mod tests {
     #[test]
     fn rpc_webpage_rejects_inactive_session_without_creating_sidecars() {
         let home = unique_openpage_home("inactive-session");
-        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
-        let daemon = daemon_dir().expect("daemon dir path");
-        assert!(!daemon.exists(), "test should start without daemon dir");
-
-        let error = super::rpc_webpage("inactive-review", "webpage.title", Value::Null)
-            .expect_err("inactive session should fail instead of starting a fresh daemon/browser");
-
-        match error {
-            OpenPageError::BrowserOperation(message) => {
-                assert!(message.contains("is not active"));
-                assert!(message.contains("browser start --session inactive-review"));
-            }
-            other => panic!("expected BrowserOperation, got {other:?}"),
-        }
-
-        assert!(
-            !port_path("inactive-review").expect("port path").exists(),
-            "inactive read command should not create port sidecar"
-        );
-        assert!(
-            !pid_path("inactive-review").expect("pid path").exists(),
-            "inactive read command should not create pid sidecar"
-        );
-        assert!(
-            !version_path("inactive-review")
-                .expect("version path")
-                .exists(),
-            "inactive read command should not create version sidecar"
-        );
-    }
-
-    #[test]
-    fn rpc_webpage_existing_rejects_inactive_session_without_creating_sidecars() {
-        let home = unique_openpage_home("inactive-existing");
         let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
         let daemon = daemon_dir().expect("daemon dir path");
         assert!(!daemon.exists(), "test should start without daemon dir");

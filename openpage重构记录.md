@@ -1067,3 +1067,18 @@ import openpage.openpage_rs
 ```
 
 验收结果：从 wheel 安装后可以导入 Python 门面和 Rust 扩展，`Browser`、`Page`、`Session` 均可见。
+
+### 里程碑 17：删除 CLI 中无效的旧测试入口（2026-07-23）
+
+状态：阶段完成。
+
+- 删除未被正式代码调用的 `rpc_webpage_existing` 测试专用函数；
+- 删除与正式 `rpc_webpage` 测试重复的旧测试块；
+- 不保留无效的旧命名和死代码，只保留当前正式请求路径。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo test -p openpage-app --lib --no-run --manifest-path rust/Cargo.toml
+```
