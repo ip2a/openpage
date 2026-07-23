@@ -984,22 +984,8 @@ impl Session {
         self.find((by, value))
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        self.find(locator)
-    }
-
     pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<DocumentElement>> {
         self.find_all((by, value))
-    }
-
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        self.find_all(locator)
     }
 
     pub fn query_xpath(&self, expression: &str) -> OpenPageResult<Vec<SessionXPathResult>> {

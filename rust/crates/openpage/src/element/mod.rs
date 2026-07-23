@@ -893,14 +893,6 @@ impl Element {
         snapshot_fragment_find_with_base_url(&html, locator.raw(), base_url.as_deref())
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        let locator = Locator::from_input(locator)?;
-        self.snapshot_find(locator.raw())
-    }
-
     pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
@@ -911,14 +903,6 @@ impl Element {
             .ok_or_else(|| OpenPageError::ElementNotFound(element_html_unavailable_message()))?;
         let base_url = value_as_optional_string(self.property("baseURI")?, "baseURI")?;
         snapshot_fragment_find_all_with_base_url(&html, locator.raw(), base_url.as_deref())
-    }
-
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        let locator = Locator::from_input(locator)?;
-        self.snapshot_find_all(locator.raw())
     }
 
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<DocumentElement> {

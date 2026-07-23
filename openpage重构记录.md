@@ -1026,3 +1026,24 @@ element.click()
 6. 最后从 Python 侧验证调用体验，不反向要求 Rust 恢复旧 API。
 
 后续每个里程碑必须同时完成：实际代码改动、匹配范围的验证、本文档记录和 Git 提交。最终验收必须执行全仓审计，确认旧兼容、废弃、fallback、旧复合页面模型以及 `runtime` / `helper` / `adapter` 等架构概念没有以代码、导出、协议或测试形式残留。
+
+### 里程碑 15：Rust Core 删除 `s_ele` / `s_eles`（2026-07-23）
+
+状态：阶段完成。
+
+- 删除 Session、DocumentElement、浏览器 Element、Frame、ShadowRoot 和 ElementList 上的 `s_ele` / `s_eles` 方法；
+- 静态查询统一使用 `snapshot_find` / `snapshot_find_all`；
+- Session 文档查询统一使用 `find` / `find_all`；
+- 没有保留旧别名、兼容转发或废弃入口；
+- 同步修改 Rust 内部类型检查测试，测试正式命名而不是旧命名。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check -p openpage --lib --manifest-path rust/Cargo.toml
+cargo test -p openpage --lib --no-run --manifest-path rust/Cargo.toml
+rg -n '\\bs_ele\\b|\\bs_eles\\b' rust python --glob '*.rs' --glob '*.py'
+```
+
+验收结果：Rust Core 和 Python 源码中不再存在 `s_ele` / `s_eles` 方法或调用。

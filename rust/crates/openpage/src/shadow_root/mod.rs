@@ -238,22 +238,6 @@ impl ShadowRoot {
         snapshot_fragment_find_all_with_base_url(&html, locator.raw(), base_url.as_deref())
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        let locator = Locator::from_input(locator)?;
-        self.snapshot_find(locator.raw())
-    }
-
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        let locator = Locator::from_input(locator)?;
-        self.snapshot_find_all(locator.raw())
-    }
-
     pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<DocumentElement> {
         let locator = Locator::from_by(by, value)?;
         self.snapshot_find(locator.raw())
@@ -998,8 +982,8 @@ mod tests {
     #[test]
     fn shadow_root_static_query_aliases_are_typechecked() {
         fn assert_methods(root: &ShadowRoot) -> OpenPageResult<()> {
-            let _: DocumentElement = root.s_ele("css:.item")?;
-            let _: Vec<DocumentElement> = root.s_eles("css:.item")?;
+            let _: DocumentElement = root.snapshot_find("css:.item")?;
+            let _: Vec<DocumentElement> = root.snapshot_find_all("css:.item")?;
             let _: Vec<SessionXPathResult> = root.snapshot_query_xpath(".//*")?;
             Ok(())
         }
