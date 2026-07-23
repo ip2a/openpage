@@ -1129,7 +1129,7 @@ fn session_target_state(status: &DaemonSessionInfo) -> OpenPageResult<Option<Ses
         &status.session,
         &Request {
             id: None,
-            op: "webpage.url".to_string(),
+            op: "page.url".to_string(),
             target: Some(status.session.clone()),
             params: Value::Null,
         },

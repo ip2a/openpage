@@ -1082,3 +1082,21 @@ import openpage.openpage_rs
 cargo fmt --all --manifest-path rust/Cargo.toml
 cargo test -p openpage-app --lib --no-run --manifest-path rust/Cargo.toml
 ```
+
+### 里程碑 18：CLI 与 daemon 协议统一使用 `page.*`（2026-07-23）
+
+状态：阶段完成。
+
+- CLI 请求操作从 `webpage.*` 统一改为 `page.*`；
+- CLI 内部请求函数从 `rpc_webpage` 改为 `rpc_page`；
+- 页面创建、导航、查询、快照、下载和窗口相关请求全部使用正式 Page 目标；
+- daemon 客户端和协议测试同步使用 `page.*`；
+- 不保留 `webpage.*` 兼容协议入口。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check --workspace --manifest-path rust/Cargo.toml
+rg -n 'webpage\\.|rpc_webpage|WebPage|webpage_' rust/apps rust/crates/openpage/src --glob '*.rs'
+```

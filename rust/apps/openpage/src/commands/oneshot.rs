@@ -190,7 +190,7 @@ fn run_single(command: Command) -> OpenPageResult<()> {
 }
 
 fn run_scroll(args: ScrollArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "page.scroll",
         json!({
@@ -206,15 +206,15 @@ fn run_scroll(args: ScrollArgs) -> OpenPageResult<()> {
 }
 
 fn run_scroll_position(args: SessionArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.scroll_position",
+        "page.scroll_position",
         Value::Null,
     )?))
 }
 
 fn run_scroll_element(args: ElementScrollArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "element.scroll",
         json!({
@@ -232,7 +232,7 @@ fn run_scroll_element(args: ElementScrollArgs) -> OpenPageResult<()> {
 }
 
 fn run_scroll_element_position(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.scroll_position",
         json!({"locator": args.locator}),
@@ -241,7 +241,7 @@ fn run_scroll_element_position(args: ElementArgs) -> OpenPageResult<()> {
 
 fn run_recorder(command: RecorderCommand) -> OpenPageResult<()> {
     match command {
-        RecorderCommand::Start(args) => print_json(simple_ok(rpc_webpage(
+        RecorderCommand::Start(args) => print_json(simple_ok(rpc_page(
             &args.session,
             "recorder.start",
             Value::Null,
@@ -249,14 +249,10 @@ fn run_recorder(command: RecorderCommand) -> OpenPageResult<()> {
         RecorderCommand::Replay(args) => {
             let flow = serde_json::from_slice::<Value>(&fs::read(&args.flow)?)
                 .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
-            print_json(simple_ok(rpc_webpage(
-                &args.session,
-                "recorder.replay",
-                flow,
-            )?))
+            print_json(simple_ok(rpc_page(&args.session, "recorder.replay", flow)?))
         }
         RecorderCommand::Stop(args) => {
-            let flow = rpc_webpage(&args.session, "recorder.stop", Value::Null)?;
+            let flow = rpc_page(&args.session, "recorder.stop", Value::Null)?;
             if let Some(output) = args.output {
                 let bytes = serde_json::to_vec_pretty(&flow)
                     .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
@@ -266,17 +262,17 @@ fn run_recorder(command: RecorderCommand) -> OpenPageResult<()> {
                 print_json(simple_ok(flow))
             }
         }
-        RecorderCommand::Steps(args) => print_json(simple_ok(rpc_webpage(
+        RecorderCommand::Steps(args) => print_json(simple_ok(rpc_page(
             &args.session,
             "recorder.steps",
             Value::Null,
         )?)),
-        RecorderCommand::Status(args) => print_json(simple_ok(rpc_webpage(
+        RecorderCommand::Status(args) => print_json(simple_ok(rpc_page(
             &args.session,
             "recorder.status",
             Value::Null,
         )?)),
-        RecorderCommand::Clear(args) => print_json(simple_ok(rpc_webpage(
+        RecorderCommand::Clear(args) => print_json(simple_ok(rpc_page(
             &args.session,
             "recorder.clear",
             Value::Null,
@@ -289,11 +285,11 @@ fn run_browser(command: BrowserCommand) -> OpenPageResult<()> {
         BrowserCommand::Start(args) => start_browser(args),
         BrowserCommand::Stop(args) => stop_browser(args, false),
         BrowserCommand::Activate(args) => {
-            let _ = rpc_webpage(&args.session, "webpage.activate", Value::Null)?;
+            let _ = rpc_page(&args.session, "page.activate", Value::Null)?;
             print_json(simple_ok(json!({"activated": true})))
         }
         BrowserCommand::IsIncognito(args) => {
-            let is_incognito = rpc_webpage(&args.session, "webpage.is_incognito", Value::Null)?
+            let is_incognito = rpc_page(&args.session, "page.is_incognito", Value::Null)?
                 .get("is_incognito")
                 .cloned();
             print_json(simple_ok(json!({"is_incognito": is_incognito})))
@@ -419,16 +415,16 @@ fn tail_log_lines(content: &str, limit: usize) -> String {
 }
 
 fn run_goto(args: GotoArgs) -> OpenPageResult<()> {
-    ensure_webpage_session(&args.session)?;
-    let result = rpc_webpage(
+    ensure_page_session(&args.session)?;
+    let result = rpc_page(
         &args.session,
-        "webpage.get",
+        "page.get",
         json!({
             "url": args.url,
         }),
     )?;
     if args.wait {
-        let _ = rpc_webpage(
+        let _ = rpc_page(
             &args.session,
             "wait.doc_loaded",
             json!({
@@ -436,8 +432,8 @@ fn run_goto(args: GotoArgs) -> OpenPageResult<()> {
             }),
         )?;
     }
-    let url = rpc_webpage(&args.session, "webpage.url", Value::Null)?;
-    print_webpage_json(
+    let url = rpc_page(&args.session, "page.url", Value::Null)?;
+    print_page_json(
         &args.session,
         json!({
             "loaded": true,
@@ -448,17 +444,17 @@ fn run_goto(args: GotoArgs) -> OpenPageResult<()> {
 }
 
 fn run_back(args: SessionArgs) -> OpenPageResult<()> {
-    let result = rpc_webpage(&args.session, "webpage.back", Value::Null)?;
+    let result = rpc_page(&args.session, "page.back", Value::Null)?;
     let navigated = result.get("back").and_then(Value::as_bool).unwrap_or(false);
     if navigated {
-        let _ = rpc_webpage(
+        let _ = rpc_page(
             &args.session,
             "wait.doc_loaded",
             json!({"timeout_ms": 10_000}),
         )?;
     }
-    let url = rpc_webpage(&args.session, "webpage.url", Value::Null)?;
-    print_webpage_json(
+    let url = rpc_page(&args.session, "page.url", Value::Null)?;
+    print_page_json(
         &args.session,
         json!({
             "back": navigated,
@@ -469,20 +465,20 @@ fn run_back(args: SessionArgs) -> OpenPageResult<()> {
 }
 
 fn run_forward(args: SessionArgs) -> OpenPageResult<()> {
-    let result = rpc_webpage(&args.session, "webpage.forward", Value::Null)?;
+    let result = rpc_page(&args.session, "page.forward", Value::Null)?;
     let navigated = result
         .get("forward")
         .and_then(Value::as_bool)
         .unwrap_or(false);
     if navigated {
-        let _ = rpc_webpage(
+        let _ = rpc_page(
             &args.session,
             "wait.doc_loaded",
             json!({"timeout_ms": 10_000}),
         )?;
     }
-    let url = rpc_webpage(&args.session, "webpage.url", Value::Null)?;
-    print_webpage_json(
+    let url = rpc_page(&args.session, "page.url", Value::Null)?;
+    print_page_json(
         &args.session,
         json!({
             "forward": navigated,
@@ -493,16 +489,16 @@ fn run_forward(args: SessionArgs) -> OpenPageResult<()> {
 }
 
 fn run_reload(args: ReloadArgs) -> OpenPageResult<()> {
-    let result = rpc_webpage(
+    let result = rpc_page(
         &args.session,
-        "webpage.reload",
+        "page.reload",
         json!({
             "timeout_ms": 10_000,
             "ignore_cache": args.ignore_cache,
         }),
     )?;
-    let url = rpc_webpage(&args.session, "webpage.url", Value::Null)?;
-    print_webpage_json(
+    let url = rpc_page(&args.session, "page.url", Value::Null)?;
+    print_page_json(
         &args.session,
         json!({
             "reloaded": true,
@@ -514,78 +510,74 @@ fn run_reload(args: ReloadArgs) -> OpenPageResult<()> {
 }
 
 fn run_stop_loading(args: SessionArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(&args.session, "webpage.stop_loading", Value::Null)?;
+    let _ = rpc_page(&args.session, "page.stop_loading", Value::Null)?;
     print_json(simple_ok(json!({"stopped_loading": true})))
 }
 
 fn run_url(args: SessionArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
-        &args.session,
-        "webpage.url",
-        Value::Null,
-    )?))
+    print_json(simple_ok(rpc_page(&args.session, "page.url", Value::Null)?))
 }
 
 fn run_title(args: SessionArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.title",
+        "page.title",
         Value::Null,
     )?))
 }
 
 fn run_user_agent(args: SessionArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.user_agent",
+        "page.user_agent",
         Value::Null,
     )?))
 }
 
 fn run_status_code(args: SessionArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.status_code",
+        "page.status_code",
         Value::Null,
     )?))
 }
 
 fn run_ready_state(args: SessionArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.ready_state",
+        "page.ready_state",
         Value::Null,
     )?))
 }
 
 fn run_is_loading(args: SessionArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.is_loading",
+        "page.is_loading",
         Value::Null,
     )?))
 }
 
 fn run_is_headless(args: SessionArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.is_headless",
+        "page.is_headless",
         Value::Null,
     )?))
 }
 
 fn run_html(args: SessionArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.html",
+        "page.html",
         Value::Null,
     )?))
 }
 
 fn run_snapshot(args: SnapshotArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.snapshot",
+        "page.snapshot",
         json!({
             "mode": args.mode.as_str(),
             "format": args.format.as_str(),
@@ -597,7 +589,7 @@ fn run_snapshot(args: SnapshotArgs) -> OpenPageResult<()> {
 }
 
 fn run_screenshot(args: ScreenshotArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "page.screenshot",
         json!({
@@ -609,7 +601,7 @@ fn run_screenshot(args: ScreenshotArgs) -> OpenPageResult<()> {
 }
 
 fn run_screenshot_element(args: ScreenshotElementArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "element.screenshot",
         json!({
@@ -621,9 +613,9 @@ fn run_screenshot_element(args: ScreenshotElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_click(args: ElementArgs) -> OpenPageResult<()> {
-    print_webpage_result(
+    print_page_result(
         &args.session,
-        rpc_webpage(
+        rpc_page(
             &args.session,
             "element.click",
             json!({"locator": args.locator}),
@@ -632,7 +624,7 @@ fn run_click(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_fill(args: FillArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.input",
         json!({"locator": args.locator, "text": args.text}),
@@ -640,7 +632,7 @@ fn run_fill(args: FillArgs) -> OpenPageResult<()> {
 }
 
 fn run_focus(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.focus",
         json!({"locator": args.locator}),
@@ -648,7 +640,7 @@ fn run_focus(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_clear(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.clear",
         json!({"locator": args.locator}),
@@ -656,9 +648,9 @@ fn run_clear(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_submit(args: ElementArgs) -> OpenPageResult<()> {
-    print_webpage_result(
+    print_page_result(
         &args.session,
-        rpc_webpage(
+        rpc_page(
             &args.session,
             "element.submit",
             json!({"locator": args.locator}),
@@ -667,7 +659,7 @@ fn run_submit(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_check(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.check",
         json!({"locator": args.locator}),
@@ -675,7 +667,7 @@ fn run_check(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_uncheck(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.uncheck",
         json!({"locator": args.locator}),
@@ -683,7 +675,7 @@ fn run_uncheck(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_right_click(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.click_right",
         json!({"locator": args.locator}),
@@ -691,9 +683,9 @@ fn run_right_click(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_middle_click(args: ElementArgs) -> OpenPageResult<()> {
-    print_webpage_result(
+    print_page_result(
         &args.session,
-        rpc_webpage(
+        rpc_page(
             &args.session,
             "element.click_middle",
             json!({"locator": args.locator}),
@@ -702,12 +694,12 @@ fn run_middle_click(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_double_click(args: ElementArgs) -> OpenPageResult<()> {
-    let result = rpc_webpage(
+    let result = rpc_page(
         &args.session,
         "element.click_multi",
         json!({"locator": args.locator, "count": 2}),
     )?;
-    print_webpage_json(
+    print_page_json(
         &args.session,
         json!({
             "clicked": true,
@@ -726,7 +718,7 @@ fn run_click_at(args: ClickAtArgs) -> OpenPageResult<()> {
         count,
         session,
     } = args;
-    let result = rpc_webpage(
+    let result = rpc_page(
         &session,
         "element.click_at",
         json!({
@@ -737,7 +729,7 @@ fn run_click_at(args: ClickAtArgs) -> OpenPageResult<()> {
             "count": count,
         }),
     )?;
-    print_webpage_json(
+    print_page_json(
         &session,
         json!({
             "clicked": true,
@@ -749,7 +741,7 @@ fn run_click_at(args: ClickAtArgs) -> OpenPageResult<()> {
 }
 
 fn run_key_down(args: KeyArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "page.key_down",
         json!({"key": args.key.clone()}),
@@ -760,7 +752,7 @@ fn run_key_down(args: KeyArgs) -> OpenPageResult<()> {
 }
 
 fn run_key_up(args: KeyArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "page.key_up",
         json!({"key": args.key.clone()}),
@@ -771,7 +763,7 @@ fn run_key_up(args: KeyArgs) -> OpenPageResult<()> {
 }
 
 fn run_shortcut(args: ShortcutArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "page.type_keys",
         json!({"text": args.keys.clone()}),
@@ -785,7 +777,7 @@ fn run_shortcut_action(args: SessionArgs, key: &str, result_key: &str) -> OpenPa
     } else {
         "Control"
     };
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "page.type_keys",
         json!({"text": [modifier, key]}),
@@ -795,12 +787,12 @@ fn run_shortcut_action(args: SessionArgs, key: &str, result_key: &str) -> OpenPa
 
 fn run_clipboard(command: ClipboardCommand) -> OpenPageResult<()> {
     match command {
-        ClipboardCommand::Read(args) => print_json(simple_ok(rpc_webpage(
+        ClipboardCommand::Read(args) => print_json(simple_ok(rpc_page(
             &args.session,
             "clipboard.read",
             Value::Null,
         )?)),
-        ClipboardCommand::Write(args) => print_json(simple_ok(rpc_webpage(
+        ClipboardCommand::Write(args) => print_json(simple_ok(rpc_page(
             &args.session,
             "clipboard.write",
             json!({"text": args.text}),
@@ -809,7 +801,7 @@ fn run_clipboard(command: ClipboardCommand) -> OpenPageResult<()> {
 }
 
 fn run_input(args: PageTextArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "page.input",
         json!({"text": args.text.clone()}),
@@ -818,7 +810,7 @@ fn run_input(args: PageTextArgs) -> OpenPageResult<()> {
 }
 
 fn run_type(args: PageTextArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "page.type",
         json!({"text": args.text.clone()}),
@@ -827,7 +819,7 @@ fn run_type(args: PageTextArgs) -> OpenPageResult<()> {
 }
 
 fn run_type_with_interval(args: TypeWithIntervalArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "page.type_with_interval",
         json!({"text": args.text.clone(), "interval": args.interval}),
@@ -840,7 +832,7 @@ fn run_type_with_interval(args: TypeWithIntervalArgs) -> OpenPageResult<()> {
 }
 
 fn run_drag(args: DragArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "element.drag",
         json!({
@@ -858,7 +850,7 @@ fn run_drag(args: DragArgs) -> OpenPageResult<()> {
 }
 
 fn run_drag_to(args: DragToArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "element.drag_to",
         json!({
@@ -871,7 +863,7 @@ fn run_drag_to(args: DragToArgs) -> OpenPageResult<()> {
 }
 
 fn run_drag_to_point(args: DragToPointArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "element.drag_to_point",
         json!({
@@ -890,7 +882,7 @@ fn run_drag_to_point(args: DragToPointArgs) -> OpenPageResult<()> {
 
 fn run_drag_in(args: DragInArgs) -> OpenPageResult<()> {
     if let Some(text) = args.text {
-        let _ = rpc_webpage(
+        let _ = rpc_page(
             &args.session,
             "page.drag_in",
             json!({"target": args.target, "text": text}),
@@ -899,7 +891,7 @@ fn run_drag_in(args: DragInArgs) -> OpenPageResult<()> {
             json!({"dragged": true, "target": args.target, "kind": "text"}),
         ))
     } else if !args.files.is_empty() {
-        let _ = rpc_webpage(
+        let _ = rpc_page(
             &args.session,
             "page.drag_in",
             json!({"target": args.target, "files": args.files}),
@@ -915,7 +907,7 @@ fn run_drag_in(args: DragInArgs) -> OpenPageResult<()> {
 }
 
 fn run_text(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.text",
         json!({"locator": args.locator}),
@@ -923,7 +915,7 @@ fn run_text(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_value(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.value",
         json!({"locator": args.locator}),
@@ -931,7 +923,7 @@ fn run_value(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_raw_text(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.raw_text",
         json!({"locator": args.locator}),
@@ -939,7 +931,7 @@ fn run_raw_text(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_link(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.link",
         json!({"locator": args.locator}),
@@ -947,7 +939,7 @@ fn run_link(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_open_link(args: OpenLinkArgs) -> OpenPageResult<()> {
-    let link = rpc_webpage(
+    let link = rpc_page(
         &args.session,
         "element.link",
         json!({"locator": args.locator}),
@@ -957,7 +949,7 @@ fn run_open_link(args: OpenLinkArgs) -> OpenPageResult<()> {
     .filter(|value| !value.is_empty())
     .ok_or_else(|| OpenPageError::ElementNotFound("element link is unavailable".to_string()))?
     .to_string();
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "tab.new",
         json!({
@@ -969,7 +961,7 @@ fn run_open_link(args: OpenLinkArgs) -> OpenPageResult<()> {
 }
 
 fn run_child_count(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.child_count",
         json!({"locator": args.locator}),
@@ -977,7 +969,7 @@ fn run_child_count(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_css_path(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.css_path",
         json!({"locator": args.locator}),
@@ -985,7 +977,7 @@ fn run_css_path(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_xpath(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.xpath",
         json!({"locator": args.locator}),
@@ -993,7 +985,7 @@ fn run_xpath(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_element_html(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.html",
         json!({"locator": args.locator}),
@@ -1001,7 +993,7 @@ fn run_element_html(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_attr(args: AttrArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.attr",
         json!({"locator": args.locator, "name": args.name}),
@@ -1027,13 +1019,13 @@ fn run_wait(args: WaitArgs) -> OpenPageResult<()> {
         } else {
             json!({"timeout_ms": args.timeout})
         };
-        let _ = rpc_webpage(&args.session, op, params)?;
+        let _ = rpc_page(&args.session, op, params)?;
     } else {
         let locator = condition
             .strip_prefix("element ")
             .map(str::trim)
             .unwrap_or(condition);
-        let _ = rpc_webpage(
+        let _ = rpc_page(
             &args.session,
             "wait.locator",
             json!({"locator": locator, "timeout_ms": args.timeout}),
@@ -1050,15 +1042,15 @@ fn run_intercept(command: InterceptCommand) -> OpenPageResult<()> {
     };
     match command {
         InterceptCommand::Start(_) => {
-            let _ = rpc_webpage(&session, "intercept.start", Value::Null)?;
+            let _ = rpc_page(&session, "intercept.start", Value::Null)?;
             print_json(simple_ok(json!({"intercept": "started"})))
         }
         InterceptCommand::Stop(_) => {
-            let _ = rpc_webpage(&session, "intercept.stop", Value::Null)?;
+            let _ = rpc_page(&session, "intercept.stop", Value::Null)?;
             print_json(simple_ok(json!({"intercept": "stopped"})))
         }
         InterceptCommand::Status(_) => {
-            let status = rpc_webpage(&session, "intercept.status", Value::Null)?;
+            let status = rpc_page(&session, "intercept.status", Value::Null)?;
             print_json(simple_ok(json!({
                 "listening": status.get("listening").cloned(),
                 "paused": status.get("paused").cloned(),
@@ -1068,7 +1060,7 @@ fn run_intercept(command: InterceptCommand) -> OpenPageResult<()> {
 }
 
 fn run_js(args: JsArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "page.run_js",
         json!({"script": args.script}),
@@ -1076,7 +1068,7 @@ fn run_js(args: JsArgs) -> OpenPageResult<()> {
 }
 
 fn run_download(args: DownloadArgs) -> OpenPageResult<()> {
-    let path = rpc_webpage(
+    let path = rpc_page(
         &args.session,
         "page.download_url",
         json!({
@@ -1091,14 +1083,14 @@ fn run_download(args: DownloadArgs) -> OpenPageResult<()> {
 
 fn run_downloads(command: DownloadsCommand) -> OpenPageResult<()> {
     match command {
-        DownloadsCommand::List(args) => print_json(simple_ok(rpc_webpage(
+        DownloadsCommand::List(args) => print_json(simple_ok(rpc_page(
             &args.session,
-            "webpage.download_missions",
+            "page.download_missions",
             Value::Null,
         )?)),
-        DownloadsCommand::Last(args) => print_json(simple_ok(rpc_webpage(
+        DownloadsCommand::Last(args) => print_json(simple_ok(rpc_page(
             &args.session,
-            "webpage.last_download",
+            "page.last_download",
             Value::Null,
         )?)),
         DownloadsCommand::Clear(args) => run_downloads_clear(args),
@@ -1114,20 +1106,16 @@ fn run_downloads(command: DownloadsCommand) -> OpenPageResult<()> {
 }
 
 fn run_downloads_clear(args: SessionArgs) -> OpenPageResult<()> {
-    let removed = rpc_webpage(
-        &args.session,
-        "webpage.clear_finished_downloads",
-        Value::Null,
-    )?
-    .get("removed")
-    .cloned();
+    let removed = rpc_page(&args.session, "page.clear_finished_downloads", Value::Null)?
+        .get("removed")
+        .cloned();
     print_json(simple_ok(json!({"cleared": true, "removed": removed})))
 }
 
 fn run_downloads_cancel(args: DownloadsCancelArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
-        "webpage.cancel_download",
+        "page.cancel_download",
         json!({"guid": args.guid}),
     )?;
     print_json(simple_ok(json!({"cancelled": true, "guid": args.guid})))
@@ -1156,18 +1144,14 @@ fn run_downloads_reveal(args: DownloadsOpenArgs) -> OpenPageResult<()> {
 }
 
 fn run_downloads_path(args: SessionArgs) -> OpenPageResult<()> {
-    let path = rpc_webpage(
-        &args.session,
-        "webpage.current_tab_download_path",
-        Value::Null,
-    )?
-    .get("download_path")
-    .cloned();
+    let path = rpc_page(&args.session, "page.current_tab_download_path", Value::Null)?
+        .get("download_path")
+        .cloned();
     print_json(simple_ok(json!({"download_path": path})))
 }
 
 fn run_downloads_set_path(args: DownloadsPathArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "set.current_tab_download_path",
         json!({"path": args.path}),
@@ -1176,18 +1160,14 @@ fn run_downloads_set_path(args: DownloadsPathArgs) -> OpenPageResult<()> {
 }
 
 fn run_downloads_mode(args: SessionArgs) -> OpenPageResult<()> {
-    let mode = rpc_webpage(
-        &args.session,
-        "webpage.download_file_exists_mode",
-        Value::Null,
-    )?
-    .get("mode")
-    .cloned();
+    let mode = rpc_page(&args.session, "page.download_file_exists_mode", Value::Null)?
+        .get("mode")
+        .cloned();
     print_json(simple_ok(json!({"mode": mode})))
 }
 
 fn run_downloads_set_mode(args: DownloadsModeArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "set.current_tab_download_file_exists_mode",
         json!({"mode": args.mode}),
@@ -1196,7 +1176,7 @@ fn run_downloads_set_mode(args: DownloadsModeArgs) -> OpenPageResult<()> {
 }
 
 fn run_downloads_wait(args: WaitForDownloadArgs) -> OpenPageResult<()> {
-    let baseline = rpc_webpage(&args.session, "webpage.download_missions", Value::Null)?
+    let baseline = rpc_page(&args.session, "page.download_missions", Value::Null)?
         .get("missions")
         .and_then(Value::as_array)
         .cloned()
@@ -1209,7 +1189,7 @@ fn run_downloads_wait(args: WaitForDownloadArgs) -> OpenPageResult<()> {
 
     let deadline = Instant::now() + Duration::from_millis(args.timeout);
     let path = loop {
-        let missions = rpc_webpage(&args.session, "webpage.download_missions", Value::Null)?
+        let missions = rpc_page(&args.session, "page.download_missions", Value::Null)?
             .get("missions")
             .and_then(Value::as_array)
             .cloned()
@@ -1265,7 +1245,7 @@ fn find_download_path(
 
 fn resolve_download_mission(session: &str, guid: Option<&str>) -> OpenPageResult<Value> {
     if let Some(guid) = guid {
-        let missions = rpc_webpage(session, "webpage.download_missions", Value::Null)?
+        let missions = rpc_page(session, "page.download_missions", Value::Null)?
             .get("missions")
             .and_then(Value::as_array)
             .cloned()
@@ -1275,7 +1255,7 @@ fn resolve_download_mission(session: &str, guid: Option<&str>) -> OpenPageResult
             .find(|mission| mission.get("guid").and_then(Value::as_str) == Some(guid))
             .ok_or_else(|| OpenPageError::ElementNotFound(format!("download not found: {guid}")));
     }
-    rpc_webpage(session, "webpage.last_download", Value::Null)?
+    rpc_page(session, "page.last_download", Value::Null)?
         .get("mission")
         .cloned()
         .filter(|mission| !mission.is_null())
@@ -1394,49 +1374,49 @@ fn run_gui_command(mut command: ProcessCommand, action: &str) -> OpenPageResult<
 
 fn run_window(command: WindowCommand) -> OpenPageResult<()> {
     match command {
-        WindowCommand::List(args) => print_json(simple_ok(rpc_webpage(
+        WindowCommand::List(args) => print_json(simple_ok(rpc_page(
             &args.session,
             "window.list",
             Value::Null,
         )?)),
         WindowCommand::Switch(args) => run_window_switch(args),
         WindowCommand::Close(args) => run_window_close(args),
-        WindowCommand::State(args) => print_json(simple_ok(rpc_webpage(
+        WindowCommand::State(args) => print_json(simple_ok(rpc_page(
             &args.session,
             "window.state",
             Value::Null,
         )?)),
-        WindowCommand::Location(args) => print_json(simple_ok(rpc_webpage(
+        WindowCommand::Location(args) => print_json(simple_ok(rpc_page(
             &args.session,
             "window.location",
             Value::Null,
         )?)),
         WindowCommand::Max(args) => {
-            let _ = rpc_webpage(&args.session, "window.max", Value::Null)?;
+            let _ = rpc_page(&args.session, "window.max", Value::Null)?;
             print_json(simple_ok(json!({"window": true, "state": "maximized"})))
         }
         WindowCommand::Min(args) => {
-            let _ = rpc_webpage(&args.session, "window.min", Value::Null)?;
+            let _ = rpc_page(&args.session, "window.min", Value::Null)?;
             print_json(simple_ok(json!({"window": true, "state": "minimized"})))
         }
         WindowCommand::Fullscreen(args) => {
-            let _ = rpc_webpage(&args.session, "window.full", Value::Null)?;
+            let _ = rpc_page(&args.session, "window.full", Value::Null)?;
             print_json(simple_ok(json!({"window": true, "state": "fullscreen"})))
         }
         WindowCommand::Normal(args) => {
-            let _ = rpc_webpage(&args.session, "window.normal", Value::Null)?;
+            let _ = rpc_page(&args.session, "window.normal", Value::Null)?;
             print_json(simple_ok(json!({"window": true, "state": "normal"})))
         }
         WindowCommand::Hide(args) => {
-            let _ = rpc_webpage(&args.session, "window.hide", Value::Null)?;
+            let _ = rpc_page(&args.session, "window.hide", Value::Null)?;
             print_json(simple_ok(json!({"window": true, "visible": false})))
         }
         WindowCommand::Show(args) => {
-            let _ = rpc_webpage(&args.session, "window.show", Value::Null)?;
+            let _ = rpc_page(&args.session, "window.show", Value::Null)?;
             print_json(simple_ok(json!({"window": true, "visible": true})))
         }
         WindowCommand::Size(args) => {
-            let _ = rpc_webpage(
+            let _ = rpc_page(
                 &args.session,
                 "window.size_set",
                 json!({"width": args.width, "height": args.height}),
@@ -1451,7 +1431,7 @@ fn run_window(command: WindowCommand) -> OpenPageResult<()> {
 
 fn run_window_switch(args: WindowSwitchArgs) -> OpenPageResult<()> {
     let target_id = window_target_id_from_selector(&args.session, &args.target)?;
-    let result = rpc_webpage(
+    let result = rpc_page(
         &args.session,
         "window.switch",
         json!({"target_id": target_id}),
@@ -1468,7 +1448,7 @@ fn run_window_close(args: WindowCloseArgs) -> OpenPageResult<()> {
         )?),
         (None, None) => None,
     };
-    let result = rpc_webpage(
+    let result = rpc_page(
         &args.session,
         "window.close",
         json!({"target_id": target_id}),
@@ -1478,23 +1458,21 @@ fn run_window_close(args: WindowCloseArgs) -> OpenPageResult<()> {
 
 fn run_zoom(command: ZoomCommand) -> OpenPageResult<()> {
     match command {
-        ZoomCommand::Get(args) => print_json(simple_ok(rpc_webpage(
-            &args.session,
-            "zoom.get",
-            Value::Null,
-        )?)),
+        ZoomCommand::Get(args) => {
+            print_json(simple_ok(rpc_page(&args.session, "zoom.get", Value::Null)?))
+        }
         ZoomCommand::In(args) => run_zoom_step(args, 1.0),
         ZoomCommand::Out(args) => run_zoom_step(args, -1.0),
         ZoomCommand::Set(args) => run_zoom_set(args),
         ZoomCommand::Reset(args) => {
-            let result = rpc_webpage(&args.session, "zoom.reset", Value::Null)?;
+            let result = rpc_page(&args.session, "zoom.reset", Value::Null)?;
             print_json(simple_ok(result))
         }
     }
 }
 
 fn run_zoom_set(args: ZoomSetArgs) -> OpenPageResult<()> {
-    let result = rpc_webpage(&args.session, "zoom.set", json!({"factor": args.factor}))?;
+    let result = rpc_page(&args.session, "zoom.set", json!({"factor": args.factor}))?;
     print_json(simple_ok(result))
 }
 
@@ -1504,7 +1482,7 @@ fn run_zoom_step(args: ZoomStepArgs, direction: f64) -> OpenPageResult<()> {
             "zoom step must be a positive finite number".to_string(),
         ));
     }
-    let current = rpc_webpage(&args.session, "zoom.get", Value::Null)?
+    let current = rpc_page(&args.session, "zoom.get", Value::Null)?
         .get("factor")
         .and_then(Value::as_f64)
         .ok_or_else(|| {
@@ -1516,12 +1494,12 @@ fn run_zoom_step(args: ZoomStepArgs, direction: f64) -> OpenPageResult<()> {
             "zoom factor must stay positive, got {factor}"
         )));
     }
-    let result = rpc_webpage(&args.session, "zoom.set", json!({"factor": factor}))?;
+    let result = rpc_page(&args.session, "zoom.set", json!({"factor": factor}))?;
     print_json(simple_ok(result))
 }
 
 fn run_window_move(args: WindowMoveArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "window.location_set",
         json!({"left": args.left, "top": args.top}),
@@ -1534,7 +1512,7 @@ fn run_window_move(args: WindowMoveArgs) -> OpenPageResult<()> {
 fn run_alert(command: AlertCommand) -> OpenPageResult<()> {
     match command {
         AlertCommand::Accept(args) => {
-            let text = rpc_webpage(
+            let text = rpc_page(
                 &args.session,
                 "alert.handle",
                 json!({
@@ -1548,7 +1526,7 @@ fn run_alert(command: AlertCommand) -> OpenPageResult<()> {
             print_json(simple_ok(json!({"accepted": true, "text": text})))
         }
         AlertCommand::Dismiss(args) => {
-            let text = rpc_webpage(
+            let text = rpc_page(
                 &args.session,
                 "alert.handle",
                 json!({
@@ -1562,13 +1540,13 @@ fn run_alert(command: AlertCommand) -> OpenPageResult<()> {
             print_json(simple_ok(json!({"dismissed": true, "text": text})))
         }
         AlertCommand::Has(args) => {
-            let has_alert = rpc_webpage(&args.session, "alert.has", Value::Null)?
+            let has_alert = rpc_page(&args.session, "alert.has", Value::Null)?
                 .get("has_alert")
                 .cloned();
             print_json(simple_ok(json!({"has_alert": has_alert})))
         }
         AlertCommand::Text(args) => {
-            let text = rpc_webpage(&args.session, "alert.text", Value::Null)?
+            let text = rpc_page(&args.session, "alert.text", Value::Null)?
                 .get("text")
                 .cloned();
             print_json(simple_ok(json!({"text": text})))
@@ -1591,7 +1569,7 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
     let create = match rpc_request(
         &args.session,
         Some(args.session.clone()),
-        "webpage.create",
+        "page.create",
         json!({
             "session": args.session,
             "headless": headless,
@@ -1613,9 +1591,9 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
     };
 
     if let Some(url) = &args.url {
-        let _ = rpc_webpage(
+        let _ = rpc_page(
             &args.session,
-            "webpage.get",
+            "page.get",
             json!({
                 "url": url,
             }),
@@ -1856,11 +1834,11 @@ fn rpc_request_existing(
     response_result(response)
 }
 
-fn ensure_webpage_session(session: &str) -> OpenPageResult<()> {
+fn ensure_page_session(session: &str) -> OpenPageResult<()> {
     let _ = match rpc_request(
         session,
         Some(session.to_string()),
-        "webpage.create",
+        "page.create",
         json!({
             "session": session,
             "port": 0,
@@ -1881,14 +1859,12 @@ fn cleanup_after_browser_launch_failure(session: &str, error: &OpenPageError) {
     }
 }
 
-fn rpc_webpage(session: &str, op: &str, params: Value) -> OpenPageResult<Value> {
+fn rpc_page(session: &str, op: &str, params: Value) -> OpenPageResult<Value> {
     rpc_request_existing(session, Some(session.to_string()), op, params)
 }
 
-#[cfg(test)]
-
 fn tab_target_id_from_index(session: &str, index: usize) -> OpenPageResult<String> {
-    let response = rpc_webpage(session, "tab.list", Value::Null)?;
+    let response = rpc_page(session, "tab.list", Value::Null)?;
     let tabs = response
         .get("tabs")
         .and_then(Value::as_array)
@@ -1903,7 +1879,7 @@ fn tab_target_id_from_index(session: &str, index: usize) -> OpenPageResult<Strin
 }
 
 fn tab_list(session: &str) -> OpenPageResult<Vec<Value>> {
-    let response = rpc_webpage(session, "tab.list", Value::Null)?;
+    let response = rpc_page(session, "tab.list", Value::Null)?;
     response
         .get("tabs")
         .and_then(Value::as_array)
@@ -2046,7 +2022,7 @@ fn tab_value_for_duplicate(
 }
 
 fn window_target_id_from_selector(session: &str, selector: &str) -> OpenPageResult<String> {
-    let response = rpc_webpage(session, "window.list", Value::Null)?;
+    let response = rpc_page(session, "window.list", Value::Null)?;
     let windows = response
         .get("windows")
         .and_then(Value::as_array)
@@ -2096,11 +2072,11 @@ fn print_json(value: Value) -> OpenPageResult<()> {
     Ok(())
 }
 
-fn print_webpage_result(session: &str, result: Value) -> OpenPageResult<()> {
-    print_webpage_json(session, result)
+fn print_page_result(session: &str, result: Value) -> OpenPageResult<()> {
+    print_page_json(session, result)
 }
 
-fn print_webpage_json(session: &str, result: Value) -> OpenPageResult<()> {
+fn print_page_json(session: &str, result: Value) -> OpenPageResult<()> {
     print_json(simple_ok(with_navigation_followup(session, result)))
 }
 
@@ -2179,7 +2155,7 @@ fn shell_quote(value: &str) -> String {
 }
 
 fn run_scroll_into_view(args: ScrollIntoViewArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "element.scroll_into_view",
         json!({"locator": args.locator, "center": args.center}),
@@ -2188,7 +2164,7 @@ fn run_scroll_into_view(args: ScrollIntoViewArgs) -> OpenPageResult<()> {
 }
 
 fn run_hover(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.hover",
         json!({"locator": args.locator}),
@@ -2196,7 +2172,7 @@ fn run_hover(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_hover_at(args: HoverAtArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.hover_at",
         json!({
@@ -2208,9 +2184,9 @@ fn run_hover_at(args: HoverAtArgs) -> OpenPageResult<()> {
 }
 
 fn run_press(args: PressArgs) -> OpenPageResult<()> {
-    print_webpage_result(
+    print_page_result(
         &args.session,
-        rpc_webpage(
+        rpc_page(
             &args.session,
             "element.press_key",
             json!({"locator": args.locator, "key": args.key.clone()}),
@@ -2234,7 +2210,7 @@ fn run_select(args: SelectArgs) -> OpenPageResult<()> {
         [value] => json!(value),
         _ => json!(args.index),
     };
-    let selected = rpc_webpage(
+    let selected = rpc_page(
         &args.session,
         "element.select",
         json!({
@@ -2251,7 +2227,7 @@ fn run_select(args: SelectArgs) -> OpenPageResult<()> {
 }
 
 fn run_option_texts(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.option_texts",
         json!({"locator": args.locator}),
@@ -2259,7 +2235,7 @@ fn run_option_texts(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_selected_option(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.selected_option",
         json!({"locator": args.locator}),
@@ -2267,7 +2243,7 @@ fn run_selected_option(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_selected_options(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.selected_options",
         json!({"locator": args.locator}),
@@ -2275,7 +2251,7 @@ fn run_selected_options(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_select_all_options(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.select_all_options",
         json!({"locator": args.locator}),
@@ -2283,7 +2259,7 @@ fn run_select_all_options(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_clear_selected_options(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.clear_selected_options",
         json!({"locator": args.locator}),
@@ -2291,7 +2267,7 @@ fn run_clear_selected_options(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_invert_selected_options(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.invert_selected_options",
         json!({"locator": args.locator}),
@@ -2299,7 +2275,7 @@ fn run_invert_selected_options(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_selected_text(args: SessionArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "page.selected_text",
         Value::Null,
@@ -2307,7 +2283,7 @@ fn run_selected_text(args: SessionArgs) -> OpenPageResult<()> {
 }
 
 fn run_select_text(args: SelectTextArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.select_text",
         json!({
@@ -2319,7 +2295,7 @@ fn run_select_text(args: SelectTextArgs) -> OpenPageResult<()> {
 }
 
 fn run_select_range(args: SelectRangeArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.select_range",
         json!({
@@ -2331,7 +2307,7 @@ fn run_select_range(args: SelectRangeArgs) -> OpenPageResult<()> {
 }
 
 fn run_upload(args: UploadArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "element.upload",
         json!({"locator": args.locator, "files": args.files}),
@@ -2344,7 +2320,7 @@ fn run_click_to_download(args: ClickToDownloadArgs) -> OpenPageResult<()> {
         .dir
         .as_ref()
         .map(|path| path.to_string_lossy().into_owned());
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.click_to_download",
         json!({
@@ -2360,7 +2336,7 @@ fn run_click_to_download(args: ClickToDownloadArgs) -> OpenPageResult<()> {
 }
 
 fn run_click_to_upload(args: ClickToUploadArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.click_to_upload",
         json!({
@@ -2373,7 +2349,7 @@ fn run_click_to_upload(args: ClickToUploadArgs) -> OpenPageResult<()> {
 }
 
 fn run_click_for_new_tab(args: ClickForNewTabArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.click_for_new_tab",
         json!({
@@ -2385,7 +2361,7 @@ fn run_click_for_new_tab(args: ClickForNewTabArgs) -> OpenPageResult<()> {
 }
 
 fn run_is_visible(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.is_visible",
         json!({"locator": args.locator}),
@@ -2393,7 +2369,7 @@ fn run_is_visible(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_is_enabled(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.is_enabled",
         json!({"locator": args.locator}),
@@ -2401,7 +2377,7 @@ fn run_is_enabled(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_is_checked(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.is_checked",
         json!({"locator": args.locator}),
@@ -2409,7 +2385,7 @@ fn run_is_checked(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_is_selected(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.is_selected",
         json!({"locator": args.locator}),
@@ -2417,7 +2393,7 @@ fn run_is_selected(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_is_alive(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.is_alive",
         json!({"locator": args.locator}),
@@ -2425,7 +2401,7 @@ fn run_is_alive(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_is_in_viewport(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.is_in_viewport",
         json!({"locator": args.locator}),
@@ -2433,7 +2409,7 @@ fn run_is_in_viewport(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_is_whole_in_viewport(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.is_whole_in_viewport",
         json!({"locator": args.locator}),
@@ -2441,7 +2417,7 @@ fn run_is_whole_in_viewport(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_is_covered(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.is_covered",
         json!({"locator": args.locator}),
@@ -2449,7 +2425,7 @@ fn run_is_covered(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_is_clickable(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.is_clickable",
         json!({"locator": args.locator}),
@@ -2457,7 +2433,7 @@ fn run_is_clickable(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_has_rect(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "element.has_rect",
         json!({"locator": args.locator}),
@@ -2465,15 +2441,15 @@ fn run_has_rect(args: ElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_find(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.find",
+        "page.find",
         json!({"locator": args.locator}),
     )?))
 }
 
 fn run_find_in_page(args: FindInPageArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "page.find_in_page",
         json!({
@@ -2485,31 +2461,31 @@ fn run_find_in_page(args: FindInPageArgs) -> OpenPageResult<()> {
 }
 
 fn run_find_all(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.find_all",
+        "page.find_all",
         json!({"locator": args.locator}),
     )?))
 }
 
 fn run_locate(args: LocateArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.locate",
+        "page.locate",
         json!({"chain": args.chain.join(" ")}),
     )?))
 }
 
 fn run_count(args: ElementArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.count",
+        "page.count",
         json!({"locator": args.locator}),
     )?))
 }
 
 fn run_wait_visible(args: WaitElementArgs) -> OpenPageResult<()> {
-    let ready = rpc_webpage(
+    let ready = rpc_page(
         &args.session,
         "wait.ele_displayed",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
@@ -2521,7 +2497,7 @@ fn run_wait_visible(args: WaitElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_hidden(args: WaitElementArgs) -> OpenPageResult<()> {
-    let ready = rpc_webpage(
+    let ready = rpc_page(
         &args.session,
         "wait.ele_hidden",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
@@ -2533,7 +2509,7 @@ fn run_wait_hidden(args: WaitElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_enabled(args: WaitElementArgs) -> OpenPageResult<()> {
-    let ready = rpc_webpage(
+    let ready = rpc_page(
         &args.session,
         "wait.ele_enabled",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
@@ -2545,7 +2521,7 @@ fn run_wait_enabled(args: WaitElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_disabled(args: WaitElementArgs) -> OpenPageResult<()> {
-    let ready = rpc_webpage(
+    let ready = rpc_page(
         &args.session,
         "wait.ele_disabled",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
@@ -2557,7 +2533,7 @@ fn run_wait_disabled(args: WaitElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_deleted(args: WaitElementArgs) -> OpenPageResult<()> {
-    let ready = rpc_webpage(
+    let ready = rpc_page(
         &args.session,
         "wait.ele_deleted",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
@@ -2569,7 +2545,7 @@ fn run_wait_deleted(args: WaitElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_clickable(args: WaitElementArgs) -> OpenPageResult<()> {
-    let ready = rpc_webpage(
+    let ready = rpc_page(
         &args.session,
         "wait.ele_clickable",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
@@ -2581,7 +2557,7 @@ fn run_wait_clickable(args: WaitElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_has_rect(args: WaitElementArgs) -> OpenPageResult<()> {
-    let ready = rpc_webpage(
+    let ready = rpc_page(
         &args.session,
         "wait.ele_has_rect",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
@@ -2593,7 +2569,7 @@ fn run_wait_has_rect(args: WaitElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_covered(args: WaitElementArgs) -> OpenPageResult<()> {
-    let ready = rpc_webpage(
+    let ready = rpc_page(
         &args.session,
         "wait.ele_covered",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
@@ -2605,7 +2581,7 @@ fn run_wait_covered(args: WaitElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_not_covered(args: WaitElementArgs) -> OpenPageResult<()> {
-    let ready = rpc_webpage(
+    let ready = rpc_page(
         &args.session,
         "wait.ele_not_covered",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
@@ -2617,7 +2593,7 @@ fn run_wait_not_covered(args: WaitElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_stop_moving(args: WaitElementArgs) -> OpenPageResult<()> {
-    let ready = rpc_webpage(
+    let ready = rpc_page(
         &args.session,
         "wait.ele_stop_moving",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
@@ -2629,15 +2605,15 @@ fn run_wait_stop_moving(args: WaitElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_active_element(args: SessionArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
-        "webpage.active_element",
+        "page.active_element",
         Value::Null,
     )?))
 }
 
 fn run_wait_for_new_tab(args: WaitTimeoutArgs) -> OpenPageResult<()> {
-    let target_id = rpc_webpage(
+    let target_id = rpc_page(
         &args.session,
         "wait.new_tab",
         json!({"timeout_ms": args.timeout}),
@@ -2650,7 +2626,7 @@ fn run_wait_for_new_tab(args: WaitTimeoutArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_for_download_begin(args: WaitTimeoutArgs) -> OpenPageResult<()> {
-    let mission = rpc_webpage(
+    let mission = rpc_page(
         &args.session,
         "wait.download_begin",
         json!({"timeout_ms": args.timeout}),
@@ -2663,7 +2639,7 @@ fn run_wait_for_download_begin(args: WaitTimeoutArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_for_downloads_done(args: WaitTimeoutArgs) -> OpenPageResult<()> {
-    let done = rpc_webpage(
+    let done = rpc_page(
         &args.session,
         "wait.downloads_done",
         json!({"timeout_ms": args.timeout}),
@@ -2675,7 +2651,7 @@ fn run_wait_for_downloads_done(args: WaitTimeoutArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_for_alert_closed(args: WaitTimeoutArgs) -> OpenPageResult<()> {
-    let closed = rpc_webpage(
+    let closed = rpc_page(
         &args.session,
         "wait.alert_closed",
         json!({"timeout_ms": args.timeout}),
@@ -2687,7 +2663,7 @@ fn run_wait_for_alert_closed(args: WaitTimeoutArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_for_load_start(args: WaitTimeoutArgs) -> OpenPageResult<()> {
-    let started = rpc_webpage(
+    let started = rpc_page(
         &args.session,
         "wait.load_start",
         json!({"timeout_ms": args.timeout}),
@@ -2699,7 +2675,7 @@ fn run_wait_for_load_start(args: WaitTimeoutArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_for_doc_loaded(args: WaitTimeoutArgs) -> OpenPageResult<()> {
-    let loaded = rpc_webpage(
+    let loaded = rpc_page(
         &args.session,
         "wait.doc_loaded",
         json!({"timeout_ms": args.timeout}),
@@ -2711,7 +2687,7 @@ fn run_wait_for_doc_loaded(args: WaitTimeoutArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_for_ready(args: WaitTimeoutArgs) -> OpenPageResult<()> {
-    let result = rpc_webpage(
+    let result = rpc_page(
         &args.session,
         "wait.ready",
         json!({"timeout_ms": args.timeout}),
@@ -2729,7 +2705,7 @@ fn run_wait_for_ready(args: WaitTimeoutArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_for_navigation(args: WaitForNavigationArgs) -> OpenPageResult<()> {
-    let result = rpc_webpage(
+    let result = rpc_page(
         &args.session,
         "wait.navigation",
         json!({"timeout_ms": args.timeout, "token": args.token}),
@@ -2748,31 +2724,31 @@ fn run_wait_for_navigation(args: WaitForNavigationArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_for_url(args: WaitForUrlArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "wait.url_change",
         json!({"text": args.text, "exclude": args.exclude, "timeout_ms": args.timeout}),
     )?;
-    let url = rpc_webpage(&args.session, "webpage.url", Value::Null)?;
+    let url = rpc_page(&args.session, "page.url", Value::Null)?;
     print_json(simple_ok(
         json!({"waited": true, "url": url.get("url").cloned()}),
     ))
 }
 
 fn run_wait_for_title(args: WaitForTitleArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "wait.title_change",
         json!({"text": args.text, "exclude": args.exclude, "timeout_ms": args.timeout}),
     )?;
-    let title = rpc_webpage(&args.session, "webpage.title", Value::Null)?;
+    let title = rpc_page(&args.session, "page.title", Value::Null)?;
     print_json(simple_ok(
         json!({"waited": true, "title": title.get("title").cloned()}),
     ))
 }
 
 fn run_wait_for_elements_loaded(args: WaitElementsLoadedArgs) -> OpenPageResult<()> {
-    let loaded = rpc_webpage(
+    let loaded = rpc_page(
         &args.session,
         "wait.eles_loaded",
         json!({
@@ -2788,7 +2764,7 @@ fn run_wait_for_elements_loaded(args: WaitElementsLoadedArgs) -> OpenPageResult<
 }
 
 fn run_wait_for_function(args: WaitForFunctionArgs) -> OpenPageResult<()> {
-    let value = rpc_webpage(
+    let value = rpc_page(
         &args.session,
         "wait.function",
         json!({
@@ -2803,7 +2779,7 @@ fn run_wait_for_function(args: WaitForFunctionArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_for_text(args: WaitForTextArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
         "wait.text",
         json!({
@@ -2817,7 +2793,7 @@ fn run_wait_for_text(args: WaitForTextArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_disabled_or_deleted(args: WaitElementArgs) -> OpenPageResult<()> {
-    let ready = rpc_webpage(
+    let ready = rpc_page(
         &args.session,
         "wait.ele_disabled_or_deleted",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
@@ -2831,7 +2807,7 @@ fn run_wait_disabled_or_deleted(args: WaitElementArgs) -> OpenPageResult<()> {
 }
 
 fn run_wait_upload_paths_inputted(args: WaitTimeoutArgs) -> OpenPageResult<()> {
-    let inputted = rpc_webpage(
+    let inputted = rpc_page(
         &args.session,
         "wait.upload_paths_inputted",
         json!({"timeout_ms": args.timeout}),
@@ -2843,7 +2819,7 @@ fn run_wait_upload_paths_inputted(args: WaitTimeoutArgs) -> OpenPageResult<()> {
 }
 
 fn run_save(args: SaveArgs) -> OpenPageResult<()> {
-    let saved = rpc_webpage(&args.session, "page.save", json!({"path": args.output}))?;
+    let saved = rpc_page(&args.session, "page.save", json!({"path": args.output}))?;
     print_json(simple_ok(json!({
         "saved": true,
         "output": saved.get("path").cloned().unwrap_or(Value::Null),
@@ -2851,7 +2827,7 @@ fn run_save(args: SaveArgs) -> OpenPageResult<()> {
 }
 
 fn run_pdf(args: PdfArgs) -> OpenPageResult<()> {
-    let _ = rpc_webpage(&args.session, "page.pdf", json!({"path": args.output}))?;
+    let _ = rpc_page(&args.session, "page.pdf", json!({"path": args.output}))?;
     print_json(simple_ok(json!({"saved": true, "output": args.output})))
 }
 
@@ -2862,21 +2838,17 @@ fn run_history(command: HistoryCommand) -> OpenPageResult<()> {
         HistoryCommand::Clear(args) => args.session.clone(),
     };
     match command {
-        HistoryCommand::List(_) => print_json(simple_ok(rpc_webpage(
-            &session,
-            "history.list",
-            Value::Null,
-        )?)),
-        HistoryCommand::Go(args) => print_json(simple_ok(rpc_webpage(
+        HistoryCommand::List(_) => {
+            print_json(simple_ok(rpc_page(&session, "history.list", Value::Null)?))
+        }
+        HistoryCommand::Go(args) => print_json(simple_ok(rpc_page(
             &session,
             "history.go",
             json!({"index": args.index}),
         )?)),
-        HistoryCommand::Clear(_) => print_json(simple_ok(rpc_webpage(
-            &session,
-            "history.clear",
-            Value::Null,
-        )?)),
+        HistoryCommand::Clear(_) => {
+            print_json(simple_ok(rpc_page(&session, "history.clear", Value::Null)?))
+        }
     }
 }
 
@@ -2888,13 +2860,9 @@ fn run_storage(command: StorageCommand) -> OpenPageResult<()> {
     match command {
         StorageCommand::Get(args) => {
             let value = if matches!(args.scope, StorageScope::Local) {
-                rpc_webpage(&session, "webpage.local_storage", json!({"item": args.key}))?
+                rpc_page(&session, "page.local_storage", json!({"item": args.key}))?
             } else {
-                rpc_webpage(
-                    &session,
-                    "webpage.session_storage",
-                    json!({"item": args.key}),
-                )?
+                rpc_page(&session, "page.session_storage", json!({"item": args.key}))?
             };
             print_json(simple_ok(json!({
                 "scope": storage_scope_name(&args.scope),
@@ -2904,13 +2872,13 @@ fn run_storage(command: StorageCommand) -> OpenPageResult<()> {
         }
         StorageCommand::Set(args) => {
             if matches!(args.scope, StorageScope::Local) {
-                let _ = rpc_webpage(
+                let _ = rpc_page(
                     &session,
                     "set.local_storage",
                     json!({"item": args.key, "value": args.value}),
                 )?;
             } else {
-                let _ = rpc_webpage(
+                let _ = rpc_page(
                     &session,
                     "set.session_storage",
                     json!({"item": args.key, "value": args.value}),
@@ -2936,7 +2904,7 @@ fn storage_scope_name(scope: &StorageScope) -> &'static str {
 fn run_permissions(command: PermissionsCommand) -> OpenPageResult<()> {
     match command {
         PermissionsCommand::Set(args) => run_permissions_set(args),
-        PermissionsCommand::Reset(args) => print_json(simple_ok(rpc_webpage(
+        PermissionsCommand::Reset(args) => print_json(simple_ok(rpc_page(
             &args.session,
             "permissions.reset",
             Value::Null,
@@ -2945,7 +2913,7 @@ fn run_permissions(command: PermissionsCommand) -> OpenPageResult<()> {
 }
 
 fn run_permissions_set(args: PermissionSetArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "permissions.set",
         json!({
@@ -2963,9 +2931,9 @@ fn run_clear_cache(args: ClearCacheArgs) -> OpenPageResult<()> {
     let local_storage = args.local_storage || !any_selected;
     let cache = args.cache || !any_selected;
     let cookies = args.cookies || !any_selected;
-    let _ = rpc_webpage(
+    let _ = rpc_page(
         &args.session,
-        "webpage.clear_cache",
+        "page.clear_cache",
         json!({
             "session_storage": session_storage,
             "local_storage": local_storage,
@@ -2990,7 +2958,7 @@ fn run_cookies(command: CookiesCommand) -> OpenPageResult<()> {
     };
     match command {
         CookiesCommand::Get(_) => {
-            let cookies = rpc_webpage(&session, "webpage.cookies", Value::Null)?
+            let cookies = rpc_page(&session, "page.cookies", Value::Null)?
                 .get("cookies")
                 .cloned();
             print_json(simple_ok(json!({"cookies": cookies})))
@@ -2998,12 +2966,12 @@ fn run_cookies(command: CookiesCommand) -> OpenPageResult<()> {
         CookiesCommand::Set(args) => {
             let url = match args.url {
                 Some(u) => Some(u),
-                None => rpc_webpage(&session, "webpage.url", Value::Null)?
+                None => rpc_page(&session, "page.url", Value::Null)?
                     .get("url")
                     .and_then(Value::as_str)
                     .map(ToString::to_string),
             };
-            let _ = rpc_webpage(
+            let _ = rpc_page(
                 &session,
                 "cookies.set",
                 json!({"name": args.name, "value": args.value, "url": url}),
@@ -3013,12 +2981,12 @@ fn run_cookies(command: CookiesCommand) -> OpenPageResult<()> {
         CookiesCommand::Delete(args) => {
             let url = match args.url {
                 Some(u) => Some(u),
-                None => rpc_webpage(&session, "webpage.url", Value::Null)?
+                None => rpc_page(&session, "page.url", Value::Null)?
                     .get("url")
                     .and_then(Value::as_str)
                     .map(ToString::to_string),
             };
-            let _ = rpc_webpage(
+            let _ = rpc_page(
                 &session,
                 "cookies.delete",
                 json!({"name": args.name, "url": url}),
@@ -3026,7 +2994,7 @@ fn run_cookies(command: CookiesCommand) -> OpenPageResult<()> {
             print_json(simple_ok(json!({"deleted": true, "name": args.name})))
         }
         CookiesCommand::Clear(_) => {
-            let _ = rpc_webpage(&session, "cookies.clear", Value::Null)?;
+            let _ = rpc_page(&session, "cookies.clear", Value::Null)?;
             print_json(simple_ok(json!({"cleared": true})))
         }
     }
@@ -3042,7 +3010,7 @@ fn run_tab(command: TabCommand) -> OpenPageResult<()> {
         TabCommand::Switch(args) => args.session.clone(),
     };
     match command {
-        TabCommand::New(args) => print_json(simple_ok(rpc_webpage(
+        TabCommand::New(args) => print_json(simple_ok(rpc_page(
             &session,
             "tab.new",
             json!({
@@ -3056,7 +3024,7 @@ fn run_tab(command: TabCommand) -> OpenPageResult<()> {
         TabCommand::Close(args) => {
             let tabs_to_record = tabs_selected_for_close(&session, &args)?;
             if args.others {
-                let response = rpc_webpage(&session, "tab.close", json!({"others": true}))?;
+                let response = rpc_page(&session, "tab.close", json!({"others": true}))?;
                 let closed = response.get("closed").and_then(Value::as_u64).unwrap_or(0) as usize;
                 record_recently_closed_tabs(
                     &session,
@@ -3064,7 +3032,7 @@ fn run_tab(command: TabCommand) -> OpenPageResult<()> {
                 )?;
                 print_json(simple_ok(response))
             } else if let Some(target_id) = args.target {
-                let response = rpc_webpage(&session, "tab.close", json!({"targets": [target_id]}))?;
+                let response = rpc_page(&session, "tab.close", json!({"targets": [target_id]}))?;
                 let closed = response.get("closed").and_then(Value::as_u64).unwrap_or(0) as usize;
                 record_recently_closed_tabs(
                     &session,
@@ -3073,7 +3041,7 @@ fn run_tab(command: TabCommand) -> OpenPageResult<()> {
                 print_json(simple_ok(response))
             } else if let Some(index) = args.index {
                 let target_id = tab_target_id_from_index(&session, index)?;
-                let response = rpc_webpage(&session, "tab.close", json!({"targets": [target_id]}))?;
+                let response = rpc_page(&session, "tab.close", json!({"targets": [target_id]}))?;
                 let closed = response.get("closed").and_then(Value::as_u64).unwrap_or(0) as usize;
                 record_recently_closed_tabs(
                     &session,
@@ -3088,7 +3056,7 @@ fn run_tab(command: TabCommand) -> OpenPageResult<()> {
                     .ok_or_else(|| {
                         OpenPageError::ElementNotFound("no active tab found".to_string())
                     })?;
-                let response = rpc_webpage(&session, "tab.close", json!({"targets": [target_id]}))?;
+                let response = rpc_page(&session, "tab.close", json!({"targets": [target_id]}))?;
                 let closed = response.get("closed").and_then(Value::as_u64).unwrap_or(0) as usize;
                 record_recently_closed_tabs(
                     &session,
@@ -3097,16 +3065,14 @@ fn run_tab(command: TabCommand) -> OpenPageResult<()> {
                 print_json(simple_ok(response))
             }
         }
-        TabCommand::List(_) => {
-            print_json(simple_ok(rpc_webpage(&session, "tab.list", Value::Null)?))
-        }
+        TabCommand::List(_) => print_json(simple_ok(rpc_page(&session, "tab.list", Value::Null)?)),
         TabCommand::Switch(args) => {
             let target_id = if let Ok(index) = args.target.parse::<usize>() {
                 tab_target_id_from_index(&session, index)?
             } else {
                 args.target
             };
-            print_json(simple_ok(rpc_webpage(
+            print_json(simple_ok(rpc_page(
                 &session,
                 "tab.switch",
                 json!({"target_id": target_id}),
@@ -3126,7 +3092,7 @@ fn run_tab_duplicate(args: TabDuplicateArgs) -> OpenPageResult<()> {
                 "selected tab did not expose a duplicate url".to_string(),
             )
         })?;
-    print_json(simple_ok(rpc_webpage(
+    print_json(simple_ok(rpc_page(
         &args.session,
         "tab.new",
         json!({
@@ -3144,7 +3110,7 @@ fn run_tab_reopen(args: TabReopenArgs) -> OpenPageResult<()> {
             "no recently closed tab recorded for this session".to_string(),
         )
     })?;
-    let response = rpc_webpage(
+    let response = rpc_page(
         &args.session,
         "tab.new",
         json!({
@@ -3172,9 +3138,9 @@ fn run_frame(command: FrameCommand) -> OpenPageResult<()> {
     };
     match command {
         FrameCommand::List(_) => {
-            print_json(simple_ok(rpc_webpage(&session, "frame.list", Value::Null)?))
+            print_json(simple_ok(rpc_page(&session, "frame.list", Value::Null)?))
         }
-        FrameCommand::Switch(args) => print_json(simple_ok(rpc_webpage(
+        FrameCommand::Switch(args) => print_json(simple_ok(rpc_page(
             &session,
             "frame.switch",
             json!({"target": args.target}),
@@ -5194,13 +5160,13 @@ mod tests {
     }
 
     #[test]
-    fn rpc_webpage_rejects_inactive_session_without_creating_sidecars() {
+    fn rpc_page_rejects_inactive_session_without_creating_sidecars() {
         let home = unique_openpage_home("inactive-session");
         let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
         let daemon = daemon_dir().expect("daemon dir path");
         assert!(!daemon.exists(), "test should start without daemon dir");
 
-        let error = super::rpc_webpage("inactive-review", "webpage.title", Value::Null)
+        let error = super::rpc_page("inactive-review", "page.title", Value::Null)
             .expect_err("inactive session should fail instead of starting a fresh daemon/browser");
 
         match error {

@@ -864,8 +864,8 @@ mod tests {
 
     #[test]
     fn parses_request_with_defaults() {
-        let req: Request = serde_json::from_str(r#"{"op":"webpage.title"}"#).unwrap();
-        assert_eq!(req.op, "webpage.title");
+        let req: Request = serde_json::from_str(r#"{"op":"page.title"}"#).unwrap();
+        assert_eq!(req.op, "page.title");
         assert!(req.id.is_none());
         assert!(req.target.is_none());
         assert!(req.params.is_null());
