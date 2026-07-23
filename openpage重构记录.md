@@ -1100,3 +1100,35 @@ cargo fmt --all --manifest-path rust/Cargo.toml
 cargo check --workspace --manifest-path rust/Cargo.toml
 rg -n 'webpage\\.|rpc_webpage|WebPage|webpage_' rust/apps rust/crates/openpage/src --glob '*.rs'
 ```
+
+### 里程碑 19：完成当前 Rust/Python 门面阶段验收（2026-07-23）
+
+状态：当前 Rust-first 门面阶段完成。
+
+本阶段最终检查确认：
+
+- Rust workspace 可以检查和编译测试目标；
+- PyO3 扩展可以构建；
+- 根 Python wheel 可以构建；
+- 独立临时虚拟环境安装 wheel 后可以导入 `openpage` 和 `openpage.openpage_rs`；
+- Python 顶层门面只有 `Browser`、`Page`、`Session`、`open`；
+- Rust/Python 源码中没有旧页面类型、旧静态查询命名、旧 CLI 兼容入口或 `webpage.*` 协议名；
+- Python 和 Rust binding 目录没有 `runtime`、`helper`、`adapter`、`compat` 产品架构文件；
+- 工作树保持干净，构建产物未纳入版本控制。
+
+最终验证：
+
+```text
+cargo check --workspace --manifest-path rust/Cargo.toml
+cargo test --workspace --no-run --manifest-path rust/Cargo.toml
+uv build --wheel
+独立临时虚拟环境安装 wheel 并导入 openpage
+```
+
+当前正式结构：
+
+```text
+Rust Core: Browser → Page
+Rust Core: Session → Response → Document → DocumentElement
+Python:     Browser / Page / Session / open
+```
