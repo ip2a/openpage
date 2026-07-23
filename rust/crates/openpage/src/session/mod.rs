@@ -2155,7 +2155,7 @@ pub struct Session {
 }
 
 pub struct SessionSettings<'a> {
-    page: &'a Session,
+    session: &'a Session,
 }
 
 #[derive(Clone, Debug)]
@@ -2210,22 +2210,22 @@ impl SessionSettings<'_> {
     where
         U: Into<SessionUserAgentInput>,
     {
-        self.page.set_user_agent(user_agent)
+        self.session.set_user_agent(user_agent)
     }
 
     pub fn headers<'a, H>(&self, headers: H) -> OpenPageResult<()>
     where
         H: Into<HeadersInput<'a>>,
     {
-        self.page.set_headers(headers)
+        self.session.set_headers(headers)
     }
 
     pub fn header(&self, name: &str, value: &str) -> OpenPageResult<()> {
-        self.page.set_header(name, value)
+        self.session.set_header(name, value)
     }
 
     pub fn timeout(&self, timeout_secs: u64) -> OpenPageResult<()> {
-        self.page.set_timeout(timeout_secs)
+        self.session.set_timeout(timeout_secs)
     }
 
     pub fn retry<T, I>(&self, retry_times: T, retry_interval: I) -> OpenPageResult<()>
@@ -2233,51 +2233,51 @@ impl SessionSettings<'_> {
         T: Into<SessionRetryTimesInput>,
         I: Into<SessionRetryIntervalInput>,
     {
-        self.page.set_retry(retry_times, retry_interval)
+        self.session.set_retry(retry_times, retry_interval)
     }
 
     pub fn retry_times(&self, retry_times: usize) -> OpenPageResult<()> {
-        self.page.set_retry(Some(retry_times), None)
+        self.session.set_retry(Some(retry_times), None)
     }
 
     pub fn retry_interval<I>(&self, retry_interval: I) -> OpenPageResult<()>
     where
         I: Into<SessionRetryIntervalInput>,
     {
-        self.page.set_retry(None, retry_interval)
+        self.session.set_retry(None, retry_interval)
     }
 
     pub fn download_path(&self, path: impl AsRef<Path>) -> OpenPageResult<()> {
-        self.page.set_download_path(path)
+        self.session.set_download_path(path)
     }
 
     pub fn encoding<E>(&self, encoding: E) -> OpenPageResult<()>
     where
         E: Into<SessionEncodingInput>,
     {
-        self.page.set_encoding(encoding)
+        self.session.set_encoding(encoding)
     }
 
     pub fn params<'a, P>(&self, params: P) -> OpenPageResult<()>
     where
         P: Into<ParamsInput<'a>>,
     {
-        self.page.set_params(params)
+        self.session.set_params(params)
     }
 
     pub fn auth<A>(&self, auth: A) -> OpenPageResult<()>
     where
         A: Into<SessionAuthInput>,
     {
-        self.page.set_auth(auth)
+        self.session.set_auth(auth)
     }
 
     pub fn hooks(&self, hooks: SessionHooks) -> OpenPageResult<()> {
-        self.page.set_hooks(hooks)
+        self.session.set_hooks(hooks)
     }
 
     pub fn stream(&self, stream: bool) -> OpenPageResult<()> {
-        self.page.set_stream(stream)
+        self.session.set_stream(stream)
     }
 
     pub fn proxies<H, S>(&self, http_proxy: H, https_proxy: S) -> OpenPageResult<()>
@@ -2285,29 +2285,29 @@ impl SessionSettings<'_> {
         H: Into<SessionProxyInput>,
         S: Into<SessionProxyInput>,
     {
-        self.page.set_proxies(http_proxy, https_proxy)
+        self.session.set_proxies(http_proxy, https_proxy)
     }
 
     pub fn verify(&self, verify: bool) -> OpenPageResult<()> {
-        self.page.set_verify(verify)
+        self.session.set_verify(verify)
     }
 
     pub fn cert<C>(&self, cert: C) -> OpenPageResult<()>
     where
         C: Into<SessionCertInput>,
     {
-        self.page.set_cert(cert)
+        self.session.set_cert(cert)
     }
 
     pub fn trust_env(&self, trust_env: bool) -> OpenPageResult<()> {
-        self.page.set_trust_env(trust_env)
+        self.session.set_trust_env(trust_env)
     }
 
     pub fn max_redirects<M>(&self, max_redirects: M) -> OpenPageResult<()>
     where
         M: Into<SessionMaxRedirectsInput>,
     {
-        self.page.set_max_redirects(max_redirects)
+        self.session.set_max_redirects(max_redirects)
     }
 
     pub fn add_adapter(
@@ -2315,14 +2315,14 @@ impl SessionSettings<'_> {
         url_prefix: impl Into<String>,
         adapter: SessionAdapter,
     ) -> OpenPageResult<()> {
-        self.page.add_adapter(url_prefix, adapter)
+        self.session.add_adapter(url_prefix, adapter)
     }
 
     pub fn cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()>
     where
         C: Into<CookieInput<'a>>,
     {
-        self.page.set_cookies(cookies)
+        self.session.set_cookies(cookies)
     }
 
     pub fn cookie(
@@ -2333,15 +2333,15 @@ impl SessionSettings<'_> {
         domain: Option<&str>,
         path: Option<&str>,
     ) -> OpenPageResult<()> {
-        self.page.set_cookie(name, value, url, domain, path)
+        self.session.set_cookie(name, value, url, domain, path)
     }
 
     pub fn clear_cookies(&self) -> OpenPageResult<()> {
-        self.page.clear_cookies()
+        self.session.clear_cookies()
     }
 
     pub fn remove_cookie(&self, name: &str, url: Option<&str>) -> OpenPageResult<()> {
-        self.page.remove_cookie(name, url)
+        self.session.remove_cookie(name, url)
     }
 }
 

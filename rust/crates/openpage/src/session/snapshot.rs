@@ -4915,9 +4915,9 @@ mod tests {
     }
 
     #[test]
-    fn session_page_setter_signatures_accept_existing_runtime_settings() {
+    fn session_settings_accept_supported_values() {
         fn assert_calls(page: &Session) {
-            let setter = page.set();
+            let settings = page.settings();
             let headers = [("Accept".to_string(), "text/html".to_string())];
             let params = [("q".to_string(), "openpage".to_string())];
             let mut param_map = std::collections::HashMap::new();
@@ -4934,48 +4934,48 @@ mod tests {
             };
 
             let _ = page.set_user_agent("OpenPage/Test");
-            let _ = setter.user_agent("OpenPage/Test");
-            let _ = setter.user_agent(None);
-            let _ = setter.headers(&headers);
-            let _ = setter.header("Accept", "application/json");
-            let _ = setter.timeout(10);
-            let _ = setter.retry(Some(3), Some(250));
-            let _ = setter.retry(3, 0.25);
-            let _ = setter.retry(None, None);
-            let _ = setter.retry_times(4);
-            let _ = setter.retry_interval(500);
-            let _ = setter.retry_interval(0.5);
-            let _ = setter.download_path(std::path::Path::new("/tmp/openpage-downloads"));
+            let _ = settings.user_agent("OpenPage/Test");
+            let _ = settings.user_agent(None);
+            let _ = settings.headers(&headers);
+            let _ = settings.header("Accept", "application/json");
+            let _ = settings.timeout(10);
+            let _ = settings.retry(Some(3), Some(250));
+            let _ = settings.retry(3, 0.25);
+            let _ = settings.retry(None, None);
+            let _ = settings.retry_times(4);
+            let _ = settings.retry_interval(500);
+            let _ = settings.retry_interval(0.5);
+            let _ = settings.download_path(std::path::Path::new("/tmp/openpage-downloads"));
             let _ = page.set_encoding("utf-8");
-            let _ = setter.encoding("utf-8");
-            let _ = setter.encoding(None);
+            let _ = settings.encoding("utf-8");
+            let _ = settings.encoding(None);
             let _ = page.set_params([("q", "openpage"), ("page", "1")]);
-            let _ = setter.params(&params);
-            let _ = setter.params([("q", "openpage"), ("page", "1")]);
-            let _ = setter.params(&param_map);
+            let _ = settings.params(&params);
+            let _ = settings.params([("q", "openpage"), ("page", "1")]);
+            let _ = settings.params(&param_map);
             let _ = page.set_auth(("user", "pass"));
-            let _ = setter.auth(("user", "pass"));
-            let _ = setter.auth(None);
-            let _ = setter.hooks(SessionHooks::default());
-            let _ = setter.stream(true);
+            let _ = settings.auth(("user", "pass"));
+            let _ = settings.auth(None);
+            let _ = settings.hooks(SessionHooks::default());
+            let _ = settings.stream(true);
             let _ = page.set_proxies("http://127.0.0.1:8080", None);
-            let _ = setter.proxies("http://127.0.0.1:8080", None);
-            let _ = setter.verify(false);
+            let _ = settings.proxies("http://127.0.0.1:8080", None);
+            let _ = settings.verify(false);
             let _ = page.set_cert("client.pem");
             let _ = page.set_cert(("client.pem", "client.key"));
-            let _ = setter.cert(None);
-            let _ = setter.cert("client.pem");
-            let _ = setter.cert(("client.pem", "client.key"));
-            let _ = setter.trust_env(false);
+            let _ = settings.cert(None);
+            let _ = settings.cert("client.pem");
+            let _ = settings.cert(("client.pem", "client.key"));
+            let _ = settings.trust_env(false);
             let _ = page.set_max_redirects(5);
-            let _ = setter.max_redirects(Some(5));
-            let _ = setter.max_redirects(5);
-            let _ = setter.add_adapter("https://example.test/", SessionAdapter::new());
-            let _ = setter.cookies("sid=1; domain=example.test; path=/");
-            let _ = setter.cookies(&cookie);
-            let _ = setter.cookie("sid", "2", Some("https://example.test/"), None, Some("/"));
-            let _ = setter.clear_cookies();
-            let _ = setter.remove_cookie("sid", Some("https://example.test/"));
+            let _ = settings.max_redirects(Some(5));
+            let _ = settings.max_redirects(5);
+            let _ = settings.add_adapter("https://example.test/", SessionAdapter::new());
+            let _ = settings.cookies("sid=1; domain=example.test; path=/");
+            let _ = settings.cookies(&cookie);
+            let _ = settings.cookie("sid", "2", Some("https://example.test/"), None, Some("/"));
+            let _ = settings.clear_cookies();
+            let _ = settings.remove_cookie("sid", Some("https://example.test/"));
         }
 
         let _ = assert_calls as fn(&Session);

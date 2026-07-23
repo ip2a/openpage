@@ -652,3 +652,21 @@ session::snapshot::tests::snapshot_find_supports_nested_queries
 session::snapshot::tests::session_options_uses_request_pipeline_and_updates_response_snapshot
 Rust 核心中 SessionPage / SessionPageSetter 搜索结果为 0
 ```
+
+### 里程碑 3：Rust Session 配置入口收敛为 settings（2026-07-23）
+
+状态：已完成。
+
+完成内容：
+
+- Rust `Session.set()` 直接替换为 `Session.settings()`，不保留旧方法；
+- `SessionSettings` 内部字段从错误的 `page` 语义修正为 `session`；
+- 对应 Rust 测试改用正式领域命名，不保留 setter 旧术语。
+
+验证：
+
+```text
+cargo fmt --all --check
+cargo check -p openpage --lib
+cargo test -p openpage --lib session::snapshot::tests::session_settings_accept_supported_values
+```

@@ -56,8 +56,8 @@ impl Session {
         })
     }
 
-    pub fn set(&self) -> SessionSettings<'_> {
-        SessionSettings { page: self }
+    pub fn settings(&self) -> SessionSettings<'_> {
+        SessionSettings { session: self }
     }
 
     pub fn from_session_handle(handle: SessionHandle) -> Self {
