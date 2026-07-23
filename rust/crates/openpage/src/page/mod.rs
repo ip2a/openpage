@@ -2609,7 +2609,7 @@ fn delete_cookie_params(
     params
 }
 
-fn runtime_timeout_seconds_to_millis(seconds: f64) -> OpenPageResult<u64> {
+fn timeout_seconds_to_millis(seconds: f64) -> OpenPageResult<u64> {
     if !seconds.is_finite() || seconds.is_sign_negative() {
         return Err(OpenPageError::PageOperation(
             timeout_must_be_non_negative_message(seconds),

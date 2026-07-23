@@ -422,7 +422,7 @@ impl Element {
         &self.none_element_config
     }
 
-    pub(crate) fn with_runtime_config_handles(
+    pub(crate) fn with_config_handles(
         mut self,
         none_element_config: ElementsOneConfigHandle,
         frame_cache: FrameCacheHandle,

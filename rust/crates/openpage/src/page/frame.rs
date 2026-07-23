@@ -609,8 +609,8 @@ impl Frame {
             })
             .map_err(|_| {
                 OpenPageError::PageOperation(component_state_lock_poisoned_message(
-                    "none element runtime config",
-                    "未找到元素运行时配置",
+                    "none element config",
+                    "未找到元素配置",
                 ))
             })
     }
@@ -623,8 +623,8 @@ impl Frame {
             })
             .map_err(|_| {
                 OpenPageError::PageOperation(component_state_lock_poisoned_message(
-                    "none element runtime config",
-                    "未找到元素运行时配置",
+                    "none element config",
+                    "未找到元素配置",
                 ))
             })
     }
@@ -744,8 +744,8 @@ impl Frame {
             .wait_for_downloads_done(timeout_ms, cancel_if_timeout)
     }
 
-    fn bind_element_runtime_config(&self, element: Element) -> Element {
-        element.with_runtime_config_handles(
+    fn bind_element_config(&self, element: Element) -> Element {
+        element.with_config_handles(
             Arc::clone(&self.none_element_config),
             Arc::clone(&self.page.frame_cache),
             Arc::clone(&self.page.frame_none_element_configs),
@@ -769,7 +769,7 @@ impl Frame {
             Value::String(_) => {
                 let element = self.page.find(&marker_xpath(&marker))?;
                 let _ = element.remove_attr(PAGE_MARKER_ATTRIBUTE);
-                Ok(Some(self.bind_element_runtime_config(element)))
+                Ok(Some(self.bind_element_config(element)))
             }
             other => Err(OpenPageError::JavaScript(value_did_not_return_message(
                 "frame active element",
@@ -827,7 +827,7 @@ impl Frame {
             Value::String(_) => {
                 let element = self.page.find(&marker_xpath(&marker))?;
                 let _ = element.remove_attr(PAGE_MARKER_ATTRIBUTE);
-                Ok(self.bind_element_runtime_config(element))
+                Ok(self.bind_element_config(element))
             }
             other => Err(OpenPageError::JavaScript(value_did_not_return_message(
                 "frame find()",
@@ -850,7 +850,7 @@ impl Frame {
         for marker in markers {
             let element = self.page.find(&marker_xpath(&marker))?;
             let _ = element.remove_attr(PAGE_MARKER_ATTRIBUTE);
-            elements.push(self.bind_element_runtime_config(element));
+            elements.push(self.bind_element_config(element));
         }
         Ok(elements)
     }

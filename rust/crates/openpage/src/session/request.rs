@@ -529,8 +529,8 @@ impl Session {
             })
             .map_err(|_| {
                 OpenPageError::PageOperation(component_state_lock_poisoned_message(
-                    "none element runtime config",
-                    "未找到元素运行时配置",
+                    "none element config",
+                    "未找到元素配置",
                 ))
             })
     }
@@ -543,8 +543,8 @@ impl Session {
             })
             .map_err(|_| {
                 OpenPageError::PageOperation(component_state_lock_poisoned_message(
-                    "none element runtime config",
-                    "未找到元素运行时配置",
+                    "none element config",
+                    "未找到元素配置",
                 ))
             })
     }

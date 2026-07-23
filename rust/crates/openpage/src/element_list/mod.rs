@@ -228,8 +228,8 @@ impl ElementsSearch {
 
 fn elements_one_config_lock_error() -> OpenPageError {
     OpenPageError::PageOperation(component_state_lock_poisoned_message(
-        "none element runtime config",
-        "未找到元素运行时配置",
+        "none element config",
+        "未找到元素配置",
     ))
 }
 
@@ -253,7 +253,7 @@ pub(crate) fn elements_one_should_raise_when_missing(
         .is_some_and(|config| config.raise_when_not_found))
 }
 
-fn elements_one_runtime_config_from_ref<'a, T: 'static>(
+fn elements_one_config_from_ref<'a, T: 'static>(
     element: Option<&'a T>,
 ) -> Option<&'a ElementsOneConfigHandle> {
     let element = element?;
@@ -4665,7 +4665,7 @@ where
     fn filter(&self) -> ElementsFilter<'_, T> {
         let elements = collect_refs(self.iter());
         ElementsFilter {
-            config: elements_one_runtime_config_from_ref(elements.first().copied()),
+            config: elements_one_config_from_ref(elements.first().copied()),
             elements,
         }
     }
@@ -4677,7 +4677,7 @@ where
     fn filter_one_at(&self, index: usize) -> ElementsFilterOne<'_, T> {
         let elements = collect_refs(self.iter());
         ElementsFilterOne {
-            config: elements_one_runtime_config_from_ref(elements.first().copied()),
+            config: elements_one_config_from_ref(elements.first().copied()),
             elements,
             index: index.max(1),
         }

@@ -28,8 +28,8 @@ impl Page {
             .map(|config| Arc::new(std::sync::Mutex::new(config.clone())))
             .map_err(|_| {
                 OpenPageError::PageOperation(component_state_lock_poisoned_message(
-                    "none element runtime config",
-                    "未找到元素运行时配置",
+                    "none element config",
+                    "未找到元素配置",
                 ))
             })
     }
@@ -137,8 +137,8 @@ impl Page {
             })
             .map_err(|_| {
                 OpenPageError::PageOperation(component_state_lock_poisoned_message(
-                    "none element runtime config",
-                    "未找到元素运行时配置",
+                    "none element config",
+                    "未找到元素配置",
                 ))
             })
     }
@@ -151,8 +151,8 @@ impl Page {
             })
             .map_err(|_| {
                 OpenPageError::PageOperation(component_state_lock_poisoned_message(
-                    "none element runtime config",
-                    "未找到元素运行时配置",
+                    "none element config",
+                    "未找到元素配置",
                 ))
             })
     }
@@ -1041,7 +1041,7 @@ impl Page {
         browser.set_retry(
             retry_times,
             retry_interval_secs
-                .map(runtime_timeout_seconds_to_millis)
+                .map(timeout_seconds_to_millis)
                 .transpose()?,
         )
     }
@@ -1072,13 +1072,13 @@ impl Page {
         })?;
         let mut timeouts = browser.timeouts()?;
         if let Some(base_secs) = base_secs {
-            timeouts.implicit_wait = runtime_timeout_seconds_to_millis(base_secs)?;
+            timeouts.implicit_wait = timeout_seconds_to_millis(base_secs)?;
         }
         if let Some(page_load_secs) = page_load_secs {
-            timeouts.page_load = runtime_timeout_seconds_to_millis(page_load_secs)?;
+            timeouts.page_load = timeout_seconds_to_millis(page_load_secs)?;
         }
         if let Some(script_secs) = script_secs {
-            timeouts.script = runtime_timeout_seconds_to_millis(script_secs)?;
+            timeouts.script = timeout_seconds_to_millis(script_secs)?;
         }
         browser.set_timeouts(timeouts)
     }

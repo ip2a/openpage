@@ -1461,7 +1461,7 @@ mod tests {
     }
 
     #[test]
-    fn session_elements_one_runtime_config_supports_none_value_and_raise() {
+    fn session_elements_one_config_supports_none_value_and_raise() {
         let page = Session::new(SessionOptions::default()).expect("session page");
         load_session_html_for_test(
             &page,
@@ -1547,7 +1547,7 @@ mod tests {
     }
 
     #[test]
-    fn session_ele_runtime_config_supports_none_value_and_nested_queries() {
+    fn session_element_config_supports_none_value_and_nested_queries() {
         let page = Session::new(SessionOptions::default()).expect("session page");
         load_session_html_for_test(
             &page,
@@ -2572,7 +2572,7 @@ mod tests {
             .set_none_element_value(Some("missing"), true)
             .expect_err("set_none_element_value() should surface poisoned config")
             .to_string();
-        assert!(english.contains("none element runtime config lock poisoned"));
+        assert!(english.contains("none element config lock poisoned"));
 
         Settings::set_language("cn");
 
@@ -2580,7 +2580,7 @@ mod tests {
             .set_raise_when_ele_not_found(true)
             .expect_err("set_raise_when_ele_not_found() should localize poisoned config")
             .to_string();
-        assert!(chinese.contains("未找到元素运行时配置锁已损坏"));
+        assert!(chinese.contains("未找到元素配置锁已损坏"));
     }
 
     #[test]
@@ -2917,7 +2917,7 @@ mod tests {
     }
 
     #[test]
-    fn session_runtime_timeout_retry_and_close_match_reference_behavior() {
+    fn session_timeout_retry_and_close_match_reference_behavior() {
         let page = Session::new(SessionOptions::default()).expect("session page");
 
         assert_eq!(page.timeout_secs().expect("default timeout"), 10);

@@ -1361,3 +1361,26 @@ cargo check --workspace --manifest-path rust/Cargo.toml
 ```
 
 结果：通过。单元测试链接阶段因本机磁盘仅剩约 83 MiB，链接器报告 `No space left on device`；这是环境容量问题，不是源码编译错误。
+
+### 里程碑 33：清理 Rust 内部产品层 Runtime 配置命名（2026-07-23）
+
+状态：阶段完成。
+
+继续清理审计中发现的产品层实现命名残留：
+
+- `with_runtime_config_handles` → `with_config_handles`；
+- `bind_element_runtime_config` → `bind_element_config`；
+- `elements_one_runtime_config_from_ref` → `elements_one_config_from_ref`；
+- `runtime_timeout_seconds_to_millis` → `timeout_seconds_to_millis`；
+- 相关测试和错误文本同步改为配置/超时的领域语义。
+
+Tokio 的 `Runtime` 仍仅作为 Rust 内部异步执行依赖保留，不作为 OpenPage 产品模型或公开门面名称。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check --workspace --manifest-path rust/Cargo.toml
+```
+
+结果：通过。
