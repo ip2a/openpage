@@ -65,6 +65,28 @@ impl PyPage {
     fn goto(&self, url: &str) -> PyResult<()> {
         self.inner.goto(url).map_err(error)
     }
+    #[pyo3(signature = (ignore_cache=false))]
+    fn refresh(&self, ignore_cache: bool) -> PyResult<()> {
+        self.inner.refresh(ignore_cache).map_err(error)
+    }
+    #[pyo3(signature = (steps=1))]
+    fn back(&self, steps: usize) -> PyResult<bool> {
+        self.inner.back(steps).map_err(error)
+    }
+    #[pyo3(signature = (steps=1))]
+    fn forward(&self, steps: usize) -> PyResult<bool> {
+        self.inner.forward(steps).map_err(error)
+    }
+    fn ready_state(&self) -> PyResult<String> {
+        self.inner.ready_state().map_err(error)
+    }
+    fn is_loading(&self) -> PyResult<bool> {
+        self.inner.is_loading().map_err(error)
+    }
+    #[pyo3(signature = (timeout_ms=10_000))]
+    fn wait_for_doc_loaded(&self, timeout_ms: u64) -> PyResult<bool> {
+        self.inner.wait_for_doc_loaded(timeout_ms).map_err(error)
+    }
     fn url(&self) -> PyResult<String> {
         self.inner.url().map_err(error)
     }
@@ -146,6 +168,21 @@ impl PyElement {
     fn click(&self) -> PyResult<()> {
         self.inner.click().map_err(error)
     }
+    fn clear(&self) -> PyResult<()> {
+        self.inner.clear().map_err(error)
+    }
+    fn press_key(&self, key: &str) -> PyResult<()> {
+        self.inner.press_key(key).map_err(error)
+    }
+    fn focus(&self) -> PyResult<()> {
+        self.inner.focus().map_err(error)
+    }
+    fn submit(&self) -> PyResult<()> {
+        self.inner.submit().map_err(error)
+    }
+    fn hover(&self) -> PyResult<()> {
+        self.inner.hover().map_err(error)
+    }
     fn input(&self, text: &str) -> PyResult<()> {
         self.inner.input(text).map_err(error)
     }
@@ -154,6 +191,23 @@ impl PyElement {
     }
     fn attr(&self, name: &str) -> PyResult<Option<String>> {
         self.inner.attr(name).map_err(error)
+    }
+    fn is_displayed(&self) -> PyResult<bool> {
+        self.inner.is_displayed().map_err(error)
+    }
+    fn is_enabled(&self) -> PyResult<bool> {
+        self.inner.is_enabled().map_err(error)
+    }
+    fn is_alive(&self) -> PyResult<bool> {
+        self.inner.is_alive().map_err(error)
+    }
+    #[pyo3(signature = (timeout_ms=10_000))]
+    fn wait_until_displayed(&self, timeout_ms: u64) -> PyResult<bool> {
+        self.inner.wait_until_displayed(timeout_ms).map_err(error)
+    }
+    #[pyo3(signature = (timeout_ms=10_000))]
+    fn wait_until_hidden(&self, timeout_ms: u64) -> PyResult<bool> {
+        self.inner.wait_until_hidden(timeout_ms).map_err(error)
     }
 }
 

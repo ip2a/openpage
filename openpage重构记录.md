@@ -1592,3 +1592,45 @@ cargo check -p openpage-python --manifest-path rust/Cargo.toml   通过
 maturin develop                                                   通过
 Python facade test                                                2 passed
 ```
+
+### 里程碑 43：补齐 Python 页面导航与元素交互门面（2026-07-23）
+
+状态：阶段完成。
+
+Python `Page` 新增直接对应 Rust Core 的页面导航与加载状态能力：
+
+```text
+Page.refresh(ignore_cache=False)
+Page.back(steps=1)
+Page.forward(steps=1)
+Page.ready_state()
+Page.is_loading()
+Page.wait_for_doc_loaded(timeout_ms=10_000)
+```
+
+Python `Element` 新增直接对应 Rust Core 的常用交互、状态和等待能力：
+
+```text
+Element.clear()
+Element.press_key(key)
+Element.focus()
+Element.submit()
+Element.hover()
+Element.is_displayed()
+Element.is_enabled()
+Element.is_alive()
+Element.wait_until_displayed(timeout_ms=10_000)
+Element.wait_until_hidden(timeout_ms=10_000)
+```
+
+本阶段未增加 Python 业务实现、编排对象、helper、adapter、兼容别名或回退路径。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check       通过
+cargo check -p openpage-python --manifest-path rust/Cargo.toml   通过
+maturin develop                                                   通过
+Python 第二批绑定表面检查                                        通过
+Python facade test                                                2 passed
+```
