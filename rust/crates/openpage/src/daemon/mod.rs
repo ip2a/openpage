@@ -13,7 +13,7 @@ use chromiumoxide::cdp::browser_protocol::page::{
 use serde_json::{Map, Value, json};
 
 use crate::browser::{DownloadFileExistsMode, LoadMode};
-use crate::config::{RuntimeOverrides, load_resolved_config};
+use crate::config::{ConfigOverrides, load_resolved_config};
 use crate::download::DownloadMission;
 use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
@@ -44,7 +44,7 @@ fn run_tcp_inner(port: u16, session: &str) -> OpenPageResult<()> {
         .unwrap()
     );
 
-    let runtime = Rc::new(RefCell::new(ServeRuntime::default()));
+    let runtime = Rc::new(RefCell::new(ServeState::default()));
 
     for stream in listener.incoming() {
         let mut stream = stream.map_err(|err| OpenPageError::Io(err.to_string()))?;
@@ -63,7 +63,7 @@ fn run_tcp_inner(port: u16, session: &str) -> OpenPageResult<()> {
     Ok(())
 }
 
-fn handle_client(stream: &mut TcpStream, runtime: Rc<RefCell<ServeRuntime>>) -> OpenPageResult<()> {
+fn handle_client(stream: &mut TcpStream, runtime: Rc<RefCell<ServeState>>) -> OpenPageResult<()> {
     let mut buf = String::new();
     let mut reader = BufReader::new(stream);
 
@@ -104,7 +104,7 @@ fn handle_client(stream: &mut TcpStream, runtime: Rc<RefCell<ServeRuntime>>) -> 
 }
 
 #[derive(Default)]
-struct ServeRuntime {
+struct ServeState {
     pages: HashMap<String, ServePage>,
     next_page_id: u64,
     shutdown: bool,

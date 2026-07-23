@@ -1,6 +1,6 @@
 use super::*;
 
-impl ServeRuntime {
+impl ServeState {
     fn close_all_pages(&mut self) {
         for (_target, state) in self.pages.drain() {
             let _ = state.page.quit();
@@ -50,7 +50,7 @@ impl ServeRuntime {
         let resolved = load_resolved_config()?;
         let mut launch = resolved.launch;
         let local_port = optional_u64(params, "port").map(|value| value as u16);
-        let overrides = RuntimeOverrides {
+        let overrides = ConfigOverrides {
             browser_path: optional_string(params, "browser_path").map(Into::into),
             user_data_dir: optional_string(params, "user_data_dir").map(Into::into),
             local_port,

@@ -143,7 +143,7 @@ pub fn snapshot_fragment_query_xpath_with_base_url(
 pub(super) fn snapshot_root_arc(
     html: Arc<String>,
     base_url: Option<Arc<String>>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<DocumentElement> {
     let parsed = Html::parse_document(html.as_ref());
     Ok(session_element_from_ref(
@@ -158,7 +158,7 @@ pub(super) fn snapshot_find_arc(
     html: Arc<String>,
     locator: &str,
     base_url: Option<Arc<String>>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<DocumentElement> {
     let locator = Locator::parse(locator)?;
     match locator.kind() {
@@ -191,7 +191,7 @@ pub(super) fn snapshot_find_all_arc(
     html: Arc<String>,
     locator: &str,
     base_url: Option<Arc<String>>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<Vec<DocumentElement>> {
     let locator = Locator::parse(locator)?;
     match locator.kind() {
@@ -220,7 +220,7 @@ pub(super) fn snapshot_query_xpath_arc(
     html: Arc<String>,
     expression: &str,
     base_url: Option<Arc<String>>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<Vec<SessionXPathResult>> {
     xpath_query_with_scope(
         &html,
@@ -235,7 +235,7 @@ pub(super) fn snapshot_query_xpath_arc(
 pub(super) fn snapshot_fragment_root_arc(
     html: Arc<String>,
     base_url: Option<Arc<String>>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<DocumentElement> {
     let wrapped = wrap_fragment_html(html);
     let parsed = Html::parse_document(wrapped.as_ref());
@@ -261,7 +261,7 @@ pub(super) fn snapshot_fragment_find_arc(
     html: Arc<String>,
     locator: &str,
     base_url: Option<Arc<String>>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<DocumentElement> {
     let wrapped = wrap_fragment_html(html);
     let locator = Locator::parse(locator)?;
@@ -307,7 +307,7 @@ pub(super) fn snapshot_fragment_find_all_arc(
     html: Arc<String>,
     locator: &str,
     base_url: Option<Arc<String>>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<Vec<DocumentElement>> {
     let wrapped = wrap_fragment_html(html);
     let locator = Locator::parse(locator)?;
@@ -357,7 +357,7 @@ pub(super) fn find_in_scope(
     scope_id: NodeId,
     locator: &str,
     base_url: Option<Arc<String>>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<DocumentElement> {
     let locator = Locator::parse(locator)?;
     match locator.kind() {
@@ -395,7 +395,7 @@ pub(super) fn find_all_in_scope(
     scope_id: NodeId,
     locator: &str,
     base_url: Option<Arc<String>>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<Vec<DocumentElement>> {
     let locator = Locator::parse(locator)?;
     match locator.kind() {
@@ -434,7 +434,7 @@ pub(super) fn session_element_from_ref(
     html: &Arc<String>,
     base_url: Option<&Arc<String>>,
     element: ElementRef<'_>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> DocumentElement {
     DocumentElement {
         html: Arc::clone(html),
@@ -473,7 +473,7 @@ pub(super) fn collect_matching_elements<'a, I>(
     base_url: Option<&Arc<String>>,
     elements: I,
     locator: Option<&str>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<Vec<DocumentElement>>
 where
     I: IntoIterator<Item = ElementRef<'a>>,
@@ -496,7 +496,7 @@ pub(super) fn document_relatives(
     element: ElementRef<'_>,
     direction: RelativeDirection,
     locator: Option<&str>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<Vec<DocumentElement>> {
     let selector = parse_optional_selector(locator)?;
     let root = element.tree().root();
@@ -544,7 +544,7 @@ pub(super) fn collect_document_relative_nodes(
     base_url: Option<&Arc<String>>,
     element: ElementRef<'_>,
     direction: RelativeDirection,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<Vec<SessionXPathResult>> {
     let mut path: Vec<_> = element.ancestors().collect();
     path.reverse();
@@ -600,7 +600,7 @@ pub(super) fn scraper_node_to_session_xpath_result(
     html: &Arc<String>,
     base_url: Option<&Arc<String>>,
     node: NodeRef<'_, Node>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<SessionXPathResult> {
     match node.value() {
         Node::Element(_) => Ok(SessionXPathResult::Element(session_element_from_ref(
@@ -800,7 +800,7 @@ pub(super) fn xpath_find_all_from_scope_element(
     base_url: Option<&Arc<String>>,
     scope: ElementRef<'_>,
     query: &str,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<Vec<DocumentElement>> {
     let scope_path = xpath_for_element(scope);
     let scope_at_fragment_root = nearest_fragment_wrapper(scope).is_some();
@@ -819,7 +819,7 @@ pub(super) fn xpath_query_from_scope_element(
     base_url: Option<&Arc<String>>,
     scope: ElementRef<'_>,
     query: &str,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<Vec<SessionXPathResult>> {
     let scope_path = xpath_for_element(scope);
     let scope_at_fragment_root = nearest_fragment_wrapper(scope).is_some();
@@ -840,7 +840,7 @@ pub(super) fn relative_node_xpath_query_with_locator<F>(
     locator: Option<&Locator>,
     default_query: &str,
     query_builder: F,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<Vec<SessionXPathResult>>
 where
     F: FnOnce(&str) -> String,
@@ -883,7 +883,7 @@ pub(super) fn xpath_find_all_with_scope(
     query: &str,
     scope_path: Option<&str>,
     scope_at_fragment_root: bool,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<Vec<DocumentElement>> {
     let parsed = Html::parse_document(html.as_ref());
     let xpath_tree = xpath_html::parse(html.as_ref()).map_err(|err| {
@@ -953,7 +953,7 @@ pub(super) fn xpath_query_with_scope(
     query: &str,
     scope_path: Option<&str>,
     scope_at_fragment_root: bool,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<Vec<SessionXPathResult>> {
     let parsed = Html::parse_document(html.as_ref());
     let xpath_tree = xpath_html::parse(html.as_ref()).map_err(|err| {
@@ -1025,7 +1025,7 @@ pub(super) fn xpath_item_to_session_result(
     mapping_root: NodeRef<'_, Node>,
     stop_at_fragment_root: bool,
     item: XpathItem<'_>,
-    none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<SessionXPathResult> {
     match item {
         XpathItem::Node(node) => match node {

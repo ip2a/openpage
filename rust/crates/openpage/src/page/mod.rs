@@ -77,7 +77,7 @@ use crate::element::{
     resolve_javascript_timeout_ms,
 };
 use crate::element_list::{
-    ElementsOneOwned, ElementsOneRuntimeConfigHandle, elements_one_should_raise_when_missing,
+    ElementsOneConfigHandle, ElementsOneOwned, elements_one_should_raise_when_missing,
 };
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::intercept::Interceptor;
@@ -99,7 +99,7 @@ use crate::settings::{
     action_element_missing_rect_location_message, action_type_interval_non_negative_message,
     action_wait_seconds_non_negative_message, browser_backed_page_only_message,
     build_file_url_failed_message, cdp_timeout_duration, clipboard_secure_context_required_message,
-    component_state_lock_poisoned_message, default_none_element_runtime_config,
+    component_state_lock_poisoned_message, default_none_element_config,
     drag_in_file_path_empty_message, drag_in_requires_file_path_message,
     frame_element_missing_frame_id_message, frame_element_not_found_message,
     frame_execution_context_unavailable_message, frame_html_unavailable_message,
@@ -134,7 +134,7 @@ const PAGE_ZOOM_ORIGINAL_ATTRIBUTE: &str = "data-openpage-zoom-original";
 
 pub(crate) type FrameCacheHandle = Arc<std::sync::Mutex<HashMap<String, Frame>>>;
 pub(crate) type FrameNoneElementConfigCacheHandle =
-    Arc<std::sync::Mutex<HashMap<String, ElementsOneRuntimeConfigHandle>>>;
+    Arc<std::sync::Mutex<HashMap<String, ElementsOneConfigHandle>>>;
 
 fn page_operation_error(operation: &str, err: impl ToString) -> OpenPageError {
     OpenPageError::PageOperation(page_operation_failed_message(operation, &err.to_string()))
@@ -203,7 +203,7 @@ pub struct Page {
     load_mode: Arc<std::sync::Mutex<LoadMode>>,
     init_scripts: Arc<std::sync::Mutex<Vec<String>>>,
     browser_pid: Option<u32>,
-    none_element_config: ElementsOneRuntimeConfigHandle,
+    none_element_config: ElementsOneConfigHandle,
     frame_cache: FrameCacheHandle,
     frame_none_element_configs: FrameNoneElementConfigCacheHandle,
 }
@@ -213,7 +213,7 @@ pub struct Frame {
     page: Page,
     frame_id: String,
     frame_element: Arc<Element>,
-    none_element_config: ElementsOneRuntimeConfigHandle,
+    none_element_config: ElementsOneConfigHandle,
 }
 
 impl std::fmt::Debug for Frame {
@@ -257,7 +257,7 @@ pub struct DisconnectedFrame {
     frame_xpath: Option<String>,
     frame_css_path: Option<String>,
     frame_backend_node_id: BackendNodeId,
-    none_element_config: ElementsOneRuntimeConfigHandle,
+    none_element_config: ElementsOneConfigHandle,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1327,7 +1327,7 @@ impl Frame {
         page: Page,
         frame_id: String,
         frame_element: Element,
-        none_element_config: ElementsOneRuntimeConfigHandle,
+        none_element_config: ElementsOneConfigHandle,
     ) -> Self {
         Self {
             page,
@@ -1373,9 +1373,7 @@ impl Page {
             load_mode: Arc::new(std::sync::Mutex::new(load_mode)),
             init_scripts: Arc::new(std::sync::Mutex::new(Vec::new())),
             browser_pid: None,
-            none_element_config: Arc::new(std::sync::Mutex::new(
-                default_none_element_runtime_config(),
-            )),
+            none_element_config: Arc::new(std::sync::Mutex::new(default_none_element_config())),
             frame_cache: Arc::new(std::sync::Mutex::new(HashMap::new())),
             frame_none_element_configs: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }

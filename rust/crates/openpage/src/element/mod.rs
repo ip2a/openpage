@@ -33,7 +33,7 @@ use tokio::time::timeout as tokio_timeout;
 use crate::browser::Browser;
 use crate::download::DownloadMission;
 use crate::element_list::{
-    ElementsOneOwned, ElementsOneRuntimeConfigHandle, elements_one_should_raise_when_missing,
+    ElementsOneConfigHandle, ElementsOneOwned, elements_one_should_raise_when_missing,
 };
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::{
@@ -206,7 +206,7 @@ pub struct Element {
     uploader: Option<UploadTracker>,
     inner: OxElement,
     javascript_timeout_ms: u64,
-    none_element_config: ElementsOneRuntimeConfigHandle,
+    none_element_config: ElementsOneConfigHandle,
     frame_cache: FrameCacheHandle,
     frame_none_element_configs: FrameNoneElementConfigCacheHandle,
 }
@@ -397,7 +397,7 @@ impl Element {
         uploader: Option<UploadTracker>,
         inner: OxElement,
         javascript_timeout_ms: u64,
-        none_element_config: ElementsOneRuntimeConfigHandle,
+        none_element_config: ElementsOneConfigHandle,
         frame_cache: FrameCacheHandle,
         frame_none_element_configs: FrameNoneElementConfigCacheHandle,
     ) -> Self {
@@ -418,13 +418,13 @@ impl Element {
         self.inner.backend_node_id
     }
 
-    pub(crate) fn none_element_runtime_config_handle(&self) -> &ElementsOneRuntimeConfigHandle {
+    pub(crate) fn none_element_config_handle(&self) -> &ElementsOneConfigHandle {
         &self.none_element_config
     }
 
     pub(crate) fn with_runtime_config_handles(
         mut self,
-        none_element_config: ElementsOneRuntimeConfigHandle,
+        none_element_config: ElementsOneConfigHandle,
         frame_cache: FrameCacheHandle,
         frame_none_element_configs: FrameNoneElementConfigCacheHandle,
     ) -> Self {
@@ -3832,7 +3832,7 @@ impl Element {
                     page.clone(),
                     frame_id.clone(),
                     owner_element,
-                    Arc::clone(self.none_element_runtime_config_handle()),
+                    Arc::clone(self.none_element_config_handle()),
                 );
                 match frame.find(selector.as_str()) {
                     Ok(_) => return Ok(Some(frame_id)),

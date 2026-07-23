@@ -1,7 +1,7 @@
 use super::*;
 
 impl Page {
-    pub(crate) fn set_runtime_load_mode(&self, load_mode: LoadMode) -> OpenPageResult<()> {
+    pub(crate) fn apply_load_mode(&self, load_mode: LoadMode) -> OpenPageResult<()> {
         self.load_mode
             .lock()
             .map(|mut mode| *mode = load_mode)
@@ -21,8 +21,8 @@ impl Page {
 
     fn cloned_none_element_config(
         &self,
-        handle: &ElementsOneRuntimeConfigHandle,
-    ) -> OpenPageResult<ElementsOneRuntimeConfigHandle> {
+        handle: &ElementsOneConfigHandle,
+    ) -> OpenPageResult<ElementsOneConfigHandle> {
         handle
             .lock()
             .map(|config| Arc::new(std::sync::Mutex::new(config.clone())))
@@ -37,8 +37,8 @@ impl Page {
     fn frame_none_element_config_from(
         &self,
         frame_id: &str,
-        source: &ElementsOneRuntimeConfigHandle,
-    ) -> OpenPageResult<ElementsOneRuntimeConfigHandle> {
+        source: &ElementsOneConfigHandle,
+    ) -> OpenPageResult<ElementsOneConfigHandle> {
         let fresh_config = self.cloned_none_element_config(source)?;
         if !singleton_tab_obj_enabled() {
             return Ok(fresh_config);
@@ -1997,7 +1997,7 @@ impl Page {
     pub(super) fn frame_from_locator_with_config_source(
         &self,
         locator: &str,
-        config_source: &ElementsOneRuntimeConfigHandle,
+        config_source: &ElementsOneConfigHandle,
     ) -> OpenPageResult<Frame> {
         let element = self.get_frame_ele(locator)?;
         self.frame_from_element_with_config_source(element, config_source)
@@ -2006,7 +2006,7 @@ impl Page {
     pub(crate) fn frame_from_element_with_config_source(
         &self,
         element: Element,
-        config_source: &ElementsOneRuntimeConfigHandle,
+        config_source: &ElementsOneConfigHandle,
     ) -> OpenPageResult<Frame> {
         let backend_node_id = element.backend_node_id();
         let frame_id = self.runtime.block_on(async {

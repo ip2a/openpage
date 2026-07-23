@@ -12,10 +12,10 @@ use crate::settings::{
     elements_one_missing_method_message,
 };
 
-pub(crate) type ElementsOneRuntimeConfigHandle = Arc<Mutex<ElementsOneRuntimeConfig>>;
+pub(crate) type ElementsOneConfigHandle = Arc<Mutex<ElementsOneConfig>>;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ElementsOneRuntimeConfig {
+pub(crate) struct ElementsOneConfig {
     pub return_value_enabled: bool,
     pub return_value: Option<String>,
     pub raise_when_not_found: bool,
@@ -29,26 +29,26 @@ pub struct ElementsGetter<'a, T> {
 #[derive(Debug, Clone)]
 pub struct ElementsFilter<'a, T> {
     elements: Vec<&'a T>,
-    config: Option<&'a ElementsOneRuntimeConfigHandle>,
+    config: Option<&'a ElementsOneConfigHandle>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ElementsFilterOne<'a, T> {
     elements: Vec<&'a T>,
     index: usize,
-    config: Option<&'a ElementsOneRuntimeConfigHandle>,
+    config: Option<&'a ElementsOneConfigHandle>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ElementsOne<'a, T> {
     element: Option<&'a T>,
-    config: Option<&'a ElementsOneRuntimeConfigHandle>,
+    config: Option<&'a ElementsOneConfigHandle>,
 }
 
 #[derive(Debug, Default)]
 pub struct ElementsOneOwned<T> {
     element: Option<T>,
-    config: Option<ElementsOneRuntimeConfigHandle>,
+    config: Option<ElementsOneConfigHandle>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -234,8 +234,8 @@ fn elements_one_config_lock_error() -> OpenPageError {
 }
 
 fn elements_one_missing_config_snapshot(
-    config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<Option<ElementsOneRuntimeConfig>> {
+    config: Option<&ElementsOneConfigHandle>,
+) -> OpenPageResult<Option<ElementsOneConfig>> {
     let Some(config) = config else {
         return Ok(None);
     };
@@ -247,7 +247,7 @@ fn elements_one_missing_config_snapshot(
 }
 
 pub(crate) fn elements_one_should_raise_when_missing(
-    config: Option<&ElementsOneRuntimeConfigHandle>,
+    config: Option<&ElementsOneConfigHandle>,
 ) -> OpenPageResult<bool> {
     Ok(elements_one_missing_config_snapshot(config)?
         .is_some_and(|config| config.raise_when_not_found))
@@ -255,14 +255,14 @@ pub(crate) fn elements_one_should_raise_when_missing(
 
 fn elements_one_runtime_config_from_ref<'a, T: 'static>(
     element: Option<&'a T>,
-) -> Option<&'a ElementsOneRuntimeConfigHandle> {
+) -> Option<&'a ElementsOneConfigHandle> {
     let element = element?;
     let any = element as &dyn Any;
     if let Some(element) = any.downcast_ref::<Element>() {
-        return Some(element.none_element_runtime_config_handle());
+        return Some(element.none_element_config_handle());
     }
     if let Some(element) = any.downcast_ref::<DocumentElement>() {
-        return element.none_element_runtime_config_handle();
+        return element.none_element_config_handle();
     }
     None
 }
@@ -320,17 +320,14 @@ impl<'a, T> ElementsOne<'a, T> {
         }
     }
 
-    fn some_with_config(
-        element: &'a T,
-        config: Option<&'a ElementsOneRuntimeConfigHandle>,
-    ) -> Self {
+    fn some_with_config(element: &'a T, config: Option<&'a ElementsOneConfigHandle>) -> Self {
         Self {
             element: Some(element),
             config,
         }
     }
 
-    fn none_with_config(config: Option<&'a ElementsOneRuntimeConfigHandle>) -> Self {
+    fn none_with_config(config: Option<&'a ElementsOneConfigHandle>) -> Self {
         Self {
             element: None,
             config,
@@ -383,17 +380,14 @@ impl<'a, T> ElementsOne<'a, T> {
 }
 
 impl<T> ElementsOneOwned<T> {
-    pub(crate) fn some_with_config(
-        element: T,
-        config: Option<ElementsOneRuntimeConfigHandle>,
-    ) -> Self {
+    pub(crate) fn some_with_config(element: T, config: Option<ElementsOneConfigHandle>) -> Self {
         Self {
             element: Some(element),
             config,
         }
     }
 
-    pub(crate) fn none_with_config(config: Option<ElementsOneRuntimeConfigHandle>) -> Self {
+    pub(crate) fn none_with_config(config: Option<ElementsOneConfigHandle>) -> Self {
         Self {
             element: None,
             config,

@@ -14,7 +14,7 @@ use tokio::time::timeout as tokio_timeout;
 
 use crate::element::Element;
 use crate::element_list::{
-    ElementsOneOwned, ElementsOneRuntimeConfigHandle, elements_one_should_raise_when_missing,
+    ElementsOneConfigHandle, ElementsOneOwned, elements_one_should_raise_when_missing,
 };
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::{
@@ -83,7 +83,7 @@ pub struct ShadowRoot {
     remote_object_id: RemoteObjectId,
     host_node_id: NodeId,
     javascript_timeout_ms: u64,
-    none_element_config: ElementsOneRuntimeConfigHandle,
+    none_element_config: ElementsOneConfigHandle,
     frame_cache: FrameCacheHandle,
     frame_none_element_configs: FrameNoneElementConfigCacheHandle,
 }
@@ -96,7 +96,7 @@ impl ShadowRoot {
         remote_object_id: RemoteObjectId,
         host_node_id: NodeId,
         javascript_timeout_ms: u64,
-        none_element_config: ElementsOneRuntimeConfigHandle,
+        none_element_config: ElementsOneConfigHandle,
         frame_cache: FrameCacheHandle,
         frame_none_element_configs: FrameNoneElementConfigCacheHandle,
     ) -> Self {

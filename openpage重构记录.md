@@ -1298,3 +1298,29 @@ python3 -m py_compile scripts/release/*.py tests/python/test_facade.py examples/
 - 搜索命中的 `as_element_node`、错误消息中的 `previous_element` 等均为正常 Rust 语义，不是旧门面残留。
 
 远端多平台 runner 未在当前环境提供，因此不将本地验证表述为 Windows、Linux ARM 或双架构 macOS 的真实构建结果。
+
+### 里程碑 30：清理 Rust 产品层 Runtime 命名（2026-07-23）
+
+状态：阶段完成。
+
+将仍暴露在 Rust 核心产品模型中的实现导向命名收敛为领域命名：
+
+| 原名称 | 当前名称 |
+|---|---|
+| `RuntimeOverrides` | `ConfigOverrides` |
+| `SessionRuntimeInfo` | `SessionInfo` |
+| `ElementsOneRuntimeConfig` | `ElementsOneConfig` |
+| `ElementsOneRuntimeConfigHandle` | `ElementsOneConfigHandle` |
+| `set_runtime_load_mode` | `apply_load_mode` |
+| `ServeRuntime` | `ServeState` |
+
+这些名称只描述配置、会话信息、元素配置和 daemon 状态，不再把实现机制 `runtime` 作为产品领域概念。Tokio 的异步执行时 runtime 仍保留为底层实现依赖，这是运行机制而不是 OpenPage 门面模型。
+
+验证：
+
+```text
+cargo check --workspace --manifest-path rust/Cargo.toml
+cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+```
+
+结果：编译通过；`openpage` crate 354 个单元测试全部通过。

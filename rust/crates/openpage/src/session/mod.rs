@@ -40,7 +40,7 @@ use skyscraper::xpath::grammar::{
 use url::Url;
 
 use crate::element_list::{
-    ElementsOneOwned, ElementsOneRuntimeConfigHandle, elements_one_should_raise_when_missing,
+    ElementsOneConfigHandle, ElementsOneOwned, elements_one_should_raise_when_missing,
 };
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::{
@@ -54,7 +54,7 @@ use crate::settings::{
     cookie_object_requires_assignment_message, cookie_requires_url_or_domain_message,
     cookie_text_requires_assignment_message, cookie_text_separator_conflict_message,
     cookie_value_empty_message, css_locator_unsupported_for_node_queries_message,
-    default_none_element_runtime_config, following_element_not_found_message,
+    default_none_element_config, following_element_not_found_message,
     following_node_not_found_message, invalid_cookie_field_boolean_message,
     invalid_cookie_text_missing_value_message, invalid_css_selector_message,
     invalid_file_url_message, invalid_header_line_message, invalid_session_ini_boolean_message,
@@ -2015,7 +2015,7 @@ impl From<&SessionState> for SessionClientOptions {
 #[derive(Clone, Debug)]
 pub struct Session {
     inner: Arc<Mutex<SessionState>>,
-    none_element_config: ElementsOneRuntimeConfigHandle,
+    none_element_config: ElementsOneConfigHandle,
 }
 
 pub struct SessionSettings<'a> {
@@ -2329,7 +2329,7 @@ impl Document {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct SessionRuntimeInfo {
+pub struct SessionInfo {
     pub timeout_secs: u64,
     pub user_agent: Option<String>,
     pub headers: Vec<(String, String)>,
@@ -2349,7 +2349,7 @@ pub struct SessionRuntimeInfo {
     pub current_url: Option<String>,
 }
 
-impl SessionRuntimeInfo {
+impl SessionInfo {
     pub fn timeout_secs(&self) -> u64 {
         self.timeout_secs
     }
@@ -2451,7 +2451,7 @@ pub struct DocumentElement {
     html: Arc<String>,
     node_id: NodeId,
     base_url: Option<Arc<String>>,
-    none_element_config: Option<ElementsOneRuntimeConfigHandle>,
+    none_element_config: Option<ElementsOneConfigHandle>,
 }
 
 #[derive(Clone, Debug)]

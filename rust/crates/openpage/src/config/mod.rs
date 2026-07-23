@@ -54,7 +54,7 @@ pub struct ResolvedConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct RuntimeOverrides {
+pub struct ConfigOverrides {
     pub browser_path: Option<PathBuf>,
     pub user_data_dir: Option<PathBuf>,
     pub local_port: Option<u16>,
@@ -66,7 +66,7 @@ pub struct RuntimeOverrides {
     pub mute: Option<bool>,
 }
 
-impl RuntimeOverrides {
+impl ConfigOverrides {
     pub fn apply_to_launch(&self, launch: &mut LaunchOptions) {
         if let Some(path) = self.browser_path.as_ref() {
             launch.browser_path = Some(path.clone());
@@ -98,7 +98,7 @@ impl RuntimeOverrides {
     }
 }
 
-impl Default for RuntimeOverrides {
+impl Default for ConfigOverrides {
     fn default() -> Self {
         Self {
             browser_path: None,

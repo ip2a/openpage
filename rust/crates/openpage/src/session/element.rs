@@ -1,9 +1,7 @@
 use super::*;
 
 impl DocumentElement {
-    pub(crate) fn none_element_runtime_config_handle(
-        &self,
-    ) -> Option<&ElementsOneRuntimeConfigHandle> {
+    pub(crate) fn none_element_config_handle(&self) -> Option<&ElementsOneConfigHandle> {
         self.none_element_config.as_ref()
     }
 

@@ -208,7 +208,7 @@ impl Browser {
             ))
         })?;
         if let Some(base_page) = cache.get(&target_id) {
-            base_page.set_runtime_load_mode(load_mode)?;
+            base_page.apply_load_mode(load_mode)?;
             return Ok(base_page
                 .clone()
                 .with_browser(self.clone())

@@ -45,7 +45,7 @@ impl Session {
                 json: None,
                 pending_response: None,
             })),
-            none_element_config: Arc::new(Mutex::new(default_none_element_runtime_config())),
+            none_element_config: Arc::new(Mutex::new(default_none_element_config())),
         })
     }
 
@@ -472,7 +472,7 @@ impl Session {
         Ok(self.lock_state()?.status_code)
     }
 
-    pub fn session(&self) -> OpenPageResult<SessionRuntimeInfo> {
+    pub fn session(&self) -> OpenPageResult<SessionInfo> {
         let state = self.lock_state()?;
         let cookie_jar = state.cookie_jar.clone();
         let mut headers = state
@@ -481,7 +481,7 @@ impl Session {
             .map(|(name, value)| (name.clone(), value.clone()))
             .collect::<Vec<_>>();
         headers.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
-        let snapshot = SessionRuntimeInfo {
+        let snapshot = SessionInfo {
             timeout_secs: state.timeout_secs,
             user_agent: state.user_agent.clone(),
             headers,
@@ -510,13 +510,13 @@ impl Session {
                 .then(left.path.cmp(&right.path))
         });
 
-        Ok(SessionRuntimeInfo {
+        Ok(SessionInfo {
             cookies,
             ..snapshot
         })
     }
 
-    pub fn session_snapshot(&self) -> OpenPageResult<SessionRuntimeInfo> {
+    pub fn session_snapshot(&self) -> OpenPageResult<SessionInfo> {
         self.session()
     }
 

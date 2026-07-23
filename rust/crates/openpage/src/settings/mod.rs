@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{OnceLock, RwLock};
 use std::time::Duration;
 
-use crate::element_list::ElementsOneRuntimeConfig;
+use crate::element_list::ElementsOneConfig;
 use crate::error::{OpenPageError, OpenPageResult};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -179,11 +179,11 @@ pub(crate) fn restore(snapshot: SettingsSnapshot) {
     *settings = snapshot;
 }
 
-pub(crate) fn default_none_element_runtime_config() -> ElementsOneRuntimeConfig {
+pub(crate) fn default_none_element_config() -> ElementsOneConfig {
     let settings = snapshot();
-    ElementsOneRuntimeConfig {
+    ElementsOneConfig {
         raise_when_not_found: settings.raise_when_ele_not_found,
-        ..ElementsOneRuntimeConfig::default()
+        ..ElementsOneConfig::default()
     }
 }
 
