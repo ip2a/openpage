@@ -1670,3 +1670,52 @@ maturin develop                                                   通过
 Python 滚动与对话框绑定表面检查                                  通过
 Python facade test                                                2 passed
 ```
+
+### 里程碑 45：补齐 Python 标签页、Cookie、存储与下载门面（2026-07-23）
+
+状态：阶段完成。
+
+Python `Page` 新增标签页和窗口关联能力：
+
+```text
+Page.tabs_count()
+Page.tab_ids()
+Page.new_page(url=None, new_window=False, background=False, new_context=False)
+Page.activate_tab(target)
+Page.close_tab(target, others=False)
+Page.activate()
+Page.window_id()
+```
+
+新增 Cookie 和浏览器存储能力：
+
+```text
+Page.cookie_header()
+Page.set_cookie(name, value, url=None, domain=None, path=None)
+Page.remove_cookie(name, url=None, domain=None, path=None)
+Page.clear_cookies()
+Page.set_session_storage(item, value)
+Page.set_local_storage(item, value)
+```
+
+`value=None` 表示删除对应的 storage 项，语义直接来自 Rust Core。
+
+新增直接下载能力：
+
+```text
+Page.download(url)
+Page.download_to(url, path)
+```
+
+这些入口全部直接调用 Rust `Page` 领域方法，没有引入 Python 侧编排、helper、adapter、兼容别名或回退路径。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml                 通过
+cargo check -p openpage-python --manifest-path rust/Cargo.toml  通过
+uv build --wheel                                                 通过
+独立 uv 虚拟环境安装 wheel                                      通过
+标签页、Cookie、存储和下载门面检查                              通过
+Python 顶层 __all__ 检查                                        通过
+```

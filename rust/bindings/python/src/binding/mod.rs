@@ -125,6 +125,81 @@ impl PyPage {
             .handle_alert(accept, prompt_text, timeout_ms)
             .map_err(error)
     }
+    fn tabs_count(&self) -> PyResult<usize> {
+        self.inner.tabs_count().map_err(error)
+    }
+    fn tab_ids(&self) -> PyResult<Vec<String>> {
+        self.inner.tab_ids().map_err(error)
+    }
+    #[pyo3(signature = (url=None, new_window=false, background=false, new_context=false))]
+    fn new_page(
+        &self,
+        url: Option<&str>,
+        new_window: bool,
+        background: bool,
+        new_context: bool,
+    ) -> PyResult<PyPage> {
+        self.inner
+            .new_tab(url, new_window, background, new_context)
+            .map(|inner| PyPage { inner })
+            .map_err(error)
+    }
+    fn activate_tab(&self, target: &str) -> PyResult<()> {
+        self.inner.activate_tab(target).map_err(error)
+    }
+    #[pyo3(signature = (target, others=false))]
+    fn close_tab(&self, target: &str, others: bool) -> PyResult<usize> {
+        self.inner.close_tabs(target, others).map_err(error)
+    }
+    fn activate(&self) -> PyResult<()> {
+        self.inner.activate().map_err(error)
+    }
+    fn window_id(&self) -> PyResult<i64> {
+        self.inner.window_id().map_err(error)
+    }
+    fn cookie_header(&self) -> PyResult<Option<String>> {
+        self.inner.cookie_header().map_err(error)
+    }
+    #[pyo3(signature = (name, value, url=None, domain=None, path=None))]
+    fn set_cookie(
+        &self,
+        name: &str,
+        value: &str,
+        url: Option<&str>,
+        domain: Option<&str>,
+        path: Option<&str>,
+    ) -> PyResult<()> {
+        self.inner
+            .set_cookie(name, value, url, domain, path)
+            .map_err(error)
+    }
+    #[pyo3(signature = (name, url=None, domain=None, path=None))]
+    fn remove_cookie(
+        &self,
+        name: &str,
+        url: Option<&str>,
+        domain: Option<&str>,
+        path: Option<&str>,
+    ) -> PyResult<()> {
+        self.inner
+            .remove_cookie(name, url, domain, path)
+            .map_err(error)
+    }
+    fn clear_cookies(&self) -> PyResult<()> {
+        self.inner.clear_cookies().map_err(error)
+    }
+    fn set_session_storage(&self, item: &str, value: Option<&str>) -> PyResult<()> {
+        self.inner.set_session_storage(item, value).map_err(error)
+    }
+    fn set_local_storage(&self, item: &str, value: Option<&str>) -> PyResult<()> {
+        self.inner.set_local_storage(item, value).map_err(error)
+    }
+    fn download(&self, url: &str) -> PyResult<String> {
+        self.inner.download(url).map_err(error)
+    }
+    fn download_to(&self, url: &str, path: &str) -> PyResult<String> {
+        self.inner.download_to(url, Path::new(path)).map_err(error)
+    }
     fn url(&self) -> PyResult<String> {
         self.inner.url().map_err(error)
     }
