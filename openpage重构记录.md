@@ -1271,3 +1271,30 @@ bash scripts/test/check_all.sh
 状态：阶段完成。
 
 将 CLI 能力审计中的历史 `WebElement` 引用改为当前 Rust 核心 `Element`，避免文档继续传播已经删除的领域类型名称。
+
+### 里程碑 29：最终门禁与发布链路复验（2026-07-23）
+
+状态：阶段完成。
+
+当前仓库最终复验通过：
+
+```text
+cargo fmt --manifest-path rust/Cargo.toml --all -- --check
+cargo check --workspace --manifest-path rust/Cargo.toml
+bash scripts/test/check_all.sh
+uv build --wheel
+独立临时 uv 环境安装 wheel 并导入 openpage.openpage_rs
+python3 scripts/release/sync_version.py --check
+bash scripts/test/smoke_test.sh rust/target/debug/openpage
+bash scripts/test/mcp_smoke_test.sh
+python3 -m py_compile scripts/release/*.py tests/python/test_facade.py examples/python/*.py
+```
+
+最终源码审计结果：
+
+- `WebPage`、`WebElement`、`WebFrame`、`WebMode`、`ChromiumPage`、`SessionPage`、`s_ele`、`s_eles` 等旧门面未出现在当前源码、测试、示例和脚本中；
+- Python 和 PyO3 目录没有 `runtime`、`helper`、`adapter`、`compat` 文件；
+- Git 工作树干净，未跟踪构建产物为空；
+- 搜索命中的 `as_element_node`、错误消息中的 `previous_element` 等均为正常 Rust 语义，不是旧门面残留。
+
+远端多平台 runner 未在当前环境提供，因此不将本地验证表述为 Windows、Linux ARM 或双架构 macOS 的真实构建结果。
