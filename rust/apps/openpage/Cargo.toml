@@ -17,9 +17,6 @@ path = "src/lib.rs"
 name = "openpage"
 path = "src/main.rs"
 
-[[bin]]
-name = "dp"
-path = "src/bin/dp.rs"
 
 [dependencies]
 openpage = { path = "../../crates/openpage" }

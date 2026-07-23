@@ -3,34 +3,11 @@ use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "dp",
-    about = "DrissionPage-compatible helper commands",
-    long_about = "DrissionPage-compatible helper commands.\n\nCompatibility only. This helper does not define a separate OpenPage execution protocol or daemon mode. Use the `openpage` CLI for the active TCP daemon workflow.",
-    after_help = "Compatibility only: use `openpage serve`, `openpage doctor`, and the normal `openpage ...` commands for the active TCP daemon CLI.",
-    arg_required_else_help = true
-)]
-pub struct CompatCli {
-    /// Set the configured browser executable path
-    #[arg(short = 'p', long = "set-browser-path")]
-    pub set_browser_path: Option<PathBuf>,
-    /// Set the configured browser user-data directory
-    #[arg(short = 'u', long = "set-user-path")]
-    pub set_user_path: Option<PathBuf>,
-    /// Ensure a workspace `.openpage/config.toml` exists in the current directory
-    #[arg(short = 'c', long = "configs-to-here")]
-    pub configs_to_here: bool,
-    /// Launch or connect to a browser at the given local debugging port. Use 0 to keep the configured value.
-    #[arg(short = 'l', long = "launch-browser")]
-    pub launch_browser: Option<u16>,
-}
-
-#[derive(Debug, Parser)]
-#[command(
     name = "openpage",
     version,
     about = "OpenPage — Agent-friendly browser automation CLI",
     long_about = "OpenPage — Agent-friendly browser automation CLI.\n\nActive execution modes: TCP-backed daemon for CLI commands and stdio MCP for tool clients. Browser operations remain daemon-backed.",
-    after_help = "Use `openpage serve` for long-lived NDJSON TCP control, `openpage mcp` for MCP stdio, `openpage doctor` for local environment checks, and the normal `openpage ...` commands for daemon-backed one-shot control.\n\nBootstrap commands: `browser start` and `goto` may create the daemon-backed session when it is missing. Other `--session` commands require an already active session and fail fast instead of silently starting a fresh browser.\n\nRemoved on purpose and rejected: `serve --stdio`, `page get`, `page url`, `page title`, `page screenshot`.\n\n`dp` is compatibility glue only. It does not define a second OpenPage protocol surface."
+    after_help = "Use `openpage serve` for long-lived NDJSON TCP control, `openpage mcp` for MCP stdio, `openpage doctor` for local environment checks, and the normal `openpage ...` commands for daemon-backed one-shot control.\n\nBootstrap commands: `browser start` and `goto` may create the daemon-backed session when it is missing. Other `--session` commands require an already active session and fail fast instead of silently starting a fresh browser.\n\nRemoved on purpose and rejected: `serve --stdio`, `page get`, `page url`, `page title`, `page screenshot`."
 )]
 pub struct Cli {
     #[command(subcommand)]

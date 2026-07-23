@@ -881,3 +881,23 @@ cargo check -p openpage-python --manifest-path rust/Cargo.toml
 cargo fmt --all --manifest-path rust/Cargo.toml
 cargo check -p openpage --lib --manifest-path rust/Cargo.toml
 ```
+
+### 里程碑 12：删除 dp 兼容 CLI（2026-07-23）
+
+状态：阶段完成。
+
+- 删除 `dp` 兼容二进制及其 Cargo 声明；
+- 删除 `CompatCli`、兼容参数解析和 `dp` 模式判断；
+- 删除浏览器路径写入、配置复制和兼容启动分支；
+- 删除全部 `dp` 兼容测试和帮助文案；
+- OpenPage CLI 只保留正式的 `openpage` 命令入口；
+- 同步移除应用 crate 对已隐藏 `webpage` 模块的重新导出，恢复应用层编译边界；
+- 不保留别名、转发、fallback 或兼容提示入口。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check -p openpage-app --manifest-path rust/Cargo.toml
+cargo test -p openpage-app --manifest-path rust/Cargo.toml cli::tests --lib
+```
