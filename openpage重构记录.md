@@ -1147,3 +1147,20 @@ cargo test -p openpage config::tests::resolved_config_tracks_debugger_source --m
 ```
 
 全量 `cargo test --workspace` 已启动，但出现若干配置/daemon 临时状态相关测试失败，并在 Session 测试进入长时间网络/超时路径后主动停止。当前不能把“全量测试通过”作为验收结论；后续必须隔离测试环境、逐项确认这些失败是否为环境污染或真实回归，再进行最终完成标记。
+
+### 里程碑 21：修复配置测试的全局环境竞争（2026-07-23）
+
+状态：阶段完成。
+
+全量测试审计确认配置测试并行修改 `HOME`、当前目录和 OpenPage 环境变量，导致测试之间互相覆盖配置。修复方式仅限测试边界：为配置测试增加同一把静态互斥锁，保证环境变量和当前目录的临时修改串行恢复。
+
+没有修改正式配置逻辑，没有增加产品层 helper、adapter 或兼容分支。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo test -p openpage config::tests --manifest-path rust/Cargo.toml -- --nocapture
+```
+
+结果：6 个配置测试全部通过。
