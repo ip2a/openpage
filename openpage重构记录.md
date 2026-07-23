@@ -1454,3 +1454,19 @@ cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threa
 ```
 
 同时清理了 CLI Doctor 测试中因删除旧 Session JSON 测试留下的重复 `#[test]` 属性。
+
+### 里程碑 38：清理删除旧工具后的测试残留（2026-07-23）
+
+状态：阶段完成。
+
+删除旧 `make_session_ele` 工具后，继续移除测试模块中失效的 HTML fixture、临时文件函数和未使用导入，保持 Rust Core 测试无新增警告。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo test -p openpage --lib --no-run --manifest-path rust/Cargo.toml
+cargo check --workspace --manifest-path rust/Cargo.toml
+```
+
+结果：通过。

@@ -527,11 +527,11 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+    use crate::Settings;
     use crate::element::ElementResource;
     use crate::page::Page;
     use crate::session::{snapshot_find, snapshot_root};
     use crate::settings::scoped_test_settings;
-    use crate::{Session, SessionOptions, Settings};
 
     #[test]
     fn debugger_address_docking_helper_signatures_return_page() {
@@ -541,16 +541,6 @@ mod tests {
         let _ = from_selenium as fn(&str) -> crate::OpenPageResult<Page>;
         let _ = from_playwright as fn(&str) -> crate::OpenPageResult<Page>;
     }
-
-    const HTML: &str = r#"
-<html>
-  <body>
-    <div class="item">alpha</div>
-    <div class="item">beta</div>
-    <div class="item">gamma</div>
-  </body>
-</html>
-"#;
 
     #[test]
     fn wait_until_returns_first_truthy_value_before_timeout() {
@@ -887,15 +877,5 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("openpage-tools-{prefix}-{unique}"));
         fs::create_dir_all(&dir).expect("create temp dir");
         dir
-    }
-
-    fn make_temp_file(prefix: &str, content: &str) -> std::path::PathBuf {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system time")
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!("openpage-tools-{prefix}-{unique}.html"));
-        fs::write(&path, content).expect("write temp html");
-        path
     }
 }
