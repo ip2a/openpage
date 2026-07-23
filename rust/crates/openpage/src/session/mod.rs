@@ -2282,6 +2282,93 @@ impl SessionResponseInfo {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct Response {
+    url: Option<String>,
+    status_code: Option<u16>,
+    headers: Vec<(String, String)>,
+    content_type: Option<String>,
+    encoding: Option<String>,
+    body: Arc<Vec<u8>>,
+    text: Arc<String>,
+}
+
+impl Response {
+    pub fn url(&self) -> Option<&str> {
+        self.url.as_deref()
+    }
+    pub fn status_code(&self) -> Option<u16> {
+        self.status_code
+    }
+    pub fn headers(&self) -> &[(String, String)] {
+        &self.headers
+    }
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(name))
+            .map(|(_, value)| value.as_str())
+    }
+    pub fn content_type(&self) -> Option<&str> {
+        self.content_type.as_deref()
+    }
+    pub fn encoding(&self) -> Option<&str> {
+        self.encoding.as_deref()
+    }
+    pub fn content(&self) -> &[u8] {
+        self.body.as_ref()
+    }
+    pub fn text(&self) -> &str {
+        self.text.as_str()
+    }
+    pub fn is_success(&self) -> bool {
+        self.status_code
+            .is_some_and(|status| (200..400).contains(&status))
+    }
+    pub fn document(&self) -> Document {
+        Document {
+            html: Arc::clone(&self.text),
+            base_url: self.url.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Document {
+    html: Arc<String>,
+    base_url: Option<String>,
+}
+
+impl Document {
+    pub fn html(&self) -> &str {
+        self.html.as_str()
+    }
+    pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        snapshot_find_arc(
+            Arc::clone(&self.html),
+            locator.raw(),
+            self.base_url.as_ref().map(|url| Arc::new(url.clone())),
+            None,
+        )
+    }
+    pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let locator = Locator::from_input(locator)?;
+        snapshot_find_all_arc(
+            Arc::clone(&self.html),
+            locator.raw(),
+            self.base_url.as_ref().map(|url| Arc::new(url.clone())),
+            None,
+        )
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct SessionRuntimeInfo {
     pub timeout_secs: u64,

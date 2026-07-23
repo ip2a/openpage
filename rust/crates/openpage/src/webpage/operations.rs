@@ -597,7 +597,7 @@ impl WebPage {
                 self.driver.goto(url)?;
                 Ok(true)
             }
-            WebMode::Session => self.session.get(url),
+            WebMode::Session => self.session.get(url).map(|response| response.is_success()),
         }
     }
 

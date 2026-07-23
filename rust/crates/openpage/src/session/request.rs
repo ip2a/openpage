@@ -57,7 +57,7 @@ impl Session {
         handle.page()
     }
 
-    pub fn get(&self, url: &str) -> OpenPageResult<bool> {
+    pub fn get(&self, url: &str) -> OpenPageResult<Response> {
         self.get_with_options(url, &SessionRequestOptions::default())
     }
 
@@ -65,7 +65,7 @@ impl Session {
         &self,
         url: &str,
         options: &SessionRequestOptions,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<Response> {
         if let Some(path) = resolve_local_file_path(url)? {
             return self.load_local_file(&path);
         }
@@ -94,7 +94,7 @@ impl Session {
         })
     }
 
-    pub fn head(&self, url: &str) -> OpenPageResult<bool> {
+    pub fn head(&self, url: &str) -> OpenPageResult<Response> {
         self.head_with_options(url, &SessionRequestOptions::default())
     }
 
@@ -102,7 +102,7 @@ impl Session {
         &self,
         url: &str,
         options: &SessionRequestOptions,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<Response> {
         self.send_request_with_retry(url, Some(options), |context| {
             let request_url = append_query_params(url, &context.params)?;
             let headers = effective_request_headers(
@@ -128,7 +128,7 @@ impl Session {
         })
     }
 
-    pub fn options(&self, url: &str) -> OpenPageResult<bool> {
+    pub fn options(&self, url: &str) -> OpenPageResult<Response> {
         self.options_with_options(url, &SessionRequestOptions::default())
     }
 
@@ -136,7 +136,7 @@ impl Session {
         &self,
         url: &str,
         options: &SessionRequestOptions,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<Response> {
         self.send_request_with_retry(url, Some(options), |context| {
             let request_url = append_query_params(url, &context.params)?;
             let headers = effective_request_headers(
@@ -164,7 +164,7 @@ impl Session {
         })
     }
 
-    pub fn post(&self, url: &str) -> OpenPageResult<bool> {
+    pub fn post(&self, url: &str) -> OpenPageResult<Response> {
         self.post_with_options(url, &SessionRequestOptions::default())
     }
 
@@ -172,7 +172,7 @@ impl Session {
         &self,
         url: &str,
         options: &SessionRequestOptions,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<Response> {
         self.send_request_with_retry(url, Some(options), |context| {
             let request_url = append_query_params(url, &context.params)?;
             let headers = effective_request_headers(
@@ -198,7 +198,7 @@ impl Session {
         })
     }
 
-    pub fn post_form<K, V>(&self, url: &str, form: &[(K, V)]) -> OpenPageResult<bool>
+    pub fn post_form<K, V>(&self, url: &str, form: &[(K, V)]) -> OpenPageResult<Response>
     where
         K: AsRef<str>,
         V: AsRef<str>,
@@ -211,7 +211,7 @@ impl Session {
         url: &str,
         form: &[(K, V)],
         options: &SessionRequestOptions,
-    ) -> OpenPageResult<bool>
+    ) -> OpenPageResult<Response>
     where
         K: AsRef<str>,
         V: AsRef<str>,
@@ -248,7 +248,7 @@ impl Session {
         })
     }
 
-    pub fn post_body(&self, url: &str, body: impl Into<String>) -> OpenPageResult<bool> {
+    pub fn post_body(&self, url: &str, body: impl Into<String>) -> OpenPageResult<Response> {
         self.post_body_with_options(url, body, &SessionRequestOptions::default())
     }
 
@@ -257,7 +257,7 @@ impl Session {
         url: &str,
         body: impl Into<String>,
         options: &SessionRequestOptions,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<Response> {
         let body = body.into();
         self.send_request_with_retry(url, Some(options), |context| {
             let request_url = append_query_params(url, &context.params)?;
@@ -285,7 +285,7 @@ impl Session {
         })
     }
 
-    pub fn put(&self, url: &str) -> OpenPageResult<bool> {
+    pub fn put(&self, url: &str) -> OpenPageResult<Response> {
         self.put_with_options(url, &SessionRequestOptions::default())
     }
 
@@ -293,7 +293,7 @@ impl Session {
         &self,
         url: &str,
         options: &SessionRequestOptions,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<Response> {
         self.send_request_with_retry(url, Some(options), |context| {
             let request_url = append_query_params(url, &context.params)?;
             let headers = effective_request_headers(
@@ -319,7 +319,7 @@ impl Session {
         })
     }
 
-    pub fn delete(&self, url: &str) -> OpenPageResult<bool> {
+    pub fn delete(&self, url: &str) -> OpenPageResult<Response> {
         self.delete_with_options(url, &SessionRequestOptions::default())
     }
 
@@ -327,7 +327,7 @@ impl Session {
         &self,
         url: &str,
         options: &SessionRequestOptions,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<Response> {
         self.send_request_with_retry(url, Some(options), |context| {
             let request_url = append_query_params(url, &context.params)?;
             let headers = effective_request_headers(
@@ -353,7 +353,7 @@ impl Session {
         })
     }
 
-    pub fn patch(&self, url: &str) -> OpenPageResult<bool> {
+    pub fn patch(&self, url: &str) -> OpenPageResult<Response> {
         self.patch_with_options(url, &SessionRequestOptions::default())
     }
 
@@ -361,7 +361,7 @@ impl Session {
         &self,
         url: &str,
         options: &SessionRequestOptions,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<Response> {
         self.send_request_with_retry(url, Some(options), |context| {
             let request_url = append_query_params(url, &context.params)?;
             let headers = effective_request_headers(
@@ -387,7 +387,7 @@ impl Session {
         })
     }
 
-    pub fn post_json(&self, url: &str, payload: Option<Value>) -> OpenPageResult<bool> {
+    pub fn post_json(&self, url: &str, payload: Option<Value>) -> OpenPageResult<Response> {
         self.post_json_with_options(url, payload, &SessionRequestOptions::default())
     }
 
@@ -396,7 +396,7 @@ impl Session {
         url: &str,
         payload: Option<Value>,
         options: &SessionRequestOptions,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<Response> {
         self.send_request_with_retry(url, Some(options), |context| {
             let request_url = append_query_params(url, &context.params)?;
             let headers = effective_request_headers(
@@ -430,7 +430,7 @@ impl Session {
         })
     }
 
-    pub fn post_json_body(&self, url: &str, body: impl Into<String>) -> OpenPageResult<bool> {
+    pub fn post_json_body(&self, url: &str, body: impl Into<String>) -> OpenPageResult<Response> {
         self.post_json_body_with_options(url, body, &SessionRequestOptions::default())
     }
 
@@ -439,7 +439,7 @@ impl Session {
         url: &str,
         body: impl Into<String>,
         options: &SessionRequestOptions,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<Response> {
         let body = body.into();
         self.send_request_with_retry(url, Some(options), |context| {
             let request_url = append_query_params(url, &context.params)?;
@@ -658,7 +658,7 @@ impl Session {
     }
 
     pub fn is_alive(&self) -> OpenPageResult<bool> {
-        Ok(true)
+        Ok(self.lock_state()?.status_code.is_some())
     }
 
     pub fn is_loading(&self) -> OpenPageResult<bool> {
@@ -1152,7 +1152,7 @@ impl Session {
         requested_url: &str,
         request_options: Option<&SessionRequestOptions>,
         mut send: F,
-    ) -> OpenPageResult<bool>
+    ) -> OpenPageResult<Response>
     where
         F: FnMut(&SessionRequestContext) -> OpenPageResult<reqwest::blocking::Response>,
     {
@@ -1162,13 +1162,13 @@ impl Session {
         for attempt in 0..=retry_times {
             match send(&context) {
                 Ok(response) => {
-                    let ok = if context.stream && context.hooks.is_empty() {
+                    let response = if context.stream && context.hooks.is_empty() {
                         self.store_streaming_response(requested_url, response)?
                     } else {
                         self.store_response(requested_url, response, &context.hooks)?
                     };
-                    if ok || attempt == retry_times {
-                        return Ok(ok);
+                    if response.is_success() || attempt == retry_times {
+                        return Ok(response);
                     }
                 }
                 Err(err) => {
@@ -1342,12 +1342,34 @@ impl Session {
         ))
     }
 
+    fn response_from_state(&self) -> OpenPageResult<Response> {
+        let mut state = self.lock_state()?;
+        ensure_response_body_loaded(&mut state)?;
+        let body = state
+            .raw_data
+            .clone()
+            .unwrap_or_else(|| Arc::new(Vec::new()));
+        let text = state
+            .body
+            .clone()
+            .unwrap_or_else(|| Arc::new(String::new()));
+        Ok(Response {
+            url: state.url.clone(),
+            status_code: state.status_code,
+            headers: state.response_headers.clone(),
+            content_type: state.response_content_type.clone(),
+            encoding: state.encoding.clone(),
+            body,
+            text,
+        })
+    }
+
     fn store_response(
         &self,
         requested_url: &str,
         response: reqwest::blocking::Response,
         hooks: &SessionHooks,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<Response> {
         let final_url = response.url().to_string();
         let status = response.status().as_u16();
         let response_headers = response
@@ -1402,14 +1424,14 @@ impl Session {
         };
         drop(state);
         run_response_hooks(hooks, hook_event);
-        Ok((200..400).contains(&status))
+        Ok(self.response_from_state()?)
     }
 
     fn store_streaming_response(
         &self,
         requested_url: &str,
         response: reqwest::blocking::Response,
-    ) -> OpenPageResult<bool> {
+    ) -> OpenPageResult<Response> {
         let final_url = response.url().to_string();
         let status = response.status().as_u16();
         let response_headers = response
@@ -1445,10 +1467,10 @@ impl Session {
             response,
         });
         refresh_state_body_encoding(&mut state);
-        Ok((200..400).contains(&status))
+        Ok(self.response_from_state()?)
     }
 
-    fn load_local_file(&self, path: &Path) -> OpenPageResult<bool> {
+    fn load_local_file(&self, path: &Path) -> OpenPageResult<Response> {
         let canonical = path.canonicalize().map_err(|err| {
             OpenPageError::Io(session_local_file_failed_message(
                 "resolve",
@@ -1481,7 +1503,8 @@ impl Session {
         state.pending_response = None;
         state.raw_data = Some(Arc::new(raw_data));
         refresh_state_body_encoding(&mut state);
-        Ok(true)
+        drop(state);
+        self.response_from_state()
     }
 
     fn resolve_session_download_target(

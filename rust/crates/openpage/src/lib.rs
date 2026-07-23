@@ -74,8 +74,8 @@ pub use recorder::{
 };
 pub use screencast::{Screencast, ScreencastMode};
 pub use session::{
-    CookieEntry, CookieInput, DocumentElement, HeadersInput, ParamsInput, Session,
-    SessionAuthInput, SessionCert, SessionCertInput, SessionCookie, SessionCookieParam,
+    CookieEntry, CookieInput, Document, DocumentElement, HeadersInput, ParamsInput, Response,
+    Session, SessionAuthInput, SessionCert, SessionCertInput, SessionCookie, SessionCookieParam,
     SessionDownload, SessionEncodingInput, SessionHandle, SessionHookEvent, SessionHooks,
     SessionMaxRedirectsInput, SessionOptions, SessionProxyInput, SessionRequestOptions,
     SessionResponseHook, SessionResponseInfo, SessionRetryIntervalInput, SessionRetryTimesInput,

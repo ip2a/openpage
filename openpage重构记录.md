@@ -710,3 +710,26 @@ cargo check -p openpage --lib
 cargo test -p openpage --lib session::snapshot::tests::session_settings_accept_supported_values
 Rust 核心 SessionElement 搜索结果为 0
 ```
+
+### 里程碑 6：Rust Session 请求返回 Response 并进入 Document（2026-07-23）
+
+状态：阶段完成。
+
+完成内容：
+
+- `Session.get/head/options/post/put/delete/patch` 及 JSON、表单、请求体变体统一返回 `Response`；
+- 新增 Rust `Response`，独立保存 URL、状态码、响应头、编码、字节内容和文本内容；
+- 新增 Rust `Document`，通过 `response.document()` 进入静态 HTML 查询；
+- `Document.find/find_all` 统一使用静态文档元素模型 `DocumentElement`；
+- 删除 WebPage 内部对 Session 请求返回值的旧布尔假设，改为显式检查 `Response.is_success()`。
+
+本阶段尚未删除 Session 上历史的最后响应查询方法；该删除将在 Response 行为验证后单独完成，不保留兼容入口。
+
+验证：
+
+```text
+cargo fmt --all
+cargo check -p openpage --lib
+cargo test -p openpage --lib session::snapshot::tests::session_get
+cargo test -p openpage --lib session::snapshot::tests::session_request_returns_owned_response_with_document
+```

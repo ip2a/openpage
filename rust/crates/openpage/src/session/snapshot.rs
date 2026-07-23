@@ -2004,7 +2004,11 @@ mod tests {
         let (address, handle) = spawn_capture_server("200 OK", "hooked");
         let url = format!("{address}/hook");
 
-        assert!(page.get(&url).expect("request with response hook"));
+        assert!(
+            page.get(&url)
+                .expect("request with response hook")
+                .is_success()
+        );
         handle.join().expect("server thread");
 
         let records = captured.lock().expect("lock hook records");
@@ -2050,6 +2054,7 @@ mod tests {
         assert!(
             page.get_with_options(&url, &request_options)
                 .expect("request with runtime + request hooks")
+                .is_success()
         );
         handle.join().expect("server thread");
 
@@ -3248,7 +3253,11 @@ mod tests {
         })
         .expect("session page should initialize");
 
-        assert!(page.get(&url).expect("get should retry then succeed"));
+        assert!(
+            page.get(&url)
+                .expect("get should retry then succeed")
+                .is_success()
+        );
         assert_eq!(page.status_code().expect("status code"), Some(200));
         assert_eq!(page.html().expect("html body"), "done".to_string());
         assert_eq!(attempts.load(Ordering::SeqCst), 2);
@@ -3270,7 +3279,11 @@ mod tests {
         })
         .expect("session page should initialize");
 
-        assert!(page.post(&url).expect("post should retry then succeed"));
+        assert!(
+            page.post(&url)
+                .expect("post should retry then succeed")
+                .is_success()
+        );
         assert_eq!(page.status_code().expect("status code"), Some(200));
         assert_eq!(page.html().expect("html body"), "posted".to_string());
         assert_eq!(attempts.load(Ordering::SeqCst), 2);
@@ -3291,6 +3304,7 @@ mod tests {
         assert!(
             page.get(path.to_str().expect("path str"))
                 .expect("load file")
+                .is_success()
         );
         assert_eq!(page.status_code().expect("status"), Some(200));
         assert!(page.url_available().expect("url available"));
@@ -3302,7 +3316,7 @@ mod tests {
                 .expect("current url")
                 .starts_with("file://")
         );
-        assert!(page.get(&file_url).expect("load file url"));
+        assert!(page.get(&file_url).expect("load file url").is_success());
         let current_file_url = page.url().expect("url").expect("current url");
         let current_path = Url::parse(&current_file_url)
             .expect("parse current file url")
@@ -3354,7 +3368,7 @@ mod tests {
         let page = Session::new(SessionOptions::default()).expect("session page");
         let (address, handle) = spawn_capture_server("200 OK", "snapshot");
 
-        assert!(page.get(&address).expect("request snapshot"));
+        assert!(page.get(&address).expect("request snapshot").is_success());
 
         let expected_url = format!("{address}/");
         let response = page
@@ -3394,7 +3408,7 @@ mod tests {
         let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/status");
 
-        assert!(page.head(&url).expect("head request"));
+        assert!(page.head(&url).expect("head request").is_success());
         let request = handle.join().expect("server thread");
         assert!(
             request.starts_with("HEAD /status HTTP/1.1"),
@@ -3415,7 +3429,7 @@ mod tests {
         let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/status");
 
-        assert!(page.options(&url).expect("options request"));
+        assert!(page.options(&url).expect("options request").is_success());
         let request = handle.join().expect("server thread");
         assert!(
             request.starts_with("OPTIONS /status HTTP/1.1"),
@@ -3437,7 +3451,11 @@ mod tests {
         let url = format!("{address}/submit");
         let form = [("username", "openpage"), ("pwd", "secret")];
 
-        assert!(page.post_form(&url, &form).expect("post form request"));
+        assert!(
+            page.post_form(&url, &form)
+                .expect("post form request")
+                .is_success()
+        );
         let request = handle.join().expect("server thread");
         assert!(
             request.starts_with("POST /submit HTTP/1.1"),
@@ -3467,7 +3485,11 @@ mod tests {
         let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/submit");
 
-        assert!(page.post_body(&url, "abc=123").expect("post body request"));
+        assert!(
+            page.post_body(&url, "abc=123")
+                .expect("post body request")
+                .is_success()
+        );
         let request = handle.join().expect("server thread");
         assert!(
             request.starts_with("POST /submit HTTP/1.1"),
@@ -3496,6 +3518,7 @@ mod tests {
         assert!(
             page.post_json_body(&url, r#"{"abc":"123"}"#)
                 .expect("post json body request")
+                .is_success()
         );
         let request = handle.join().expect("server thread");
         assert!(
@@ -3526,7 +3549,7 @@ mod tests {
         let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/items/1");
 
-        assert!(page.put(&url).expect("put request"));
+        assert!(page.put(&url).expect("put request").is_success());
         let request = handle.join().expect("server thread");
         assert!(
             request.starts_with("PUT /items/1 HTTP/1.1"),
@@ -3548,7 +3571,7 @@ mod tests {
         let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/items/1");
 
-        assert!(page.delete(&url).expect("delete request"));
+        assert!(page.delete(&url).expect("delete request").is_success());
         let request = handle.join().expect("server thread");
         assert!(
             request.starts_with("DELETE /items/1 HTTP/1.1"),
@@ -3570,7 +3593,7 @@ mod tests {
         let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/items/1");
 
-        assert!(page.patch(&url).expect("patch request"));
+        assert!(page.patch(&url).expect("patch request").is_success());
         let request = handle.join().expect("server thread");
         assert!(
             request.starts_with("PATCH /items/1 HTTP/1.1"),
@@ -3722,7 +3745,7 @@ mod tests {
         );
 
         let (address, server) = spawn_capture_server("200 OK", "shared session");
-        assert!(page1.get(&address).expect("shared request"));
+        assert!(page1.get(&address).expect("shared request").is_success());
 
         let response = page2
             .response()
@@ -3784,7 +3807,11 @@ mod tests {
         page.set_auth(Some(("alice".to_string(), "secret".to_string())))
             .expect("set auth");
 
-        assert!(page.get(&url).expect("request with params and auth"));
+        assert!(
+            page.get(&url)
+                .expect("request with params and auth")
+                .is_success()
+        );
         assert_eq!(page.html().expect("html body"), "secured".to_string());
 
         let request = handle.join().expect("server thread");
@@ -3815,7 +3842,7 @@ mod tests {
         })
         .expect("session page");
 
-        assert!(page.get(&address).expect("streaming request"));
+        assert!(page.get(&address).expect("streaming request").is_success());
         {
             let state = page.lock_state().expect("lock session state");
             assert_eq!(state.status_code, Some(200));
@@ -3858,6 +3885,7 @@ mod tests {
         assert!(
             page.get_with_options(&address, &request_options)
                 .expect("request with stream override")
+                .is_success()
         );
         {
             let state = page.lock_state().expect("lock session state");
@@ -3876,7 +3904,11 @@ mod tests {
 
         page.set_stream(true).expect("enable runtime stream");
         assert!(page.stream().expect("runtime stream getter"));
-        assert!(page.get(&address).expect("runtime streaming request"));
+        assert!(
+            page.get(&address)
+                .expect("runtime streaming request")
+                .is_success()
+        );
         assert!(
             page.lock_state()
                 .expect("lock session state")
@@ -3900,7 +3932,11 @@ mod tests {
         .expect("session page");
         let url = format!("{address}/headers");
 
-        assert!(page.get(&url).expect("request with initial headers"));
+        assert!(
+            page.get(&url)
+                .expect("request with initial headers")
+                .is_success()
+        );
 
         let request = handle.join().expect("server thread");
         assert!(
@@ -3930,7 +3966,11 @@ mod tests {
 
         let (address, handle) = spawn_capture_server("200 OK", "headers");
         let url = format!("{address}/headers");
-        assert!(page.get(&url).expect("request with updated headers"));
+        assert!(
+            page.get(&url)
+                .expect("request with updated headers")
+                .is_success()
+        );
 
         let request = handle.join().expect("server thread");
         assert!(
@@ -4061,6 +4101,7 @@ mod tests {
         assert!(
             page.get_with_options(&url, &request_options)
                 .expect("request with overrides")
+                .is_success()
         );
         let requests = handle.join().expect("server thread");
         assert_eq!(requests.len(), 2);
@@ -4173,6 +4214,7 @@ mod tests {
             stream_page
                 .get(&english_stream_url)
                 .expect("stream get should store pending response")
+                .is_success()
         );
         let english_stream = stream_page
             .html()
@@ -4205,6 +4247,7 @@ mod tests {
             chinese_stream_page
                 .get(&chinese_stream_url)
                 .expect("stream get should store pending response in Chinese")
+                .is_success()
         );
         let chinese_stream = chinese_stream_page
             .html()
@@ -4221,7 +4264,7 @@ mod tests {
         let page = Session::new(SessionOptions::default()).expect("session page");
         let first_url = format!("{first_address}/first");
 
-        assert!(page.get(&first_url).expect("first request"));
+        assert!(page.get(&first_url).expect("first request").is_success());
         let first_request = first_handle.join().expect("server thread");
         let first_referer = first_request
             .lines()
@@ -4234,7 +4277,7 @@ mod tests {
 
         let (second_address, second_handle) = spawn_capture_server("200 OK", "second");
         let second_url = format!("{second_address}/next");
-        assert!(page.get(&second_url).expect("second request"));
+        assert!(page.get(&second_url).expect("second request").is_success());
         let second_request = second_handle.join().expect("server thread");
         let second_referer = second_request
             .lines()
@@ -4254,6 +4297,7 @@ mod tests {
         assert!(
             page.get(path.to_str().expect("path str"))
                 .expect("load bytes file")
+                .is_success()
         );
         assert_eq!(
             page.html().expect("default html"),
@@ -4275,6 +4319,7 @@ mod tests {
         assert!(
             page.get(path.to_str().expect("path str"))
                 .expect("reload bytes file")
+                .is_success()
         );
         assert_eq!(page.html().expect("reloaded html"), "caf\u{e9}".to_string());
 
@@ -4283,6 +4328,7 @@ mod tests {
         assert!(
             page.get(path.to_str().expect("path str"))
                 .expect("reload bytes file after clear")
+                .is_success()
         );
         assert_eq!(
             page.html().expect("auto decoded html"),
@@ -4302,6 +4348,7 @@ mod tests {
         assert!(
             page.get("http://example.test/proxy-path")
                 .expect("request through proxy")
+                .is_success()
         );
         assert_eq!(page.html().expect("html body"), "proxied".to_string());
 
@@ -4321,6 +4368,7 @@ mod tests {
         assert!(
             page.get(&format!("{first_address}/first"))
                 .expect("request without redirects")
+                .is_success()
         );
         assert_eq!(page.status_code().expect("status"), Some(302));
         assert!(page.url_available().expect("url available"));
@@ -4338,6 +4386,7 @@ mod tests {
         assert!(
             page.get(&format!("{second_address}/first"))
                 .expect("request with redirect")
+                .is_success()
         );
         assert_eq!(page.status_code().expect("status"), Some(200));
         assert!(page.url_available().expect("url available"));
@@ -4365,7 +4414,7 @@ mod tests {
         .expect("session page");
         let (address, handle) = spawn_capture_server("404 Not Found", "missing");
 
-        assert!(!page.get(&address).expect("request 404"));
+        assert!(!page.get(&address).expect("request 404").is_success());
         assert_eq!(page.status_code().expect("status"), Some(404));
         assert!(!page.url_available().expect("url available"));
 
@@ -4630,6 +4679,7 @@ mod tests {
         assert!(
             page.get(path.to_str().expect("path str"))
                 .expect("load file")
+                .is_success()
         );
 
         let submit = page.find_by("id", "submit").expect("submit button");
@@ -4651,6 +4701,7 @@ mod tests {
         assert!(
             page.get(path.to_str().expect("path str"))
                 .expect("load file")
+                .is_success()
         );
 
         let submit = page.find((By::ID, "submit")).expect("submit button");
@@ -5585,5 +5636,28 @@ mod tests {
         assert_eq!(mixed.len(), 1);
         assert_eq!(mixed[0].locator, "@class=item".to_string());
         assert_eq!(mixed[0].elements.len(), 1);
+    }
+
+    #[test]
+    fn session_request_returns_owned_response_with_document() {
+        let (address, handle) = spawn_capture_server(
+            "200 OK",
+            "<html><head><title>OpenPage</title></head><body><h1 id=\"title\">Hello</h1></body></html>",
+        );
+        let session = Session::new(SessionOptions::default()).expect("session");
+        let response = session.get(&address).expect("response");
+        handle.join().expect("server thread");
+
+        assert_eq!(response.status_code(), Some(200));
+        assert!(response.is_success());
+        assert_eq!(
+            response
+                .document()
+                .find("#title")
+                .expect("document element")
+                .text()
+                .expect("text"),
+            Some("Hello".to_string())
+        );
     }
 }

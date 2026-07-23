@@ -26,14 +26,16 @@ impl WebPage {
         if self.mode()? == WebMode::Driver {
             self.cookies_to_session(true)?;
         }
-        self.session.post(url)
+        self.session.post(url).map(|response| response.is_success())
     }
 
     pub fn post_json(&self, url: &str, payload: Option<Value>) -> OpenPageResult<bool> {
         if self.mode()? == WebMode::Driver {
             self.cookies_to_session(true)?;
         }
-        self.session.post_json(url, payload)
+        self.session
+            .post_json(url, payload)
+            .map(|response| response.is_success())
     }
 
     pub fn download_path(&self) -> OpenPageResult<Option<String>> {

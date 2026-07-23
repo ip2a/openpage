@@ -1204,6 +1204,7 @@ mod tests {
         assert!(
             page.get(path.to_str().expect("path str"))
                 .expect("load file")
+                .is_success()
         );
 
         let result = make_session_ele(&page, Some(".item"), Some(-1)).expect("last item");
