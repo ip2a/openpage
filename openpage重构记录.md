@@ -1215,3 +1215,25 @@ python tests/python/test_facade.py -v
 uv run python -m py_compile examples/python/basic_usage.py examples/python/test_baidu.py tests/python/test_facade.py
 rg -n 'ChromiumPage|SessionPage|WebPage|WebMode|s_ele|s_eles' examples python tests --glob '*.py' --glob '*.rs'
 ```
+
+### 里程碑 25：修复 Session 流式响应的延迟加载边界（2026-07-23）
+
+状态：阶段完成。
+
+修复 Rust Session 在流式请求返回时的真实状态机问题：`store_streaming_response()` 在写入 `pending_response` 后，不应立即加载响应体。此前它调用带加载行为的响应构造路径，导致流式响应刚返回就消费并清空 `pending_response`，破坏了 `stream=True` 的延迟读取语义；同时此前的锁持有路径还会造成重复获取 Session 状态锁。
+
+调整后：
+
+- 流式请求返回 `Response` 时保留 `pending_response`；
+- 只有读取正文、原始字节或文档时才消费 `pending_response`；
+- 状态锁在离开写入阶段后才重新用于构造响应；
+- 未恢复任何兼容、回退、废弃别名或产品层 `runtime`、`helper`、`adapter`。
+
+验证：
+
+```text
+cargo test -p openpage session::snapshot::tests::session_page_set_stream_updates_runtime_stream_behavior --manifest-path rust/Cargo.toml -- --nocapture
+cargo test -p openpage session::snapshot::tests::session_ --manifest-path rust/Cargo.toml -- --test-threads=1
+```
+
+结果：目标测试通过；Session 相关 61 个测试全部通过。

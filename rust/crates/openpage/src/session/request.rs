@@ -1295,9 +1295,11 @@ impl Session {
         ))
     }
 
-    fn response_from_state(&self) -> OpenPageResult<Response> {
+    fn response_from_state(&self, load_body: bool) -> OpenPageResult<Response> {
         let mut state = self.lock_state()?;
-        ensure_response_body_loaded(&mut state)?;
+        if load_body {
+            ensure_response_body_loaded(&mut state)?;
+        }
         let body = state
             .raw_data
             .clone()
@@ -1377,7 +1379,7 @@ impl Session {
         };
         drop(state);
         run_response_hooks(hooks, hook_event);
-        Ok(self.response_from_state()?)
+        Ok(self.response_from_state(false)?)
     }
 
     fn store_streaming_response(
@@ -1420,7 +1422,8 @@ impl Session {
             response,
         });
         refresh_state_body_encoding(&mut state);
-        Ok(self.response_from_state()?)
+        drop(state);
+        Ok(self.response_from_state(false)?)
     }
 
     fn load_local_file(&self, path: &Path) -> OpenPageResult<Response> {
@@ -1457,7 +1460,7 @@ impl Session {
         state.raw_data = Some(Arc::new(raw_data));
         refresh_state_body_encoding(&mut state);
         drop(state);
-        self.response_from_state()
+        self.response_from_state(true)
     }
 
     fn resolve_session_download_target(
