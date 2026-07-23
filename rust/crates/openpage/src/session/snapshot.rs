@@ -1359,7 +1359,7 @@ mod tests {
         snapshot_root,
     };
     use crate::settings::scoped_test_settings;
-    use crate::{By, ElementsListExt, LocatorInput, OpenPageError, Settings};
+    use crate::{By, LocatorInput, OpenPageError, Settings};
     use base64::Engine;
     use base64::prelude::BASE64_STANDARD;
     use scraper::Html;
@@ -1394,32 +1394,6 @@ mod tests {
   </body>
 </html>
 "#;
-
-    fn load_session_html_for_test(
-        page: &Session,
-        html: &str,
-        url: Option<&str>,
-    ) -> crate::OpenPageResult<()> {
-        let mut state = page
-            .inner
-            .lock()
-            .map_err(|_| OpenPageError::PageOperation("session state lock poisoned".to_string()))?;
-        state.url = url.map(str::to_string);
-        state.response_content_type = Some("text/html; charset=utf-8".to_string());
-        state.pending_response = None;
-        state.raw_data = Some(Arc::new(html.as_bytes().to_vec()));
-        super::refresh_state_body_encoding(&mut state);
-        Ok(())
-    }
-
-    fn poison_mutex<T: Send + 'static>(mutex: Arc<Mutex<T>>) {
-        let join = thread::spawn(move || {
-            let _guard = mutex.lock().expect("lock poisoned test mutex");
-            panic!("poison mutex");
-        })
-        .join();
-        assert!(join.is_err(), "poison helper thread should panic");
-    }
 
     #[test]
     fn snapshot_find_supports_nested_queries() {
@@ -1458,92 +1432,6 @@ mod tests {
 
         let top_level = snapshot_find_all(HTML, ".item").expect("top-level items should exist");
         assert_eq!(top_level.len(), 2);
-    }
-
-    #[test]
-    fn session_elements_one_config_supports_none_value_and_raise() {
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        load_session_html_for_test(
-            &page,
-            r#"
-            <html>
-              <body>
-                <div class="item" data-role="keep">Alpha</div>
-                <div class="item" data-role="other">Beta</div>
-              </body>
-            </html>
-            "#,
-            Some("https://example.com/items"),
-        )
-        .expect("load session html");
-
-        page.set_none_element_value(Some("missing"), true)
-            .expect("set session none element value");
-        let items = page.find_all(".item").expect("session items");
-        let missing = items
-            .filter_one()
-            .attr("data-role", "missing", true)
-            .expect("session missing filter");
-        assert_eq!(
-            missing.text().expect("missing text"),
-            Some("missing".to_string())
-        );
-        assert_eq!(
-            missing.attr("id").expect("missing attr"),
-            Some("missing".to_string())
-        );
-        assert_eq!(
-            missing.texts(false).expect("missing texts"),
-            Some(vec!["missing".to_string()])
-        );
-        assert_eq!(
-            missing.comments().expect("missing comments"),
-            Some(vec!["missing".to_string()])
-        );
-
-        page.set_raise_when_ele_not_found(true)
-            .expect("set session raise when missing");
-        let error = items
-            .filter_one()
-            .attr("data-role", "missing", true)
-            .expect_err("session missing filter should raise");
-        assert!(
-            matches!(error, OpenPageError::ElementNotFound(_)),
-            "unexpected session filter error: {error}"
-        );
-    }
-
-    #[test]
-    fn session_inherits_global_raise_when_element_not_found_setting() {
-        let _settings = scoped_test_settings();
-        Settings::reset();
-        Settings::set_raise_when_ele_not_found(true);
-
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        load_session_html_for_test(
-            &page,
-            r#"
-            <html>
-              <body>
-                <div class="item" data-role="keep">Alpha</div>
-                <div class="item" data-role="other">Beta</div>
-              </body>
-            </html>
-            "#,
-            Some("https://example.com/items"),
-        )
-        .expect("load session html");
-
-        let error = page
-            .find_all(".item")
-            .expect("session items")
-            .filter_one()
-            .attr("data-role", "missing", true)
-            .expect_err("session missing filter should use global raise setting");
-        assert!(
-            matches!(error, OpenPageError::ElementNotFound(_)),
-            "unexpected session filter error: {error}"
-        );
     }
 
     #[test]
@@ -2382,29 +2270,6 @@ mod tests {
             .to_string();
         assert!(chinese_domain_url.contains("无效的 url `http://[bad/`"));
         assert!(chinese_domain_url.contains("HTTP 操作失败"));
-    }
-
-    #[test]
-    fn session_lock_poisoned_runtime_errors_follow_language_setting() {
-        let _settings = scoped_test_settings();
-        Settings::reset();
-
-        let page = Session::new(SessionOptions::default()).expect("create session page");
-        poison_mutex(Arc::clone(&page.none_element_config));
-
-        let english = page
-            .set_none_element_value(Some("missing"), true)
-            .expect_err("set_none_element_value() should surface poisoned config")
-            .to_string();
-        assert!(english.contains("none element config lock poisoned"));
-
-        Settings::set_language("cn");
-
-        let chinese = page
-            .set_raise_when_ele_not_found(true)
-            .expect_err("set_raise_when_ele_not_found() should localize poisoned config")
-            .to_string();
-        assert!(chinese.contains("未找到元素配置锁已损坏"));
     }
 
     #[test]

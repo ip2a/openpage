@@ -7,7 +7,7 @@ use crate::error::{OpenPageError, OpenPageResult};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SettingsSnapshot {
-    pub raise_when_ele_not_found: bool,
+    pub raise_when_element_not_found: bool,
     pub raise_when_click_failed: bool,
     pub raise_when_wait_failed: bool,
     pub singleton_tab_obj: bool,
@@ -21,7 +21,7 @@ pub struct SettingsSnapshot {
 impl Default for SettingsSnapshot {
     fn default() -> Self {
         Self {
-            raise_when_ele_not_found: false,
+            raise_when_element_not_found: false,
             raise_when_click_failed: false,
             raise_when_wait_failed: false,
             singleton_tab_obj: true,
@@ -37,7 +37,6 @@ impl Default for SettingsSnapshot {
 pub struct Settings;
 
 pub trait SettingsChain {
-    fn set_raise_when_ele_not_found(self, on_off: bool) -> Settings;
     fn set_raise_when_click_failed(self, on_off: bool) -> Settings;
     fn set_raise_when_wait_failed(self, on_off: bool) -> Settings;
     fn set_singleton_tab_obj(self, on_off: bool) -> Settings;
@@ -55,11 +54,6 @@ impl Settings {
 
     pub fn reset() -> Self {
         restore(SettingsSnapshot::default());
-        Self
-    }
-
-    pub fn set_raise_when_ele_not_found(on_off: bool) -> Self {
-        with_settings_write(|settings| settings.raise_when_ele_not_found = on_off);
         Self
     }
 
@@ -112,10 +106,6 @@ impl Settings {
 }
 
 impl SettingsChain for Settings {
-    fn set_raise_when_ele_not_found(self, on_off: bool) -> Settings {
-        Settings::set_raise_when_ele_not_found(on_off)
-    }
-
     fn set_raise_when_click_failed(self, on_off: bool) -> Settings {
         Settings::set_raise_when_click_failed(on_off)
     }
@@ -182,7 +172,7 @@ pub(crate) fn restore(snapshot: SettingsSnapshot) {
 pub(crate) fn default_none_element_config() -> ElementsOneConfig {
     let settings = snapshot();
     ElementsOneConfig {
-        raise_when_not_found: settings.raise_when_ele_not_found,
+        raise_when_not_found: settings.raise_when_element_not_found,
         ..ElementsOneConfig::default()
     }
 }

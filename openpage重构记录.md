@@ -1502,3 +1502,30 @@ cargo check --workspace --manifest-path rust/Cargo.toml
 cargo test -p openpage session::snapshot::tests --manifest-path rust/Cargo.toml -- --test-threads=1
 91 passed; 0 failed
 ```
+
+### 里程碑 40：删除旧的空元素配置门面（2026-07-23）
+
+状态：阶段完成。
+
+在统一 `find()` / `find_all()` 后，继续删除仅服务于旧空元素查询语义的公开配置入口：
+
+- `set_none_element_value()`；
+- `set_raise_when_ele_not_found()`；
+- 全局 `Settings::set_raise_when_ele_not_found()`；
+- 对应的旧配置测试和测试辅助函数。
+
+内部查询现在不再通过公开的旧 `ele` 配置入口改变“找不到元素”的行为；正式单元素查询使用 `find()`，失败返回 `ElementNotFound`，多元素查询使用 `find_all()`，失败返回空列表。内部 ElementList 的筛选状态仍只服务于筛选结果对象，不作为顶层查询兼容入口。
+
+同时将内部设置字段命名从 `raise_when_ele_not_found` 收敛为 `raise_when_element_not_found`，不再保留旧 `ele` 术语。
+
+验证：
+
+```text
+rg -n -i 'set_none_element_value|set_raise_when_ele_not_found|raise_when_ele_not_found|pub fn (ele|eles)|\\.ele\\(|\\.eles\\(' rust python tests examples scripts README.md
+无命中
+
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check --workspace --manifest-path rust/Cargo.toml
+cargo test -p openpage --lib --no-run --manifest-path rust/Cargo.toml
+通过，无新增警告
+```

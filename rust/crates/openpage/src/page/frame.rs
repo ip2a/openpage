@@ -600,35 +600,6 @@ impl Frame {
         self.page.set_tab_download_path(path)
     }
 
-    pub fn set_none_element_value(&self, value: Option<&str>, on_off: bool) -> OpenPageResult<()> {
-        self.none_element_config
-            .lock()
-            .map(|mut config| {
-                config.return_value = value.map(str::to_string);
-                config.return_value_enabled = on_off;
-            })
-            .map_err(|_| {
-                OpenPageError::PageOperation(component_state_lock_poisoned_message(
-                    "none element config",
-                    "未找到元素配置",
-                ))
-            })
-    }
-
-    pub fn set_raise_when_ele_not_found(&self, on_off: bool) -> OpenPageResult<()> {
-        self.none_element_config
-            .lock()
-            .map(|mut config| {
-                config.raise_when_not_found = on_off;
-            })
-            .map_err(|_| {
-                OpenPageError::PageOperation(component_state_lock_poisoned_message(
-                    "none element config",
-                    "未找到元素配置",
-                ))
-            })
-    }
-
     pub fn set_download_file_exists_mode(
         &self,
         mode: DownloadFileExistsMode,
