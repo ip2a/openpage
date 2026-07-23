@@ -849,3 +849,20 @@ page.attr("#link", "href")
 cargo fmt --all --manifest-path rust/Cargo.toml
 cargo check -p openpage-python --manifest-path rust/Cargo.toml
 ```
+
+### 里程碑 10：Rust 顶层门面移除 WebPage 导出（2026-07-23）
+
+状态：阶段完成。
+
+- `webpage` 不再作为 Rust crate 的公开模块；
+- `WebPage`、`WebElement`、`WebFrame`、`WebMode` 及相关 setter/wait 类型不再从 `openpage` 顶层导出；
+- PyO3 和 Python 也不再依赖该复合模型；
+- 当前 `webpage` 仅作为待删除的内部迁移遗留，后续按依赖链逐步删除，不增加新的调用方。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check -p openpage --lib --manifest-path rust/Cargo.toml
+cargo check -p openpage-python --manifest-path rust/Cargo.toml
+```

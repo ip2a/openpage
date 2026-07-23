@@ -21,7 +21,7 @@ pub mod settings;
 pub mod shadow_root;
 pub mod tools;
 pub mod upload;
-pub mod webpage;
+pub(crate) mod webpage;
 pub mod window;
 
 pub use alert::AlertTracker;
@@ -91,12 +91,7 @@ pub use tools::{
     wait_until,
 };
 pub use upload::{UploadFilesInput, UploadTracker};
-pub use webpage::{
-    DisconnectedWebFrame, DisconnectedWebPage, WebElement, WebElementClicker, WebElementDragTarget,
-    WebElementRect, WebElementScroller, WebElementSelector, WebElementSetter, WebElementStates,
-    WebElementWait, WebFrame, WebMode, WebPage, WebPageCookieSetter, WebPageLoadModeSetter,
-    WebPageScroller, WebPageSetter, WebPageWindowSetter, WebSelectOptionInput,
-};
+
 pub use window::{activate_app, set_app_visibility};
 
 #[cfg(test)]
