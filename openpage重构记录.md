@@ -733,3 +733,44 @@ cargo check -p openpage --lib
 cargo test -p openpage --lib session::snapshot::tests::session_get
 cargo test -p openpage --lib session::snapshot::tests::session_request_returns_owned_response_with_document
 ```
+
+### 里程碑 7：重构总原则确认——删除废弃层，Rust 先行（2026-07-23）
+
+状态：原则已确认，持续执行中。
+
+本次重构不是一次 Python 端的表面 API 整理，而是从 Rust 核心领域模型开始，逐层收敛到统一门面：
+
+```text
+Rust Core
+→ PyO3 binding
+→ Python facade
+→ tests / docs
+```
+
+#### 1. 废弃与兼容代码直接删除
+
+- 已废弃的类型、方法、别名、分支和测试直接移除；
+- 不保留兼容入口、回退路径、空实现、转发别名或行为兼容层；
+- 不以 `runtime`、`helper`、`adapter`、`compat` 等概念组织产品架构；
+- 底层依赖自身的技术实现（例如 Tokio 的异步运行时）不等同于产品架构概念，不因名称机械删除；
+- 如果旧测试只验证已经删除的语义，应删除或改写为新领域模型测试，而不是恢复旧 API。
+
+#### 2. Rust 是门面设计和逻辑的源头
+
+- `Browser`、`Page`、`Session` 及其响应、文档、元素模型首先在 Rust 中建立清晰边界；
+- Rust 核心稳定后，PyO3 只负责直接暴露该模型，Python 只提供符合 Python 使用习惯的薄门面；
+- Python 不负责通过厚重包装修补 Rust 设计缺陷，也不重新发明一套与 Rust 不一致的对象模型；
+- 每次公共 API 调整都按 Rust 核心、绑定、Python、测试和文档的顺序完成；
+- 任何旧概念如果在 Rust 核心被删除，绑定和 Python 不得继续以别名或回退形式保留。
+
+#### 当前执行边界
+
+本阶段已删除 `SessionHandle` 及其共享“最后一次响应”相关入口和测试；Session 请求返回独立的 `Response`，静态内容通过 `Response.document()` 进入 `Document`。后续继续按上述顺序删除 `WebPage` 等旧复合模型，并完成 Snapshot、PyO3 和 Python 门面的统一。
+
+验证：
+
+```text
+cargo fmt --all
+cargo check -p openpage --lib
+cargo test -p openpage --lib session::snapshot::tests::session_get --no-fail-fast
+```

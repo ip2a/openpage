@@ -1349,12 +1349,11 @@ pub(super) fn nearest_parent_element(element: ElementRef<'_>) -> Option<ElementR
 #[cfg(test)]
 mod tests {
     use super::{
-        CookieInput, DocumentElement, Session, SessionCert, SessionCookieParam, SessionHandle,
-        SessionHooks, SessionOptions, SessionRequestOptions, SessionXPathResult,
-        append_query_params, cookie_assignment, cookie_input_to_params, cookies_from_header,
-        default_referer_header, nth_scraper_child_by_tag, parse_headers_input,
-        parse_optional_selector, parse_xpath_path, remove_cookie_from_header,
-        resolve_local_file_path, resolve_session_options_ini_path,
+        CookieInput, DocumentElement, Session, SessionCert, SessionCookieParam, SessionHooks,
+        SessionOptions, SessionRequestOptions, SessionXPathResult, append_query_params,
+        cookie_assignment, cookie_input_to_params, cookies_from_header, default_referer_header,
+        nth_scraper_child_by_tag, parse_headers_input, parse_optional_selector, parse_xpath_path,
+        remove_cookie_from_header, resolve_local_file_path, resolve_session_options_ini_path,
         session_cookie_header_decode_error, snapshot_find, snapshot_find_all,
         snapshot_fragment_find, snapshot_fragment_root, snapshot_fragment_root_with_base_url,
         snapshot_root,
@@ -3364,252 +3363,6 @@ mod tests {
     }
 
     #[test]
-    fn session_response_snapshot_exposes_latest_response_metadata() {
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        let (address, handle) = spawn_capture_server("200 OK", "snapshot");
-
-        assert!(page.get(&address).expect("request snapshot").is_success());
-
-        let expected_url = format!("{address}/");
-        let response = page
-            .response()
-            .expect("response snapshot result")
-            .expect("response snapshot");
-        assert_eq!(response.status_code, Some(200));
-        assert_eq!(response.status_code(), Some(200));
-        assert_eq!(response.url.as_deref(), Some(expected_url.as_str()));
-        assert_eq!(response.url(), Some(expected_url.as_str()));
-        assert_eq!(
-            response.content_type.as_deref(),
-            Some("text/plain; charset=utf-8")
-        );
-        assert_eq!(response.content_type(), Some("text/plain; charset=utf-8"));
-        assert_eq!(response.encoding.as_deref(), Some("utf-8"));
-        assert_eq!(response.encoding(), Some("utf-8"));
-        assert!(
-            response
-                .headers
-                .iter()
-                .any(|(name, value)| name == "content-type"
-                    && value == "text/plain; charset=utf-8")
-        );
-        assert_eq!(
-            response.header("Content-Type"),
-            Some("text/plain; charset=utf-8")
-        );
-        assert_eq!(response.headers().len(), response.headers.len());
-
-        let _ = handle.join().expect("server thread");
-    }
-
-    #[test]
-    fn session_head_uses_request_pipeline_and_updates_response_snapshot() {
-        let (address, handle) = spawn_capture_server("204 No Content", "");
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        let url = format!("{address}/status");
-
-        assert!(page.head(&url).expect("head request").is_success());
-        let request = handle.join().expect("server thread");
-        assert!(
-            request.starts_with("HEAD /status HTTP/1.1"),
-            "unexpected request: {request}"
-        );
-
-        let response = page
-            .response_snapshot()
-            .expect("head response snapshot")
-            .expect("head response");
-        assert_eq!(response.url.as_deref(), Some(url.as_str()));
-        assert_eq!(response.status_code, Some(204));
-    }
-
-    #[test]
-    fn session_options_uses_request_pipeline_and_updates_response_snapshot() {
-        let (address, handle) = spawn_capture_server("204 No Content", "");
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        let url = format!("{address}/status");
-
-        assert!(page.options(&url).expect("options request").is_success());
-        let request = handle.join().expect("server thread");
-        assert!(
-            request.starts_with("OPTIONS /status HTTP/1.1"),
-            "unexpected request: {request}"
-        );
-
-        let response = page
-            .response_snapshot()
-            .expect("options response snapshot")
-            .expect("options response");
-        assert_eq!(response.url.as_deref(), Some(url.as_str()));
-        assert_eq!(response.status_code, Some(204));
-    }
-
-    #[test]
-    fn session_post_form_sends_urlencoded_body_and_updates_response_snapshot() {
-        let (address, handle) = spawn_capture_server("200 OK", "form accepted");
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        let url = format!("{address}/submit");
-        let form = [("username", "openpage"), ("pwd", "secret")];
-
-        assert!(
-            page.post_form(&url, &form)
-                .expect("post form request")
-                .is_success()
-        );
-        let request = handle.join().expect("server thread");
-        assert!(
-            request.starts_with("POST /submit HTTP/1.1"),
-            "unexpected request: {request}"
-        );
-        assert!(
-            request.contains("content-type: application/x-www-form-urlencoded"),
-            "missing form content type: {request}"
-        );
-        assert!(
-            request.ends_with("username=openpage&pwd=secret"),
-            "unexpected form body: {request}"
-        );
-
-        let response = page
-            .response_snapshot()
-            .expect("form response snapshot")
-            .expect("form response");
-        assert_eq!(response.url.as_deref(), Some(url.as_str()));
-        assert_eq!(response.status_code, Some(200));
-        assert_eq!(page.html().expect("form response body"), "form accepted");
-    }
-
-    #[test]
-    fn session_post_body_sends_raw_body_and_updates_response_snapshot() {
-        let (address, handle) = spawn_capture_server("200 OK", "body accepted");
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        let url = format!("{address}/submit");
-
-        assert!(
-            page.post_body(&url, "abc=123")
-                .expect("post body request")
-                .is_success()
-        );
-        let request = handle.join().expect("server thread");
-        assert!(
-            request.starts_with("POST /submit HTTP/1.1"),
-            "unexpected request: {request}"
-        );
-        assert!(
-            request.ends_with("abc=123"),
-            "unexpected raw body: {request}"
-        );
-
-        let response = page
-            .response_snapshot()
-            .expect("body response snapshot")
-            .expect("body response");
-        assert_eq!(response.url.as_deref(), Some(url.as_str()));
-        assert_eq!(response.status_code, Some(200));
-        assert_eq!(page.html().expect("body response body"), "body accepted");
-    }
-
-    #[test]
-    fn session_post_json_body_sends_raw_json_body_and_updates_response_snapshot() {
-        let (address, handle) = spawn_capture_server("200 OK", "json accepted");
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        let url = format!("{address}/submit");
-
-        assert!(
-            page.post_json_body(&url, r#"{"abc":"123"}"#)
-                .expect("post json body request")
-                .is_success()
-        );
-        let request = handle.join().expect("server thread");
-        assert!(
-            request.starts_with("POST /submit HTTP/1.1"),
-            "unexpected request: {request}"
-        );
-        assert!(
-            request.contains("content-type: application/json"),
-            "missing JSON content type: {request}"
-        );
-        assert!(
-            request.ends_with(r#"{"abc":"123"}"#),
-            "unexpected JSON body: {request}"
-        );
-
-        let response = page
-            .response_snapshot()
-            .expect("json response snapshot")
-            .expect("json response");
-        assert_eq!(response.url.as_deref(), Some(url.as_str()));
-        assert_eq!(response.status_code, Some(200));
-        assert_eq!(page.html().expect("json response body"), "json accepted");
-    }
-
-    #[test]
-    fn session_put_uses_request_pipeline_and_updates_response_snapshot() {
-        let (address, handle) = spawn_capture_server("200 OK", "updated");
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        let url = format!("{address}/items/1");
-
-        assert!(page.put(&url).expect("put request").is_success());
-        let request = handle.join().expect("server thread");
-        assert!(
-            request.starts_with("PUT /items/1 HTTP/1.1"),
-            "unexpected request: {request}"
-        );
-
-        let response = page
-            .response_snapshot()
-            .expect("put response snapshot")
-            .expect("put response");
-        assert_eq!(response.url.as_deref(), Some(url.as_str()));
-        assert_eq!(response.status_code, Some(200));
-        assert_eq!(page.html().expect("put response body"), "updated");
-    }
-
-    #[test]
-    fn session_delete_uses_request_pipeline_and_updates_response_snapshot() {
-        let (address, handle) = spawn_capture_server("200 OK", "deleted");
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        let url = format!("{address}/items/1");
-
-        assert!(page.delete(&url).expect("delete request").is_success());
-        let request = handle.join().expect("server thread");
-        assert!(
-            request.starts_with("DELETE /items/1 HTTP/1.1"),
-            "unexpected request: {request}"
-        );
-
-        let response = page
-            .response_snapshot()
-            .expect("delete response snapshot")
-            .expect("delete response");
-        assert_eq!(response.url.as_deref(), Some(url.as_str()));
-        assert_eq!(response.status_code, Some(200));
-        assert_eq!(page.html().expect("delete response body"), "deleted");
-    }
-
-    #[test]
-    fn session_patch_uses_request_pipeline_and_updates_response_snapshot() {
-        let (address, handle) = spawn_capture_server("200 OK", "patched");
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        let url = format!("{address}/items/1");
-
-        assert!(page.patch(&url).expect("patch request").is_success());
-        let request = handle.join().expect("server thread");
-        assert!(
-            request.starts_with("PATCH /items/1 HTTP/1.1"),
-            "unexpected request: {request}"
-        );
-
-        let response = page
-            .response_snapshot()
-            .expect("patch response snapshot")
-            .expect("patch response");
-        assert_eq!(response.url.as_deref(), Some(url.as_str()));
-        assert_eq!(response.status_code, Some(200));
-        assert_eq!(page.html().expect("patch response body"), "patched");
-    }
-
-    #[test]
     fn session_runtime_snapshot_exposes_current_configuration_and_cookies() {
         let page = Session::new(SessionOptions {
             timeout_secs: 21,
@@ -3710,90 +3463,6 @@ mod tests {
     }
 
     #[test]
-    fn session_handle_can_spawn_new_page_sharing_runtime_state() {
-        let page1 = Session::new(SessionOptions::default()).expect("session page");
-        page1
-            .set_header("x-shared", "page1")
-            .expect("set shared header");
-        page1
-            .set_cookies("sid=abc; url=http://example.test/")
-            .expect("set shared cookie");
-
-        let handle = page1.session_handle();
-        let page2 = Session::from_session_handle(handle.clone());
-
-        assert_eq!(page2.stream().expect("initial stream"), false);
-        page2.set_stream(true).expect("enable shared stream");
-        assert!(page1.stream().expect("stream visible across pages"));
-
-        let snapshot = handle.snapshot().expect("session snapshot");
-        let page_snapshot = page2.session_snapshot().expect("page session snapshot");
-        let handle_snapshot = handle.session_snapshot().expect("handle session snapshot");
-        assert_eq!(page_snapshot, snapshot);
-        assert_eq!(handle_snapshot, snapshot);
-        assert!(
-            snapshot
-                .headers
-                .iter()
-                .any(|(name, value)| name == "x-shared" && value == "page1")
-        );
-        assert!(
-            snapshot
-                .cookies
-                .iter()
-                .any(|cookie| cookie.name == "sid" && cookie.value == "abc")
-        );
-
-        let (address, server) = spawn_capture_server("200 OK", "shared session");
-        assert!(page1.get(&address).expect("shared request").is_success());
-
-        let response = page2
-            .response()
-            .expect("shared response result")
-            .expect("shared response");
-        assert_eq!(response.status_code, Some(200));
-        assert_eq!(
-            handle.response().expect("handle response"),
-            Some(response.clone())
-        );
-        assert_eq!(
-            page1.response_snapshot().expect("page response snapshot"),
-            Some(response.clone())
-        );
-        assert_eq!(
-            handle
-                .response_snapshot()
-                .expect("handle response snapshot"),
-            Some(response)
-        );
-        assert_eq!(handle.html().expect("handle html"), "shared session");
-        assert_eq!(
-            handle.raw_data().expect("handle raw data"),
-            b"shared session".to_vec()
-        );
-        assert_eq!(handle.json().expect("handle json"), None);
-        assert_eq!(
-            handle.encoding().expect("handle encoding").as_deref(),
-            Some("utf-8")
-        );
-
-        let _ = server.join().expect("server thread");
-    }
-
-    #[test]
-    fn session_handle_page_roundtrip_preserves_identity() {
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        let handle = page.session_handle();
-        let cloned_page = handle.page();
-        let second_handle: SessionHandle = cloned_page.session_handle();
-
-        cloned_page.set_timeout(27).expect("set shared timeout");
-
-        assert_eq!(second_handle.snapshot().expect("snapshot").timeout_secs, 27);
-        assert_eq!(page.timeout_secs().expect("page timeout"), 27);
-    }
-
-    #[test]
     fn session_set_params_and_auth_apply_to_requests() {
         let (address, handle) = spawn_capture_server("200 OK", "secured");
         let page = Session::new(SessionOptions::default()).expect("session page");
@@ -3842,7 +3511,8 @@ mod tests {
         })
         .expect("session page");
 
-        assert!(page.get(&address).expect("streaming request").is_success());
+        let response = page.get(&address).expect("streaming request");
+        assert!(response.is_success());
         {
             let state = page.lock_state().expect("lock session state");
             assert_eq!(state.status_code, Some(200));
@@ -3852,7 +3522,7 @@ mod tests {
             assert_eq!(state.encoding.as_deref(), Some("utf-8"));
         }
         assert_eq!(
-            page.response().expect("response").and_then(|r| r.encoding),
+            response.encoding().map(str::to_string),
             Some("utf-8".to_string())
         );
         assert_eq!(

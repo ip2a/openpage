@@ -2022,53 +2022,6 @@ pub struct SessionSettings<'a> {
     session: &'a Session,
 }
 
-#[derive(Clone, Debug)]
-pub struct SessionHandle {
-    inner: Arc<Mutex<SessionState>>,
-    none_element_config: ElementsOneRuntimeConfigHandle,
-}
-
-impl SessionHandle {
-    pub fn page(&self) -> Session {
-        Session {
-            inner: Arc::clone(&self.inner),
-            none_element_config: Arc::clone(&self.none_element_config),
-        }
-    }
-
-    pub fn snapshot(&self) -> OpenPageResult<SessionRuntimeInfo> {
-        self.page().session()
-    }
-
-    pub fn session_snapshot(&self) -> OpenPageResult<SessionRuntimeInfo> {
-        self.snapshot()
-    }
-
-    pub fn response(&self) -> OpenPageResult<Option<SessionResponseInfo>> {
-        self.page().response()
-    }
-
-    pub fn response_snapshot(&self) -> OpenPageResult<Option<SessionResponseInfo>> {
-        self.response()
-    }
-
-    pub fn html(&self) -> OpenPageResult<String> {
-        self.page().html()
-    }
-
-    pub fn raw_data(&self) -> OpenPageResult<Vec<u8>> {
-        self.page().raw_data()
-    }
-
-    pub fn json(&self) -> OpenPageResult<Option<Value>> {
-        self.page().json()
-    }
-
-    pub fn encoding(&self) -> OpenPageResult<Option<String>> {
-        self.page().encoding()
-    }
-}
-
 impl SessionSettings<'_> {
     pub fn user_agent<U>(&self, user_agent: U) -> OpenPageResult<()>
     where

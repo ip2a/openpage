@@ -53,10 +53,6 @@ impl Session {
         SessionSettings { session: self }
     }
 
-    pub fn from_session_handle(handle: SessionHandle) -> Self {
-        handle.page()
-    }
-
     pub fn get(&self, url: &str) -> OpenPageResult<Response> {
         self.get_with_options(url, &SessionRequestOptions::default())
     }
@@ -476,13 +472,6 @@ impl Session {
         Ok(self.lock_state()?.status_code)
     }
 
-    pub fn session_handle(&self) -> SessionHandle {
-        SessionHandle {
-            inner: Arc::clone(&self.inner),
-            none_element_config: Arc::clone(&self.none_element_config),
-        }
-    }
-
     pub fn session(&self) -> OpenPageResult<SessionRuntimeInfo> {
         let state = self.lock_state()?;
         let cookie_jar = state.cookie_jar.clone();
@@ -529,28 +518,6 @@ impl Session {
 
     pub fn session_snapshot(&self) -> OpenPageResult<SessionRuntimeInfo> {
         self.session()
-    }
-
-    pub fn response(&self) -> OpenPageResult<Option<SessionResponseInfo>> {
-        let state = self.lock_state()?;
-        if state.status_code.is_none()
-            && state.url.is_none()
-            && state.raw_data.is_none()
-            && state.response_headers.is_empty()
-        {
-            return Ok(None);
-        }
-        Ok(Some(SessionResponseInfo {
-            url: state.url.clone(),
-            status_code: state.status_code,
-            headers: state.response_headers.clone(),
-            content_type: state.response_content_type.clone(),
-            encoding: state.encoding.clone(),
-        }))
-    }
-
-    pub fn response_snapshot(&self) -> OpenPageResult<Option<SessionResponseInfo>> {
-        self.response()
     }
 
     pub fn set_none_element_value(&self, value: Option<&str>, on_off: bool) -> OpenPageResult<()> {

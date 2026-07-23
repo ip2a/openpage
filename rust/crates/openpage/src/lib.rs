@@ -76,7 +76,7 @@ pub use screencast::{Screencast, ScreencastMode};
 pub use session::{
     CookieEntry, CookieInput, Document, DocumentElement, HeadersInput, ParamsInput, Response,
     Session, SessionAuthInput, SessionCert, SessionCertInput, SessionCookie, SessionCookieParam,
-    SessionDownload, SessionEncodingInput, SessionHandle, SessionHookEvent, SessionHooks,
+    SessionDownload, SessionEncodingInput, SessionHookEvent, SessionHooks,
     SessionMaxRedirectsInput, SessionOptions, SessionProxyInput, SessionRequestOptions,
     SessionResponseHook, SessionResponseInfo, SessionRetryIntervalInput, SessionRetryTimesInput,
     SessionRuntimeInfo, SessionSettings, SessionUserAgentInput, SessionXPathResult,
