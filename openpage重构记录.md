@@ -1831,3 +1831,34 @@ uv build --wheel                                                 通过
 Session HTTP 与设置门面检查                                     通过
 Python 顶层 __all__ 检查                                        通过
 ```
+
+### 里程碑 49：完成真实 Chromium Python 端到端验证（2026-07-23）
+
+状态：阶段完成。
+
+新增 `python/tests/test_browser_e2e.py`，使用真实 Chrome 和本地 HTML 文件验证统一门面链路：
+
+```python
+browser = Browser.launch(...)
+page = browser.new_page()
+page.goto(...)
+page.find(...)
+page.find(...).find(...)
+page.click(...)
+page.input(...)
+page.text(...)
+page.attr(...)
+page.snapshot()
+page.save_screenshot(...)
+page.close()
+browser.close()
+```
+
+验证结果：
+
+```text
+Python Browser/Page 真实 Chromium 端到端测试                         通过
+导航、查询、链式 Element、点击、输入、文本、属性、快照、截图           通过
+```
+
+说明：测试使用本地 `file://` 页面，避免外部网络和代理环境造成非项目因素的不确定性。Rust 内部的 Tokio `runtime` 仅作为异步实现细节保留，不属于 Python 产品门面。
