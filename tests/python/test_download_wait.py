@@ -18,7 +18,7 @@ if "openpage_rs" not in sys.modules:
     sys.modules["openpage_rs"] = types.ModuleType("openpage_rs")
 
 
-compat = importlib.import_module("openpage._compat")
+compat = importlib.import_module("openpage")
 
 
 class _FakeMissionInner:
