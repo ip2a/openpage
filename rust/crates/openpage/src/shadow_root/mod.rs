@@ -13,9 +13,7 @@ use tokio::runtime::Runtime;
 use tokio::time::timeout as tokio_timeout;
 
 use crate::element::Element;
-use crate::element_list::{
-    ElementsOneConfigHandle, ElementsOneOwned, elements_one_should_raise_when_missing,
-};
+use crate::element_list::ElementsOneConfigHandle;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::{
     Locator, LocatorBatchInput, LocatorInput, LocatorKind, LocatorMatch, collect_locator_matches,
@@ -293,28 +291,6 @@ impl ShadowRoot {
         }
     }
 
-    pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        let locator = Locator::from_input(locator)?;
-        match self.find(locator.raw()) {
-            Ok(element) => Ok(ElementsOneOwned::some_with_config(
-                element,
-                Some(Arc::clone(&self.none_element_config)),
-            )),
-            Err(err @ OpenPageError::ElementNotFound(_)) => {
-                if elements_one_should_raise_when_missing(Some(&self.none_element_config))? {
-                    return Err(err);
-                }
-                Ok(ElementsOneOwned::none_with_config(Some(Arc::clone(
-                    &self.none_element_config,
-                ))))
-            }
-            Err(err) => Err(err),
-        }
-    }
-
     pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<Element>>
     where
         L: Into<LocatorInput<'a>>,
@@ -324,13 +300,6 @@ impl ShadowRoot {
             LocatorKind::Css => self.query_selector_all(locator.query()),
             LocatorKind::XPath => self.find_all_by_xpath(locator.query()),
         }
-    }
-
-    pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<Element>>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        self.find_all(locator)
     }
 
     pub fn find_locators<'a, L>(

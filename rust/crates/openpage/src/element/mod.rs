@@ -32,9 +32,7 @@ use tokio::time::timeout as tokio_timeout;
 
 use crate::browser::Browser;
 use crate::download::DownloadMission;
-use crate::element_list::{
-    ElementsOneConfigHandle, ElementsOneOwned, elements_one_should_raise_when_missing,
-};
+use crate::element_list::ElementsOneConfigHandle;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::{
     Locator, LocatorBatchInput, LocatorInput, LocatorKind, LocatorMatch, collect_locator_matches,
@@ -3102,28 +3100,6 @@ impl Element {
         }
     }
 
-    pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        let locator = Locator::from_input(locator)?;
-        match self.find(locator.raw()) {
-            Ok(element) => Ok(ElementsOneOwned::some_with_config(
-                element,
-                Some(Arc::clone(&self.none_element_config)),
-            )),
-            Err(err @ OpenPageError::ElementNotFound(_)) => {
-                if elements_one_should_raise_when_missing(Some(&self.none_element_config))? {
-                    return Err(err);
-                }
-                Ok(ElementsOneOwned::none_with_config(Some(Arc::clone(
-                    &self.none_element_config,
-                ))))
-            }
-            Err(err) => Err(err),
-        }
-    }
-
     pub fn get_frame<'a, L>(&self, target: L) -> OpenPageResult<Frame>
     where
         L: Into<PageFrameTarget<'a>>,
@@ -3229,13 +3205,6 @@ impl Element {
             }),
             LocatorKind::XPath => self.find_all_by_xpath(locator.query()),
         }
-    }
-
-    pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<Element>>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        self.find_all(locator)
     }
 
     fn wait_until<F>(
@@ -4291,7 +4260,7 @@ impl<'a> ElementClicker<'a> {
     fn browser(&self) -> OpenPageResult<&Browser> {
         self.element.browser.as_ref().ok_or_else(|| {
             OpenPageError::UnsupportedOperation(browser_backed_element_only_message(
-                "clicker() tab-aware helpers",
+                "clicker() tab-aware operations",
             ))
         })
     }

@@ -19,28 +19,6 @@ impl DocumentElement {
         )
     }
 
-    pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        let locator = Locator::from_input(locator)?;
-        match self.find(locator.raw()) {
-            Ok(element) => Ok(ElementsOneOwned::some_with_config(
-                element,
-                self.none_element_config.clone(),
-            )),
-            Err(err @ OpenPageError::ElementNotFound(_)) => {
-                if elements_one_should_raise_when_missing(self.none_element_config.as_ref())? {
-                    return Err(err);
-                }
-                Ok(ElementsOneOwned::none_with_config(
-                    self.none_element_config.clone(),
-                ))
-            }
-            Err(err) => Err(err),
-        }
-    }
-
     pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
@@ -53,13 +31,6 @@ impl DocumentElement {
             self.base_url.clone(),
             self.none_element_config.as_ref(),
         )
-    }
-
-    pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
-    where
-        L: Into<LocatorInput<'a>>,
-    {
-        self.find_all(locator)
     }
 
     pub fn find_by(&self, by: &str, value: &str) -> OpenPageResult<DocumentElement> {

@@ -76,9 +76,7 @@ use crate::element::{
     Element, ElementDragTarget, ElementResource, load_javascript_source,
     resolve_javascript_timeout_ms,
 };
-use crate::element_list::{
-    ElementsOneConfigHandle, ElementsOneOwned, elements_one_should_raise_when_missing,
-};
+use crate::element_list::ElementsOneConfigHandle;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::intercept::Interceptor;
 use crate::listener::Listener;

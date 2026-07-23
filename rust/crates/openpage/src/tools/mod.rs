@@ -534,7 +534,7 @@ mod tests {
     use crate::settings::scoped_test_settings;
 
     #[test]
-    fn debugger_address_docking_helper_signatures_return_page() {
+    fn debugger_address_docking_signatures_return_page() {
         let _ = from_debugger_address as fn(&str) -> crate::OpenPageResult<Page>;
         let _ = from_selenium_debugger_address as fn(&str) -> crate::OpenPageResult<Page>;
         let _ = from_playwright_debugger_address as fn(&str) -> crate::OpenPageResult<Page>;
@@ -627,7 +627,7 @@ mod tests {
     }
 
     #[test]
-    fn get_blob_bytes_helper_returns_bytes() {
+    fn get_blob_bytes_returns_bytes() {
         let result = get_blob_bytes_with_runner("blob:https://example.com/demo", |_| {
             Ok(Value::String("data:text/plain;base64,aGVsbG8=".to_string()))
         })
@@ -647,7 +647,7 @@ mod tests {
     }
 
     #[test]
-    fn get_blob_text_helper_returns_base64_payload() {
+    fn get_blob_text_returns_base64_payload() {
         let result = get_blob_text_with_runner("blob:https://example.com/demo", |_| {
             Ok(Value::String("data:text/plain;base64,aGVsbG8=".to_string()))
         })
@@ -801,7 +801,7 @@ mod tests {
     }
 
     #[test]
-    fn tree_text_mode_helper_matches_reference_semantics() {
+    fn tree_text_mode_matches_reference_semantics() {
         assert_eq!(tree_text_output("abcdef", TreeTextInput::Disabled), "");
         assert_eq!(tree_text_output("abcdef", TreeTextInput::Full), "abcdef");
         assert_eq!(tree_text_output("abcdef", TreeTextInput::Limit(3)), "abc");

@@ -3607,7 +3607,7 @@ mod tests {
     }
 
     #[test]
-    fn browser_logs_payload_backfills_daemon_session_kind_when_missing() {
+    fn browser_logs_payload_sets_daemon_session_kind_when_missing() {
         let payload = super::browser_logs_payload(
             json!({
                 "session": "legacy-shape",
@@ -4695,7 +4695,7 @@ mod tests {
     }
 
     #[test]
-    fn response_result_falls_back_for_unknown_daemon_error_kind() {
+    fn response_result_maps_unknown_daemon_error_kind() {
         let error =
             super::response_result(super::Response::error(None, "daemon_state", "not ready"))
                 .expect_err("daemon error should not look successful");
@@ -5321,31 +5321,31 @@ mod tests {
     }
 
     #[test]
-    fn rejects_legacy_page_get_command() {
+    fn rejects_removed_page_get_command() {
         assert!(
             Cli::try_parse_from(["openpage", "page", "get", "https://example.com"]).is_err(),
-            "legacy page get command should remain rejected"
+            "removed page get command should remain rejected"
         );
     }
 
     #[test]
-    fn rejects_legacy_page_url_command() {
+    fn rejects_removed_page_url_command() {
         assert!(
             Cli::try_parse_from(["openpage", "page", "url", "--session", "agent"]).is_err(),
-            "legacy page url command should remain rejected"
+            "removed page url command should remain rejected"
         );
     }
 
     #[test]
-    fn rejects_legacy_page_title_command() {
+    fn rejects_removed_page_title_command() {
         assert!(
             Cli::try_parse_from(["openpage", "page", "title", "--session", "agent"]).is_err(),
-            "legacy page title command should remain rejected"
+            "removed page title command should remain rejected"
         );
     }
 
     #[test]
-    fn rejects_legacy_page_screenshot_command() {
+    fn rejects_removed_page_screenshot_command() {
         assert!(
             Cli::try_parse_from([
                 "openpage",
@@ -5356,7 +5356,7 @@ mod tests {
                 "agent",
             ])
             .is_err(),
-            "legacy page screenshot command should remain rejected"
+            "removed page screenshot command should remain rejected"
         );
     }
 }

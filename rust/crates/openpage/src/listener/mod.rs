@@ -1826,7 +1826,7 @@ mod tests {
     }
 
     #[test]
-    fn request_helpers_parse_query_and_json_post_data() {
+    fn request_parses_query_and_json_post_data() {
         let request = ListenerRequest {
             all_info: json!({}),
             url: "http://127.0.0.1/api/data?foo=1&bar=".to_string(),
@@ -1878,7 +1878,7 @@ mod tests {
     }
 
     #[test]
-    fn response_helpers_decode_plain_text_and_json() {
+    fn response_decodes_plain_text_and_json() {
         let response = ListenerResponse {
             all_info: json!({}),
             url: "http://127.0.0.1/api/data".to_string(),
@@ -1903,7 +1903,7 @@ mod tests {
     }
 
     #[test]
-    fn response_helpers_decode_base64_body() {
+    fn response_decodes_base64_body() {
         let response = ListenerResponse {
             all_info: json!({}),
             url: "http://127.0.0.1/file".to_string(),

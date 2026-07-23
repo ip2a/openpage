@@ -972,30 +972,25 @@ impl ElementsOneOwned<Element> {
             .run_async_js_with_options(script, args, as_expr, timeout_ms)
     }
 
-    pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
-    where
-        L: Into<crate::locator::LocatorInput<'a>>,
-    {
-        match self.as_option() {
-            Some(element) => element.ele(locator),
-            None => Ok(Self::none_with_config(self.config.clone())),
-        }
-    }
-
     pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
-        self.ele(locator)
-    }
-
-    pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<Element>>
-    where
-        L: Into<crate::locator::LocatorInput<'a>>,
-    {
         match self.as_option() {
-            Some(element) => element.eles(locator),
-            None => Ok(Vec::new()),
+            Some(element) => match element.find(locator) {
+                Ok(element) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.clone(),
+                )),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config.as_ref())? {
+                        return Err(err);
+                    }
+                    Ok(ElementsOneOwned::none_with_config(self.config.clone()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(ElementsOneOwned::none_with_config(self.config.clone())),
         }
     }
 
@@ -1003,7 +998,10 @@ impl ElementsOneOwned<Element> {
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
-        self.eles(locator)
+        match self.as_option() {
+            Some(element) => element.find_all(locator),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn find_locators<'a, L>(
@@ -1371,21 +1369,26 @@ impl ElementsOneOwned<DocumentElement> {
         self.as_borrowed().texts(text_node_only)
     }
 
-    pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
-    where
-        L: Into<crate::locator::LocatorInput<'a>>,
-    {
-        match self.as_option() {
-            Some(element) => element.ele(locator),
-            None => Ok(Self::none_with_config(self.config.clone())),
-        }
-    }
-
     pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
-        self.ele(locator)
+        match self.as_option() {
+            Some(element) => match element.find(locator) {
+                Ok(element) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.clone(),
+                )),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config.as_ref())? {
+                        return Err(err);
+                    }
+                    Ok(ElementsOneOwned::none_with_config(self.config.clone()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(ElementsOneOwned::none_with_config(self.config.clone())),
+        }
     }
 
     pub fn find_by(
@@ -1396,21 +1399,14 @@ impl ElementsOneOwned<DocumentElement> {
         self.find((by, value))
     }
 
-    pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
-    where
-        L: Into<crate::locator::LocatorInput<'a>>,
-    {
-        match self.as_option() {
-            Some(element) => element.eles(locator),
-            None => Ok(Vec::new()),
-        }
-    }
-
     pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
-        self.eles(locator)
+        match self.as_option() {
+            Some(element) => element.find_all(locator),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<DocumentElement>> {
@@ -1950,30 +1946,25 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
-    pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
-    where
-        L: Into<crate::locator::LocatorInput<'b>>,
-    {
-        match self.element {
-            Some(element) => element.ele(locator),
-            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
-        }
-    }
-
     pub fn find<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<Element>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
-        self.ele(locator)
-    }
-
-    pub fn eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<Element>>
-    where
-        L: Into<crate::locator::LocatorInput<'b>>,
-    {
-        match self.element {
-            Some(element) => element.eles(locator),
-            None => Ok(Vec::new()),
+        match self.element.as_ref() {
+            Some(element) => match element.find(locator) {
+                Ok(element) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.cloned(),
+                )),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config)? {
+                        return Err(err);
+                    }
+                    Ok(ElementsOneOwned::none_with_config(self.config.cloned()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
         }
     }
 
@@ -1981,7 +1972,10 @@ impl<'a> ElementsOne<'a, Element> {
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
-        self.eles(locator)
+        match self.element.as_ref() {
+            Some(element) => element.find_all(locator),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn find_locators<'b, L>(
@@ -2437,21 +2431,26 @@ impl<'a> ElementsOne<'a, DocumentElement> {
         }
     }
 
-    pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
-    where
-        L: Into<crate::locator::LocatorInput<'b>>,
-    {
-        match self.element {
-            Some(element) => element.ele(locator),
-            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
-        }
-    }
-
     pub fn find<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
-        self.ele(locator)
+        match self.element.as_ref() {
+            Some(element) => match element.find(locator) {
+                Ok(element) => Ok(ElementsOneOwned::some_with_config(
+                    element,
+                    self.config.cloned(),
+                )),
+                Err(err @ OpenPageError::ElementNotFound(_)) => {
+                    if elements_one_should_raise_when_missing(self.config)? {
+                        return Err(err);
+                    }
+                    Ok(ElementsOneOwned::none_with_config(self.config.cloned()))
+                }
+                Err(err) => Err(err),
+            },
+            None => Ok(ElementsOneOwned::none_with_config(self.config.cloned())),
+        }
     }
 
     pub fn find_by(
@@ -2462,21 +2461,14 @@ impl<'a> ElementsOne<'a, DocumentElement> {
         self.find((by, value))
     }
 
-    pub fn eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
-    where
-        L: Into<crate::locator::LocatorInput<'b>>,
-    {
-        match self.element {
-            Some(element) => element.eles(locator),
-            None => Ok(Vec::new()),
-        }
-    }
-
     pub fn find_all<'b, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
-        self.eles(locator)
+        match self.element.as_ref() {
+            Some(element) => element.find_all(locator),
+            None => Ok(Vec::new()),
+        }
     }
 
     pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<DocumentElement>> {

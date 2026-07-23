@@ -1547,182 +1547,6 @@ mod tests {
     }
 
     #[test]
-    fn session_element_config_supports_none_value_and_nested_queries() {
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        load_session_html_for_test(
-            &page,
-            r#"
-            <html>
-              <body>
-                <section id="card">
-                  <span class="name">Alpha</span>
-                  <span class="phone">10086</span>
-                </section>
-                <section id="tail">Omega</section>
-              </body>
-            </html>
-            "#,
-            Some("https://example.com/card"),
-        )
-        .expect("load session html");
-
-        assert_eq!(page.eles(".missing").expect("missing list").len(), 0);
-
-        let card = page.ele("#card").expect("card ele");
-        assert!(card.is_some());
-        assert_eq!(
-            card.ele(".name")
-                .expect("name ele")
-                .text()
-                .expect("name text"),
-            Some("Alpha".to_string())
-        );
-        assert_eq!(
-            card.child()
-                .expect("card child")
-                .text()
-                .expect("card child text"),
-            Some("Alpha".to_string())
-        );
-        assert_eq!(
-            page.ele(".name")
-                .expect("name ele")
-                .parent()
-                .expect("name parent")
-                .attr("id")
-                .expect("name parent attr"),
-            Some("card".to_string())
-        );
-        assert_eq!(
-            page.ele(".name")
-                .expect("name ele")
-                .next()
-                .expect("name next")
-                .text()
-                .expect("name next text"),
-            Some("10086".to_string())
-        );
-        assert_eq!(
-            page.ele(".phone")
-                .expect("phone ele")
-                .after()
-                .expect("phone after")
-                .text()
-                .expect("phone after text"),
-            Some("Omega".to_string())
-        );
-
-        let missing_default = page.ele(".missing").expect("missing ele");
-        assert!(missing_default.is_none());
-        assert_eq!(missing_default.text().expect("missing default text"), None);
-
-        page.set_none_element_value(Some("missing"), true)
-            .expect("set session none element value");
-
-        let missing = page.ele(".missing").expect("missing ele after none value");
-        assert_eq!(
-            missing.text().expect("missing text"),
-            Some("missing".to_string())
-        );
-        assert_eq!(
-            missing.attr("id").expect("missing attr"),
-            Some("missing".to_string())
-        );
-        assert_eq!(
-            missing
-                .ele(".child")
-                .expect("missing child ele")
-                .text()
-                .expect("missing child text"),
-            Some("missing".to_string())
-        );
-        assert_eq!(
-            missing
-                .child()
-                .expect("missing child")
-                .text()
-                .expect("missing child text"),
-            Some("missing".to_string())
-        );
-        assert_eq!(
-            missing
-                .parent()
-                .expect("missing parent")
-                .text()
-                .expect("missing parent text"),
-            Some("missing".to_string())
-        );
-        assert_eq!(
-            missing
-                .next()
-                .expect("missing next")
-                .text()
-                .expect("missing next text"),
-            Some("missing".to_string())
-        );
-        assert_eq!(
-            missing
-                .before()
-                .expect("missing before")
-                .text()
-                .expect("missing before text"),
-            Some("missing".to_string())
-        );
-        assert_eq!(
-            missing
-                .after()
-                .expect("missing after")
-                .text()
-                .expect("missing after text"),
-            Some("missing".to_string())
-        );
-        assert_eq!(
-            page.ele("#card")
-                .expect("card ele after none value")
-                .ele(".phone")
-                .expect("missing phone ele")
-                .text()
-                .expect("missing phone text"),
-            Some("10086".to_string())
-        );
-        assert_eq!(
-            page.ele("#card")
-                .expect("card ele after none value")
-                .child_with(Some(".missing"), 1)
-                .expect("missing child wrapper")
-                .text()
-                .expect("missing child wrapper text"),
-            Some("missing".to_string())
-        );
-        assert_eq!(
-            page.ele(".phone")
-                .expect("phone ele after none value")
-                .next_with(Some(".missing"), 1)
-                .expect("missing next wrapper")
-                .text()
-                .expect("missing next wrapper text"),
-            Some("missing".to_string())
-        );
-
-        page.set_raise_when_ele_not_found(true)
-            .expect("set session raise when missing");
-        let error = page.ele(".missing").expect_err("session ele should raise");
-        assert!(
-            matches!(error, OpenPageError::ElementNotFound(_)),
-            "unexpected session ele error: {error}"
-        );
-        let error = page
-            .ele("#card")
-            .expect("card ele after raise")
-            .child_with(Some(".missing"), 1)
-            .expect_err("missing child should raise after toggle");
-        assert!(
-            matches!(error, OpenPageError::ElementNotFound(_)),
-            "unexpected session child error: {error}"
-        );
-    }
-
-    #[test]
     fn cookie_assignment_includes_optional_scope_fields() {
         let cookie = cookie_assignment("foo", "bar", Some("example.com"), Some("/demo"));
         assert_eq!(cookie, "foo=bar; Domain=example.com; Path=/demo");
@@ -4986,7 +4810,7 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_helpers_resolve_special_attrs_with_base_url() {
+    fn snapshot_resolves_special_attrs_with_base_url() {
         let root = snapshot_fragment_root_with_base_url(
             r#"<div><a id="doc" href="/docs">Docs</a><img id="logo" src="img/logo.png" /></div>"#,
             Some("https://example.com/start"),
@@ -5014,7 +4838,7 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_helpers_cover_comments_texts_and_child_count() {
+    fn snapshot_covers_comments_texts_and_child_count() {
         let root = snapshot_fragment_root(
             r#"<div id="root"> alpha <!--note--><span>beta</span> <em>gamma</em></div>"#,
         )

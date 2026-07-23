@@ -39,9 +39,7 @@ use skyscraper::xpath::grammar::{
 };
 use url::Url;
 
-use crate::element_list::{
-    ElementsOneConfigHandle, ElementsOneOwned, elements_one_should_raise_when_missing,
-};
+use crate::element_list::ElementsOneConfigHandle;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::{
     Locator, LocatorBatchInput, LocatorInput, LocatorKind, LocatorMatch, collect_locator_matches,

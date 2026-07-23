@@ -1470,3 +1470,35 @@ cargo check --workspace --manifest-path rust/Cargo.toml
 ```
 
 结果：通过。
+
+### 里程碑 39：删除 Rust Core 的 `ele / eles` 查询门面（2026-07-23）
+
+状态：阶段完成。
+
+Rust Core 的页面、元素、Frame、ShadowRoot、Session Request、Session DocumentElement 和 ElementList 查询入口统一为：
+
+```text
+find()
+find_all()
+```
+
+本阶段删除：
+
+- `ele()`；
+- `eles()`；
+- 所有正式源码、测试和内部调用中的 `.ele()` / `.eles()`；
+- 仅依赖旧 `ele()` 空元素语义的 Session 测试。
+
+`find()` 现在表达单元素查询，找不到时返回正式的 `ElementNotFound`；`find_all()` 表达多元素查询，找不到时返回空列表。没有保留旧别名、兼容入口或回退路径。
+
+验证：
+
+```text
+rg -n 'pub fn (ele|eles)|\\.ele\\(|\\.eles\\(' rust python tests examples scripts README.md
+无命中
+
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check --workspace --manifest-path rust/Cargo.toml
+cargo test -p openpage session::snapshot::tests --manifest-path rust/Cargo.toml -- --test-threads=1
+91 passed; 0 failed
+```
