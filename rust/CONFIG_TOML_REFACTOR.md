@@ -17,9 +17,9 @@ Replace ini-based active CLI runtime defaults with one stable TOML-based config 
   - applies env overrides
   - provides cross-platform browser candidate discovery
 - Wired active CLI runtime to unified config:
-  - `src/cli/serve.rs`: `webpage.create` now starts from `load_resolved_config()`
+  - `src/cli/serve.rs`: daemon startup now starts from `load_resolved_config()`
   - `src/cli/doctor.rs`: config check + messages now come from TOML chain
-  - `src/cli/mod.rs`: dp compat helper writes/reads TOML (no ini fallback)
+  - `src/cli/mod.rs`: the CLI reads and writes the current TOML configuration directly
 - Updated docs/help references from ini to TOML for touched surfaces.
 
 ## Notable verification

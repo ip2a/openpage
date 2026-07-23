@@ -1339,3 +1339,25 @@ cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
 - Rust 领域命名审计确认 `RuntimeOverrides`、`SessionRuntimeInfo`、`ElementsOneRuntimeConfig`、`ServeRuntime` 等名称已不存在；
 - 旧页面门面审计只命中正常语义词 `as_element_node`、`previous_element_not_found_message` 和测试名 `parses_element_html`，没有旧产品类型或 API 残留；
 - 工作树保持干净。
+
+### 里程碑 32：删除 CLI Doctor 的旧 Session JSON 清理路径（2026-07-23）
+
+状态：阶段完成。
+
+CLI Doctor 不再扫描、报告或删除 `OPENPAGE_HOME/sessions/*.json` 旧 Session 文件，也不再提供对应的 `doctor --fix` 清理动作。`doctor --fix` 现在只处理当前 daemon sidecar 的清理与不完整 daemon 会话。
+
+同时：
+
+- 删除旧 Session JSON 的目录解析、文件枚举、删除函数及专用测试；
+- 删除 `FixedAction` 中仅服务于旧文件删除的路径字段；
+- 更新 Doctor 参数说明，去除旧 Session JSON 迁移语义；
+- 更新配置重构文档，统一使用当前 Browser / Page / Session、TCP daemon 和 TOML 配置术语。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check --workspace --manifest-path rust/Cargo.toml
+```
+
+结果：通过。单元测试链接阶段因本机磁盘仅剩约 83 MiB，链接器报告 `No space left on device`；这是环境容量问题，不是源码编译错误。

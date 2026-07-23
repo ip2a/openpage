@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use crate::browser::{Browser, OPENPAGE_BROWSER_PATH_ENV};
 use crate::cli::args::DoctorArgs;
 use crate::config::{ConfigValueSource, load_resolved_config, resolve_browser_executable_path};
-use crate::error::{OpenPageError, OpenPageResult};
+use crate::error::OpenPageResult;
 use openpage::daemon::client::{
     daemon_dir, daemon_inventory, daemon_inventory_payload_json, daemon_inventory_readonly,
     daemon_session_fix, daemon_session_reasons, daemon_session_state, force_cleanup_daemon,
@@ -237,8 +237,6 @@ struct FixedAction {
     reason: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     session: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    path: Option<String>,
 }
 
 impl FixedAction {
@@ -256,17 +254,11 @@ impl FixedAction {
             source,
             reason,
             session: None,
-            path: None,
         }
     }
 
     fn with_session(mut self, session: impl Into<String>) -> Self {
         self.session = Some(session.into());
-        self
-    }
-
-    fn with_path(mut self, path: impl Into<String>) -> Self {
-        self.path = Some(path.into());
         self
     }
 }
@@ -301,7 +293,6 @@ fn doctor_payload(args: &DoctorArgs) -> OpenPageResult<Value> {
 
 fn apply_fixes() -> OpenPageResult<Vec<FixedAction>> {
     let mut fixed = Vec::new();
-    fixed.extend(remove_legacy_session_files()?);
     let inventory = daemon_inventory()?;
     for cleaned in inventory.cleaned {
         fixed.push(
@@ -556,96 +547,6 @@ fn environment_checks(checks: &mut Vec<Check>) {
                 .with_fix(
                     "Set OPENPAGE_HOME or HOME first so OpenPage can resolve the daemon sidecar directory.",
                 ),
-        ),
-    }
-
-    match legacy_session_files() {
-        _ if openpage_home_is_directory == Some(false) => checks.push(
-            Check::new(
-                "env.legacy_sessions",
-                category,
-                Status::Warn,
-                "Could not inspect legacy session JSON files because OPENPAGE_HOME is not a directory",
-            )
-            .with_kind("legacy_sessions")
-            .with_fix(
-                "Point OPENPAGE_HOME at a real directory first, then rerun `openpage doctor --quick` before inspecting legacy session artifacts.",
-            ),
-        ),
-        _ if openpage_home_creation_blocker.is_some() => checks.push(
-            Check::new(
-                "env.legacy_sessions",
-                category,
-                Status::Warn,
-                "Could not inspect legacy session JSON files because OPENPAGE_HOME cannot be created yet",
-            )
-            .with_kind("legacy_sessions")
-            .with_fix(
-                "Fix OPENPAGE_HOME parent permissions first, then rerun `openpage doctor --quick` before inspecting legacy session artifacts.",
-            ),
-        ),
-        Ok(files) if files.is_empty() => {
-            let sessions_dir = legacy_sessions_dir().unwrap_or_else(|_| PathBuf::from("<unknown>"));
-            checks.push(Check::new(
-                "env.legacy_sessions",
-                category,
-                Status::Pass,
-                format!(
-                    "No legacy session JSON files found in {}",
-                    sessions_dir.display()
-                ),
-            )
-            .with_kind("legacy_sessions"));
-        }
-        Ok(files) => {
-            let sessions_dir = legacy_sessions_dir().unwrap_or_else(|_| PathBuf::from("<unknown>"));
-            let names = files
-                .iter()
-                .filter_map(|path| path.file_name().and_then(|name| name.to_str()))
-                .take(3)
-                .map(ToString::to_string)
-                .collect::<Vec<_>>();
-            let suffix = if files.len() > names.len() {
-                format!(", plus {} more", files.len() - names.len())
-            } else {
-                String::new()
-            };
-            let examples = if names.is_empty() {
-                String::new()
-            } else {
-                format!(" Example files: {}{}", names.join(", "), suffix)
-            };
-            checks.push(
-                Check::new(
-                    "env.legacy_sessions",
-                    category,
-                    Status::Warn,
-                    format!(
-                        "Found {} legacy session JSON file(s) in {}. The current TCP daemon CLI path no longer uses them.{}",
-                        files.len(),
-                        sessions_dir.display(),
-                        examples
-                    ),
-                )
-                .with_kind("legacy_sessions")
-                .with_fix(format!(
-                    "If you no longer need the old one-shot session artifacts, back them up and remove {}. Keep the directory only if another non-CLI workflow still reads those JSON files.",
-                    sessions_dir.display()
-                ))
-                .with_auto_fixable(),
-            );
-        }
-        Err(err) => checks.push(
-            Check::new(
-                "env.legacy_sessions",
-                category,
-                Status::Warn,
-                format!("Could not inspect legacy session JSON files: {err}"),
-            )
-            .with_kind("legacy_sessions")
-            .with_fix(
-                "Check permissions for OPENPAGE_HOME and inspect the old sessions directory manually. The active TCP daemon CLI path no longer depends on legacy session JSON files.",
-            ),
         ),
     }
 }
@@ -1174,55 +1075,6 @@ fn doctor_temp_dir(label: &str) -> PathBuf {
     ))
 }
 
-fn legacy_sessions_dir() -> OpenPageResult<PathBuf> {
-    Ok(openpage_home()?.join("sessions"))
-}
-
-fn legacy_session_files() -> OpenPageResult<Vec<PathBuf>> {
-    let dir = legacy_sessions_dir()?;
-    if !dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let mut files = Vec::new();
-    for entry in fs::read_dir(&dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(|ext| ext.to_str()) == Some("json") {
-            files.push(path);
-        }
-    }
-    files.sort();
-    Ok(files)
-}
-
-fn remove_legacy_session_files() -> OpenPageResult<Vec<FixedAction>> {
-    let files = legacy_session_files()?;
-    let mut removed = Vec::new();
-    for path in files {
-        match fs::remove_file(&path) {
-            Ok(()) => removed.push(
-                FixedAction::new(
-                    "env.legacy_sessions",
-                    format!("Removed legacy session JSON {}", path.display()),
-                    true,
-                    "direct_fix",
-                    "legacy_session_json",
-                )
-                .with_path(path.display().to_string()),
-            ),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-            Err(err) => {
-                return Err(OpenPageError::Io(format!(
-                    "failed to remove legacy session JSON {}: {err}",
-                    path.display()
-                )));
-            }
-        }
-    }
-    Ok(removed)
-}
-
 enum BrowserExecutable {
     Default,
     Found(PathBuf),
@@ -1423,8 +1275,8 @@ mod tests {
     use super::{
         BrowserLaunchGuard, Check, FixedAction, Status, TempDirGuard, browser_checks,
         browser_executable_fix, browser_launch_fix, daemon_checks, doctor_payload,
-        environment_checks, legacy_session_files, missing_browser_message,
-        shell_safe_browser_path_arg, suggested_browser_executable_from_known_paths,
+        environment_checks, missing_browser_message, shell_safe_browser_path_arg,
+        suggested_browser_executable_from_known_paths,
     };
     use crate::cli::args::DoctorArgs;
     use openpage::daemon::client::{
@@ -1639,56 +1491,23 @@ mod tests {
     fn check_serializes_auto_fixable_only_when_present() {
         let value = serde_json::to_value(
             Check::new(
-                "env.legacy_sessions",
+                "env.daemon_dir",
                 "Environment",
-                Status::Warn,
-                "legacy residue",
+                Status::Info,
+                "daemon residue",
             )
-            .with_kind("legacy_sessions")
+            .with_kind("daemon_dir")
             .with_fix("remove files")
             .with_auto_fixable(),
         )
         .expect("serialize auto-fixable check");
 
-        assert_eq!(value["kind"], "legacy_sessions");
+        assert_eq!(value["kind"], "daemon_dir");
         assert_eq!(value["fix"], "remove files");
         assert_eq!(value["auto_fixable"], true);
     }
 
     #[test]
-    fn environment_checks_include_legacy_sessions_kind() {
-        let _guard = test_env_lock().lock().expect("lock test env");
-        let home = unique_openpage_home("legacy-kind");
-        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
-        let sessions_dir = home.join("sessions");
-        fs::create_dir_all(&sessions_dir).expect("create sessions dir");
-        fs::write(sessions_dir.join("legacy-a.json"), "{}").expect("write legacy json");
-
-        let mut checks = Vec::new();
-        environment_checks(&mut checks);
-        let serialized = serde_json::to_value(&checks).expect("serialize checks");
-        let checks = serialized.as_array().expect("checks array");
-        let legacy = checks
-            .iter()
-            .find(|check| check["id"] == "env.legacy_sessions")
-            .expect("legacy sessions check should exist");
-        let openpage_home = checks
-            .iter()
-            .find(|check| check["id"] == "env.openpage_home")
-            .expect("openpage home check should exist");
-        let daemon_dir = checks
-            .iter()
-            .find(|check| check["id"] == "env.daemon_dir")
-            .expect("daemon dir check should exist");
-
-        assert_eq!(openpage_home["kind"], "openpage_home");
-        assert_eq!(daemon_dir["kind"], "daemon_dir");
-        assert_eq!(legacy["kind"], "legacy_sessions");
-        assert_eq!(legacy["auto_fixable"], true);
-
-        let _ = fs::remove_dir_all(home);
-    }
-
     #[test]
     fn environment_checks_fail_when_openpage_home_is_a_file() {
         let _guard = test_env_lock().lock().expect("lock test env");
@@ -1711,11 +1530,6 @@ mod tests {
             .iter()
             .find(|check| check["id"] == "env.daemon_dir")
             .expect("daemon dir check should exist");
-        let legacy = checks
-            .iter()
-            .find(|check| check["id"] == "env.legacy_sessions")
-            .expect("legacy sessions check should exist");
-
         assert_eq!(openpage_home["status"], "fail");
         assert!(
             openpage_home["message"]
@@ -1730,14 +1544,6 @@ mod tests {
                 .expect("message string")
                 .contains("cannot be created because OPENPAGE_HOME parent is not a directory")
         );
-        assert_eq!(legacy["status"], "warn");
-        assert!(
-            legacy["message"]
-                .as_str()
-                .expect("message string")
-                .contains("OPENPAGE_HOME is not a directory")
-        );
-
         let _ = fs::remove_file(home);
     }
 
@@ -2041,11 +1847,6 @@ mod tests {
             .iter()
             .find(|check| check["id"] == "env.daemon_dir")
             .expect("daemon dir check should exist");
-        let legacy = checks
-            .iter()
-            .find(|check| check["id"] == "env.legacy_sessions")
-            .expect("legacy sessions check should exist");
-
         assert_eq!(openpage_home["status"], "fail");
         assert!(
             openpage_home["message"]
@@ -2060,14 +1861,6 @@ mod tests {
                 .expect("message string")
                 .contains("cannot be created because its existing parent")
         );
-        assert_eq!(legacy["status"], "warn");
-        assert!(
-            legacy["message"]
-                .as_str()
-                .expect("message string")
-                .contains("OPENPAGE_HOME cannot be created yet")
-        );
-
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -2126,7 +1919,6 @@ mod tests {
         let expected = std::collections::BTreeSet::from([
             "openpage_home".to_string(),
             "daemon_dir".to_string(),
-            "legacy_sessions".to_string(),
             "daemon_sessions".to_string(),
             "daemon_session".to_string(),
             "browser_config".to_string(),
@@ -2339,64 +2131,8 @@ mod tests {
     }
 
     #[test]
-    fn legacy_session_files_returns_only_json_entries() {
-        let _guard = test_env_lock().lock().expect("lock test env");
-        let home = unique_openpage_home("legacy-json");
-        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
-        let sessions_dir = home.join("sessions");
-        fs::create_dir_all(&sessions_dir).expect("create sessions dir");
-        fs::write(sessions_dir.join("keep.json"), "{}").expect("write keep.json");
-        fs::write(sessions_dir.join("other.txt"), "x").expect("write other.txt");
-        fs::create_dir_all(sessions_dir.join("nested")).expect("create nested dir");
-
-        let files = legacy_session_files().expect("list legacy session files");
-        assert_eq!(files, vec![sessions_dir.join("keep.json")]);
-
-        let _ = fs::remove_dir_all(home);
-    }
-
     #[test]
-    fn legacy_session_files_returns_empty_when_directory_missing() {
-        let _guard = test_env_lock().lock().expect("lock test env");
-        let home = unique_openpage_home("legacy-missing");
-        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
-
-        let files = legacy_session_files().expect("list legacy session files");
-        assert!(files.is_empty());
-    }
-
     #[test]
-    fn remove_legacy_session_files_deletes_only_json_entries() {
-        let _guard = test_env_lock().lock().expect("lock test env");
-        let home = unique_openpage_home("legacy-remove");
-        let _env_guard = EnvVarGuard::set("OPENPAGE_HOME", &home);
-        let sessions_dir = home.join("sessions");
-        fs::create_dir_all(&sessions_dir).expect("create sessions dir");
-        let keep_json = sessions_dir.join("keep.json");
-        let keep_txt = sessions_dir.join("other.txt");
-        fs::write(&keep_json, "{}").expect("write keep.json");
-        fs::write(&keep_txt, "x").expect("write other.txt");
-
-        let removed = super::remove_legacy_session_files().expect("remove legacy session files");
-        assert_eq!(
-            removed,
-            vec![
-                FixedAction::new(
-                    "env.legacy_sessions",
-                    format!("Removed legacy session JSON {}", keep_json.display()),
-                    true,
-                    "direct_fix",
-                    "legacy_session_json",
-                )
-                .with_path(keep_json.display().to_string()),
-            ]
-        );
-        assert!(!keep_json.exists());
-        assert!(keep_txt.exists());
-
-        let _ = fs::remove_dir_all(home);
-    }
-
     #[test]
     fn apply_fixes_reports_stale_daemon_sidecar_cleanup() {
         let _guard = test_env_lock().lock().expect("lock test env");
@@ -2519,9 +2255,6 @@ mod tests {
         let _browser_guard = EnvVarGuard::set("OPENPAGE_BROWSER_PATH", &browser_path);
 
         fs::create_dir_all(daemon_dir().expect("daemon dir")).expect("create daemon dir");
-        fs::create_dir_all(home.join("sessions")).expect("create legacy sessions dir");
-        fs::write(home.join("sessions").join("legacy-a.json"), "{}").expect("write legacy json");
-
         fs::write(port_path("stale").expect("stale port path"), "9").expect("write stale port");
         fs::write(pid_path("stale").expect("stale pid path"), "999999").expect("write stale pid");
         fs::write(
@@ -2583,17 +2316,7 @@ mod tests {
         let fixed = payload["result"]["fixed"]
             .as_array()
             .expect("fixed should be an array");
-        assert_eq!(fixed.len(), 4);
-        assert!(fixed.iter().any(|entry| {
-            entry["check_id"] == "env.legacy_sessions"
-                && entry["auto_fixable"] == true
-                && entry["source"] == "direct_fix"
-                && entry["reason"] == "legacy_session_json"
-                && entry["path"]
-                    .as_str()
-                    .expect("legacy path")
-                    .ends_with("legacy-a.json")
-        }));
+        assert_eq!(fixed.len(), 3);
         assert!(fixed.iter().any(|entry| {
             entry["check_id"] == "daemon.cleaned.stale"
                 && entry["auto_fixable"] == false

@@ -1369,7 +1369,7 @@ pub struct DoctorArgs {
     /// Skip the live browser launch smoke test. OPENPAGE_BROWSER_PATH still affects browser-path resolution in doctor checks.
     #[arg(long)]
     pub quick: bool,
-    /// Apply deterministic non-CDP cleanup fixes such as removing legacy session JSON files and stopping incomplete unready daemon sessions
+    /// Apply deterministic daemon cleanup fixes
     #[arg(long)]
     pub fix: bool,
 }
