@@ -670,3 +670,22 @@ cargo fmt --all --check
 cargo check -p openpage --lib
 cargo test -p openpage --lib session::snapshot::tests::session_settings_accept_supported_values
 ```
+
+### 里程碑 4：Rust Session 删除请求适配层概念（2026-07-23）
+
+状态：已完成。
+
+完成内容：
+
+- 删除 Rust Session 的 `SessionAdapter`、`SessionAdapterMount` 和按 URL 选择客户端的分支；
+- 删除 `SessionOptions`、`SessionRequestOptions`、`SessionSettings`、`Session` 和运行时快照中的对应入口；
+- 请求统一使用 Session 自身的 HTTP 客户端配置；
+- 删除仅覆盖该旧能力的测试，不保留兼容名称或空实现。
+
+验证：
+
+```text
+cargo fmt --all
+cargo check -p openpage --lib
+cargo test -p openpage --lib session::snapshot::tests::session_settings_accept_supported_values
+```

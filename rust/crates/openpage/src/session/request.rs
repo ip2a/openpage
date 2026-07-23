@@ -6,11 +6,6 @@ impl Session {
         initialize_session_cookies(&cookie_jar, &options.cookies)?;
         let client_options = SessionClientOptions::from(&options);
         let client = build_session_client(&client_options, Arc::clone(&cookie_jar))?;
-        let adapter_clients = build_session_adapter_clients(
-            &options.adapters,
-            &client_options,
-            Arc::clone(&cookie_jar),
-        )?;
         let download_path = normalize_session_download_path(&options.download_path)?;
 
         let mut headers = HashMap::new();
@@ -21,8 +16,6 @@ impl Session {
         Ok(Self {
             inner: Arc::new(Mutex::new(SessionState {
                 client,
-                adapter_clients,
-                adapter_mounts: options.adapters,
                 cookie_jar,
                 timeout_secs: options.timeout_secs,
                 user_agent: options.user_agent,
@@ -516,7 +509,6 @@ impl Session {
             cert: state.cert.clone(),
             trust_env: state.trust_env,
             max_redirects: state.max_redirects,
-            adapters: state.adapter_mounts.clone(),
             current_url: state.url.clone(),
         };
         drop(state);
@@ -559,23 +551,6 @@ impl Session {
 
     pub fn response_snapshot(&self) -> OpenPageResult<Option<SessionResponseInfo>> {
         self.response()
-    }
-
-    pub fn add_adapter(
-        &self,
-        url_prefix: impl Into<String>,
-        adapter: SessionAdapter,
-    ) -> OpenPageResult<()> {
-        let mut state = self.lock_state()?;
-        state.adapter_mounts.push(SessionAdapterMount {
-            url_prefix: url_prefix.into(),
-            adapter,
-        });
-        rebuild_session_client(&mut state)
-    }
-
-    pub fn adapters(&self) -> OpenPageResult<Vec<SessionAdapterMount>> {
-        Ok(self.lock_state()?.adapter_mounts.clone())
     }
 
     pub fn set_none_element_value(&self, value: Option<&str>, on_off: bool) -> OpenPageResult<()> {

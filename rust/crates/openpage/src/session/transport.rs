@@ -3,40 +3,11 @@ use super::*;
 pub(super) fn rebuild_session_client(state: &mut SessionState) -> OpenPageResult<()> {
     let client_options = SessionClientOptions::from(&*state);
     state.client = build_session_client(&client_options, Arc::clone(&state.cookie_jar))?;
-    state.adapter_clients = build_session_adapter_clients(
-        &state.adapter_mounts,
-        &client_options,
-        Arc::clone(&state.cookie_jar),
-    )?;
     Ok(())
 }
 
-pub(super) fn build_session_adapter_clients(
-    mounts: &[SessionAdapterMount],
-    base_options: &SessionClientOptions,
-    cookie_jar: Arc<SessionCookieJar>,
-) -> OpenPageResult<Vec<SessionAdapterRuntimeMount>> {
-    mounts
-        .iter()
-        .map(|mount| {
-            let client_options = mount.adapter.merged_client_options(base_options);
-            let client = build_session_client(&client_options, Arc::clone(&cookie_jar))?;
-            Ok(SessionAdapterRuntimeMount {
-                url_prefix: mount.url_prefix.clone(),
-                client,
-            })
-        })
-        .collect()
-}
-
-pub(super) fn session_client_for_url(state: &SessionState, requested_url: &str) -> Client {
-    state
-        .adapter_clients
-        .iter()
-        .filter(|mount| requested_url.starts_with(&mount.url_prefix))
-        .max_by_key(|mount| mount.url_prefix.len())
-        .map(|mount| mount.client.clone())
-        .unwrap_or_else(|| state.client.clone())
+pub(super) fn session_client_for_url(state: &SessionState, _requested_url: &str) -> Client {
+    state.client.clone()
 }
 
 pub(super) fn build_session_client(

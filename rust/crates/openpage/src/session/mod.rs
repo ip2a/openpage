@@ -609,116 +609,6 @@ impl From<(&Path, &Path)> for SessionCertInput {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
-pub struct SessionAdapter {
-    pub timeout_secs: Option<u64>,
-    pub http_proxy: Option<Option<String>>,
-    pub https_proxy: Option<Option<String>>,
-    pub verify: Option<bool>,
-    pub cert: Option<Option<SessionCert>>,
-    pub trust_env: Option<bool>,
-    pub max_redirects: Option<Option<usize>>,
-}
-
-impl SessionAdapter {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn timeout_secs(&self) -> Option<u64> {
-        self.timeout_secs
-    }
-
-    pub fn http_proxy(&self) -> Option<Option<&str>> {
-        self.http_proxy.as_ref().map(|proxy| proxy.as_deref())
-    }
-
-    pub fn https_proxy(&self) -> Option<Option<&str>> {
-        self.https_proxy.as_ref().map(|proxy| proxy.as_deref())
-    }
-
-    pub fn verify(&self) -> Option<bool> {
-        self.verify
-    }
-
-    pub fn cert(&self) -> Option<Option<&SessionCert>> {
-        self.cert.as_ref().map(|cert| cert.as_ref())
-    }
-
-    pub fn trust_env(&self) -> Option<bool> {
-        self.trust_env
-    }
-
-    pub fn max_redirects(&self) -> Option<Option<usize>> {
-        self.max_redirects
-    }
-
-    pub fn set_timeout(&mut self, timeout_secs: u64) -> &mut Self {
-        self.timeout_secs = Some(timeout_secs);
-        self
-    }
-
-    pub fn set_proxies<H, S>(&mut self, http_proxy: H, https_proxy: S) -> &mut Self
-    where
-        H: Into<SessionProxyInput>,
-        S: Into<SessionProxyInput>,
-    {
-        self.http_proxy = Some(session_proxy_input(http_proxy));
-        self.https_proxy = Some(session_proxy_input(https_proxy));
-        self
-    }
-
-    pub fn set_verify(&mut self, verify: bool) -> &mut Self {
-        self.verify = Some(verify);
-        self
-    }
-
-    pub fn set_cert<C>(&mut self, cert: C) -> &mut Self
-    where
-        C: Into<SessionCertInput>,
-    {
-        self.cert = Some(session_cert_input(cert));
-        self
-    }
-
-    pub fn set_trust_env(&mut self, trust_env: bool) -> &mut Self {
-        self.trust_env = Some(trust_env);
-        self
-    }
-
-    pub fn set_max_redirects<M>(&mut self, max_redirects: M) -> &mut Self
-    where
-        M: Into<SessionMaxRedirectsInput>,
-    {
-        self.max_redirects = Some(session_max_redirects_input(max_redirects));
-        self
-    }
-
-    fn merged_client_options(&self, base: &SessionClientOptions) -> SessionClientOptions {
-        SessionClientOptions {
-            timeout_secs: self.timeout_secs.unwrap_or(base.timeout_secs),
-            http_proxy: self
-                .http_proxy
-                .clone()
-                .unwrap_or_else(|| base.http_proxy.clone()),
-            https_proxy: self
-                .https_proxy
-                .clone()
-                .unwrap_or_else(|| base.https_proxy.clone()),
-            verify: self.verify.unwrap_or(base.verify),
-            cert: self.cert.clone().unwrap_or_else(|| base.cert.clone()),
-            trust_env: self.trust_env.unwrap_or(base.trust_env),
-            max_redirects: self.max_redirects.unwrap_or(base.max_redirects),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SessionAdapterMount {
-    pub url_prefix: String,
-    pub adapter: SessionAdapter,
-}
-
 #[derive(Debug, Clone)]
 pub struct SessionOptions {
     pub timeout_secs: u64,
@@ -738,7 +628,6 @@ pub struct SessionOptions {
     pub cert: Option<SessionCert>,
     pub trust_env: bool,
     pub max_redirects: Option<usize>,
-    pub adapters: Vec<SessionAdapterMount>,
     pub source_ini_path: Option<PathBuf>,
 }
 
@@ -877,7 +766,6 @@ impl Default for SessionOptions {
             cert: None,
             trust_env: true,
             max_redirects: Some(30),
-            adapters: Vec::new(),
             source_ini_path: None,
         }
     }
@@ -1149,22 +1037,6 @@ impl SessionOptions {
     {
         self.max_redirects = session_max_redirects_input(max_redirects);
         self
-    }
-
-    pub fn add_adapter(
-        &mut self,
-        url_prefix: impl Into<String>,
-        adapter: SessionAdapter,
-    ) -> &mut Self {
-        self.adapters.push(SessionAdapterMount {
-            url_prefix: url_prefix.into(),
-            adapter,
-        });
-        self
-    }
-
-    pub fn adapters(&self) -> &[SessionAdapterMount] {
-        &self.adapters
     }
 }
 
@@ -2059,17 +1931,9 @@ struct SessionClientOptions {
     max_redirects: Option<usize>,
 }
 
-#[derive(Debug, Clone)]
-struct SessionAdapterRuntimeMount {
-    url_prefix: String,
-    client: Client,
-}
-
 #[derive(Debug)]
 struct SessionState {
     client: Client,
-    adapter_clients: Vec<SessionAdapterRuntimeMount>,
-    adapter_mounts: Vec<SessionAdapterMount>,
     cookie_jar: Arc<SessionCookieJar>,
     timeout_secs: u64,
     user_agent: Option<String>,
@@ -2310,14 +2174,6 @@ impl SessionSettings<'_> {
         self.session.set_max_redirects(max_redirects)
     }
 
-    pub fn add_adapter(
-        &self,
-        url_prefix: impl Into<String>,
-        adapter: SessionAdapter,
-    ) -> OpenPageResult<()> {
-        self.session.add_adapter(url_prefix, adapter)
-    }
-
     pub fn cookies<'a, C>(&self, cookies: C) -> OpenPageResult<()>
     where
         C: Into<CookieInput<'a>>,
@@ -2444,7 +2300,6 @@ pub struct SessionRuntimeInfo {
     pub cert: Option<SessionCert>,
     pub trust_env: bool,
     pub max_redirects: Option<usize>,
-    pub adapters: Vec<SessionAdapterMount>,
     pub current_url: Option<String>,
 }
 
@@ -2527,10 +2382,6 @@ impl SessionRuntimeInfo {
 
     pub fn max_redirects(&self) -> Option<usize> {
         self.max_redirects
-    }
-
-    pub fn adapters(&self) -> &[SessionAdapterMount] {
-        &self.adapters
     }
 
     pub fn current_url(&self) -> Option<&str> {

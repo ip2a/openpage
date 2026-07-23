@@ -1349,10 +1349,10 @@ pub(super) fn nearest_parent_element(element: ElementRef<'_>) -> Option<ElementR
 #[cfg(test)]
 mod tests {
     use super::{
-        CookieInput, Session, SessionAdapter, SessionAdapterMount, SessionCert, SessionCookieParam,
-        SessionElement, SessionHandle, SessionHooks, SessionOptions, SessionRequestOptions,
-        SessionXPathResult, append_query_params, cookie_assignment, cookie_input_to_params,
-        cookies_from_header, default_referer_header, nth_scraper_child_by_tag, parse_headers_input,
+        CookieInput, Session, SessionCert, SessionCookieParam, SessionElement, SessionHandle,
+        SessionHooks, SessionOptions, SessionRequestOptions, SessionXPathResult,
+        append_query_params, cookie_assignment, cookie_input_to_params, cookies_from_header,
+        default_referer_header, nth_scraper_child_by_tag, parse_headers_input,
         parse_optional_selector, parse_xpath_path, remove_cookie_from_header,
         resolve_local_file_path, resolve_session_options_ini_path,
         session_cookie_header_decode_error, snapshot_find, snapshot_find_all,
@@ -1976,7 +1976,6 @@ mod tests {
         assert!(options.https_proxy().is_none());
         assert!(options.user_agent().is_none());
         assert!(options.cert().is_none());
-        assert!(options.adapters().is_empty());
     }
 
     #[test]
@@ -2056,154 +2055,6 @@ mod tests {
 
         let labels = labels.lock().expect("lock response hook labels");
         assert_eq!(labels.as_slice(), ["runtime", "request"]);
-    }
-
-    #[test]
-    fn session_options_save_does_not_persist_hooks() {
-        let dir = make_temp_dir("session-hooks-save");
-        fs::create_dir_all(&dir).expect("create temp dir");
-        let path = dir.join("session.ini");
-
-        let mut hooks = SessionHooks::new();
-        hooks.add_response(|_| {});
-        let mut adapter = SessionAdapter::new();
-        adapter.set_timeout(27).set_verify(false);
-
-        let mut options = SessionOptions::default();
-        options
-            .set_user_agent(Some("OpenPage/HookSave".to_string()))
-            .set_hooks(hooks)
-            .set_stream(true)
-            .add_adapter("http://example.test/api/", adapter);
-
-        let saved_path = options
-            .save(Some(path.as_path()))
-            .expect("save session options with hooks");
-        let loaded = SessionOptions::from_ini(Some(saved_path.as_path()))
-            .expect("reload session options without persisted hooks");
-
-        assert_eq!(loaded.user_agent.as_deref(), Some("OpenPage/HookSave"));
-        assert!(loaded.hooks().is_empty());
-        assert!(loaded.stream);
-        assert!(loaded.adapters().is_empty());
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn session_options_builder_methods_update_runtime_configuration_fields() {
-        let mut options = SessionOptions::default();
-        let mut adapter = SessionAdapter::new();
-        adapter
-            .set_timeout(17)
-            .set_proxies("http://adapter.test:8080", None)
-            .set_verify(false)
-            .set_cert(("adapter-cert.pem", "adapter-key.pem"))
-            .set_max_redirects(1);
-        assert_eq!(adapter.timeout_secs(), Some(17));
-        assert_eq!(adapter.http_proxy(), Some(Some("http://adapter.test:8080")));
-        assert_eq!(adapter.https_proxy(), Some(None));
-        assert_eq!(adapter.verify(), Some(false));
-        assert_eq!(
-            adapter.cert(),
-            Some(Some(&SessionCert::PemPair {
-                cert: std::path::PathBuf::from("adapter-cert.pem"),
-                key: std::path::PathBuf::from("adapter-key.pem"),
-            }))
-        );
-        assert_eq!(adapter.trust_env(), None);
-        assert_eq!(adapter.max_redirects(), Some(Some(1)));
-        let cookies = vec![SessionCookieParam {
-            name: "sid".to_string(),
-            value: "abc".to_string(),
-            url: Some("https://example.test/".to_string()),
-            domain: None,
-            path: Some("/".to_string()),
-            secure: true,
-            http_only: true,
-            same_site: Some("Lax".to_string()),
-        }];
-
-        options.set_timeout(21).set_user_agent("OpenPage/Test");
-        options
-            .set_headers("Accept: text/html\nX-Test: remove")
-            .expect("set session option headers")
-            .set_a_header("accept", "application/json")
-            .set_a_header("X-Test", "1")
-            .remove_a_header("x-test");
-        options
-            .set_cookies(&cookies)
-            .expect("set session option cookies");
-        options
-            .set_retry(6, 0.125)
-            .set_proxies("http://127.0.0.1:8080", None)
-            .set_download_path("downloads")
-            .set_auth(("alice", "secret"))
-            .set_params([("page", "2")])
-            .set_cert("client.pem")
-            .set_verify(false)
-            .set_stream(true)
-            .set_trust_env(false)
-            .set_max_redirects(5)
-            .add_adapter("http://example.test/api/", adapter.clone());
-
-        assert_eq!(options.timeout_secs, 21);
-        assert_eq!(options.timeout_secs(), 21);
-        assert_eq!(options.user_agent.as_deref(), Some("OpenPage/Test"));
-        assert_eq!(options.user_agent(), Some("OpenPage/Test"));
-        assert_eq!(
-            options.headers,
-            vec![("accept".to_string(), "application/json".to_string())]
-        );
-        assert_eq!(options.header("Accept"), Some("application/json"));
-        assert_eq!(options.headers().len(), 1);
-        assert_eq!(options.cookies, cookies);
-        assert_eq!(options.cookies(), cookies.as_slice());
-        assert_eq!(options.retry_times, 6);
-        assert_eq!(options.retry_times(), 6);
-        assert_eq!(options.retry_interval_millis, 125);
-        assert_eq!(options.retry_interval_millis(), 125);
-        assert_eq!(options.retry_interval(), 0.125);
-        assert_eq!(options.http_proxy.as_deref(), Some("http://127.0.0.1:8080"));
-        assert_eq!(options.http_proxy(), Some("http://127.0.0.1:8080"));
-        assert_eq!(options.https_proxy, None);
-        assert_eq!(options.https_proxy(), None);
-        assert_eq!(options.download_path, std::path::PathBuf::from("downloads"));
-        assert_eq!(options.download_path(), std::path::Path::new("downloads"));
-        assert_eq!(
-            options.auth,
-            Some(("alice".to_string(), "secret".to_string()))
-        );
-        assert_eq!(options.auth(), Some(("alice", "secret")));
-        assert_eq!(options.params, vec![("page".to_string(), "2".to_string())]);
-        assert_eq!(options.params(), &[("page".to_string(), "2".to_string())]);
-        assert_eq!(options.param("page"), Some("2"));
-        assert_eq!(
-            options.cert,
-            Some(SessionCert::Pem(std::path::PathBuf::from("client.pem")))
-        );
-        assert_eq!(
-            options.cert(),
-            Some(&SessionCert::Pem(std::path::PathBuf::from("client.pem")))
-        );
-        assert!(!options.verify);
-        assert!(!options.verify());
-        assert!(options.stream);
-        assert!(options.stream());
-        assert!(!options.trust_env);
-        assert!(!options.trust_env());
-        assert_eq!(options.max_redirects, Some(5));
-        assert_eq!(options.max_redirects(), Some(5));
-        assert_eq!(
-            options.adapters(),
-            &[SessionAdapterMount {
-                url_prefix: "http://example.test/api/".to_string(),
-                adapter,
-            }]
-        );
-
-        options.clear_headers();
-        assert!(options.headers.is_empty());
     }
 
     #[test]
@@ -3737,11 +3588,6 @@ mod tests {
 
     #[test]
     fn session_runtime_snapshot_exposes_current_configuration_and_cookies() {
-        let mut adapter = SessionAdapter::new();
-        adapter
-            .set_timeout(7)
-            .set_verify(false)
-            .set_max_redirects(Some(2));
         let page = Session::new(SessionOptions {
             timeout_secs: 21,
             user_agent: Some("OpenPage/TestAgent".to_string()),
@@ -3770,10 +3616,6 @@ mod tests {
             stream: true,
             trust_env: false,
             max_redirects: Some(5),
-            adapters: vec![SessionAdapterMount {
-                url_prefix: "http://example.test/api/".to_string(),
-                adapter: adapter.clone(),
-            }],
             ..SessionOptions::default()
         })
         .expect("session page");
@@ -3842,14 +3684,6 @@ mod tests {
         assert_eq!(snapshot.cookies[0].name, "sid".to_string());
         assert_eq!(snapshot.cookies[0].value, "abc".to_string());
         assert_eq!(snapshot.cookies[0].same_site.as_deref(), Some("Lax"));
-        assert_eq!(
-            snapshot.adapters,
-            vec![SessionAdapterMount {
-                url_prefix: "http://example.test/api/".to_string(),
-                adapter,
-            }]
-        );
-        assert_eq!(snapshot.adapters().len(), 1);
     }
 
     #[test]
@@ -4479,66 +4313,6 @@ mod tests {
     }
 
     #[test]
-    fn session_add_adapter_routes_matching_urls_through_proxy_and_updates_snapshot() {
-        let (proxy_url, handle) = spawn_capture_server("200 OK", "adapter");
-        let page = Session::new(SessionOptions::default()).expect("session page");
-        let mut adapter = SessionAdapter::new();
-        adapter.set_proxies(Some(proxy_url.clone()), None);
-
-        page.add_adapter("http://example.test/api/", adapter.clone())
-            .expect("add runtime adapter");
-
-        assert_eq!(
-            page.adapters().expect("runtime adapters"),
-            vec![SessionAdapterMount {
-                url_prefix: "http://example.test/api/".to_string(),
-                adapter: adapter.clone(),
-            }]
-        );
-        assert_eq!(
-            page.session().expect("session snapshot").adapters,
-            vec![SessionAdapterMount {
-                url_prefix: "http://example.test/api/".to_string(),
-                adapter,
-            }]
-        );
-
-        assert!(
-            page.get("http://example.test/api/items")
-                .expect("request through mounted adapter")
-        );
-        assert_eq!(page.html().expect("response body"), "adapter".to_string());
-
-        let request = handle.join().expect("server thread");
-        assert_eq!(
-            request.lines().next().expect("request line"),
-            "GET http://example.test/api/items HTTP/1.1"
-        );
-    }
-
-    #[test]
-    fn session_adapter_uses_longest_matching_url_prefix() {
-        let (address, handle) = spawn_delayed_server(Duration::from_millis(1500));
-        let mut broad_adapter = SessionAdapter::new();
-        broad_adapter.set_timeout(1);
-        let mut specific_adapter = SessionAdapter::new();
-        specific_adapter.set_timeout(3);
-        let mut options = SessionOptions::default();
-        options
-            .add_adapter(address.clone(), broad_adapter)
-            .add_adapter(format!("{address}/api/"), specific_adapter);
-        let page = Session::new(options).expect("session page");
-
-        assert!(
-            page.get(&format!("{address}/api/items"))
-                .expect("request should use most specific adapter timeout")
-        );
-        assert_eq!(page.html().expect("response body"), "slow".to_string());
-
-        handle.join().expect("server thread");
-    }
-
-    #[test]
     fn session_set_max_redirects_controls_follow_behavior() {
         let page = Session::new(SessionOptions::default()).expect("session page");
 
@@ -4970,7 +4744,6 @@ mod tests {
             let _ = page.set_max_redirects(5);
             let _ = settings.max_redirects(Some(5));
             let _ = settings.max_redirects(5);
-            let _ = settings.add_adapter("https://example.test/", SessionAdapter::new());
             let _ = settings.cookies("sid=1; domain=example.test; path=/");
             let _ = settings.cookies(&cookie);
             let _ = settings.cookie("sid", "2", Some("https://example.test/"), None, Some("/"));
