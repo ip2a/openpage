@@ -1199,3 +1199,19 @@ python tests/python/test_facade.py -v
 ```
 
 结果：2 个正式 Python 门面测试全部通过。
+
+### 里程碑 24：清理旧门面示例（2026-07-23）
+
+状态：阶段完成。
+
+- 删除依赖 `WebPage` / `WebMode` 的 Rust 与 Python 混合页面示例；
+- 删除依赖 `ChromiumOptions` / `ChromiumPage` 的用户数据目录示例；
+- `basic_usage.py` 和百度示例改为正式的 `Browser → Page` 调用路径；
+- 示例只使用当前已公开能力，不模拟尚未开放的配置、截图、状态或 JavaScript API。
+
+验证：
+
+```text
+uv run python -m py_compile examples/python/basic_usage.py examples/python/test_baidu.py tests/python/test_facade.py
+rg -n 'ChromiumPage|SessionPage|WebPage|WebMode|s_ele|s_eles' examples python tests --glob '*.py' --glob '*.rs'
+```

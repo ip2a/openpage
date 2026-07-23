@@ -1,16 +1,14 @@
-from openpage import ChromiumPage
+from openpage import Browser
 
 
 def main() -> None:
-    page = ChromiumPage()
+    browser = Browser.launch()
     try:
-        page.get("https://example.com")
-        print("url:", page.url)
-        print("title:", page.title)
-        print("h1:", page.ele("h1").text)
-        print("js:", page.run_js("({title: document.title, href: location.href})"))
+        page = browser.new_page("https://example.com")
+        print("title:", page.text("title"))
+        print("h1:", page.text("h1"))
     finally:
-        page.quit()
+        browser.close()
 
 
 if __name__ == "__main__":
