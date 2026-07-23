@@ -97,7 +97,7 @@ impl WebPage {
         }
     }
 
-    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -107,7 +107,7 @@ impl WebPage {
         }
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -115,7 +115,7 @@ impl WebPage {
         self.snapshot_find(locator.raw())
     }
 
-    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -125,7 +125,7 @@ impl WebPage {
         }
     }
 
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -133,7 +133,7 @@ impl WebPage {
         self.snapshot_find_all(locator.raw())
     }
 
-    pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<DocumentElement> {
         match self.mode()? {
             WebMode::Driver => self.driver.snapshot_find_by(by, value),
             WebMode::Session => self.session.find_by(by, value),
@@ -144,7 +144,7 @@ impl WebPage {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<Vec<SessionElement>> {
+    ) -> OpenPageResult<Vec<DocumentElement>> {
         match self.mode()? {
             WebMode::Driver => self.driver.snapshot_find_all_by(by, value),
             WebMode::Session => self.session.find_all_by(by, value),
@@ -161,7 +161,7 @@ impl WebPage {
         }
     }
 
-    pub fn snapshot_root(&self) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_root(&self) -> OpenPageResult<DocumentElement> {
         match self.mode()? {
             WebMode::Driver => self.driver.snapshot_root(),
             WebMode::Session => self.session.root(),

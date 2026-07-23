@@ -11,7 +11,7 @@ use crate::element::{Element, ElementResource};
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::Locator;
 use crate::page::{Frame, Page};
-use crate::session::{Session, SessionElement, snapshot_find_all, snapshot_root};
+use crate::session::{DocumentElement, Session, snapshot_find_all, snapshot_root};
 use crate::settings::{
     data_url_missing_comma_message, get_blob_data_url_required_message,
     get_blob_resolve_failed_message, get_blob_url_required_message,
@@ -105,7 +105,7 @@ pub enum TreeSource<'a> {
     Frame(&'a Frame),
     Element(&'a Element),
     Session(&'a Session),
-    SessionElement(&'a SessionElement),
+    DocumentElement(&'a DocumentElement),
     WebPage(&'a WebPage),
     WebFrame(&'a WebFrame),
     WebElement(&'a WebElement),
@@ -205,9 +205,9 @@ impl<'a> From<&'a Session> for TreeSource<'a> {
     }
 }
 
-impl<'a> From<&'a SessionElement> for TreeSource<'a> {
-    fn from(value: &'a SessionElement) -> Self {
-        Self::SessionElement(value)
+impl<'a> From<&'a DocumentElement> for TreeSource<'a> {
+    fn from(value: &'a DocumentElement) -> Self {
+        Self::DocumentElement(value)
     }
 }
 
@@ -241,7 +241,7 @@ pub enum MakeSessionEleSource<'a> {
     Frame(&'a Frame),
     Element(&'a Element),
     Session(&'a Session),
-    SessionElement(&'a SessionElement),
+    DocumentElement(&'a DocumentElement),
     WebPage(&'a WebPage),
     WebFrame(&'a WebFrame),
     WebElement(&'a WebElement),
@@ -278,9 +278,9 @@ impl<'a> From<&'a Session> for MakeSessionEleSource<'a> {
     }
 }
 
-impl<'a> From<&'a SessionElement> for MakeSessionEleSource<'a> {
-    fn from(value: &'a SessionElement) -> Self {
-        Self::SessionElement(value)
+impl<'a> From<&'a DocumentElement> for MakeSessionEleSource<'a> {
+    fn from(value: &'a DocumentElement) -> Self {
+        Self::DocumentElement(value)
     }
 }
 
@@ -327,8 +327,8 @@ impl<'a> From<(&'a str, &'a str)> for MakeSessionEleLocator<'a> {
 
 #[derive(Clone, Debug)]
 pub enum MakeSessionEleResult {
-    One(SessionElement),
-    Many(Vec<SessionElement>),
+    One(DocumentElement),
+    Many(Vec<DocumentElement>),
 }
 
 pub fn make_session_ele<'a, S, L>(
@@ -484,13 +484,13 @@ impl BlobSource<'_> {
 }
 
 impl TreeSource<'_> {
-    fn snapshot_root(&self) -> OpenPageResult<SessionElement> {
+    fn snapshot_root(&self) -> OpenPageResult<DocumentElement> {
         match self {
             Self::Page(page) => page.snapshot_root(),
             Self::Frame(frame) => frame.snapshot_root(),
             Self::Element(element) => element.snapshot_root(),
             Self::Session(page) => page.root(),
-            Self::SessionElement(element) => Ok((*element).clone()),
+            Self::DocumentElement(element) => Ok((*element).clone()),
             Self::WebPage(page) => page.snapshot_root(),
             Self::WebFrame(frame) => frame.snapshot_root(),
             Self::WebElement(element) => element.snapshot_root(),
@@ -500,14 +500,14 @@ impl TreeSource<'_> {
 }
 
 impl MakeSessionEleSource<'_> {
-    fn root(&self) -> OpenPageResult<SessionElement> {
+    fn root(&self) -> OpenPageResult<DocumentElement> {
         match self {
             Self::Html(html) => snapshot_root(html),
             Self::Page(page) => page.snapshot_root(),
             Self::Frame(frame) => frame.snapshot_root(),
             Self::Element(element) => element.snapshot_root(),
             Self::Session(page) => page.root(),
-            Self::SessionElement(element) => Ok((*element).clone()),
+            Self::DocumentElement(element) => Ok((*element).clone()),
             Self::WebPage(page) => page.snapshot_root(),
             Self::WebFrame(frame) => frame.snapshot_root(),
             Self::WebElement(element) => element.snapshot_root(),
@@ -515,14 +515,14 @@ impl MakeSessionEleSource<'_> {
         }
     }
 
-    fn find_all(&self, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+    fn find_all(&self, locator: &str) -> OpenPageResult<Vec<DocumentElement>> {
         match self {
             Self::Html(html) => snapshot_find_all(html, locator),
             Self::Page(page) => page.snapshot_find_all(locator),
             Self::Frame(frame) => frame.snapshot_find_all(locator),
             Self::Element(element) => element.snapshot_find_all(locator),
             Self::Session(page) => page.find_all(locator),
-            Self::SessionElement(element) => element.find_all(locator),
+            Self::DocumentElement(element) => element.find_all(locator),
             Self::WebPage(page) => page.snapshot_find_all(locator),
             Self::WebFrame(frame) => frame.snapshot_find_all(locator),
             Self::WebElement(element) => element.snapshot_find_all(locator),
@@ -532,9 +532,9 @@ impl MakeSessionEleSource<'_> {
 }
 
 fn select_session_element(
-    elements: Vec<SessionElement>,
+    elements: Vec<DocumentElement>,
     index: isize,
-) -> OpenPageResult<SessionElement> {
+) -> OpenPageResult<DocumentElement> {
     if index == 0 {
         return Err(OpenPageError::ElementNotFound(
             make_session_ele_index_zero_message(),
@@ -662,7 +662,7 @@ fn decode_blob_data_url(data_url: &str, as_bytes: bool) -> OpenPageResult<Elemen
 }
 
 fn append_tree_children(
-    element: &SessionElement,
+    element: &DocumentElement,
     prefix: &str,
     text: TreeTextInput,
     show_js: bool,
@@ -693,7 +693,7 @@ fn append_tree_children(
 }
 
 fn format_tree_label(
-    element: &SessionElement,
+    element: &DocumentElement,
     text: TreeTextInput,
     show_js: bool,
     show_css: bool,
@@ -737,7 +737,7 @@ fn should_include_tree_text(tag: &str, show_js: bool, show_css: bool) -> bool {
     }
 }
 
-fn direct_tree_text(element: &SessionElement) -> OpenPageResult<Option<String>> {
+fn direct_tree_text(element: &DocumentElement) -> OpenPageResult<Option<String>> {
     let text = element
         .texts(true)?
         .into_iter()

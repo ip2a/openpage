@@ -1394,7 +1394,7 @@ impl Page {
         )
     }
 
-    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -1402,7 +1402,7 @@ impl Page {
         snapshot_find(&self.html()?, locator.raw())
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -1410,7 +1410,7 @@ impl Page {
         self.snapshot_find(locator.raw())
     }
 
-    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -1418,7 +1418,7 @@ impl Page {
         snapshot_find_all(&self.html()?, locator.raw())
     }
 
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -1426,7 +1426,7 @@ impl Page {
         self.snapshot_find_all(locator.raw())
     }
 
-    pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<DocumentElement> {
         let locator = Locator::from_by(by, value)?;
         self.snapshot_find(locator.raw())
     }
@@ -1435,7 +1435,7 @@ impl Page {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<Vec<SessionElement>> {
+    ) -> OpenPageResult<Vec<DocumentElement>> {
         let locator = Locator::from_by(by, value)?;
         self.snapshot_find_all(locator.raw())
     }
@@ -1462,7 +1462,7 @@ impl Page {
         })
     }
 
-    pub fn snapshot_root(&self) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_root(&self) -> OpenPageResult<DocumentElement> {
         snapshot_root(&self.html()?)
     }
 

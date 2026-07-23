@@ -14,8 +14,8 @@ use crate::element_list::{ElementsListExt, ElementsOne, ElementsOneOwned};
 use crate::session::snapshot_root;
 use crate::settings::scoped_test_settings;
 use crate::{
-    By, DownloadFileExistsMode, Element, Frame, Keys, LocatorInput, OpenPageError, OpenPageResult,
-    Page, Session, SessionCookieParam, SessionElement, SessionOptions, Settings, ShadowRoot,
+    By, DocumentElement, DownloadFileExistsMode, Element, Frame, Keys, LocatorInput, OpenPageError,
+    OpenPageResult, Page, Session, SessionCookieParam, SessionOptions, Settings, ShadowRoot,
 };
 
 fn runtime_test_temp_dir(name: &str) -> PathBuf {
@@ -2084,7 +2084,7 @@ fn page_frame_element_and_web_wrappers_expose_static_find_aliases() {
         web_frame: &WebFrame,
         web_element: &WebElement,
         session_page: &Session,
-        session_element: &SessionElement,
+        session_element: &DocumentElement,
     ) {
         let _ = page.s_ele("#root");
         let _ = page.s_ele((By::ID, "root"));
@@ -2121,7 +2121,16 @@ fn page_frame_element_and_web_wrappers_expose_static_find_aliases() {
     }
 
     let _ = assert_calls
-        as fn(&Page, &Frame, &Element, &WebPage, &WebFrame, &WebElement, &Session, &SessionElement);
+        as fn(
+            &Page,
+            &Frame,
+            &Element,
+            &WebPage,
+            &WebFrame,
+            &WebElement,
+            &Session,
+            &DocumentElement,
+        );
 }
 
 #[test]
@@ -2187,10 +2196,10 @@ fn elements_one_find_locators_signatures_accept_locator_inputs() {
     fn assert_calls(
         one_element: ElementsOne<'_, Element>,
         one_web_element: ElementsOne<'_, WebElement>,
-        one_session_element: ElementsOne<'_, SessionElement>,
+        one_session_element: ElementsOne<'_, DocumentElement>,
         owned_element: &ElementsOneOwned<Element>,
         owned_web_element: &ElementsOneOwned<WebElement>,
-        owned_session_element: &ElementsOneOwned<SessionElement>,
+        owned_session_element: &ElementsOneOwned<DocumentElement>,
     ) {
         let locators = vec!["#root".to_string(), ".item".to_string()];
         let tuple_locators = [(By::ID, "root"), (By::CLASS_NAME, "item")];
@@ -2229,10 +2238,10 @@ fn elements_one_find_locators_signatures_accept_locator_inputs() {
         as fn(
             ElementsOne<'_, Element>,
             ElementsOne<'_, WebElement>,
-            ElementsOne<'_, SessionElement>,
+            ElementsOne<'_, DocumentElement>,
             &ElementsOneOwned<Element>,
             &ElementsOneOwned<WebElement>,
-            &ElementsOneOwned<SessionElement>,
+            &ElementsOneOwned<DocumentElement>,
         );
 }
 
@@ -5745,7 +5754,7 @@ fn page_webpage_and_session_element_lists_expose_getter_and_filter_signatures() 
     fn assert_calls(
         page_elements: &Vec<Element>,
         web_elements: &Vec<WebElement>,
-        session_elements: &Vec<crate::SessionElement>,
+        session_elements: &Vec<crate::DocumentElement>,
     ) {
         let search = crate::ElementsSearch::new()
             .displayed(true)
@@ -6401,7 +6410,7 @@ fn page_webpage_and_session_element_lists_expose_getter_and_filter_signatures() 
             .and_then(|element| element.comments());
     }
 
-    let _ = assert_calls as fn(&Vec<Element>, &Vec<WebElement>, &Vec<crate::SessionElement>);
+    let _ = assert_calls as fn(&Vec<Element>, &Vec<WebElement>, &Vec<crate::DocumentElement>);
 }
 
 #[test]
@@ -6477,7 +6486,7 @@ fn page_and_webpage_wait_signatures_accept_by_tuples_and_element_refs() {
         web_page: &WebPage,
         element: &Element,
         web_element: &WebElement,
-        session_element: &SessionElement,
+        session_element: &DocumentElement,
     ) {
         let locators = vec!["#root".to_string(), ".item".to_string()];
         let tuple_locators = [(By::ID, "root"), (By::CLASS_NAME, "item")];
@@ -6555,7 +6564,7 @@ fn page_and_webpage_wait_signatures_accept_by_tuples_and_element_refs() {
         let _ = web_page.wait_for_ele_clickable(&session_web_element, 1_000);
     }
 
-    let _ = assert_calls as fn(&Page, &WebPage, &Element, &WebElement, &SessionElement);
+    let _ = assert_calls as fn(&Page, &WebPage, &Element, &WebElement, &DocumentElement);
 }
 
 #[test]
@@ -6742,10 +6751,10 @@ fn elements_one_find_alias_signatures_accept_by_tuples() {
     fn assert_calls(
         one_element: ElementsOne<'_, Element>,
         one_web_element: ElementsOne<'_, WebElement>,
-        one_session_element: ElementsOne<'_, SessionElement>,
+        one_session_element: ElementsOne<'_, DocumentElement>,
         owned_element: &ElementsOneOwned<Element>,
         owned_web_element: &ElementsOneOwned<WebElement>,
-        owned_session_element: &ElementsOneOwned<SessionElement>,
+        owned_session_element: &ElementsOneOwned<DocumentElement>,
     ) {
         let _ = one_element.find((By::ID, "root"));
         let _ = one_element.find_all((By::CLASS_NAME, "item"));
@@ -6771,10 +6780,10 @@ fn elements_one_find_alias_signatures_accept_by_tuples() {
         as fn(
             ElementsOne<'_, Element>,
             ElementsOne<'_, WebElement>,
-            ElementsOne<'_, SessionElement>,
+            ElementsOne<'_, DocumentElement>,
             &ElementsOneOwned<Element>,
             &ElementsOneOwned<WebElement>,
-            &ElementsOneOwned<SessionElement>,
+            &ElementsOneOwned<DocumentElement>,
         );
 }
 

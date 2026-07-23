@@ -1,13 +1,13 @@
 use super::*;
 
-impl SessionElement {
+impl DocumentElement {
     pub(crate) fn none_element_runtime_config_handle(
         &self,
     ) -> Option<&ElementsOneRuntimeConfigHandle> {
         self.none_element_config.as_ref()
     }
 
-    pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -21,7 +21,7 @@ impl SessionElement {
         )
     }
 
-    pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -43,7 +43,7 @@ impl SessionElement {
         }
     }
 
-    pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -57,29 +57,29 @@ impl SessionElement {
         )
     }
 
-    pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
         self.find_all(locator)
     }
 
-    pub fn find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
+    pub fn find_by(&self, by: &str, value: &str) -> OpenPageResult<DocumentElement> {
         self.find((by, value))
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
         self.find(locator)
     }
 
-    pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<DocumentElement>> {
         self.find_all((by, value))
     }
 
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -103,7 +103,7 @@ impl SessionElement {
         locators: L,
         any_one: bool,
         first_match_only: bool,
-    ) -> OpenPageResult<Vec<LocatorMatch<SessionElement>>>
+    ) -> OpenPageResult<Vec<LocatorMatch<DocumentElement>>>
     where
         L: Into<LocatorBatchInput<'a>>,
     {
@@ -229,11 +229,11 @@ impl SessionElement {
         })
     }
 
-    pub fn parent(&self) -> OpenPageResult<SessionElement> {
+    pub fn parent(&self) -> OpenPageResult<DocumentElement> {
         self.parent_level(1)
     }
 
-    pub fn parent_level(&self, level: usize) -> OpenPageResult<SessionElement> {
+    pub fn parent_level(&self, level: usize) -> OpenPageResult<DocumentElement> {
         if level == 0 {
             return Err(OpenPageError::ElementNotFound(
                 parent_element_level_must_start_message(),
@@ -257,7 +257,7 @@ impl SessionElement {
         })
     }
 
-    pub fn parent_with<'a, L>(&self, locator: L, index: usize) -> OpenPageResult<SessionElement>
+    pub fn parent_with<'a, L>(&self, locator: L, index: usize) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -308,7 +308,7 @@ impl SessionElement {
         }
     }
 
-    pub fn child(&self) -> OpenPageResult<SessionElement> {
+    pub fn child(&self) -> OpenPageResult<DocumentElement> {
         self.child_with(None::<&str>, 1)
     }
 
@@ -320,7 +320,7 @@ impl SessionElement {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<SessionElement>
+    ) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -346,7 +346,7 @@ impl SessionElement {
         )
     }
 
-    pub fn children(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn children(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.children_with(None::<&str>)
     }
 
@@ -354,7 +354,7 @@ impl SessionElement {
         self.children_nodes_with(None::<&str>)
     }
 
-    pub fn children_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn children_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -400,7 +400,7 @@ impl SessionElement {
         })
     }
 
-    pub fn prev(&self) -> OpenPageResult<SessionElement> {
+    pub fn prev(&self) -> OpenPageResult<DocumentElement> {
         self.prev_with(None::<&str>, 1)
     }
 
@@ -412,7 +412,7 @@ impl SessionElement {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<SessionElement>
+    ) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -438,7 +438,7 @@ impl SessionElement {
         )
     }
 
-    pub fn prevs(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn prevs(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.prevs_with(None::<&str>)
     }
 
@@ -446,7 +446,7 @@ impl SessionElement {
         self.prev_nodes_with(None::<&str>)
     }
 
-    pub fn prevs_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn prevs_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -496,7 +496,7 @@ impl SessionElement {
         })
     }
 
-    pub fn next(&self) -> OpenPageResult<SessionElement> {
+    pub fn next(&self) -> OpenPageResult<DocumentElement> {
         self.next_with(None::<&str>, 1)
     }
 
@@ -508,7 +508,7 @@ impl SessionElement {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<SessionElement>
+    ) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -534,7 +534,7 @@ impl SessionElement {
         )
     }
 
-    pub fn nexts(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn nexts(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.nexts_with(None::<&str>)
     }
 
@@ -542,7 +542,7 @@ impl SessionElement {
         self.next_nodes_with(None::<&str>)
     }
 
-    pub fn nexts_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn nexts_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -588,7 +588,7 @@ impl SessionElement {
         })
     }
 
-    pub fn before(&self) -> OpenPageResult<SessionElement> {
+    pub fn before(&self) -> OpenPageResult<DocumentElement> {
         self.before_with(None::<&str>, 1)
     }
 
@@ -600,7 +600,7 @@ impl SessionElement {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<SessionElement>
+    ) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -626,7 +626,7 @@ impl SessionElement {
         )
     }
 
-    pub fn befores(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn befores(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.befores_with(None::<&str>)
     }
 
@@ -634,7 +634,7 @@ impl SessionElement {
         self.before_nodes_with(None::<&str>)
     }
 
-    pub fn befores_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn befores_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -693,7 +693,7 @@ impl SessionElement {
         }
     }
 
-    pub fn after(&self) -> OpenPageResult<SessionElement> {
+    pub fn after(&self) -> OpenPageResult<DocumentElement> {
         self.after_with(None::<&str>, 1)
     }
 
@@ -705,7 +705,7 @@ impl SessionElement {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<SessionElement>
+    ) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -731,7 +731,7 @@ impl SessionElement {
         )
     }
 
-    pub fn afters(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn afters(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.afters_with(None::<&str>)
     }
 
@@ -739,7 +739,7 @@ impl SessionElement {
         self.after_nodes_with(None::<&str>)
     }
 
-    pub fn afters_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn afters_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {

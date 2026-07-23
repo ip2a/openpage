@@ -689,3 +689,24 @@ cargo fmt --all
 cargo check -p openpage --lib
 cargo test -p openpage --lib session::snapshot::tests::session_settings_accept_supported_values
 ```
+
+### 里程碑 5：Rust 静态文档元素命名收敛（2026-07-23）
+
+状态：已完成。
+
+完成内容：
+
+- Rust 核心及其调用方中的 `SessionElement` 直接重命名为 `DocumentElement`；
+- 静态 HTTP 文档元素不再使用 Session 页面术语；
+- 同步更新页面、元素列表、ShadowRoot、工具和 WebPage 内部类型引用，不保留旧名称别名。
+
+说明：本里程碑完成术语收敛；`Document` 独立拥有的响应模型仍在下一里程碑实现。
+
+验证：
+
+```text
+cargo fmt --all
+cargo check -p openpage --lib
+cargo test -p openpage --lib session::snapshot::tests::session_settings_accept_supported_values
+Rust 核心 SessionElement 搜索结果为 0
+```

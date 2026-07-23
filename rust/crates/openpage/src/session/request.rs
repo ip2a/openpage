@@ -704,7 +704,7 @@ impl Session {
         Ok(cookie_jar.matching_cookies(&url))
     }
 
-    pub fn root(&self) -> OpenPageResult<SessionElement> {
+    pub fn root(&self) -> OpenPageResult<DocumentElement> {
         let body = self.body_arc()?;
         snapshot_root_arc(body, self.base_url_arc()?, Some(&self.none_element_config))
     }
@@ -956,7 +956,7 @@ impl Session {
         rebuild_session_client(&mut state)
     }
 
-    pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -970,7 +970,7 @@ impl Session {
         )
     }
 
-    pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -992,7 +992,7 @@ impl Session {
         }
     }
 
-    pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -1006,29 +1006,29 @@ impl Session {
         )
     }
 
-    pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
         self.find_all(locator)
     }
 
-    pub fn find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
+    pub fn find_by(&self, by: &str, value: &str) -> OpenPageResult<DocumentElement> {
         self.find((by, value))
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
         self.find(locator)
     }
 
-    pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<DocumentElement>> {
         self.find_all((by, value))
     }
 
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -1050,7 +1050,7 @@ impl Session {
         locators: L,
         any_one: bool,
         first_match_only: bool,
-    ) -> OpenPageResult<Vec<LocatorMatch<SessionElement>>>
+    ) -> OpenPageResult<Vec<LocatorMatch<DocumentElement>>>
     where
         L: Into<LocatorBatchInput<'a>>,
     {

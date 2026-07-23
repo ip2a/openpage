@@ -1,14 +1,14 @@
 use super::*;
 
-pub fn snapshot_root(html: &str) -> OpenPageResult<SessionElement> {
+pub fn snapshot_root(html: &str) -> OpenPageResult<DocumentElement> {
     snapshot_root_arc(Arc::new(html.to_string()), None, None)
 }
 
-pub fn snapshot_find(html: &str, locator: &str) -> OpenPageResult<SessionElement> {
+pub fn snapshot_find(html: &str, locator: &str) -> OpenPageResult<DocumentElement> {
     snapshot_find_arc(Arc::new(html.to_string()), locator, None, None)
 }
 
-pub fn snapshot_find_all(html: &str, locator: &str) -> OpenPageResult<Vec<SessionElement>> {
+pub fn snapshot_find_all(html: &str, locator: &str) -> OpenPageResult<Vec<DocumentElement>> {
     snapshot_find_all_arc(Arc::new(html.to_string()), locator, None, None)
 }
 
@@ -19,18 +19,18 @@ pub fn snapshot_query_xpath(
     snapshot_query_xpath_arc(Arc::new(html.to_string()), expression, None, None)
 }
 
-pub fn snapshot_fragment_root(html: &str) -> OpenPageResult<SessionElement> {
+pub fn snapshot_fragment_root(html: &str) -> OpenPageResult<DocumentElement> {
     snapshot_fragment_root_arc(Arc::new(html.to_string()), None, None)
 }
 
-pub fn snapshot_fragment_find(html: &str, locator: &str) -> OpenPageResult<SessionElement> {
+pub fn snapshot_fragment_find(html: &str, locator: &str) -> OpenPageResult<DocumentElement> {
     snapshot_fragment_find_arc(Arc::new(html.to_string()), locator, None, None)
 }
 
 pub fn snapshot_fragment_find_all(
     html: &str,
     locator: &str,
-) -> OpenPageResult<Vec<SessionElement>> {
+) -> OpenPageResult<Vec<DocumentElement>> {
     snapshot_fragment_find_all_arc(Arc::new(html.to_string()), locator, None, None)
 }
 
@@ -44,7 +44,7 @@ pub fn snapshot_fragment_query_xpath(
 pub fn snapshot_root_with_base_url(
     html: &str,
     base_url: Option<&str>,
-) -> OpenPageResult<SessionElement> {
+) -> OpenPageResult<DocumentElement> {
     snapshot_root_arc(
         Arc::new(html.to_string()),
         base_url.map(|value| Arc::new(value.to_string())),
@@ -56,7 +56,7 @@ pub fn snapshot_find_with_base_url(
     html: &str,
     locator: &str,
     base_url: Option<&str>,
-) -> OpenPageResult<SessionElement> {
+) -> OpenPageResult<DocumentElement> {
     snapshot_find_arc(
         Arc::new(html.to_string()),
         locator,
@@ -69,7 +69,7 @@ pub fn snapshot_find_all_with_base_url(
     html: &str,
     locator: &str,
     base_url: Option<&str>,
-) -> OpenPageResult<Vec<SessionElement>> {
+) -> OpenPageResult<Vec<DocumentElement>> {
     snapshot_find_all_arc(
         Arc::new(html.to_string()),
         locator,
@@ -94,7 +94,7 @@ pub fn snapshot_query_xpath_with_base_url(
 pub fn snapshot_fragment_root_with_base_url(
     html: &str,
     base_url: Option<&str>,
-) -> OpenPageResult<SessionElement> {
+) -> OpenPageResult<DocumentElement> {
     snapshot_fragment_root_arc(
         Arc::new(html.to_string()),
         base_url.map(|value| Arc::new(value.to_string())),
@@ -106,7 +106,7 @@ pub fn snapshot_fragment_find_with_base_url(
     html: &str,
     locator: &str,
     base_url: Option<&str>,
-) -> OpenPageResult<SessionElement> {
+) -> OpenPageResult<DocumentElement> {
     snapshot_fragment_find_arc(
         Arc::new(html.to_string()),
         locator,
@@ -119,7 +119,7 @@ pub fn snapshot_fragment_find_all_with_base_url(
     html: &str,
     locator: &str,
     base_url: Option<&str>,
-) -> OpenPageResult<Vec<SessionElement>> {
+) -> OpenPageResult<Vec<DocumentElement>> {
     snapshot_fragment_find_all_arc(
         Arc::new(html.to_string()),
         locator,
@@ -144,7 +144,7 @@ pub(super) fn snapshot_root_arc(
     html: Arc<String>,
     base_url: Option<Arc<String>>,
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<SessionElement> {
+) -> OpenPageResult<DocumentElement> {
     let parsed = Html::parse_document(html.as_ref());
     Ok(session_element_from_ref(
         &html,
@@ -159,7 +159,7 @@ pub(super) fn snapshot_find_arc(
     locator: &str,
     base_url: Option<Arc<String>>,
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<SessionElement> {
+) -> OpenPageResult<DocumentElement> {
     let locator = Locator::parse(locator)?;
     match locator.kind() {
         LocatorKind::Css => {
@@ -192,7 +192,7 @@ pub(super) fn snapshot_find_all_arc(
     locator: &str,
     base_url: Option<Arc<String>>,
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<Vec<SessionElement>> {
+) -> OpenPageResult<Vec<DocumentElement>> {
     let locator = Locator::parse(locator)?;
     match locator.kind() {
         LocatorKind::Css => {
@@ -236,7 +236,7 @@ pub(super) fn snapshot_fragment_root_arc(
     html: Arc<String>,
     base_url: Option<Arc<String>>,
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<SessionElement> {
+) -> OpenPageResult<DocumentElement> {
     let wrapped = wrap_fragment_html(html);
     let parsed = Html::parse_document(wrapped.as_ref());
     let wrapper_selector = Selector::parse(&format!("[{FRAGMENT_WRAPPER_ATTR}='1']"))
@@ -262,7 +262,7 @@ pub(super) fn snapshot_fragment_find_arc(
     locator: &str,
     base_url: Option<Arc<String>>,
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<SessionElement> {
+) -> OpenPageResult<DocumentElement> {
     let wrapped = wrap_fragment_html(html);
     let locator = Locator::parse(locator)?;
     match locator.kind() {
@@ -308,7 +308,7 @@ pub(super) fn snapshot_fragment_find_all_arc(
     locator: &str,
     base_url: Option<Arc<String>>,
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<Vec<SessionElement>> {
+) -> OpenPageResult<Vec<DocumentElement>> {
     let wrapped = wrap_fragment_html(html);
     let locator = Locator::parse(locator)?;
     match locator.kind() {
@@ -358,7 +358,7 @@ pub(super) fn find_in_scope(
     locator: &str,
     base_url: Option<Arc<String>>,
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<SessionElement> {
+) -> OpenPageResult<DocumentElement> {
     let locator = Locator::parse(locator)?;
     match locator.kind() {
         LocatorKind::Css => {
@@ -396,7 +396,7 @@ pub(super) fn find_all_in_scope(
     locator: &str,
     base_url: Option<Arc<String>>,
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<Vec<SessionElement>> {
+) -> OpenPageResult<Vec<DocumentElement>> {
     let locator = Locator::parse(locator)?;
     match locator.kind() {
         LocatorKind::Css => {
@@ -435,8 +435,8 @@ pub(super) fn session_element_from_ref(
     base_url: Option<&Arc<String>>,
     element: ElementRef<'_>,
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> SessionElement {
-    SessionElement {
+) -> DocumentElement {
+    DocumentElement {
         html: Arc::clone(html),
         node_id: element.id(),
         base_url: base_url.cloned(),
@@ -474,7 +474,7 @@ pub(super) fn collect_matching_elements<'a, I>(
     elements: I,
     locator: Option<&str>,
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<Vec<SessionElement>>
+) -> OpenPageResult<Vec<DocumentElement>>
 where
     I: IntoIterator<Item = ElementRef<'a>>,
 {
@@ -497,7 +497,7 @@ pub(super) fn document_relatives(
     direction: RelativeDirection,
     locator: Option<&str>,
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<Vec<SessionElement>> {
+) -> OpenPageResult<Vec<DocumentElement>> {
     let selector = parse_optional_selector(locator)?;
     let root = element.tree().root();
     let elements: Vec<_> = root.descendants().filter_map(ElementRef::wrap).collect();
@@ -801,7 +801,7 @@ pub(super) fn xpath_find_all_from_scope_element(
     scope: ElementRef<'_>,
     query: &str,
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<Vec<SessionElement>> {
+) -> OpenPageResult<Vec<DocumentElement>> {
     let scope_path = xpath_for_element(scope);
     let scope_at_fragment_root = nearest_fragment_wrapper(scope).is_some();
     xpath_find_all_with_scope(
@@ -884,7 +884,7 @@ pub(super) fn xpath_find_all_with_scope(
     scope_path: Option<&str>,
     scope_at_fragment_root: bool,
     none_element_config: Option<&ElementsOneRuntimeConfigHandle>,
-) -> OpenPageResult<Vec<SessionElement>> {
+) -> OpenPageResult<Vec<DocumentElement>> {
     let parsed = Html::parse_document(html.as_ref());
     let xpath_tree = xpath_html::parse(html.as_ref()).map_err(|err| {
         OpenPageError::UnsupportedLocator(invalid_xpath_html_message(&err.to_string()))
@@ -1349,7 +1349,7 @@ pub(super) fn nearest_parent_element(element: ElementRef<'_>) -> Option<ElementR
 #[cfg(test)]
 mod tests {
     use super::{
-        CookieInput, Session, SessionCert, SessionCookieParam, SessionElement, SessionHandle,
+        CookieInput, DocumentElement, Session, SessionCert, SessionCookieParam, SessionHandle,
         SessionHooks, SessionOptions, SessionRequestOptions, SessionXPathResult,
         append_query_params, cookie_assignment, cookie_input_to_params, cookies_from_header,
         default_referer_header, nth_scraper_child_by_tag, parse_headers_input,
@@ -4667,7 +4667,7 @@ mod tests {
 
     #[test]
     fn session_page_and_element_find_locators_accept_by_locator_inputs() {
-        fn assert_calls(page: &Session, element: &SessionElement) {
+        fn assert_calls(page: &Session, element: &DocumentElement) {
             let locators = vec!["#root".to_string(), ".item".to_string()];
             let tuple_locators = [(By::ID, "root"), (By::CLASS_NAME, "item")];
             let mixed_locators = [
@@ -4685,7 +4685,7 @@ mod tests {
             let _ = element.find_locators(&mixed_locators, false, false);
         }
 
-        let _ = assert_calls as fn(&Session, &SessionElement);
+        let _ = assert_calls as fn(&Session, &DocumentElement);
     }
 
     #[test]

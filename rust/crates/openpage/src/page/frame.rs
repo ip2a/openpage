@@ -1581,11 +1581,11 @@ impl Frame {
         Ok(false)
     }
 
-    pub fn snapshot_root(&self) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_root(&self) -> OpenPageResult<DocumentElement> {
         snapshot_root(&self.inner_html()?)
     }
 
-    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -1593,7 +1593,7 @@ impl Frame {
         snapshot_find(&self.inner_html()?, locator.raw())
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -1601,7 +1601,7 @@ impl Frame {
         self.snapshot_find(locator.raw())
     }
 
-    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -1609,7 +1609,7 @@ impl Frame {
         snapshot_find_all(&self.inner_html()?, locator.raw())
     }
 
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -1617,7 +1617,7 @@ impl Frame {
         self.snapshot_find_all(locator.raw())
     }
 
-    pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<DocumentElement> {
         let locator = Locator::from_by(by, value)?;
         self.snapshot_find(locator.raw())
     }
@@ -1626,7 +1626,7 @@ impl Frame {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<Vec<SessionElement>> {
+    ) -> OpenPageResult<Vec<DocumentElement>> {
         let locator = Locator::from_by(by, value)?;
         self.snapshot_find_all(locator.raw())
     }

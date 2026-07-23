@@ -2401,7 +2401,7 @@ impl std::fmt::Debug for PendingSessionResponse {
 }
 
 #[derive(Clone, Debug)]
-pub struct SessionElement {
+pub struct DocumentElement {
     html: Arc<String>,
     node_id: NodeId,
     base_url: Option<Arc<String>>,
@@ -2411,7 +2411,7 @@ pub struct SessionElement {
 #[derive(Clone, Debug)]
 pub enum SessionXPathResult {
     Document,
-    Element(SessionElement),
+    Element(DocumentElement),
     Text(String),
     Comment(String),
     Attribute {

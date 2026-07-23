@@ -25,7 +25,7 @@ use crate::page::{
     FrameCacheHandle, FrameNoneElementConfigCacheHandle, execute_page_command_async,
 };
 use crate::session::{
-    SessionElement, SessionXPathResult, snapshot_fragment_find_all_with_base_url,
+    DocumentElement, SessionXPathResult, snapshot_fragment_find_all_with_base_url,
     snapshot_fragment_find_with_base_url, snapshot_fragment_query_xpath_with_base_url,
     snapshot_fragment_root_with_base_url,
 };
@@ -203,7 +203,7 @@ impl ShadowRoot {
         })
     }
 
-    pub fn snapshot_root(&self) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_root(&self) -> OpenPageResult<DocumentElement> {
         let html = self.inner_html()?;
         let base_url = value_as_optional_string(
             self.run_js("return this.baseURI || (this.host && this.host.baseURI) || document.baseURI || null;")?,
@@ -212,7 +212,7 @@ impl ShadowRoot {
         snapshot_fragment_root_with_base_url(&html, base_url.as_deref())
     }
 
-    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -225,7 +225,7 @@ impl ShadowRoot {
         snapshot_fragment_find_with_base_url(&html, locator.raw(), base_url.as_deref())
     }
 
-    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -238,7 +238,7 @@ impl ShadowRoot {
         snapshot_fragment_find_all_with_base_url(&html, locator.raw(), base_url.as_deref())
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -246,7 +246,7 @@ impl ShadowRoot {
         self.snapshot_find(locator.raw())
     }
 
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -254,7 +254,7 @@ impl ShadowRoot {
         self.snapshot_find_all(locator.raw())
     }
 
-    pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<DocumentElement> {
         let locator = Locator::from_by(by, value)?;
         self.snapshot_find(locator.raw())
     }
@@ -263,7 +263,7 @@ impl ShadowRoot {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<Vec<SessionElement>> {
+    ) -> OpenPageResult<Vec<DocumentElement>> {
         let locator = Locator::from_by(by, value)?;
         self.snapshot_find_all(locator.raw())
     }
@@ -859,7 +859,7 @@ mod tests {
         run_shadow_root_lookup_future_with_cdp_timeout, shadow_root_selector_error,
     };
     use crate::{
-        By, Element, LocatorInput, LocatorMatch, OpenPageError, OpenPageResult, SessionElement,
+        By, DocumentElement, Element, LocatorInput, LocatorMatch, OpenPageError, OpenPageResult,
         SessionXPathResult, Settings,
     };
     use serde_json::json;
@@ -998,8 +998,8 @@ mod tests {
     #[test]
     fn shadow_root_static_query_aliases_are_typechecked() {
         fn assert_methods(root: &ShadowRoot) -> OpenPageResult<()> {
-            let _: SessionElement = root.s_ele("css:.item")?;
-            let _: Vec<SessionElement> = root.s_eles("css:.item")?;
+            let _: DocumentElement = root.s_ele("css:.item")?;
+            let _: Vec<DocumentElement> = root.s_eles("css:.item")?;
             let _: Vec<SessionXPathResult> = root.snapshot_query_xpath(".//*")?;
             Ok(())
         }

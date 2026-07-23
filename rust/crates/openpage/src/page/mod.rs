@@ -89,7 +89,7 @@ use crate::locator::{
 use crate::recorder::Recorder;
 use crate::screencast::Screencast;
 use crate::session::{
-    CookieEntry, CookieInput, HeadersInput, Session, SessionCookieParam, SessionElement,
+    CookieEntry, CookieInput, DocumentElement, HeadersInput, Session, SessionCookieParam,
     SessionOptions, SessionXPathResult, cookie_input_to_params_allow_missing_scope,
     cookies_from_header, parse_headers_input, snapshot_find, snapshot_find_all,
     snapshot_query_xpath, snapshot_root,
@@ -694,10 +694,10 @@ struct ActionsDragItem {
 pub enum PageElementTarget<'a> {
     Locator(LocatorInput<'a>),
     Element(&'a Element),
-    SessionElement(&'a SessionElement),
+    DocumentElement(&'a DocumentElement),
     WebElement(&'a WebElement),
     OwnedElement(Element),
-    OwnedSessionElement(SessionElement),
+    OwnedDocumentElement(DocumentElement),
     OwnedWebElement(WebElement),
 }
 
@@ -819,15 +819,15 @@ impl From<Element> for PageElementTarget<'_> {
     }
 }
 
-impl<'a> From<&'a SessionElement> for PageElementTarget<'a> {
-    fn from(value: &'a SessionElement) -> Self {
-        Self::SessionElement(value)
+impl<'a> From<&'a DocumentElement> for PageElementTarget<'a> {
+    fn from(value: &'a DocumentElement) -> Self {
+        Self::DocumentElement(value)
     }
 }
 
-impl From<SessionElement> for PageElementTarget<'_> {
-    fn from(value: SessionElement) -> Self {
-        Self::OwnedSessionElement(value)
+impl From<DocumentElement> for PageElementTarget<'_> {
+    fn from(value: DocumentElement) -> Self {
+        Self::OwnedDocumentElement(value)
     }
 }
 
@@ -1520,16 +1520,16 @@ fn resolve_page_element_target<'a>(
         )),
         PageElementTarget::Element(element) => Ok(ResolvedPageElementTarget::Borrowed(element)),
         PageElementTarget::OwnedElement(element) => Ok(ResolvedPageElementTarget::Owned(element)),
-        PageElementTarget::SessionElement(_) => Err(OpenPageError::UnsupportedOperation(
+        PageElementTarget::DocumentElement(_) => Err(OpenPageError::UnsupportedOperation(
             session_backed_element_driver_target_message(
-                "SessionElement",
+                "DocumentElement",
                 "page element",
                 "页面元素定位",
             ),
         )),
-        PageElementTarget::OwnedSessionElement(_) => Err(OpenPageError::UnsupportedOperation(
+        PageElementTarget::OwnedDocumentElement(_) => Err(OpenPageError::UnsupportedOperation(
             session_backed_element_driver_target_message(
-                "SessionElement",
+                "DocumentElement",
                 "page element",
                 "页面元素定位",
             ),

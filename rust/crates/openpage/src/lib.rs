@@ -74,12 +74,12 @@ pub use recorder::{
 };
 pub use screencast::{Screencast, ScreencastMode};
 pub use session::{
-    CookieEntry, CookieInput, HeadersInput, ParamsInput, Session, SessionAuthInput, SessionCert,
-    SessionCertInput, SessionCookie, SessionCookieParam, SessionDownload, SessionElement,
-    SessionEncodingInput, SessionHandle, SessionHookEvent, SessionHooks, SessionMaxRedirectsInput,
-    SessionOptions, SessionProxyInput, SessionRequestOptions, SessionResponseHook,
-    SessionResponseInfo, SessionRetryIntervalInput, SessionRetryTimesInput, SessionRuntimeInfo,
-    SessionSettings, SessionUserAgentInput, SessionXPathResult,
+    CookieEntry, CookieInput, DocumentElement, HeadersInput, ParamsInput, Session,
+    SessionAuthInput, SessionCert, SessionCertInput, SessionCookie, SessionCookieParam,
+    SessionDownload, SessionEncodingInput, SessionHandle, SessionHookEvent, SessionHooks,
+    SessionMaxRedirectsInput, SessionOptions, SessionProxyInput, SessionRequestOptions,
+    SessionResponseHook, SessionResponseInfo, SessionRetryIntervalInput, SessionRetryTimesInput,
+    SessionRuntimeInfo, SessionSettings, SessionUserAgentInput, SessionXPathResult,
 };
 pub use settings::{Settings, SettingsChain, SettingsSnapshot};
 pub use shadow_root::ShadowRoot;

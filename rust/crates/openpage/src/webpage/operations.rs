@@ -1072,10 +1072,10 @@ impl WebPage {
             PageElementTarget::Locator(locator) => {
                 Ok(Locator::from_input(locator)?.raw().to_string())
             }
-            PageElementTarget::SessionElement(element) => {
+            PageElementTarget::DocumentElement(element) => {
                 Ok(format!("xpath:{}", element.xpath()?))
             }
-            PageElementTarget::OwnedSessionElement(element) => {
+            PageElementTarget::OwnedDocumentElement(element) => {
                 Ok(format!("xpath:{}", element.xpath()?))
             }
             PageElementTarget::WebElement(element) => match element {
@@ -1110,7 +1110,7 @@ impl WebPage {
         check: F,
     ) -> OpenPageResult<bool>
     where
-        F: Fn(&SessionElement) -> OpenPageResult<bool>,
+        F: Fn(&DocumentElement) -> OpenPageResult<bool>,
     {
         let timeout = Duration::from_millis(timeout_ms.max(1));
         let deadline = Instant::now() + timeout;

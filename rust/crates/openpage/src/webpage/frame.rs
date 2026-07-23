@@ -1412,18 +1412,18 @@ impl WebFrame {
         self.frame().wait_until_stop_moving(timeout_ms)
     }
 
-    pub fn snapshot_root(&self) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_root(&self) -> OpenPageResult<DocumentElement> {
         self.frame().snapshot_root()
     }
 
-    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
         self.frame().snapshot_find(locator)
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -1431,14 +1431,14 @@ impl WebFrame {
         self.snapshot_find(locator.raw())
     }
 
-    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
         self.frame().snapshot_find_all(locator)
     }
 
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -1446,7 +1446,7 @@ impl WebFrame {
         self.snapshot_find_all(locator.raw())
     }
 
-    pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<DocumentElement> {
         self.frame().snapshot_find_by(by, value)
     }
 
@@ -1454,7 +1454,7 @@ impl WebFrame {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<Vec<SessionElement>> {
+    ) -> OpenPageResult<Vec<DocumentElement>> {
         self.frame().snapshot_find_all_by(by, value)
     }
 

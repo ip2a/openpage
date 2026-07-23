@@ -46,7 +46,7 @@ use crate::page::{
     frame_locator_input,
 };
 use crate::session::{
-    SessionElement, SessionXPathResult, snapshot_fragment_find_all_with_base_url,
+    DocumentElement, SessionXPathResult, snapshot_fragment_find_all_with_base_url,
     snapshot_fragment_find_with_base_url, snapshot_fragment_query_xpath_with_base_url,
     snapshot_fragment_root_with_base_url,
 };
@@ -873,7 +873,7 @@ impl Element {
         })
     }
 
-    pub fn snapshot_root(&self) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_root(&self) -> OpenPageResult<DocumentElement> {
         let html = self
             .html()?
             .ok_or_else(|| OpenPageError::ElementNotFound(element_html_unavailable_message()))?;
@@ -881,7 +881,7 @@ impl Element {
         snapshot_fragment_root_with_base_url(&html, base_url.as_deref())
     }
 
-    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -893,7 +893,7 @@ impl Element {
         snapshot_fragment_find_with_base_url(&html, locator.raw(), base_url.as_deref())
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<SessionElement>
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -901,7 +901,7 @@ impl Element {
         self.snapshot_find(locator.raw())
     }
 
-    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -913,7 +913,7 @@ impl Element {
         snapshot_fragment_find_all_with_base_url(&html, locator.raw(), base_url.as_deref())
     }
 
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -921,7 +921,7 @@ impl Element {
         self.snapshot_find_all(locator.raw())
     }
 
-    pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<SessionElement> {
+    pub fn snapshot_find_by(&self, by: &str, value: &str) -> OpenPageResult<DocumentElement> {
         let locator = Locator::from_by(by, value)?;
         self.snapshot_find(locator.raw())
     }
@@ -930,7 +930,7 @@ impl Element {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<Vec<SessionElement>> {
+    ) -> OpenPageResult<Vec<DocumentElement>> {
         let locator = Locator::from_by(by, value)?;
         self.snapshot_find_all(locator.raw())
     }

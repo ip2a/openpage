@@ -7,7 +7,7 @@ use serde_json::Value;
 use crate::browser::BrowserTabReference;
 use crate::element::Element;
 use crate::error::{OpenPageError, OpenPageResult};
-use crate::session::{SessionElement, SessionXPathResult};
+use crate::session::{DocumentElement, SessionXPathResult};
 use crate::settings::{
     component_state_lock_poisoned_message, elements_one_filter_missing_message,
     elements_one_missing_method_message, web_element_list_driver_filter_message,
@@ -266,7 +266,7 @@ fn elements_one_runtime_config_from_ref<'a, T: 'static>(
     if let Some(element) = any.downcast_ref::<WebElement>() {
         return element.none_element_runtime_config_handle();
     }
-    if let Some(element) = any.downcast_ref::<SessionElement>() {
+    if let Some(element) = any.downcast_ref::<DocumentElement>() {
         return element.none_element_runtime_config_handle();
     }
     None
@@ -1032,7 +1032,7 @@ impl ElementsOneOwned<Element> {
         }
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -1057,7 +1057,7 @@ impl ElementsOneOwned<Element> {
     pub fn snapshot_find<'a, L>(
         &self,
         locator: L,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -1068,18 +1068,18 @@ impl ElementsOneOwned<Element> {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.snapshot_find((by, value))
     }
 
-    pub fn snapshot_root(&self) -> OpenPageResult<Option<SessionElement>> {
+    pub fn snapshot_root(&self) -> OpenPageResult<Option<DocumentElement>> {
         match self.as_option() {
             Some(element) => element.snapshot_root().map(Some),
             None => self.missing_optional_result("snapshot_root()"),
         }
     }
 
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -1089,7 +1089,7 @@ impl ElementsOneOwned<Element> {
         }
     }
 
-    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -1100,7 +1100,7 @@ impl ElementsOneOwned<Element> {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<Vec<SessionElement>> {
+    ) -> OpenPageResult<Vec<DocumentElement>> {
         self.snapshot_find_all((by, value))
     }
 
@@ -1799,7 +1799,7 @@ impl ElementsOneOwned<WebElement> {
         }
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -1824,7 +1824,7 @@ impl ElementsOneOwned<WebElement> {
     pub fn snapshot_find<'a, L>(
         &self,
         locator: L,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -1835,18 +1835,18 @@ impl ElementsOneOwned<WebElement> {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.snapshot_find((by, value))
     }
 
-    pub fn snapshot_root(&self) -> OpenPageResult<Option<SessionElement>> {
+    pub fn snapshot_root(&self) -> OpenPageResult<Option<DocumentElement>> {
         match self.as_option() {
             Some(element) => element.snapshot_root().map(Some),
             None => self.missing_optional_result("snapshot_root()"),
         }
     }
 
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -1856,7 +1856,7 @@ impl ElementsOneOwned<WebElement> {
         }
     }
 
-    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn snapshot_find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -1867,7 +1867,7 @@ impl ElementsOneOwned<WebElement> {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<Vec<SessionElement>> {
+    ) -> OpenPageResult<Vec<DocumentElement>> {
         self.snapshot_find_all((by, value))
     }
 
@@ -2103,10 +2103,10 @@ impl ElementsOneOwned<WebElement> {
     }
 }
 
-impl ElementsOneOwned<SessionElement> {
-    fn relative_element<F>(&self, f: F) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+impl ElementsOneOwned<DocumentElement> {
+    fn relative_element<F>(&self, f: F) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
-        F: FnOnce(&SessionElement) -> OpenPageResult<SessionElement>,
+        F: FnOnce(&DocumentElement) -> OpenPageResult<DocumentElement>,
     {
         match self.as_option() {
             Some(element) => match f(element) {
@@ -2123,9 +2123,9 @@ impl ElementsOneOwned<SessionElement> {
         }
     }
 
-    fn relative_elements<F>(&self, f: F) -> OpenPageResult<Vec<SessionElement>>
+    fn relative_elements<F>(&self, f: F) -> OpenPageResult<Vec<DocumentElement>>
     where
-        F: FnOnce(&SessionElement) -> OpenPageResult<Vec<SessionElement>>,
+        F: FnOnce(&DocumentElement) -> OpenPageResult<Vec<DocumentElement>>,
     {
         match self.as_option() {
             Some(element) => f(element),
@@ -2135,7 +2135,7 @@ impl ElementsOneOwned<SessionElement> {
 
     fn relative_nodes<F>(&self, f: F) -> OpenPageResult<Vec<SessionXPathResult>>
     where
-        F: FnOnce(&SessionElement) -> OpenPageResult<Vec<SessionXPathResult>>,
+        F: FnOnce(&DocumentElement) -> OpenPageResult<Vec<SessionXPathResult>>,
     {
         match self.as_option() {
             Some(element) => f(element),
@@ -2145,7 +2145,7 @@ impl ElementsOneOwned<SessionElement> {
 
     fn relative_node<F>(&self, f: F) -> OpenPageResult<Option<SessionXPathResult>>
     where
-        F: FnOnce(&SessionElement) -> OpenPageResult<SessionXPathResult>,
+        F: FnOnce(&DocumentElement) -> OpenPageResult<SessionXPathResult>,
     {
         match self.as_option() {
             Some(element) => match f(element) {
@@ -2166,7 +2166,7 @@ impl ElementsOneOwned<SessionElement> {
         self.as_borrowed().texts(text_node_only)
     }
 
-    pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    pub fn ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2176,7 +2176,7 @@ impl ElementsOneOwned<SessionElement> {
         }
     }
 
-    pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2187,11 +2187,11 @@ impl ElementsOneOwned<SessionElement> {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.find((by, value))
     }
 
-    pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2201,14 +2201,14 @@ impl ElementsOneOwned<SessionElement> {
         }
     }
 
-    pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn find_all<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
         self.eles(locator)
     }
 
-    pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<DocumentElement>> {
         self.find_all((by, value))
     }
 
@@ -2217,7 +2217,7 @@ impl ElementsOneOwned<SessionElement> {
         locators: L,
         any_one: bool,
         first_match_only: bool,
-    ) -> OpenPageResult<Vec<crate::locator::LocatorMatch<SessionElement>>>
+    ) -> OpenPageResult<Vec<crate::locator::LocatorMatch<DocumentElement>>>
     where
         L: Into<crate::locator::LocatorBatchInput<'a>>,
     {
@@ -2234,7 +2234,7 @@ impl ElementsOneOwned<SessionElement> {
         }
     }
 
-    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    pub fn s_ele<'a, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2256,7 +2256,7 @@ impl ElementsOneOwned<SessionElement> {
         }
     }
 
-    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'a, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2266,11 +2266,11 @@ impl ElementsOneOwned<SessionElement> {
         }
     }
 
-    pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.parent())
     }
 
-    pub fn parent_level(&self, level: usize) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn parent_level(&self, level: usize) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.parent_level(level))
     }
 
@@ -2278,14 +2278,14 @@ impl ElementsOneOwned<SessionElement> {
         &self,
         locator: L,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
         self.relative_element(|element| element.parent_with(locator, index))
     }
 
-    pub fn child(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn child(&self) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.child())
     }
 
@@ -2293,7 +2293,7 @@ impl ElementsOneOwned<SessionElement> {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2315,11 +2315,11 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_node(|element| element.child_node_with(locator, index))
     }
 
-    pub fn children(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn children(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.relative_elements(|element| element.children())
     }
 
-    pub fn children_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn children_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2340,7 +2340,7 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_nodes(|element| element.children_nodes_with(locator))
     }
 
-    pub fn prev(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn prev(&self) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.prev())
     }
 
@@ -2348,7 +2348,7 @@ impl ElementsOneOwned<SessionElement> {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2370,11 +2370,11 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_node(|element| element.prev_node_with(locator, index))
     }
 
-    pub fn prevs(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn prevs(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.relative_elements(|element| element.prevs())
     }
 
-    pub fn prevs_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn prevs_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2395,7 +2395,7 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_nodes(|element| element.prev_nodes_with(locator))
     }
 
-    pub fn next(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn next(&self) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.next())
     }
 
@@ -2403,7 +2403,7 @@ impl ElementsOneOwned<SessionElement> {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2425,11 +2425,11 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_node(|element| element.next_node_with(locator, index))
     }
 
-    pub fn nexts(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn nexts(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.relative_elements(|element| element.nexts())
     }
 
-    pub fn nexts_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn nexts_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2450,7 +2450,7 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_nodes(|element| element.next_nodes_with(locator))
     }
 
-    pub fn before(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn before(&self) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.before())
     }
 
@@ -2458,7 +2458,7 @@ impl ElementsOneOwned<SessionElement> {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2480,11 +2480,11 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_node(|element| element.before_node_with(locator, index))
     }
 
-    pub fn befores(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn befores(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.relative_elements(|element| element.befores())
     }
 
-    pub fn befores_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn befores_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2505,7 +2505,7 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_nodes(|element| element.before_nodes_with(locator))
     }
 
-    pub fn after(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn after(&self) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.after())
     }
 
@@ -2513,7 +2513,7 @@ impl ElementsOneOwned<SessionElement> {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2535,11 +2535,11 @@ impl ElementsOneOwned<SessionElement> {
         self.relative_node(|element| element.after_node_with(locator, index))
     }
 
-    pub fn afters(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn afters(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.relative_elements(|element| element.afters())
     }
 
-    pub fn afters_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn afters_with<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'a>>,
     {
@@ -2923,7 +2923,7 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
-    pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -2948,7 +2948,7 @@ impl<'a> ElementsOne<'a, Element> {
     pub fn snapshot_find<'b, L>(
         &self,
         locator: L,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -2959,18 +2959,18 @@ impl<'a> ElementsOne<'a, Element> {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.snapshot_find((by, value))
     }
 
-    pub fn snapshot_root(&self) -> OpenPageResult<Option<SessionElement>> {
+    pub fn snapshot_root(&self) -> OpenPageResult<Option<DocumentElement>> {
         match self.element {
             Some(element) => element.snapshot_root().map(Some),
             None => Ok(None),
         }
     }
 
-    pub fn s_eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -2980,7 +2980,7 @@ impl<'a> ElementsOne<'a, Element> {
         }
     }
 
-    pub fn snapshot_find_all<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn snapshot_find_all<'b, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -2991,7 +2991,7 @@ impl<'a> ElementsOne<'a, Element> {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<Vec<SessionElement>> {
+    ) -> OpenPageResult<Vec<DocumentElement>> {
         self.snapshot_find_all((by, value))
     }
 
@@ -3418,7 +3418,7 @@ impl<'a> ElementsOne<'a, WebElement> {
         }
     }
 
-    pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -3443,7 +3443,7 @@ impl<'a> ElementsOne<'a, WebElement> {
     pub fn snapshot_find<'b, L>(
         &self,
         locator: L,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -3454,18 +3454,18 @@ impl<'a> ElementsOne<'a, WebElement> {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.snapshot_find((by, value))
     }
 
-    pub fn snapshot_root(&self) -> OpenPageResult<Option<SessionElement>> {
+    pub fn snapshot_root(&self) -> OpenPageResult<Option<DocumentElement>> {
         match self.element {
             Some(element) => element.snapshot_root().map(Some),
             None => Ok(None),
         }
     }
 
-    pub fn s_eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -3475,7 +3475,7 @@ impl<'a> ElementsOne<'a, WebElement> {
         }
     }
 
-    pub fn snapshot_find_all<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn snapshot_find_all<'b, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -3486,7 +3486,7 @@ impl<'a> ElementsOne<'a, WebElement> {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<Vec<SessionElement>> {
+    ) -> OpenPageResult<Vec<DocumentElement>> {
         self.snapshot_find_all((by, value))
     }
 
@@ -3811,10 +3811,10 @@ impl<'a> ElementsOne<'a, WebElement> {
     }
 }
 
-impl<'a> ElementsOne<'a, SessionElement> {
-    fn relative_element<F>(&self, f: F) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+impl<'a> ElementsOne<'a, DocumentElement> {
+    fn relative_element<F>(&self, f: F) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
-        F: FnOnce(&SessionElement) -> OpenPageResult<SessionElement>,
+        F: FnOnce(&DocumentElement) -> OpenPageResult<DocumentElement>,
     {
         match self.element {
             Some(element) => match f(element) {
@@ -3834,9 +3834,9 @@ impl<'a> ElementsOne<'a, SessionElement> {
         }
     }
 
-    fn relative_elements<F>(&self, f: F) -> OpenPageResult<Vec<SessionElement>>
+    fn relative_elements<F>(&self, f: F) -> OpenPageResult<Vec<DocumentElement>>
     where
-        F: FnOnce(&SessionElement) -> OpenPageResult<Vec<SessionElement>>,
+        F: FnOnce(&DocumentElement) -> OpenPageResult<Vec<DocumentElement>>,
     {
         match self.element {
             Some(element) => f(element),
@@ -3846,7 +3846,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
 
     fn relative_nodes<F>(&self, f: F) -> OpenPageResult<Vec<SessionXPathResult>>
     where
-        F: FnOnce(&SessionElement) -> OpenPageResult<Vec<SessionXPathResult>>,
+        F: FnOnce(&DocumentElement) -> OpenPageResult<Vec<SessionXPathResult>>,
     {
         match self.element {
             Some(element) => f(element),
@@ -3856,7 +3856,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
 
     fn relative_node<F>(&self, f: F) -> OpenPageResult<Option<SessionXPathResult>>
     where
-        F: FnOnce(&SessionElement) -> OpenPageResult<SessionXPathResult>,
+        F: FnOnce(&DocumentElement) -> OpenPageResult<SessionXPathResult>,
     {
         match self.element {
             Some(element) => match f(element) {
@@ -3873,7 +3873,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         }
     }
 
-    pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    pub fn ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -3883,7 +3883,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         }
     }
 
-    pub fn find<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    pub fn find<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -3894,11 +3894,11 @@ impl<'a> ElementsOne<'a, SessionElement> {
         &self,
         by: &str,
         value: &str,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.find((by, value))
     }
 
-    pub fn eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -3908,14 +3908,14 @@ impl<'a> ElementsOne<'a, SessionElement> {
         }
     }
 
-    pub fn find_all<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn find_all<'b, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.eles(locator)
     }
 
-    pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn find_all_by(&self, by: &str, value: &str) -> OpenPageResult<Vec<DocumentElement>> {
         self.find_all((by, value))
     }
 
@@ -3924,7 +3924,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         locators: L,
         any_one: bool,
         first_match_only: bool,
-    ) -> OpenPageResult<Vec<crate::locator::LocatorMatch<SessionElement>>>
+    ) -> OpenPageResult<Vec<crate::locator::LocatorMatch<DocumentElement>>>
     where
         L: Into<crate::locator::LocatorBatchInput<'b>>,
     {
@@ -3941,7 +3941,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         }
     }
 
-    pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    pub fn s_ele<'b, L>(&self, locator: L) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -3963,7 +3963,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         }
     }
 
-    pub fn s_eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<SessionElement>>
+    pub fn s_eles<'b, L>(&self, locator: L) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -3973,11 +3973,11 @@ impl<'a> ElementsOne<'a, SessionElement> {
         }
     }
 
-    pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn parent(&self) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.parent())
     }
 
-    pub fn parent_level(&self, level: usize) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn parent_level(&self, level: usize) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.parent_level(level))
     }
 
@@ -3985,14 +3985,14 @@ impl<'a> ElementsOne<'a, SessionElement> {
         &self,
         locator: L,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
         self.relative_element(|element| element.parent_with(locator, index))
     }
 
-    pub fn child(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn child(&self) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.child())
     }
 
@@ -4000,7 +4000,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -4022,11 +4022,11 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_node(|element| element.child_node_with(locator, index))
     }
 
-    pub fn children(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn children(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.relative_elements(|element| element.children())
     }
 
-    pub fn children_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn children_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -4047,7 +4047,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_nodes(|element| element.children_nodes_with(locator))
     }
 
-    pub fn prev(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn prev(&self) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.prev())
     }
 
@@ -4055,7 +4055,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -4077,11 +4077,11 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_node(|element| element.prev_node_with(locator, index))
     }
 
-    pub fn prevs(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn prevs(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.relative_elements(|element| element.prevs())
     }
 
-    pub fn prevs_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn prevs_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -4102,7 +4102,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_nodes(|element| element.prev_nodes_with(locator))
     }
 
-    pub fn next(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn next(&self) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.next())
     }
 
@@ -4110,7 +4110,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -4132,11 +4132,11 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_node(|element| element.next_node_with(locator, index))
     }
 
-    pub fn nexts(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn nexts(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.relative_elements(|element| element.nexts())
     }
 
-    pub fn nexts_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn nexts_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -4157,7 +4157,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_nodes(|element| element.next_nodes_with(locator))
     }
 
-    pub fn before(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn before(&self) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.before())
     }
 
@@ -4165,7 +4165,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -4187,11 +4187,11 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_node(|element| element.before_node_with(locator, index))
     }
 
-    pub fn befores(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn befores(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.relative_elements(|element| element.befores())
     }
 
-    pub fn befores_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn befores_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -4212,7 +4212,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_nodes(|element| element.before_nodes_with(locator))
     }
 
-    pub fn after(&self) -> OpenPageResult<ElementsOneOwned<SessionElement>> {
+    pub fn after(&self) -> OpenPageResult<ElementsOneOwned<DocumentElement>> {
         self.relative_element(|element| element.after())
     }
 
@@ -4220,7 +4220,7 @@ impl<'a> ElementsOne<'a, SessionElement> {
         &self,
         locator: Option<L>,
         index: usize,
-    ) -> OpenPageResult<ElementsOneOwned<SessionElement>>
+    ) -> OpenPageResult<ElementsOneOwned<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -4242,11 +4242,11 @@ impl<'a> ElementsOne<'a, SessionElement> {
         self.relative_node(|element| element.after_node_with(locator, index))
     }
 
-    pub fn afters(&self) -> OpenPageResult<Vec<SessionElement>> {
+    pub fn afters(&self) -> OpenPageResult<Vec<DocumentElement>> {
         self.relative_elements(|element| element.afters())
     }
 
-    pub fn afters_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<SessionElement>>
+    pub fn afters_with<'b, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<DocumentElement>>
     where
         L: Into<crate::locator::LocatorInput<'b>>,
     {
@@ -8649,7 +8649,7 @@ impl ElementListMetaItem for WebElement {
     }
 }
 
-impl ElementListItem for SessionElement {
+impl ElementListItem for DocumentElement {
     fn list_attr(&self, name: &str) -> OpenPageResult<Option<String>> {
         self.attr(name)
     }
@@ -8671,7 +8671,7 @@ impl ElementListItem for SessionElement {
     }
 }
 
-impl ElementListContentItem for SessionElement {
+impl ElementListContentItem for DocumentElement {
     fn list_html(&self) -> OpenPageResult<Option<String>> {
         self.html()
     }
@@ -8685,13 +8685,13 @@ impl ElementListContentItem for SessionElement {
     }
 }
 
-impl ElementListAttrsItem for SessionElement {
+impl ElementListAttrsItem for DocumentElement {
     fn list_attrs(&self) -> OpenPageResult<Vec<(String, String)>> {
         self.attrs()
     }
 }
 
-impl ElementListMetaItem for SessionElement {
+impl ElementListMetaItem for DocumentElement {
     fn list_child_count(&self) -> OpenPageResult<usize> {
         self.child_count()
     }
@@ -9974,7 +9974,7 @@ mod tests {
                 .is_none()
         );
 
-        let missing_owner: super::ElementsOneOwned<crate::SessionElement> =
+        let missing_owner: super::ElementsOneOwned<crate::DocumentElement> =
             super::ElementsOneOwned::none_with_config(None);
         assert!(
             missing_owner
@@ -10039,7 +10039,7 @@ mod tests {
             1
         );
 
-        let missing: super::ElementsOneOwned<crate::SessionElement> =
+        let missing: super::ElementsOneOwned<crate::DocumentElement> =
             super::ElementsOneOwned::none_with_config(None);
         assert_eq!(missing.children().expect("missing children").len(), 0);
         assert_eq!(missing.prevs().expect("missing previous siblings").len(), 0);
@@ -10100,7 +10100,7 @@ mod tests {
             1
         );
 
-        let missing: super::ElementsOneOwned<crate::SessionElement> =
+        let missing: super::ElementsOneOwned<crate::DocumentElement> =
             super::ElementsOneOwned::none_with_config(None);
         assert_eq!(
             missing.children_nodes().expect("missing child nodes").len(),
@@ -10193,7 +10193,7 @@ mod tests {
                 .is_none()
         );
 
-        let missing: super::ElementsOneOwned<crate::SessionElement> =
+        let missing: super::ElementsOneOwned<crate::DocumentElement> =
             super::ElementsOneOwned::none_with_config(None);
         assert!(missing.child_node().expect("missing child node").is_none());
         assert!(

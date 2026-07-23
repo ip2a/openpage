@@ -39,7 +39,7 @@ use crate::page::{
 };
 use crate::screencast::Screencast;
 use crate::session::{
-    CookieEntry, CookieInput, HeadersInput, Session, SessionDownload, SessionElement,
+    CookieEntry, CookieInput, DocumentElement, HeadersInput, Session, SessionDownload,
     SessionEncodingInput, SessionOptions, SessionXPathResult,
 };
 use crate::settings::{
@@ -90,7 +90,7 @@ pub enum WebElement {
         element: Element,
         page: Box<WebPage>,
     },
-    Session(SessionElement),
+    Session(DocumentElement),
 }
 
 pub enum WebElementDragTarget<'a> {
