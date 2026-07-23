@@ -70,8 +70,8 @@
 | `select-range <locator> <start> <end>` | `openpage select-range "#kw" 1 4` | `Element::run_js` + `selectionStart/selectionEnd` |
 | `upload <locator> <files>...` | `openpage upload "#f" a.pdf b.pdf` | `Element::set_file_input_files` |
 | `scroll-into-view <locator>` | `openpage scroll-into-view "#btn" --center` | `Element::scroll_to_see/center` |
-| `scroll-element <locator> <direction>` | `openpage scroll-element "#pane" down --pixels 180` | `WebElement::scroll_down/up/left/right/to_*` |
-| `scroll-element-position <locator>` | `openpage scroll-element-position "#pane"` | `WebElement::rect_scroll_position` |
+| `scroll-element <locator> <direction>` | `openpage scroll-element "#pane" down --pixels 180` | `Element::scroll_down/up/left/right/to_*` |
+| `scroll-element-position <locator>` | `openpage scroll-element-position "#pane"` | `Element::rect_scroll_position` |
 | `is-visible <locator>` | `openpage is-visible "#kw"` | `Element::is_displayed` |
 | `is-enabled <locator>` | `openpage is-enabled "#su"` | `Element::is_enabled` |
 | `is-checked <locator>` | `openpage is-checked "#agree"` | `Element::is_checked` |
