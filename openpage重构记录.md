@@ -1255,3 +1255,13 @@ bash scripts/test/check_all.sh
 ```
 
 结果：Rust workspace、MCP smoke、Python 扩展安装和正式 Python 门面测试全部通过。
+
+### 里程碑 27：重写 Python 门面技术文档（2026-07-23）
+
+状态：阶段完成。
+
+- 删除技术文档中已经不存在的 `ChromiumPage`、`SessionPage`、`WebPage`、`SessionElement`、`s_ele`、`s_eles` 以及旧网络/下载门面清单；
+- 按当前 PyO3 实际导出重新记录 `Browser`、`Page`、`Element`、`Session`、`Response`、`Document` 和 `DocumentElement` 的关系与 API；
+- 明确 Rust 是唯一行为来源，Python 只负责绑定和调用方式；
+- 明确实时查询、页面快照和 Session 文档三种语义边界；
+- 文档不再把历史兼容表面描述为当前产品能力。
