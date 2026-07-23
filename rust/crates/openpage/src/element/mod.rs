@@ -70,9 +70,9 @@ use crate::settings::{
     resolve_top_viewport_screen_origin_failed_message,
     resolve_top_window_device_pixel_ratio_failed_message, resolved_node_missing_object_id_message,
     scan_frame_marker_failed_message, scan_frame_marker_javascript_failed_message,
-    select_element_required_message, session_backed_element_driver_target_message,
-    set_file_input_requires_at_least_one_file_message, shadow_root_object_id_unavailable_message,
-    timeout_duration_millis, timeout_error, top_window_device_pixel_ratio_lookup_failed_message,
+    select_element_required_message, set_file_input_requires_at_least_one_file_message,
+    shadow_root_object_id_unavailable_message, timeout_duration_millis, timeout_error,
+    top_window_device_pixel_ratio_lookup_failed_message,
     top_window_device_pixel_ratio_not_numeric_message,
     top_window_viewport_size_lookup_failed_message, unsupported_key_message,
     unsupported_mouse_button_message, value_coordinate_not_numeric_message,
@@ -3163,17 +3163,9 @@ impl Element {
                 self.resolve_frame_target(target.clone())?;
                 return Ok((*frame).clone());
             }
-            PageFrameTarget::WebFrame(frame) => {
-                self.resolve_frame_target(target.clone())?;
-                return Ok(frame.frame().clone());
-            }
             PageFrameTarget::OwnedFrame(frame) => {
                 self.resolve_frame_target(target.clone())?;
                 return Ok(frame.clone());
-            }
-            PageFrameTarget::OwnedWebFrame(frame) => {
-                self.resolve_frame_target(target.clone())?;
-                return Ok(frame.frame().clone());
             }
             _ => {}
         }
@@ -3312,29 +3304,10 @@ impl Element {
             }
             PageFrameTarget::Index(index) => self.frame_element_by_index(index),
             PageFrameTarget::Element(element) => self.find_frame_element_from_object(element),
-            PageFrameTarget::WebElement(element) => match element {
-                crate::webpage::WebElement::Browser(element)
-                | crate::webpage::WebElement::Mix { element, .. } => {
-                    self.find_frame_element_from_object(element)
-                }
-                crate::webpage::WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                    session_backed_element_driver_target_message(
-                        "WebElement",
-                        "element frame",
-                        "元素 frame 定位",
-                    ),
-                )),
-            },
             PageFrameTarget::Frame(frame) => {
                 self.find_frame_element_from_object(frame.frame_element())
             }
-            PageFrameTarget::WebFrame(frame) => {
-                self.find_frame_element_from_object(frame.frame_element())
-            }
             PageFrameTarget::OwnedFrame(frame) => {
-                self.find_frame_element_from_object(frame.frame_element())
-            }
-            PageFrameTarget::OwnedWebFrame(frame) => {
                 self.find_frame_element_from_object(frame.frame_element())
             }
         }

@@ -19,7 +19,6 @@ use crate::settings::{
     make_session_ele_index_zero_message, timeout_error,
 };
 use crate::shadow_root::ShadowRoot;
-use crate::webpage::{WebElement, WebFrame, WebPage};
 
 const DEFAULT_PROJECT_CONFIGS_NAME: &str = "dp_configs.ini";
 const WAIT_UNTIL_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -72,8 +71,6 @@ impl By {
 pub enum BlobSource<'a> {
     Page(&'a Page),
     Frame(&'a Frame),
-    WebPage(&'a WebPage),
-    WebFrame(&'a WebFrame),
 }
 
 impl<'a> From<&'a Page> for BlobSource<'a> {
@@ -88,27 +85,12 @@ impl<'a> From<&'a Frame> for BlobSource<'a> {
     }
 }
 
-impl<'a> From<&'a WebPage> for BlobSource<'a> {
-    fn from(value: &'a WebPage) -> Self {
-        Self::WebPage(value)
-    }
-}
-
-impl<'a> From<&'a WebFrame> for BlobSource<'a> {
-    fn from(value: &'a WebFrame) -> Self {
-        Self::WebFrame(value)
-    }
-}
-
 pub enum TreeSource<'a> {
     Page(&'a Page),
     Frame(&'a Frame),
     Element(&'a Element),
     Session(&'a Session),
     DocumentElement(&'a DocumentElement),
-    WebPage(&'a WebPage),
-    WebFrame(&'a WebFrame),
-    WebElement(&'a WebElement),
     ShadowRoot(&'a ShadowRoot),
 }
 
@@ -211,24 +193,6 @@ impl<'a> From<&'a DocumentElement> for TreeSource<'a> {
     }
 }
 
-impl<'a> From<&'a WebPage> for TreeSource<'a> {
-    fn from(value: &'a WebPage) -> Self {
-        Self::WebPage(value)
-    }
-}
-
-impl<'a> From<&'a WebFrame> for TreeSource<'a> {
-    fn from(value: &'a WebFrame) -> Self {
-        Self::WebFrame(value)
-    }
-}
-
-impl<'a> From<&'a WebElement> for TreeSource<'a> {
-    fn from(value: &'a WebElement) -> Self {
-        Self::WebElement(value)
-    }
-}
-
 impl<'a> From<&'a ShadowRoot> for TreeSource<'a> {
     fn from(value: &'a ShadowRoot) -> Self {
         Self::ShadowRoot(value)
@@ -242,9 +206,6 @@ pub enum MakeSessionEleSource<'a> {
     Element(&'a Element),
     Session(&'a Session),
     DocumentElement(&'a DocumentElement),
-    WebPage(&'a WebPage),
-    WebFrame(&'a WebFrame),
-    WebElement(&'a WebElement),
     ShadowRoot(&'a ShadowRoot),
 }
 
@@ -281,24 +242,6 @@ impl<'a> From<&'a Session> for MakeSessionEleSource<'a> {
 impl<'a> From<&'a DocumentElement> for MakeSessionEleSource<'a> {
     fn from(value: &'a DocumentElement) -> Self {
         Self::DocumentElement(value)
-    }
-}
-
-impl<'a> From<&'a WebPage> for MakeSessionEleSource<'a> {
-    fn from(value: &'a WebPage) -> Self {
-        Self::WebPage(value)
-    }
-}
-
-impl<'a> From<&'a WebFrame> for MakeSessionEleSource<'a> {
-    fn from(value: &'a WebFrame) -> Self {
-        Self::WebFrame(value)
-    }
-}
-
-impl<'a> From<&'a WebElement> for MakeSessionEleSource<'a> {
-    fn from(value: &'a WebElement) -> Self {
-        Self::WebElement(value)
     }
 }
 
@@ -477,8 +420,6 @@ impl BlobSource<'_> {
         match self {
             Self::Page(page) => page.run_js(script),
             Self::Frame(frame) => frame.run_js(script),
-            Self::WebPage(page) => page.run_js(script),
-            Self::WebFrame(frame) => frame.run_js(script),
         }
     }
 }
@@ -491,9 +432,6 @@ impl TreeSource<'_> {
             Self::Element(element) => element.snapshot_root(),
             Self::Session(page) => page.root(),
             Self::DocumentElement(element) => Ok((*element).clone()),
-            Self::WebPage(page) => page.snapshot_root(),
-            Self::WebFrame(frame) => frame.snapshot_root(),
-            Self::WebElement(element) => element.snapshot_root(),
             Self::ShadowRoot(root) => root.snapshot_root(),
         }
     }
@@ -508,9 +446,6 @@ impl MakeSessionEleSource<'_> {
             Self::Element(element) => element.snapshot_root(),
             Self::Session(page) => page.root(),
             Self::DocumentElement(element) => Ok((*element).clone()),
-            Self::WebPage(page) => page.snapshot_root(),
-            Self::WebFrame(frame) => frame.snapshot_root(),
-            Self::WebElement(element) => element.snapshot_root(),
             Self::ShadowRoot(root) => root.snapshot_root(),
         }
     }
@@ -523,9 +458,6 @@ impl MakeSessionEleSource<'_> {
             Self::Element(element) => element.snapshot_find_all(locator),
             Self::Session(page) => page.find_all(locator),
             Self::DocumentElement(element) => element.find_all(locator),
-            Self::WebPage(page) => page.snapshot_find_all(locator),
-            Self::WebFrame(frame) => frame.snapshot_find_all(locator),
-            Self::WebElement(element) => element.snapshot_find_all(locator),
             Self::ShadowRoot(root) => root.snapshot_find_all(locator),
         }
     }
@@ -579,7 +511,6 @@ fn load_default_configs_ini_contents() -> OpenPageResult<String> {
 fn page_from_latest_tab_or_new_page(browser: &Browser) -> OpenPageResult<Page> {
     match browser.latest_tab()? {
         Some(BrowserTabReference::Page(page)) => Ok(page),
-        Some(BrowserTabReference::WebPage(page)) => browser.get_page(&page.target_id()),
         Some(BrowserTabReference::Id(target_id)) => browser.get_page(&target_id),
         None => browser.new_page(None),
     }

@@ -21,7 +21,6 @@ pub mod settings;
 pub mod shadow_root;
 pub mod tools;
 pub mod upload;
-pub(crate) mod webpage;
 pub mod window;
 
 pub use alert::AlertTracker;
@@ -93,87 +92,3 @@ pub use tools::{
 pub use upload::{UploadFilesInput, UploadTracker};
 
 pub use window::{activate_app, set_app_visibility};
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        Element, ElementListAttrsItem, ElementListContentItem, ElementListMetaItem, ElementRect,
-        ElementStates, ElementWait, ElementsOneClicker, ElementsOneRect, ElementsOneScroller,
-        ElementsOneSelector, ElementsOneSetter, ElementsOneStates, ElementsOneWait,
-        LocatorBatchInput, OPENPAGE_BROWSER_PATH_ENV, PageNavigationSnapshot, SelectIndexInput,
-        SelectOptionInput, TimeoutConfig, WebElementRect, WebElementStates, WebElementWait,
-        WebSelectOptionInput,
-    };
-
-    #[test]
-    fn element_object_wrapper_types_are_exported() {
-        let _ = (|_: &ElementStates<'_>,
-                  _: &ElementRect<'_>,
-                  _: &ElementWait<'_>,
-                  _: &WebElementStates<'_>,
-                  _: &WebElementRect<'_>,
-                  _: &WebElementWait<'_>| {})
-            as fn(
-                &ElementStates<'_>,
-                &ElementRect<'_>,
-                &ElementWait<'_>,
-                &WebElementStates<'_>,
-                &WebElementRect<'_>,
-                &WebElementWait<'_>,
-            );
-    }
-
-    #[test]
-    fn elements_one_wrapper_types_are_exported() {
-        let _ = (|_: &ElementsOneClicker<'_, Element>,
-                  _: &ElementsOneScroller<'_, Element>,
-                  _: &ElementsOneSetter<'_, Element>,
-                  _: &ElementsOneStates<'_, Element>,
-                  _: &ElementsOneRect<'_, Element>,
-                  _: &ElementsOneWait<'_, Element>,
-                  _: &ElementsOneSelector<'_, Element>| {})
-            as fn(
-                &ElementsOneClicker<'_, Element>,
-                &ElementsOneScroller<'_, Element>,
-                &ElementsOneSetter<'_, Element>,
-                &ElementsOneStates<'_, Element>,
-                &ElementsOneRect<'_, Element>,
-                &ElementsOneWait<'_, Element>,
-                &ElementsOneSelector<'_, Element>,
-            );
-    }
-
-    #[test]
-    fn element_list_content_traits_are_exported() {
-        fn assert_content_item<T: ElementListContentItem>() {}
-        fn assert_attrs_item<T: ElementListAttrsItem>() {}
-        fn assert_meta_item<T: ElementListMetaItem>() {}
-
-        assert_content_item::<Element>();
-        assert_attrs_item::<Element>();
-        assert_meta_item::<Element>();
-    }
-
-    #[test]
-    fn public_input_and_snapshot_types_are_exported() {
-        let _ = (|_: &TimeoutConfig,
-                  _: &LocatorBatchInput<'_>,
-                  _: &SelectIndexInput,
-                  _: &SelectOptionInput<'_>,
-                  _: &WebSelectOptionInput<'_>,
-                  _: &PageNavigationSnapshot| {})
-            as fn(
-                &TimeoutConfig,
-                &LocatorBatchInput<'_>,
-                &SelectIndexInput,
-                &SelectOptionInput<'_>,
-                &WebSelectOptionInput<'_>,
-                &PageNavigationSnapshot,
-            );
-    }
-
-    #[test]
-    fn browser_path_env_constant_is_exported() {
-        assert_eq!(OPENPAGE_BROWSER_PATH_ENV, "OPENPAGE_BROWSER_PATH");
-    }
-}

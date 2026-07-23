@@ -865,17 +865,9 @@ impl Frame {
                 self.resolve_frame_target(target.clone())?;
                 return Ok((*frame).clone());
             }
-            PageFrameTarget::WebFrame(frame) => {
-                self.resolve_frame_target(target.clone())?;
-                return Ok(frame.frame().clone());
-            }
             PageFrameTarget::OwnedFrame(frame) => {
                 self.resolve_frame_target(target.clone())?;
                 return Ok(frame.clone());
-            }
-            PageFrameTarget::OwnedWebFrame(frame) => {
-                self.resolve_frame_target(target.clone())?;
-                return Ok(frame.frame().clone());
             }
             _ => {}
         }
@@ -1679,28 +1671,10 @@ impl Frame {
             PageFrameTarget::Element(element) => {
                 find_frame_element_from_object(&self.page, element)
             }
-            PageFrameTarget::WebElement(element) => match element {
-                WebElement::Browser(element) | WebElement::Mix { element, .. } => {
-                    find_frame_element_from_object(&self.page, element)
-                }
-                WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                    session_backed_element_driver_target_message(
-                        "WebElement",
-                        "frame frame",
-                        "frame 元素定位",
-                    ),
-                )),
-            },
             PageFrameTarget::Frame(frame) => {
                 find_frame_element_from_object(&self.page, frame.frame_element())
             }
-            PageFrameTarget::WebFrame(frame) => {
-                find_frame_element_from_object(&self.page, frame.frame_element())
-            }
             PageFrameTarget::OwnedFrame(frame) => {
-                find_frame_element_from_object(&self.page, frame.frame_element())
-            }
-            PageFrameTarget::OwnedWebFrame(frame) => {
                 find_frame_element_from_object(&self.page, frame.frame_element())
             }
         }

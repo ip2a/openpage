@@ -549,17 +549,9 @@ impl Page {
                 resolve_page_frame_target(self, target.clone())?;
                 return Ok((*frame).clone());
             }
-            PageFrameTarget::WebFrame(frame) => {
-                resolve_page_frame_target(self, target.clone())?;
-                return Ok(frame.frame().clone());
-            }
             PageFrameTarget::OwnedFrame(frame) => {
                 resolve_page_frame_target(self, target.clone())?;
                 return Ok(frame.clone());
-            }
-            PageFrameTarget::OwnedWebFrame(frame) => {
-                resolve_page_frame_target(self, target.clone())?;
-                return Ok(frame.frame().clone());
             }
             _ => {}
         }

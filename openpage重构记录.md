@@ -901,3 +901,32 @@ cargo fmt --all --manifest-path rust/Cargo.toml
 cargo check -p openpage-app --manifest-path rust/Cargo.toml
 cargo test -p openpage-app --manifest-path rust/Cargo.toml cli::tests --lib
 ```
+
+### 里程碑 13：Rust Core 删除 WebPage 复合模型（2026-07-23）
+
+状态：阶段完成。
+
+本阶段从 Rust 核心删除旧的混合页面模型，不再让 Rust 通过 `WebPage` 同时承载浏览器页面和 HTTP Session 语义。
+
+已完成：
+
+- 删除 `rust/crates/openpage/src/webpage/` 整个旧模块；
+- 删除 Rust 中 `WebPage`、`WebElement`、`WebFrame`、`WebMode` 及其相关目标变体；
+- `BrowserTabReference` 只保留 `Page` 和目标 ID，不再返回旧页面包装类型；
+- daemon 页面服务统一持有 `Page`，创建流程直接使用 `Browser::launch()` 和 `Browser::new_page()`；
+- 删除 daemon 中旧 Session 模式、页面内 HTTP 请求和 Cookie 双向转换入口；
+- 删除仅服务旧复合模型的 ElementList 扩展、设置消息和测试；
+- 删除旧 WebPage 测试，不以恢复旧 API 的方式维持测试通过；
+- daemon 协议统一使用 `page.*` 页面语义，不保留 `webpage.*` 兼容入口。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check -p openpage --lib --manifest-path rust/Cargo.toml
+cargo check -p openpage-app --manifest-path rust/Cargo.toml
+cargo check -p openpage-python --manifest-path rust/Cargo.toml
+cargo test -p openpage --lib --no-run --manifest-path rust/Cargo.toml
+```
+
+验收结果：上述命令通过。Rust Core 现在继续沿 `Browser → Page` 与 `Session → Response → Document` 两条清晰领域路径演进，Python binding 不再需要为 `WebPage` 提供兼容导出。

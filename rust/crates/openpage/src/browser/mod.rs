@@ -56,7 +56,6 @@ use crate::settings::{
     target_tab_not_found_message, timeout_duration_millis, timeout_error,
     unterminated_launch_options_ini_python_string_message, wait_failed_should_raise,
 };
-use crate::webpage::WebPage;
 
 fn browser_newest_tab_lock_poisoned_error() -> OpenPageError {
     OpenPageError::BrowserOperation(component_state_lock_poisoned_message(
@@ -1027,7 +1026,6 @@ impl<'a> From<&'a Vec<String>> for BrowserTabTypeInput<'a> {
 #[derive(Clone, Debug)]
 pub enum BrowserTabReference {
     Page(Page),
-    WebPage(WebPage),
     Id(String),
 }
 

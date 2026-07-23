@@ -111,16 +111,14 @@ use crate::settings::{
     permission_origin_required_message, permission_origin_scheme_message,
     permission_setting_invalid_message, resolved_frame_owner_missing_object_id_message,
     screenshot_clip_complete_message, screenshot_clip_order_message,
-    session_backed_element_driver_target_message,
-    session_backed_web_element_driver_actions_message, singleton_tab_obj_enabled,
-    suffixes_list_path, timeout_duration_millis, timeout_error,
-    timeout_must_be_non_negative_message, unsupported_key_message, value_did_not_return_message,
-    value_pair_entry_not_number_message, value_returned_non_string_entry_message,
-    wait_for_locator_timed_out_message, wait_timeout_result, zoom_factor_must_be_positive_message,
+    session_backed_element_driver_target_message, singleton_tab_obj_enabled, suffixes_list_path,
+    timeout_duration_millis, timeout_error, timeout_must_be_non_negative_message,
+    unsupported_key_message, value_did_not_return_message, value_pair_entry_not_number_message,
+    value_returned_non_string_entry_message, wait_for_locator_timed_out_message,
+    wait_timeout_result, zoom_factor_must_be_positive_message,
 };
 use crate::shadow_root::ShadowRoot;
 use crate::upload::{UploadFilesInput, UploadTracker};
-use crate::webpage::{WebElement, WebFrame};
 use crate::window::{activate_app, set_app_visibility};
 
 const PAGE_MARKER_ATTRIBUTE: &str = "data-openpage-page-marker";
@@ -695,18 +693,14 @@ pub enum PageElementTarget<'a> {
     Locator(LocatorInput<'a>),
     Element(&'a Element),
     DocumentElement(&'a DocumentElement),
-    WebElement(&'a WebElement),
     OwnedElement(Element),
     OwnedDocumentElement(DocumentElement),
-    OwnedWebElement(WebElement),
 }
 
 pub enum ActionsTarget<'a> {
     Locator(LocatorInput<'a>),
     Element(&'a Element),
-    WebElement(&'a WebElement),
     OwnedElement(Element),
-    OwnedWebElement(WebElement),
     Coordinates(f64, f64),
 }
 
@@ -731,11 +725,8 @@ pub enum PageFrameTarget<'a> {
     Locator(LocatorInput<'a>),
     Index(isize),
     Element(&'a Element),
-    WebElement(&'a WebElement),
     Frame(&'a Frame),
-    WebFrame(&'a WebFrame),
     OwnedFrame(Frame),
-    OwnedWebFrame(WebFrame),
 }
 
 pub trait FrameIndexInput {
@@ -831,18 +822,6 @@ impl From<DocumentElement> for PageElementTarget<'_> {
     }
 }
 
-impl<'a> From<&'a WebElement> for PageElementTarget<'a> {
-    fn from(value: &'a WebElement) -> Self {
-        Self::WebElement(value)
-    }
-}
-
-impl From<WebElement> for PageElementTarget<'_> {
-    fn from(value: WebElement) -> Self {
-        Self::OwnedWebElement(value)
-    }
-}
-
 impl<'a> From<&'a str> for ActionsTarget<'a> {
     fn from(value: &'a str) -> Self {
         Self::Locator(LocatorInput::from(value))
@@ -870,18 +849,6 @@ impl<'a> From<&'a Element> for ActionsTarget<'a> {
 impl From<Element> for ActionsTarget<'_> {
     fn from(value: Element) -> Self {
         Self::OwnedElement(value)
-    }
-}
-
-impl<'a> From<&'a WebElement> for ActionsTarget<'a> {
-    fn from(value: &'a WebElement) -> Self {
-        Self::WebElement(value)
-    }
-}
-
-impl From<WebElement> for ActionsTarget<'_> {
-    fn from(value: WebElement) -> Self {
-        Self::OwnedWebElement(value)
     }
 }
 
@@ -1076,12 +1043,6 @@ impl<'a> From<&'a Element> for PageFrameTarget<'a> {
     }
 }
 
-impl<'a> From<&'a WebElement> for PageFrameTarget<'a> {
-    fn from(value: &'a WebElement) -> Self {
-        Self::WebElement(value)
-    }
-}
-
 impl<'a> From<&'a Frame> for PageFrameTarget<'a> {
     fn from(value: &'a Frame) -> Self {
         Self::Frame(value)
@@ -1091,18 +1052,6 @@ impl<'a> From<&'a Frame> for PageFrameTarget<'a> {
 impl From<Frame> for PageFrameTarget<'_> {
     fn from(value: Frame) -> Self {
         Self::OwnedFrame(value)
-    }
-}
-
-impl<'a> From<&'a WebFrame> for PageFrameTarget<'a> {
-    fn from(value: &'a WebFrame) -> Self {
-        Self::WebFrame(value)
-    }
-}
-
-impl From<WebFrame> for PageFrameTarget<'_> {
-    fn from(value: WebFrame) -> Self {
-        Self::OwnedWebFrame(value)
     }
 }
 
@@ -1534,30 +1483,6 @@ fn resolve_page_element_target<'a>(
                 "页面元素定位",
             ),
         )),
-        PageElementTarget::WebElement(element) => match element {
-            WebElement::Browser(element) | WebElement::Mix { element, .. } => {
-                Ok(ResolvedPageElementTarget::Borrowed(element))
-            }
-            WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                session_backed_element_driver_target_message(
-                    "WebElement",
-                    "page element",
-                    "页面元素定位",
-                ),
-            )),
-        },
-        PageElementTarget::OwnedWebElement(element) => match element {
-            WebElement::Browser(element) | WebElement::Mix { element, .. } => {
-                Ok(ResolvedPageElementTarget::Owned(element))
-            }
-            WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                session_backed_element_driver_target_message(
-                    "WebElement",
-                    "page element",
-                    "页面元素定位",
-                ),
-            )),
-        },
     }
 }
 
@@ -1572,28 +1497,10 @@ fn resolve_page_frame_target<'a>(
         }
         PageFrameTarget::Index(index) => page_frame_element_by_index(page, index),
         PageFrameTarget::Element(element) => find_frame_element_from_object(page, element),
-        PageFrameTarget::WebElement(element) => match element {
-            WebElement::Browser(element) | WebElement::Mix { element, .. } => {
-                find_frame_element_from_object(page, element)
-            }
-            WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                session_backed_element_driver_target_message(
-                    "WebElement",
-                    "page frame",
-                    "页面 frame 定位",
-                ),
-            )),
-        },
         PageFrameTarget::Frame(frame) => {
             find_frame_element_from_object(page, frame.frame_element())
         }
-        PageFrameTarget::WebFrame(frame) => {
-            find_frame_element_from_object(page, frame.frame_element())
-        }
         PageFrameTarget::OwnedFrame(frame) => {
-            find_frame_element_from_object(page, frame.frame_element())
-        }
-        PageFrameTarget::OwnedWebFrame(frame) => {
             find_frame_element_from_object(page, frame.frame_element())
         }
     }
@@ -1678,22 +1585,6 @@ fn resolve_actions_target_point<'a>(
         ActionsTarget::OwnedElement(element) => {
             action_point_from_element(page, &element, offset_x, offset_y)
         }
-        ActionsTarget::WebElement(element) => match element {
-            WebElement::Browser(element) | WebElement::Mix { element, .. } => {
-                action_point_from_element(page, element, offset_x, offset_y)
-            }
-            WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                session_backed_web_element_driver_actions_message(),
-            )),
-        },
-        ActionsTarget::OwnedWebElement(element) => match element {
-            WebElement::Browser(element) | WebElement::Mix { element, .. } => {
-                action_point_from_element(page, &element, offset_x, offset_y)
-            }
-            WebElement::Session(_) => Err(OpenPageError::UnsupportedOperation(
-                session_backed_web_element_driver_actions_message(),
-            )),
-        },
         ActionsTarget::Coordinates(x, y) => action_point_from_page_coordinates(
             page,
             x + offset_x.unwrap_or(0.0),
@@ -2788,6 +2679,3 @@ where
 {
     runtime.block_on(execute_page_command_async(page, command, operation))
 }
-
-#[cfg(test)]
-mod tests;
