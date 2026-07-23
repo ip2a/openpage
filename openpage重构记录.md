@@ -1164,3 +1164,19 @@ cargo test -p openpage config::tests --manifest-path rust/Cargo.toml -- --nocapt
 ```
 
 结果：6 个配置测试全部通过。
+
+### 里程碑 22：配置与 CLI 测试回归收口（2026-07-23）
+
+状态：阶段完成。
+
+- 配置测试在并行运行下不再互相污染；
+- `openpage` crate 的 6 个配置测试全部通过；
+- `openpage-app` 的 199 个测试全部通过；
+- CLI 已验证正式 `page.*` 请求路径和旧页面命令拒绝路径。
+
+验证：
+
+```text
+cargo test -p openpage config::tests --manifest-path rust/Cargo.toml -- --nocapture
+cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+```
