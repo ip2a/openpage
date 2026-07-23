@@ -1,4 +1,4 @@
-mod legacy_full_binding;
+mod binding;
 
 use pyo3::prelude::*;
 
@@ -17,6 +17,6 @@ fn openpage_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_function(wrap_pyfunction!(version, m)?)?;
     m.add_function(wrap_pyfunction!(default_debugger_address, m)?)?;
-    legacy_full_binding::register(m)?;
+    binding::register(m)?;
     Ok(())
 }

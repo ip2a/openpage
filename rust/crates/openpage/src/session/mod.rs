@@ -2293,6 +2293,12 @@ pub struct Document {
 }
 
 impl Document {
+    pub(crate) fn from_html(html: String, base_url: Option<String>) -> Self {
+        Self {
+            html: Arc::new(html),
+            base_url,
+        }
+    }
     pub fn html(&self) -> &str {
         self.html.as_str()
     }

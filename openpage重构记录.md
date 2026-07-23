@@ -774,3 +774,24 @@ cargo fmt --all
 cargo check -p openpage --lib
 cargo test -p openpage --lib session::snapshot::tests::session_get --no-fail-fast
 ```
+
+### 里程碑 8：PyO3 绑定切换为新核心门面（2026-07-23）
+
+状态：阶段完成。
+
+完成内容：
+
+- 删除 `legacy_full_binding` 目录及其旧类型绑定；
+- 新建 `binding` 模块，直接暴露 `Browser`、`Page`、`Session`、`Element`、`Response`、`Document`、`DocumentElement`；
+- PyO3 不再导出 `SessionPage`、`SessionElement`、`WebPage` 等旧公开类型；
+- Session 请求绑定返回 `Response`，不再返回布尔值；
+- Page 增加 `snapshot()`，在 Rust 中先冻结当前 HTML，再交给 Document 查询；
+- Python 绑定保持最小直接映射，不建立兼容、适配或回退层。
+
+验证：
+
+```text
+cargo fmt --all
+cargo check -p openpage --lib
+cargo check -p openpage-python
+```

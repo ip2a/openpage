@@ -1394,6 +1394,12 @@ impl Page {
         )
     }
 
+    pub fn snapshot(&self) -> OpenPageResult<crate::session::Document> {
+        let html = self.html()?;
+        let base_url = self.url().ok();
+        Ok(crate::session::Document::from_html(html, base_url))
+    }
+
     pub fn snapshot_find<'a, L>(&self, locator: L) -> OpenPageResult<DocumentElement>
     where
         L: Into<LocatorInput<'a>>,
