@@ -1324,3 +1324,18 @@ cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
 ```
 
 结果：编译通过；`openpage` crate 354 个单元测试全部通过。
+
+### 里程碑 31：Runtime 命名收口后的最终全量复验（2026-07-23）
+
+状态：阶段完成。
+
+在 Rust 产品层命名收口后重新执行公共门禁：
+
+- Rust workspace 测试：354 个核心测试通过，CLI 199 个测试通过；
+- MCP smoke 通过；
+- PyO3 扩展重新构建并安装到 uv 环境；
+- Python 正式门面测试 2 个通过；
+- `uv build --wheel` 成功生成当前源码对应的 wheel；
+- Rust 领域命名审计确认 `RuntimeOverrides`、`SessionRuntimeInfo`、`ElementsOneRuntimeConfig`、`ServeRuntime` 等名称已不存在；
+- 旧页面门面审计只命中正常语义词 `as_element_node`、`previous_element_not_found_message` 和测试名 `parses_element_html`，没有旧产品类型或 API 残留；
+- 工作树保持干净。
