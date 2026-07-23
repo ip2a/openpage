@@ -1180,3 +1180,22 @@ cargo test -p openpage config::tests --manifest-path rust/Cargo.toml -- --nocapt
 cargo test -p openpage config::tests --manifest-path rust/Cargo.toml -- --nocapture
 cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threads=1
 ```
+
+### 里程碑 23：删除 Python 旧兼容测试体系（2026-07-23）
+
+状态：阶段完成。
+
+- 删除仍依赖 `ChromiumPage`、`SessionPage`、`WebPage`、`s_ele`、兼容 wait 对象和伪造 `openpage_rs` 模块的两份旧 Python 测试；
+- 不为已经删除的兼容门面保留测试资产；
+- 新增最小正式门面测试，只验证 `Browser`、`Page`、`Session`、`open` 的公开边界和 Session 构造；
+- 测试通过实际构建并安装的 wheel 运行，不使用假扩展或回退模块。
+
+验证：
+
+```text
+uv build --wheel
+独立临时 uv 虚拟环境安装 dist/openpage-*.whl
+python tests/python/test_facade.py -v
+```
+
+结果：2 个正式 Python 门面测试全部通过。
