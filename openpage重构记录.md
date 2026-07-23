@@ -1438,3 +1438,19 @@ cargo check --workspace --manifest-path rust/Cargo.toml
 ```
 
 结果：通过。
+
+### 里程碑 37：Rust Core 与 CLI 测试门禁复验（2026-07-23）
+
+状态：阶段完成。
+
+验证结果：
+
+```text
+cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+354 passed; 0 failed
+
+cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+195 passed; 0 failed
+```
+
+同时清理了 CLI Doctor 测试中因删除旧 Session JSON 测试留下的重复 `#[test]` 属性。

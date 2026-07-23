@@ -1508,7 +1508,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn environment_checks_fail_when_openpage_home_is_a_file() {
         let _guard = test_env_lock().lock().expect("lock test env");
         let home = unique_openpage_home("home-file");
@@ -2130,9 +2129,6 @@ mod tests {
         assert!(fix.contains("/tmp/review.log"));
     }
 
-    #[test]
-    #[test]
-    #[test]
     #[test]
     fn apply_fixes_reports_stale_daemon_sidecar_cleanup() {
         let _guard = test_env_lock().lock().expect("lock test env");
