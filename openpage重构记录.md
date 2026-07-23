@@ -1565,3 +1565,30 @@ cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml 195 passed; 0 f
 bash scripts/test/check_all.sh                                  通过
 Python facade test                                               2 passed
 ```
+
+### 里程碑 42：补齐 Python Page 核心自动化门面（2026-07-23）
+
+状态：阶段完成。
+
+在不引入 Python 二次实现、helper、adapter 或兼容层的前提下，将 Rust `Page` 已有的核心能力直接公开到 PyO3 门面：
+
+```text
+Page.url()
+Page.title()
+Page.html()
+Page.wait_for(locator, timeout_ms=10_000)
+Page.screenshot(full_page=False)
+Page.save_screenshot(path, full_page=False)
+Page.close()
+```
+
+这些方法全部直接调用 Rust Core 的同名领域行为。Python 仍然只承担参数转换和返回值转换，不新增自动化编排逻辑。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check       通过
+cargo check -p openpage-python --manifest-path rust/Cargo.toml   通过
+maturin develop                                                   通过
+Python facade test                                                2 passed
+```

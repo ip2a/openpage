@@ -5,6 +5,7 @@ use openpage::{
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
+use std::path::Path;
 
 fn error(value: impl std::fmt::Display) -> PyErr {
     PyRuntimeError::new_err(value.to_string())
@@ -63,6 +64,38 @@ impl PyBrowser {
 impl PyPage {
     fn goto(&self, url: &str) -> PyResult<()> {
         self.inner.goto(url).map_err(error)
+    }
+    fn url(&self) -> PyResult<String> {
+        self.inner.url().map_err(error)
+    }
+    fn title(&self) -> PyResult<String> {
+        self.inner.title().map_err(error)
+    }
+    fn html(&self) -> PyResult<String> {
+        self.inner.html().map_err(error)
+    }
+    #[pyo3(signature = (locator, timeout_ms=10_000))]
+    fn wait_for(&self, locator: &str, timeout_ms: u64) -> PyResult<PyElement> {
+        self.inner
+            .wait_for(locator, timeout_ms)
+            .map(|inner| PyElement { inner })
+            .map_err(error)
+    }
+    #[pyo3(signature = (full_page=false))]
+    fn screenshot(&self, py: Python<'_>, full_page: bool) -> PyResult<Py<PyBytes>> {
+        self.inner
+            .screenshot_bytes(full_page, None, None)
+            .map(|bytes| PyBytes::new(py, &bytes).unbind())
+            .map_err(error)
+    }
+    #[pyo3(signature = (path, full_page=false))]
+    fn save_screenshot(&self, path: &str, full_page: bool) -> PyResult<()> {
+        self.inner
+            .save_screenshot(Path::new(path), full_page)
+            .map_err(error)
+    }
+    fn close(&self) -> PyResult<()> {
+        self.inner.clone().close().map_err(error)
     }
     fn find(&self, locator: &str) -> PyResult<PyElement> {
         self.inner
