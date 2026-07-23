@@ -866,3 +866,18 @@ cargo fmt --all --manifest-path rust/Cargo.toml
 cargo check -p openpage --lib --manifest-path rust/Cargo.toml
 cargo check -p openpage-python --manifest-path rust/Cargo.toml
 ```
+
+### 里程碑 11：Page 删除旧 s_ele / s_eles 入口（2026-07-23）
+
+状态：阶段完成。
+
+- Rust `Page::s_ele()` 和 `Page::s_eles()` 已直接删除；
+- Page 的静态查询入口统一进入 `Page::snapshot()`，再使用 `Document.find()` / `Document.find_all()`；
+- 不保留旧方法别名，不增加新的转发层。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check -p openpage --lib --manifest-path rust/Cargo.toml
+```
