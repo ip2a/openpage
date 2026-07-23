@@ -930,3 +930,99 @@ cargo test -p openpage --lib --no-run --manifest-path rust/Cargo.toml
 ```
 
 验收结果：上述命令通过。Rust Core 现在继续沿 `Browser → Page` 与 `Session → Response → Document` 两条清晰领域路径演进，Python binding 不再需要为 `WebPage` 提供兼容导出。
+
+### 里程碑 14：确立 Rust-first 门面重构原则（2026-07-23）
+
+状态：设计原则确认，作为后续 Rust 与 Python 改造的共同约束。
+
+本次确认的重点不是单独整理 Python，而是先从 Rust Core 建立正式的领域模型、公开门面和行为边界，再让 Python 通过 PyO3 直接暴露这套已经稳定的 Rust 设计。Python 的目标是符合 Python 使用习惯的薄门面，但 Python 不负责重新定义领域模型，也不负责弥补 Rust 的设计缺口。
+
+#### 一、废弃与兼容代码的处理原则
+
+- 兼容代码直接删除，不保留兼容入口、兼容别名、兼容转发和兼容提示。
+- 废弃代码直接删除，不保留 deprecated API 供过渡使用。
+- fallback 直接删除，不以回退路径掩盖正式实现的问题。
+- 不建立或保留 `runtime`、`helper`、`adapter`、`compat` 等产品架构概念。
+- 不通过额外编排层、包装层或动态分派层拼接旧模型与新模型。
+- 旧测试如果只验证已删除的模型，应删除或按正式新模型重写；不得为了让旧测试通过而恢复旧 API。
+- 每一行新增代码都必须属于正式领域模型、正式公开门面或必要的语言绑定；不能为历史调用方服务。
+
+#### 二、Rust 与 Python 的职责关系
+
+```text
+Rust Core
+  ├── 定义领域对象
+  ├── 定义对象关系
+  ├── 定义行为和状态
+  ├── 定义错误边界
+  └── 定义正式公开 API
+          ↓ PyO3 直接绑定
+Python
+  ├── 使用 Python 命名和调用习惯
+  ├── 暴露少量顶层入口
+  └── 不重新实现 Rust 领域逻辑
+```
+
+PyO3 中为了持有 Rust 对象而存在的 Python 类型容器不属于产品层的 `adapter` 或 `helper`。但是，这些绑定类型不得额外复制业务规则、兼容旧接口或引入第二套对象关系。
+
+#### 三、正式顶层领域模型
+
+```text
+Browser
+└── Page
+
+Session
+└── Response
+      └── Document
+            └── DocumentElement
+```
+
+Python 顶层入口保持：
+
+```python
+from openpage import Browser, Page, Session, open
+```
+
+其中：
+
+| 对象 | 所属领域 | 核心职责 | 顶层公开 |
+|---|---|---|---|
+| `Browser` | 浏览器 | 浏览器进程和多标签页容器 | 是 |
+| `Page` | 浏览器 | 一个实时浏览器页面，同时提供页面级查询和操作便利方法 | 是 |
+| `Session` | HTTP | HTTP 会话、请求和静态 HTML 获取 | 是 |
+| `Response` | HTTP | 一次 HTTP 请求的结果 | 作为返回对象 |
+| `Document` | 静态文档 | Response 内容解析后的文档查询入口 | 作为返回对象 |
+| `DocumentElement` | 静态文档 | 静态文档中的元素及其查询能力 | 作为返回对象 |
+
+`Page` 是实时页面，同时是一个具有特殊能力的页面级元素入口。因此保留：
+
+```python
+page.find(selector)
+page.find_all(selector)
+page.click(selector)
+page.input(selector, text)
+page.text(selector)
+page.attr(selector, name)
+```
+
+`Page` 找到的实时元素继续使用：
+
+```python
+element = page.find("#content")
+element.find("a")
+element.find_all("li")
+element.click()
+```
+
+静态内容不再使用 `s_ele` / `s_eles` 这种历史缩写。静态语义由明确的快照/文档对象承接，再继续 `find` / `find_all` 查询。具体采用 `Document` 还是单独命名为 `Snapshot`，必须以 Rust Core 的领域语义统一后再同步 Python，不在 Python 层单独制造第二套命名。
+
+#### 四、后续实施顺序
+
+1. 先在 Rust Core 删除旧模型、旧命名和旧兼容路径；
+2. 在 Rust Core 确认 `Browser → Page`、`Session → Response → Document` 的对象关系和方法语义；
+3. 为 Rust 正式门面补最小必要测试；
+4. 通过 PyO3 直接绑定 Rust 正式类型和行为；
+5. Python 仅保留符合 Python 习惯的顶层导入和 `open()` 便捷入口；
+6. 最后从 Python 侧验证调用体验，不反向要求 Rust 恢复旧 API。
+
+后续每个里程碑必须同时完成：实际代码改动、匹配范围的验证、本文档记录和 Git 提交。最终验收必须执行全仓审计，确认旧兼容、废弃、fallback、旧复合页面模型以及 `runtime` / `helper` / `adapter` 等架构概念没有以代码、导出、协议或测试形式残留。
