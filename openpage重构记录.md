@@ -1529,3 +1529,39 @@ cargo check --workspace --manifest-path rust/Cargo.toml
 cargo test -p openpage --lib --no-run --manifest-path rust/Cargo.toml
 通过，无新增警告
 ```
+
+### 里程碑 41：Rust / Python 门面最终审计（2026-07-23）
+
+状态：阶段完成。
+
+最终门面确认如下：
+
+```text
+Python 顶层：Browser / Page / Session / open
+Rust 核心：Browser / Page / Session / Response / Document / DocumentElement
+页面实时查询：Page / Element -> find() / find_all()
+页面快照查询：Document / DocumentElement -> find() / find_all()
+HTTP 查询：Session -> Response -> Document -> DocumentElement
+```
+
+审计结果：
+
+- `WebPage`、`WebElement`、`WebFrame`、`WebMode`、`ChromiumPage`、`SessionPage`、`s_ele`、`s_eles`、`make_session_ele` 及相关旧类型无源码命中；
+- `ele()`、`eles()` 及旧空元素配置入口无源码命中；
+- Python 顶层 `__all__` 仅公开 `Browser`、`Page`、`Session`、`open`；
+- PyO3 只保留对应结果对象 `Element`、`Response`、`Document`、`DocumentElement` 作为返回值类型；
+- 未发现产品层 `adapter`、`compat` 或 fallback 业务路径；
+- `incompatible` 仅表示 daemon 版本不匹配状态，`string-compatible` 仅表示值转换语义；
+- Tokio `runtime` 仅作为 Rust 底层异步执行机制保留，不属于产品门面；
+- 工作树不包含未跟踪的构建产物、wheel、缓存或虚拟环境文件。
+
+全量验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check       通过
+cargo check --workspace --manifest-path rust/Cargo.toml          通过
+cargo test -p openpage --lib --manifest-path rust/Cargo.toml     338 passed; 0 failed
+cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml 195 passed; 0 failed
+bash scripts/test/check_all.sh                                  通过
+Python facade test                                               2 passed
+```
