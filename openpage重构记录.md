@@ -1384,3 +1384,18 @@ cargo check --workspace --manifest-path rust/Cargo.toml
 ```
 
 结果：通过。
+
+### 里程碑 34：移除录制回放中的 Locator Fallback（2026-07-23）
+
+状态：阶段完成。
+
+录制目标不再保存或回放 `RecordedTarget.fallbacks`。回放现在只使用录制时确定的正式 locator；定位失败直接返回原始错误，不再通过备用 locator 掩盖正式定位设计问题。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check --workspace --manifest-path rust/Cargo.toml
+```
+
+结果：通过。

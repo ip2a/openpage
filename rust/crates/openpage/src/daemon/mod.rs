@@ -3423,14 +3423,7 @@ fn replay_recorded_flow(state: &mut ServePage, params: &Value) -> OpenPageResult
     let page = state.page.clone();
     let find = |target: &RecordedTarget| match page.find(&target.locator) {
         Ok(element) => Ok(element),
-        Err(primary_error) => {
-            for locator in &target.fallbacks {
-                if let Ok(element) = page.find(locator) {
-                    return Ok(element);
-                }
-            }
-            Err(primary_error)
-        }
+        Err(error) => Err(error),
     };
     let mut replayed = 0;
     for step in flow.steps {

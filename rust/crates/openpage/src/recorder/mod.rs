@@ -73,8 +73,6 @@ pub enum RecordedAction {
 pub struct RecordedTarget {
     pub locator: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub fallbacks: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub frames: Vec<String>,
 }
 
@@ -82,7 +80,6 @@ impl RecordedTarget {
     pub fn new(locator: impl Into<String>) -> Self {
         Self {
             locator: locator.into(),
-            fallbacks: Vec::new(),
             frames: Vec::new(),
         }
     }
