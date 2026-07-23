@@ -43,8 +43,52 @@ pub struct PyDocumentElement {
 #[pymethods]
 impl PyBrowser {
     #[staticmethod]
-    fn launch() -> PyResult<Self> {
-        Browser::launch(LaunchOptions::default())
+    #[pyo3(signature = (
+        browser_path=None,
+        headless=None,
+        incognito=None,
+        proxy=None,
+        user_agent=None,
+        download_path=None,
+        user_data_path=None,
+        no_js=None,
+    ))]
+    fn launch(
+        browser_path: Option<&str>,
+        headless: Option<bool>,
+        incognito: Option<bool>,
+        proxy: Option<&str>,
+        user_agent: Option<&str>,
+        download_path: Option<&str>,
+        user_data_path: Option<&str>,
+        no_js: Option<bool>,
+    ) -> PyResult<Self> {
+        let mut options = LaunchOptions::default();
+        if let Some(path) = browser_path {
+            options.set_browser_path(path);
+        }
+        if let Some(value) = headless {
+            options.headless(value);
+        }
+        if let Some(value) = incognito {
+            options.incognito(value);
+        }
+        if let Some(value) = proxy {
+            options.set_proxy(value);
+        }
+        if let Some(value) = user_agent {
+            options.set_user_agent(value);
+        }
+        if let Some(path) = download_path {
+            options.set_download_path(path);
+        }
+        if let Some(path) = user_data_path {
+            options.set_user_data_path(path);
+        }
+        if let Some(value) = no_js {
+            options.no_js(value);
+        }
+        Browser::launch(options)
             .map(|inner| Self { inner })
             .map_err(error)
     }

@@ -1758,3 +1758,34 @@ uv build --wheel                                                 通过
 高级页面交互门面检查                                            通过
 Python 顶层 __all__ 检查                                        通过
 ```
+
+### 里程碑 47：补齐 Python Browser 启动配置门面（2026-07-23）
+
+状态：阶段完成。
+
+`Browser.launch()` 现在可以直接接收常用启动配置：
+
+```python
+Browser.launch(
+    browser_path=None,
+    headless=None,
+    incognito=None,
+    proxy=None,
+    user_agent=None,
+    download_path=None,
+    user_data_path=None,
+    no_js=None,
+)
+```
+
+所有参数都直接写入 Rust `LaunchOptions`，未传入的参数保持 Rust 默认值。Python 没有复制启动配置逻辑，也没有增加配置对象、helper 或兼容参数。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check       通过
+cargo check -p openpage-python --manifest-path rust/Cargo.toml   通过
+uv build --wheel                                                 通过
+独立 uv 虚拟环境安装 wheel                                      通过
+Browser.launch 签名检查                                         通过
+```
