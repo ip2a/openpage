@@ -1031,7 +1031,7 @@ impl Session {
             .body
             .as_ref()
             .cloned()
-            .ok_or_else(|| OpenPageError::Http(session_page_no_loaded_document_message()))
+            .ok_or_else(|| OpenPageError::Http(session_no_loaded_document_message()))
     }
 
     fn base_url_arc(&self) -> OpenPageResult<Option<Arc<String>>> {
@@ -1057,10 +1057,11 @@ impl Session {
                 OpenPageError::Http(invalid_url_message(url, Some(&err.to_string())))
             }),
             None => {
-                let current_url =
-                    self.lock_state()?.url.clone().ok_or_else(|| {
-                        OpenPageError::Http(session_page_no_current_url_message())
-                    })?;
+                let current_url = self
+                    .lock_state()?
+                    .url
+                    .clone()
+                    .ok_or_else(|| OpenPageError::Http(session_no_current_url_message()))?;
                 Url::parse(&current_url).map_err(|err| {
                     OpenPageError::Http(invalid_url_message(&current_url, Some(&err.to_string())))
                 })

@@ -71,7 +71,7 @@ use crate::settings::{
     session_download_file_failed_message, session_download_path_resolve_failed_message,
     session_download_retry_loop_exited_message, session_download_status_message,
     session_identity_parse_failed_message, session_local_file_failed_message,
-    session_page_no_current_url_message, session_page_no_loaded_document_message,
+    session_no_current_url_message, session_no_loaded_document_message,
     session_request_failed_message, session_request_retry_loop_exited_message,
     session_response_body_read_failed_message, snapshot_fragment_root_not_found_message,
     snapshot_fragment_wrapper_not_found_message, snapshot_node_no_longer_exists_message,

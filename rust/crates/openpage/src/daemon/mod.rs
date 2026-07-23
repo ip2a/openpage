@@ -437,7 +437,7 @@ impl ServePage {
 
     fn element_payload(&self, element: Element) -> OpenPageResult<Value> {
         let ref_id = self.register_element(&element)?;
-        web_element_to_json(element, Some(ref_id))
+        element_to_json(element, Some(ref_id))
     }
 
     fn run_js(&self, script: &str) -> OpenPageResult<Value> {
@@ -2982,7 +2982,7 @@ fn normalize_locator_shorthand(locator: &str) -> String {
     trimmed.to_string()
 }
 
-fn web_element_to_json(element: Element, ref_id: Option<String>) -> OpenPageResult<Value> {
+fn element_to_json(element: Element, ref_id: Option<String>) -> OpenPageResult<Value> {
     let tag = element.tag()?;
     let text = element.text()?.map(|value| clip_agent_text(&value, 120));
     let attrs = compact_element_attrs(element.attrs()?);

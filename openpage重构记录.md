@@ -1418,3 +1418,23 @@ cargo check --workspace --manifest-path rust/Cargo.toml
 ```
 
 结果：通过。
+
+### 里程碑 36：删除旧 Session Element 工具门面和 SessionPage 术语（2026-07-23）
+
+状态：阶段完成。
+
+- 删除 Rust Core 公开的 `make_session_ele`、`make_session_ele_by` 及其 `MakeSessionEle*` 类型；
+- 删除仅服务于该旧工具入口的索引错误信息和测试；
+- 将旧 `session_page_*` 内部错误与测试命名收敛到 `Session` 领域语义；
+- 将 daemon 内部 `web_element_to_json` 改为正式 `element_to_json`。
+
+静态文档查询继续通过 `Session → Response → Document → DocumentElement` 的正式对象关系提供，不再通过旧的 `make_session_ele` 工具函数拼接对象。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check --workspace --manifest-path rust/Cargo.toml
+```
+
+结果：通过。

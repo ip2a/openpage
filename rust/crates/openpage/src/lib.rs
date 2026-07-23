@@ -82,10 +82,9 @@ pub use session::{
 pub use settings::{Settings, SettingsChain, SettingsSnapshot};
 pub use shadow_root::ShadowRoot;
 pub use tools::{
-    BlobSource, By, Keys, MakeSessionEleLocator, MakeSessionEleResult, MakeSessionEleSource,
-    TreeSource, TreeTextInput, configs_to_here, from_debugger_address, from_playwright,
-    from_playwright_debugger_address, from_selenium, from_selenium_debugger_address, get_blob,
-    get_blob_bytes, get_blob_text, make_session_ele, make_session_ele_by, print_tree, tree,
+    BlobSource, By, Keys, TreeSource, TreeTextInput, configs_to_here, from_debugger_address,
+    from_playwright, from_playwright_debugger_address, from_selenium,
+    from_selenium_debugger_address, get_blob, get_blob_bytes, get_blob_text, print_tree, tree,
     wait_until,
 };
 pub use upload::{UploadFilesInput, UploadTracker};

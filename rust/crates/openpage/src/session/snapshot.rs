@@ -1514,7 +1514,7 @@ mod tests {
     }
 
     #[test]
-    fn session_page_inherits_global_raise_when_ele_not_found_setting() {
+    fn session_inherits_global_raise_when_element_not_found_setting() {
         let _settings = scoped_test_settings();
         Settings::reset();
         Settings::set_raise_when_ele_not_found(true);
@@ -3189,7 +3189,7 @@ mod tests {
     }
 
     #[test]
-    fn session_page_set_cookies_accepts_text_and_json_inputs() {
+    fn session_set_cookies_accepts_text_and_json_inputs() {
         let page = Session::new(SessionOptions::default()).expect("session page");
         {
             let mut state = page.lock_state().expect("lock state");
@@ -3568,7 +3568,7 @@ mod tests {
     }
 
     #[test]
-    fn session_page_set_stream_updates_runtime_stream_behavior() {
+    fn session_set_stream_updates_stream_behavior() {
         let (address, handle) = spawn_capture_server("200 OK", "runtime-stream");
         let page = Session::new(SessionOptions::default()).expect("session page");
 
@@ -3622,7 +3622,7 @@ mod tests {
     }
 
     #[test]
-    fn session_page_set_header_replaces_existing_header_case_insensitively() {
+    fn session_set_header_replaces_existing_header_case_insensitively() {
         let page = Session::new(SessionOptions::default()).expect("session page");
         page.set_headers(&[
             ("Accept".to_string(), "text/html".to_string()),
@@ -4343,7 +4343,7 @@ mod tests {
     }
 
     #[test]
-    fn session_page_find_by_supports_by_mappings() {
+    fn session_find_by_supports_by_mappings() {
         let path = make_temp_file("session-find-by", HTML);
         let page = Session::new(SessionOptions::default()).expect("session page");
         assert!(
@@ -4365,7 +4365,7 @@ mod tests {
     }
 
     #[test]
-    fn session_page_find_accepts_by_locator_tuples() {
+    fn session_find_accepts_by_locator_tuples() {
         let path = make_temp_file("session-find", HTML);
         let page = Session::new(SessionOptions::default()).expect("session page");
         assert!(
@@ -4387,7 +4387,7 @@ mod tests {
     }
 
     #[test]
-    fn session_page_and_element_find_locators_accept_by_locator_inputs() {
+    fn session_and_element_find_locators_accept_by_locator_inputs() {
         fn assert_calls(page: &Session, element: &DocumentElement) {
             let locators = vec!["#root".to_string(), ".item".to_string()];
             let tuple_locators = [(By::ID, "root"), (By::CLASS_NAME, "item")];
