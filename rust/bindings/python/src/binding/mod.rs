@@ -87,6 +87,44 @@ impl PyPage {
     fn wait_for_doc_loaded(&self, timeout_ms: u64) -> PyResult<bool> {
         self.inner.wait_for_doc_loaded(timeout_ms).map_err(error)
     }
+    fn scroll_to_top(&self) -> PyResult<()> {
+        self.inner.scroll_to_top().map_err(error)
+    }
+    fn scroll_to_bottom(&self) -> PyResult<()> {
+        self.inner.scroll_to_bottom().map_err(error)
+    }
+    fn scroll_to_location(&self, x: f64, y: f64) -> PyResult<()> {
+        self.inner.scroll_to_location(x, y).map_err(error)
+    }
+    fn scroll_up(&self, pixels: f64) -> PyResult<()> {
+        self.inner.scroll_up(pixels).map_err(error)
+    }
+    fn scroll_down(&self, pixels: f64) -> PyResult<()> {
+        self.inner.scroll_down(pixels).map_err(error)
+    }
+    fn scroll_left(&self, pixels: f64) -> PyResult<()> {
+        self.inner.scroll_left(pixels).map_err(error)
+    }
+    fn scroll_right(&self, pixels: f64) -> PyResult<()> {
+        self.inner.scroll_right(pixels).map_err(error)
+    }
+    fn has_alert(&self) -> PyResult<bool> {
+        self.inner.has_alert().map_err(error)
+    }
+    fn alert_text(&self) -> PyResult<Option<String>> {
+        self.inner.alert_text().map_err(error)
+    }
+    #[pyo3(signature = (accept, prompt_text=None, timeout_ms=10_000))]
+    fn handle_alert(
+        &self,
+        accept: bool,
+        prompt_text: Option<&str>,
+        timeout_ms: u64,
+    ) -> PyResult<Option<String>> {
+        self.inner
+            .handle_alert(accept, prompt_text, timeout_ms)
+            .map_err(error)
+    }
     fn url(&self) -> PyResult<String> {
         self.inner.url().map_err(error)
     }

@@ -1634,3 +1634,39 @@ maturin develop                                                   通过
 Python 第二批绑定表面检查                                        通过
 Python facade test                                                2 passed
 ```
+
+### 里程碑 44：补齐 Python 页面滚动与对话框门面（2026-07-23）
+
+状态：阶段完成。
+
+Python `Page` 新增直接对应 Rust Core 的页面滚动能力：
+
+```text
+Page.scroll_to_top()
+Page.scroll_to_bottom()
+Page.scroll_to_location(x, y)
+Page.scroll_up(pixels)
+Page.scroll_down(pixels)
+Page.scroll_left(pixels)
+Page.scroll_right(pixels)
+```
+
+同时新增页面对话框能力：
+
+```text
+Page.has_alert()
+Page.alert_text()
+Page.handle_alert(accept, prompt_text=None, timeout_ms=10_000)
+```
+
+本阶段仅扩展 PyO3 公开门面，不增加 Python 业务实现、编排对象、helper、adapter、兼容别名或回退路径。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check       通过
+cargo check -p openpage-python --manifest-path rust/Cargo.toml   通过
+maturin develop                                                   通过
+Python 滚动与对话框绑定表面检查                                  通过
+Python facade test                                                2 passed
+```
