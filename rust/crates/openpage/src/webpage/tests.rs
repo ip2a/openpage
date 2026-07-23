@@ -15,7 +15,7 @@ use crate::session::snapshot_root;
 use crate::settings::scoped_test_settings;
 use crate::{
     By, DownloadFileExistsMode, Element, Frame, Keys, LocatorInput, OpenPageError, OpenPageResult,
-    Page, SessionCookieParam, SessionElement, SessionOptions, SessionPage, Settings, ShadowRoot,
+    Page, Session, SessionCookieParam, SessionElement, SessionOptions, Settings, ShadowRoot,
 };
 
 fn runtime_test_temp_dir(name: &str) -> PathBuf {
@@ -1047,7 +1047,7 @@ fn webpage_listener_interceptor_alias_signatures_accept_calls() {
 
 #[test]
 fn webpage_close_driver_and_close_session_signatures_accept_roundtrip_types() {
-    let _ = WebPage::close_driver as fn(WebPage) -> OpenPageResult<SessionPage>;
+    let _ = WebPage::close_driver as fn(WebPage) -> OpenPageResult<Session>;
     let _ = WebPage::close_session as fn(WebPage) -> OpenPageResult<Page>;
 }
 
@@ -1129,7 +1129,7 @@ fn webpage_close_driver_returns_session_page_with_synced_state() {
     let html_path = temp_dir.join("close-driver.html");
     let html_path_str = html_path.to_str().expect("html path str");
 
-    let result = (|| -> crate::OpenPageResult<SessionPage> {
+    let result = (|| -> crate::OpenPageResult<Session> {
         write_test_html(
             &html_path,
             r#"
@@ -2083,7 +2083,7 @@ fn page_frame_element_and_web_wrappers_expose_static_find_aliases() {
         web_page: &WebPage,
         web_frame: &WebFrame,
         web_element: &WebElement,
-        session_page: &SessionPage,
+        session_page: &Session,
         session_element: &SessionElement,
     ) {
         let _ = page.s_ele("#root");
@@ -2121,16 +2121,7 @@ fn page_frame_element_and_web_wrappers_expose_static_find_aliases() {
     }
 
     let _ = assert_calls
-        as fn(
-            &Page,
-            &Frame,
-            &Element,
-            &WebPage,
-            &WebFrame,
-            &WebElement,
-            &SessionPage,
-            &SessionElement,
-        );
+        as fn(&Page, &Frame, &Element, &WebPage, &WebFrame, &WebElement, &Session, &SessionElement);
 }
 
 #[test]
@@ -6569,7 +6560,7 @@ fn page_and_webpage_wait_signatures_accept_by_tuples_and_element_refs() {
 
 #[test]
 fn page_webpage_and_session_page_set_cookies_accept_supported_inputs() {
-    fn assert_calls(page: &Page, web_page: &WebPage, session_page: &SessionPage) {
+    fn assert_calls(page: &Page, web_page: &WebPage, session_page: &Session) {
         let cookie = SessionCookieParam {
             name: "sid".to_string(),
             value: "abc".to_string(),
@@ -6612,7 +6603,7 @@ fn page_webpage_and_session_page_set_cookies_accept_supported_inputs() {
         let _ = session_page.set_cookie_header("https://example.test/", "sid=abc");
     }
 
-    let _ = assert_calls as fn(&Page, &WebPage, &SessionPage);
+    let _ = assert_calls as fn(&Page, &WebPage, &Session);
 }
 
 #[test]

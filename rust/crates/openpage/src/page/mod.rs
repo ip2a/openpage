@@ -89,8 +89,8 @@ use crate::locator::{
 use crate::recorder::Recorder;
 use crate::screencast::Screencast;
 use crate::session::{
-    CookieEntry, CookieInput, HeadersInput, SessionCookieParam, SessionElement, SessionOptions,
-    SessionPage, SessionXPathResult, cookie_input_to_params_allow_missing_scope,
+    CookieEntry, CookieInput, HeadersInput, Session, SessionCookieParam, SessionElement,
+    SessionOptions, SessionXPathResult, cookie_input_to_params_allow_missing_scope,
     cookies_from_header, parse_headers_input, snapshot_find, snapshot_find_all,
     snapshot_query_xpath, snapshot_root,
 };

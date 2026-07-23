@@ -1871,10 +1871,7 @@ impl Page {
             .download_to(url, path)
     }
 
-    fn build_download_session(
-        &self,
-        cookie_scope_url: Option<&str>,
-    ) -> OpenPageResult<SessionPage> {
+    fn build_download_session(&self, cookie_scope_url: Option<&str>) -> OpenPageResult<Session> {
         let mut options = SessionOptions {
             user_agent: Some(self.user_agent()?),
             ..SessionOptions::default()
@@ -1883,7 +1880,7 @@ impl Page {
             options.download_path = PathBuf::from(download_path);
         }
 
-        let session = SessionPage::new(options)?;
+        let session = Session::new(options)?;
         if let Some(scope_url) = cookie_scope_url {
             if (scope_url.starts_with("http://") || scope_url.starts_with("https://"))
                 && let Some(cookie_header) = self.cookie_header()?

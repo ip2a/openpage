@@ -74,12 +74,12 @@ pub use recorder::{
 };
 pub use screencast::{Screencast, ScreencastMode};
 pub use session::{
-    CookieEntry, CookieInput, HeadersInput, ParamsInput, SessionAdapter, SessionAdapterMount,
-    SessionAuthInput, SessionCert, SessionCertInput, SessionCookie, SessionCookieParam,
-    SessionDownload, SessionElement, SessionEncodingInput, SessionHandle, SessionHookEvent,
-    SessionHooks, SessionMaxRedirectsInput, SessionOptions, SessionPage, SessionPageSetter,
-    SessionProxyInput, SessionRequestOptions, SessionResponseHook, SessionResponseInfo,
-    SessionRetryIntervalInput, SessionRetryTimesInput, SessionRuntimeInfo, SessionUserAgentInput,
+    CookieEntry, CookieInput, HeadersInput, ParamsInput, Session, SessionAdapter,
+    SessionAdapterMount, SessionAuthInput, SessionCert, SessionCertInput, SessionCookie,
+    SessionCookieParam, SessionDownload, SessionElement, SessionEncodingInput, SessionHandle,
+    SessionHookEvent, SessionHooks, SessionMaxRedirectsInput, SessionOptions, SessionProxyInput,
+    SessionRequestOptions, SessionResponseHook, SessionResponseInfo, SessionRetryIntervalInput,
+    SessionRetryTimesInput, SessionRuntimeInfo, SessionSettings, SessionUserAgentInput,
     SessionXPathResult,
 };
 pub use settings::{Settings, SettingsChain, SettingsSnapshot};

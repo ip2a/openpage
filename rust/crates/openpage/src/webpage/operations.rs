@@ -1881,7 +1881,7 @@ impl WebPage {
         self.close(others, session)
     }
 
-    pub fn close_driver(self) -> OpenPageResult<SessionPage> {
+    pub fn close_driver(self) -> OpenPageResult<Session> {
         self.change_mode(Some(WebMode::Session), true, true)?;
         let WebPage {
             driver, session, ..

@@ -11,7 +11,7 @@ use crate::element::{Element, ElementResource};
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::locator::Locator;
 use crate::page::{Frame, Page};
-use crate::session::{SessionElement, SessionPage, snapshot_find_all, snapshot_root};
+use crate::session::{Session, SessionElement, snapshot_find_all, snapshot_root};
 use crate::settings::{
     data_url_missing_comma_message, get_blob_data_url_required_message,
     get_blob_resolve_failed_message, get_blob_url_required_message,
@@ -104,7 +104,7 @@ pub enum TreeSource<'a> {
     Page(&'a Page),
     Frame(&'a Frame),
     Element(&'a Element),
-    SessionPage(&'a SessionPage),
+    Session(&'a Session),
     SessionElement(&'a SessionElement),
     WebPage(&'a WebPage),
     WebFrame(&'a WebFrame),
@@ -199,9 +199,9 @@ impl<'a> From<&'a Element> for TreeSource<'a> {
     }
 }
 
-impl<'a> From<&'a SessionPage> for TreeSource<'a> {
-    fn from(value: &'a SessionPage) -> Self {
-        Self::SessionPage(value)
+impl<'a> From<&'a Session> for TreeSource<'a> {
+    fn from(value: &'a Session) -> Self {
+        Self::Session(value)
     }
 }
 
@@ -240,7 +240,7 @@ pub enum MakeSessionEleSource<'a> {
     Page(&'a Page),
     Frame(&'a Frame),
     Element(&'a Element),
-    SessionPage(&'a SessionPage),
+    Session(&'a Session),
     SessionElement(&'a SessionElement),
     WebPage(&'a WebPage),
     WebFrame(&'a WebFrame),
@@ -272,9 +272,9 @@ impl<'a> From<&'a Element> for MakeSessionEleSource<'a> {
     }
 }
 
-impl<'a> From<&'a SessionPage> for MakeSessionEleSource<'a> {
-    fn from(value: &'a SessionPage) -> Self {
-        Self::SessionPage(value)
+impl<'a> From<&'a Session> for MakeSessionEleSource<'a> {
+    fn from(value: &'a Session) -> Self {
+        Self::Session(value)
     }
 }
 
@@ -489,7 +489,7 @@ impl TreeSource<'_> {
             Self::Page(page) => page.snapshot_root(),
             Self::Frame(frame) => frame.snapshot_root(),
             Self::Element(element) => element.snapshot_root(),
-            Self::SessionPage(page) => page.root(),
+            Self::Session(page) => page.root(),
             Self::SessionElement(element) => Ok((*element).clone()),
             Self::WebPage(page) => page.snapshot_root(),
             Self::WebFrame(frame) => frame.snapshot_root(),
@@ -506,7 +506,7 @@ impl MakeSessionEleSource<'_> {
             Self::Page(page) => page.snapshot_root(),
             Self::Frame(frame) => frame.snapshot_root(),
             Self::Element(element) => element.snapshot_root(),
-            Self::SessionPage(page) => page.root(),
+            Self::Session(page) => page.root(),
             Self::SessionElement(element) => Ok((*element).clone()),
             Self::WebPage(page) => page.snapshot_root(),
             Self::WebFrame(frame) => frame.snapshot_root(),
@@ -521,7 +521,7 @@ impl MakeSessionEleSource<'_> {
             Self::Page(page) => page.snapshot_find_all(locator),
             Self::Frame(frame) => frame.snapshot_find_all(locator),
             Self::Element(element) => element.snapshot_find_all(locator),
-            Self::SessionPage(page) => page.find_all(locator),
+            Self::Session(page) => page.find_all(locator),
             Self::SessionElement(element) => element.find_all(locator),
             Self::WebPage(page) => page.snapshot_find_all(locator),
             Self::WebFrame(frame) => frame.snapshot_find_all(locator),
@@ -768,7 +768,7 @@ mod tests {
     use crate::page::Page;
     use crate::session::{snapshot_find, snapshot_root};
     use crate::settings::scoped_test_settings;
-    use crate::{SessionOptions, SessionPage, Settings};
+    use crate::{Session, SessionOptions, Settings};
 
     #[test]
     fn debugger_address_docking_helper_signatures_return_page() {
@@ -1200,7 +1200,7 @@ mod tests {
             "make-session-ele-page",
             r#"<html><body><div class="item">alpha</div><div class="item">beta</div></body></html>"#,
         );
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         assert!(
             page.get(path.to_str().expect("path str"))
                 .expect("load file")

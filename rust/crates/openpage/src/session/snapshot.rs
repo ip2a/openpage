@@ -1349,12 +1349,12 @@ pub(super) fn nearest_parent_element(element: ElementRef<'_>) -> Option<ElementR
 #[cfg(test)]
 mod tests {
     use super::{
-        CookieInput, SessionAdapter, SessionAdapterMount, SessionCert, SessionCookieParam,
-        SessionElement, SessionHandle, SessionHooks, SessionOptions, SessionPage,
-        SessionRequestOptions, SessionXPathResult, append_query_params, cookie_assignment,
-        cookie_input_to_params, cookies_from_header, default_referer_header,
-        nth_scraper_child_by_tag, parse_headers_input, parse_optional_selector, parse_xpath_path,
-        remove_cookie_from_header, resolve_local_file_path, resolve_session_options_ini_path,
+        CookieInput, Session, SessionAdapter, SessionAdapterMount, SessionCert, SessionCookieParam,
+        SessionElement, SessionHandle, SessionHooks, SessionOptions, SessionRequestOptions,
+        SessionXPathResult, append_query_params, cookie_assignment, cookie_input_to_params,
+        cookies_from_header, default_referer_header, nth_scraper_child_by_tag, parse_headers_input,
+        parse_optional_selector, parse_xpath_path, remove_cookie_from_header,
+        resolve_local_file_path, resolve_session_options_ini_path,
         session_cookie_header_decode_error, snapshot_find, snapshot_find_all,
         snapshot_fragment_find, snapshot_fragment_root, snapshot_fragment_root_with_base_url,
         snapshot_root,
@@ -1397,7 +1397,7 @@ mod tests {
 "#;
 
     fn load_session_html_for_test(
-        page: &SessionPage,
+        page: &Session,
         html: &str,
         url: Option<&str>,
     ) -> crate::OpenPageResult<()> {
@@ -1463,7 +1463,7 @@ mod tests {
 
     #[test]
     fn session_elements_one_runtime_config_supports_none_value_and_raise() {
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         load_session_html_for_test(
             &page,
             r#"
@@ -1520,7 +1520,7 @@ mod tests {
         Settings::reset();
         Settings::set_raise_when_ele_not_found(true);
 
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         load_session_html_for_test(
             &page,
             r#"
@@ -1549,7 +1549,7 @@ mod tests {
 
     #[test]
     fn session_ele_runtime_config_supports_none_value_and_nested_queries() {
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         load_session_html_for_test(
             &page,
             r#"
@@ -2001,7 +2001,7 @@ mod tests {
 
         let mut options = SessionOptions::default();
         options.set_hooks(hooks);
-        let page = SessionPage::new(options).expect("session page");
+        let page = Session::new(options).expect("session page");
         let (address, handle) = spawn_capture_server("200 OK", "hooked");
         let url = format!("{address}/hook");
 
@@ -2040,7 +2040,7 @@ mod tests {
 
         let mut options = SessionOptions::default();
         options.set_hooks(runtime_hooks);
-        let page = SessionPage::new(options).expect("session page");
+        let page = Session::new(options).expect("session page");
         let request_options = SessionRequestOptions {
             hooks: Some(request_hooks),
             ..SessionRequestOptions::default()
@@ -2530,7 +2530,7 @@ mod tests {
         let _settings = scoped_test_settings();
         Settings::reset();
 
-        let page = SessionPage::new(SessionOptions::default()).expect("create session page");
+        let page = Session::new(SessionOptions::default()).expect("create session page");
 
         let english_cookie_header = page
             .cookie_header("not a url")
@@ -2617,7 +2617,7 @@ mod tests {
         let _settings = scoped_test_settings();
         Settings::reset();
 
-        let page = SessionPage::new(SessionOptions::default()).expect("create session page");
+        let page = Session::new(SessionOptions::default()).expect("create session page");
 
         let english_title = page
             .title()
@@ -2655,7 +2655,7 @@ mod tests {
         let _settings = scoped_test_settings();
         Settings::reset();
 
-        let page = SessionPage::new(SessionOptions::default()).expect("create session page");
+        let page = Session::new(SessionOptions::default()).expect("create session page");
         let explicit_url = [SessionCookieParam {
             name: "sid".to_string(),
             value: "1".to_string(),
@@ -2710,7 +2710,7 @@ mod tests {
         let _settings = scoped_test_settings();
         Settings::reset();
 
-        let page = SessionPage::new(SessionOptions::default()).expect("create session page");
+        let page = Session::new(SessionOptions::default()).expect("create session page");
         poison_mutex(Arc::clone(&page.none_element_config));
 
         let english = page
@@ -3063,7 +3063,7 @@ mod tests {
 
     #[test]
     fn session_runtime_timeout_retry_and_close_match_reference_behavior() {
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
 
         assert_eq!(page.timeout_secs().expect("default timeout"), 10);
         assert_eq!(page.retry_times().expect("default retry times"), 3);
@@ -3126,7 +3126,7 @@ mod tests {
     #[test]
     fn session_download_uses_runtime_download_path_and_tracks_last_download() {
         let download_dir = make_temp_dir("session-download");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         page.set_download_path(&download_dir)
             .expect("set download path");
         assert_eq!(
@@ -3175,7 +3175,7 @@ mod tests {
         let body = "explicit target";
         let (address, handle) = spawn_capture_server("200 OK", body);
         let url = format!("{address}/payload.bin");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
 
         let saved_path = page
             .download_to(&url, &target_path)
@@ -3202,7 +3202,7 @@ mod tests {
     fn session_download_file_errors_follow_language_setting() {
         let _settings = scoped_test_settings();
         Settings::reset();
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             retry_times: 0,
             ..SessionOptions::default()
         })
@@ -3240,7 +3240,7 @@ mod tests {
         let _settings = scoped_test_settings();
         Settings::reset();
 
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             retry_times: 0,
             retry_interval_millis: 0,
             ..SessionOptions::default()
@@ -3272,7 +3272,7 @@ mod tests {
 
     #[test]
     fn session_cookie_queries_cover_all_domains_and_metadata() {
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let current_url =
             Url::parse("https://www.example.test/shared/page").expect("current cookie url");
         let other_url = Url::parse("https://other.test/").expect("other cookie url");
@@ -3335,7 +3335,7 @@ mod tests {
 
     #[test]
     fn session_page_set_cookies_accepts_text_and_json_inputs() {
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         {
             let mut state = page.lock_state().expect("lock state");
             state.url = Some("https://www.example.test/shared/page".to_string());
@@ -3390,7 +3390,7 @@ mod tests {
             &["retry", "done"],
             Arc::clone(&attempts),
         );
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             retry_times: 1,
             retry_interval_millis: 0,
             ..SessionOptions::default()
@@ -3412,7 +3412,7 @@ mod tests {
             &["retry", "posted"],
             Arc::clone(&attempts),
         );
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             retry_times: 1,
             retry_interval_millis: 0,
             ..SessionOptions::default()
@@ -3432,7 +3432,7 @@ mod tests {
             "session-local",
             "<html><head><title>Local File</title></head><body>openpage</body></html>",
         );
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let file_url = Url::from_file_path(&path)
             .expect("build local file url")
             .to_string();
@@ -3469,7 +3469,7 @@ mod tests {
     fn session_local_file_errors_follow_language_setting() {
         let _settings = scoped_test_settings();
         Settings::reset();
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let missing = env::temp_dir().join(format!(
             "openpage-missing-local-{}.html",
             SystemTime::now()
@@ -3500,7 +3500,7 @@ mod tests {
 
     #[test]
     fn session_response_snapshot_exposes_latest_response_metadata() {
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let (address, handle) = spawn_capture_server("200 OK", "snapshot");
 
         assert!(page.get(&address).expect("request snapshot"));
@@ -3540,7 +3540,7 @@ mod tests {
     #[test]
     fn session_head_uses_request_pipeline_and_updates_response_snapshot() {
         let (address, handle) = spawn_capture_server("204 No Content", "");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/status");
 
         assert!(page.head(&url).expect("head request"));
@@ -3561,7 +3561,7 @@ mod tests {
     #[test]
     fn session_options_uses_request_pipeline_and_updates_response_snapshot() {
         let (address, handle) = spawn_capture_server("204 No Content", "");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/status");
 
         assert!(page.options(&url).expect("options request"));
@@ -3582,7 +3582,7 @@ mod tests {
     #[test]
     fn session_post_form_sends_urlencoded_body_and_updates_response_snapshot() {
         let (address, handle) = spawn_capture_server("200 OK", "form accepted");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/submit");
         let form = [("username", "openpage"), ("pwd", "secret")];
 
@@ -3613,7 +3613,7 @@ mod tests {
     #[test]
     fn session_post_body_sends_raw_body_and_updates_response_snapshot() {
         let (address, handle) = spawn_capture_server("200 OK", "body accepted");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/submit");
 
         assert!(page.post_body(&url, "abc=123").expect("post body request"));
@@ -3639,7 +3639,7 @@ mod tests {
     #[test]
     fn session_post_json_body_sends_raw_json_body_and_updates_response_snapshot() {
         let (address, handle) = spawn_capture_server("200 OK", "json accepted");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/submit");
 
         assert!(
@@ -3672,7 +3672,7 @@ mod tests {
     #[test]
     fn session_put_uses_request_pipeline_and_updates_response_snapshot() {
         let (address, handle) = spawn_capture_server("200 OK", "updated");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/items/1");
 
         assert!(page.put(&url).expect("put request"));
@@ -3694,7 +3694,7 @@ mod tests {
     #[test]
     fn session_delete_uses_request_pipeline_and_updates_response_snapshot() {
         let (address, handle) = spawn_capture_server("200 OK", "deleted");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/items/1");
 
         assert!(page.delete(&url).expect("delete request"));
@@ -3716,7 +3716,7 @@ mod tests {
     #[test]
     fn session_patch_uses_request_pipeline_and_updates_response_snapshot() {
         let (address, handle) = spawn_capture_server("200 OK", "patched");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/items/1");
 
         assert!(page.patch(&url).expect("patch request"));
@@ -3742,7 +3742,7 @@ mod tests {
             .set_timeout(7)
             .set_verify(false)
             .set_max_redirects(Some(2));
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             timeout_secs: 21,
             user_agent: Some("OpenPage/TestAgent".to_string()),
             headers: vec![
@@ -3854,7 +3854,7 @@ mod tests {
 
     #[test]
     fn session_handle_can_spawn_new_page_sharing_runtime_state() {
-        let page1 = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page1 = Session::new(SessionOptions::default()).expect("session page");
         page1
             .set_header("x-shared", "page1")
             .expect("set shared header");
@@ -3863,7 +3863,7 @@ mod tests {
             .expect("set shared cookie");
 
         let handle = page1.session_handle();
-        let page2 = SessionPage::from_session_handle(handle.clone());
+        let page2 = Session::from_session_handle(handle.clone());
 
         assert_eq!(page2.stream().expect("initial stream"), false);
         page2.set_stream(true).expect("enable shared stream");
@@ -3925,7 +3925,7 @@ mod tests {
 
     #[test]
     fn session_handle_page_roundtrip_preserves_identity() {
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let handle = page.session_handle();
         let cloned_page = handle.page();
         let second_handle: SessionHandle = cloned_page.session_handle();
@@ -3939,7 +3939,7 @@ mod tests {
     #[test]
     fn session_set_params_and_auth_apply_to_requests() {
         let (address, handle) = spawn_capture_server("200 OK", "secured");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let url = format!("{address}/items");
 
         page.set_params(&[
@@ -3975,7 +3975,7 @@ mod tests {
     #[test]
     fn session_stream_option_defers_body_loading_until_needed() {
         let (address, handle) = spawn_capture_server("200 OK", "streamed");
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             stream: true,
             ..SessionOptions::default()
         })
@@ -4011,7 +4011,7 @@ mod tests {
     #[test]
     fn session_request_options_stream_override_disables_lazy_loading() {
         let (address, handle) = spawn_capture_server("200 OK", "override");
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             stream: true,
             ..SessionOptions::default()
         })
@@ -4038,7 +4038,7 @@ mod tests {
     #[test]
     fn session_page_set_stream_updates_runtime_stream_behavior() {
         let (address, handle) = spawn_capture_server("200 OK", "runtime-stream");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
 
         page.set_stream(true).expect("enable runtime stream");
         assert!(page.stream().expect("runtime stream getter"));
@@ -4056,7 +4056,7 @@ mod tests {
     #[test]
     fn session_options_initial_headers_apply_to_requests() {
         let (address, handle) = spawn_capture_server("200 OK", "init");
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             headers: vec![
                 ("X-Init".to_string(), "present".to_string()),
                 ("Referer".to_string(), "".to_string()),
@@ -4083,7 +4083,7 @@ mod tests {
 
     #[test]
     fn session_page_set_header_replaces_existing_header_case_insensitively() {
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         page.set_headers(&[
             ("Accept".to_string(), "text/html".to_string()),
             ("Referer".to_string(), "".to_string()),
@@ -4130,7 +4130,7 @@ mod tests {
     fn session_options_initial_cookies_seed_session_cookie_store() {
         let current_url =
             Url::parse("https://www.example.test/shared/page").expect("current cookie url");
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             cookies: vec![
                 SessionCookieParam {
                     name: "host".to_string(),
@@ -4178,7 +4178,7 @@ mod tests {
 
     #[test]
     fn session_request_options_override_runtime_request_settings() {
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             retry_times: 0,
             retry_interval_millis: 999,
             ..SessionOptions::default()
@@ -4257,7 +4257,7 @@ mod tests {
 
     #[test]
     fn session_request_options_timeout_overrides_session_default() {
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             timeout_secs: 5,
             retry_times: 0,
             ..SessionOptions::default()
@@ -4278,7 +4278,7 @@ mod tests {
     fn session_request_send_errors_follow_language_setting() {
         let _settings = scoped_test_settings();
         Settings::reset();
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             retry_times: 0,
             ..SessionOptions::default()
         })
@@ -4312,7 +4312,7 @@ mod tests {
     fn session_response_body_errors_follow_language_setting() {
         let _settings = scoped_test_settings();
         Settings::reset();
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             retry_times: 0,
             ..SessionOptions::default()
         })
@@ -4328,7 +4328,7 @@ mod tests {
         )));
         let _ = english_handle.join();
 
-        let stream_page = SessionPage::new(SessionOptions {
+        let stream_page = Session::new(SessionOptions {
             retry_times: 0,
             stream: true,
             ..SessionOptions::default()
@@ -4360,7 +4360,7 @@ mod tests {
         assert!(chinese.contains("HTTP 操作失败"));
         let _ = chinese_handle.join();
 
-        let chinese_stream_page = SessionPage::new(SessionOptions {
+        let chinese_stream_page = Session::new(SessionOptions {
             retry_times: 0,
             stream: true,
             ..SessionOptions::default()
@@ -4384,7 +4384,7 @@ mod tests {
     #[test]
     fn session_requests_set_default_referer_from_current_url() {
         let (first_address, first_handle) = spawn_capture_server("200 OK", "first");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let first_url = format!("{first_address}/first");
 
         assert!(page.get(&first_url).expect("first request"));
@@ -4415,7 +4415,7 @@ mod tests {
     #[test]
     fn session_set_encoding_updates_current_and_future_documents() {
         let path = make_temp_bytes("session-encoding", b"caf\xe9");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
 
         assert!(
             page.get(path.to_str().expect("path str"))
@@ -4461,7 +4461,7 @@ mod tests {
     #[test]
     fn session_set_proxies_routes_http_requests_through_proxy() {
         let (proxy_url, handle) = spawn_capture_server("200 OK", "proxied");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
 
         page.set_proxies(Some(proxy_url.clone()), None)
             .expect("set proxy");
@@ -4481,7 +4481,7 @@ mod tests {
     #[test]
     fn session_add_adapter_routes_matching_urls_through_proxy_and_updates_snapshot() {
         let (proxy_url, handle) = spawn_capture_server("200 OK", "adapter");
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         let mut adapter = SessionAdapter::new();
         adapter.set_proxies(Some(proxy_url.clone()), None);
 
@@ -4527,7 +4527,7 @@ mod tests {
         options
             .add_adapter(address.clone(), broad_adapter)
             .add_adapter(format!("{address}/api/"), specific_adapter);
-        let page = SessionPage::new(options).expect("session page");
+        let page = Session::new(options).expect("session page");
 
         assert!(
             page.get(&format!("{address}/api/items"))
@@ -4540,7 +4540,7 @@ mod tests {
 
     #[test]
     fn session_set_max_redirects_controls_follow_behavior() {
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
 
         page.set_max_redirects(Some(0)).expect("disable redirects");
         let (first_address, first_handle) = spawn_redirect_server(1);
@@ -4583,7 +4583,7 @@ mod tests {
 
     #[test]
     fn session_url_available_is_false_for_unsuccessful_status() {
-        let page = SessionPage::new(SessionOptions {
+        let page = Session::new(SessionOptions {
             retry_times: 0,
             retry_interval_millis: 0,
             ..SessionOptions::default()
@@ -4607,7 +4607,7 @@ mod tests {
                 .expect("system time")
                 .as_nanos()
         ));
-        let error = SessionPage::new(SessionOptions {
+        let error = Session::new(SessionOptions {
             cert: Some(SessionCert::Pem(missing.clone())),
             ..SessionOptions::default()
         })
@@ -4627,7 +4627,7 @@ mod tests {
         let _settings = scoped_test_settings();
         Settings::reset();
 
-        let english_error = SessionPage::new(SessionOptions {
+        let english_error = Session::new(SessionOptions {
             http_proxy: Some("://bad-proxy".to_string()),
             ..SessionOptions::default()
         })
@@ -4637,7 +4637,7 @@ mod tests {
 
         Settings::set_language("cn");
 
-        let chinese_error = SessionPage::new(SessionOptions {
+        let chinese_error = Session::new(SessionOptions {
             https_proxy: Some("://bad-proxy".to_string()),
             ..SessionOptions::default()
         })
@@ -4656,7 +4656,7 @@ mod tests {
         let cert_path = dir.join("client.pem");
         fs::write(&cert_path, "not a pem").expect("write invalid cert");
 
-        let english_error = SessionPage::new(SessionOptions {
+        let english_error = Session::new(SessionOptions {
             cert: Some(SessionCert::Pem(cert_path.clone())),
             ..SessionOptions::default()
         })
@@ -4666,7 +4666,7 @@ mod tests {
 
         Settings::set_language("cn");
 
-        let chinese_error = SessionPage::new(SessionOptions {
+        let chinese_error = Session::new(SessionOptions {
             cert: Some(SessionCert::Pem(cert_path.clone())),
             ..SessionOptions::default()
         })
@@ -4852,7 +4852,7 @@ mod tests {
     #[test]
     fn session_page_find_by_supports_by_mappings() {
         let path = make_temp_file("session-find-by", HTML);
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         assert!(
             page.get(path.to_str().expect("path str"))
                 .expect("load file")
@@ -4873,7 +4873,7 @@ mod tests {
     #[test]
     fn session_page_find_accepts_by_locator_tuples() {
         let path = make_temp_file("session-find", HTML);
-        let page = SessionPage::new(SessionOptions::default()).expect("session page");
+        let page = Session::new(SessionOptions::default()).expect("session page");
         assert!(
             page.get(path.to_str().expect("path str"))
                 .expect("load file")
@@ -4893,7 +4893,7 @@ mod tests {
 
     #[test]
     fn session_page_and_element_find_locators_accept_by_locator_inputs() {
-        fn assert_calls(page: &SessionPage, element: &SessionElement) {
+        fn assert_calls(page: &Session, element: &SessionElement) {
             let locators = vec!["#root".to_string(), ".item".to_string()];
             let tuple_locators = [(By::ID, "root"), (By::CLASS_NAME, "item")];
             let mixed_locators = [
@@ -4911,12 +4911,12 @@ mod tests {
             let _ = element.find_locators(&mixed_locators, false, false);
         }
 
-        let _ = assert_calls as fn(&SessionPage, &SessionElement);
+        let _ = assert_calls as fn(&Session, &SessionElement);
     }
 
     #[test]
     fn session_page_setter_signatures_accept_existing_runtime_settings() {
-        fn assert_calls(page: &SessionPage) {
+        fn assert_calls(page: &Session) {
             let setter = page.set();
             let headers = [("Accept".to_string(), "text/html".to_string())];
             let params = [("q".to_string(), "openpage".to_string())];
@@ -4978,7 +4978,7 @@ mod tests {
             let _ = setter.remove_cookie("sid", Some("https://example.test/"));
         }
 
-        let _ = assert_calls as fn(&SessionPage);
+        let _ = assert_calls as fn(&Session);
     }
 
     #[test]

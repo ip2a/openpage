@@ -1,7 +1,7 @@
 mod config;
 mod cookies;
 mod element;
-mod page;
+mod request;
 mod snapshot;
 mod transport;
 
@@ -2149,13 +2149,13 @@ impl From<&SessionState> for SessionClientOptions {
 }
 
 #[derive(Clone, Debug)]
-pub struct SessionPage {
+pub struct Session {
     inner: Arc<Mutex<SessionState>>,
     none_element_config: ElementsOneRuntimeConfigHandle,
 }
 
-pub struct SessionPageSetter<'a> {
-    page: &'a SessionPage,
+pub struct SessionSettings<'a> {
+    page: &'a Session,
 }
 
 #[derive(Clone, Debug)]
@@ -2165,8 +2165,8 @@ pub struct SessionHandle {
 }
 
 impl SessionHandle {
-    pub fn page(&self) -> SessionPage {
-        SessionPage {
+    pub fn page(&self) -> Session {
+        Session {
             inner: Arc::clone(&self.inner),
             none_element_config: Arc::clone(&self.none_element_config),
         }
@@ -2205,7 +2205,7 @@ impl SessionHandle {
     }
 }
 
-impl SessionPageSetter<'_> {
+impl SessionSettings<'_> {
     pub fn user_agent<U>(&self, user_agent: U) -> OpenPageResult<()>
     where
         U: Into<SessionUserAgentInput>,

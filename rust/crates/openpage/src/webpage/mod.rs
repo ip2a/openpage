@@ -39,8 +39,8 @@ use crate::page::{
 };
 use crate::screencast::Screencast;
 use crate::session::{
-    CookieEntry, CookieInput, HeadersInput, SessionDownload, SessionElement, SessionEncodingInput,
-    SessionOptions, SessionPage, SessionXPathResult,
+    CookieEntry, CookieInput, HeadersInput, Session, SessionDownload, SessionElement,
+    SessionEncodingInput, SessionOptions, SessionXPathResult,
 };
 use crate::settings::{
     component_state_lock_poisoned_message, driver_mode_only_message,
@@ -268,7 +268,7 @@ impl<'a, const N: usize> From<&'a [&'a WebElement; N]> for WebSelectOptionInput<
 #[derive(Clone, Debug)]
 pub struct DisconnectedWebPage {
     browser: Browser,
-    session: SessionPage,
+    session: Session,
     mode: Arc<Mutex<WebMode>>,
     target_id: String,
 }
@@ -349,7 +349,7 @@ impl<'a> From<&'a Vec<&'a WebPage>> for BrowserTabTargetsInput<'a> {
 pub struct WebPage {
     browser: Browser,
     driver: crate::page::Page,
-    session: SessionPage,
+    session: Session,
     mode: Arc<Mutex<WebMode>>,
 }
 
@@ -393,7 +393,7 @@ impl WebPage {
     ) -> OpenPageResult<Self> {
         let browser = Browser::launch(launch_options)?;
         let driver = browser.new_page(None)?;
-        let session = SessionPage::new(session_options)?;
+        let session = Session::new(session_options)?;
         Ok(Self {
             browser,
             driver,

@@ -631,3 +631,24 @@ WebNoneElement
 cargo check -p openpage --lib
 Rust 顶层公开类型定向测试通过
 ```
+
+### 里程碑 2：Rust HTTP 核心从 SessionPage 收敛为 Session（2026-07-23）
+
+状态：已完成。
+
+完成内容：
+
+- Rust 核心类型 `SessionPage` 直接重命名为 `Session`；
+- `SessionPageSetter` 重命名为 `SessionSettings`；
+- `session/page.rs` 重命名为表达 HTTP 请求职责的 `session/request.rs`；
+- Rust 核心内所有调用方同步切换，不保留类型别名或旧名称转发；
+- 页面快照、tools 及待删除 WebPage 内部临时调用已统一引用真实 `Session` 类型。
+
+验证：
+
+```text
+cargo check -p openpage --lib
+session::snapshot::tests::snapshot_find_supports_nested_queries
+session::snapshot::tests::session_options_uses_request_pipeline_and_updates_response_snapshot
+Rust 核心中 SessionPage / SessionPageSetter 搜索结果为 0
+```

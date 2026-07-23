@@ -1,6 +1,6 @@
 use super::*;
 
-impl SessionPage {
+impl Session {
     pub fn new(options: SessionOptions) -> OpenPageResult<Self> {
         let cookie_jar = Arc::new(SessionCookieJar::default());
         initialize_session_cookies(&cookie_jar, &options.cookies)?;
@@ -56,8 +56,8 @@ impl SessionPage {
         })
     }
 
-    pub fn set(&self) -> SessionPageSetter<'_> {
-        SessionPageSetter { page: self }
+    pub fn set(&self) -> SessionSettings<'_> {
+        SessionSettings { page: self }
     }
 
     pub fn from_session_handle(handle: SessionHandle) -> Self {
