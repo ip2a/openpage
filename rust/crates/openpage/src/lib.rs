@@ -100,48 +100,16 @@ pub use webpage::{
 };
 pub use window::{activate_app, set_app_visibility};
 
-pub type Chromium = Browser;
-pub type ChromiumElement = Element;
-pub type ChromiumFrame = Frame;
-pub type NoneElement = ElementsOneOwned<Element>;
-pub type ChromiumOptions = LaunchOptions;
-pub type ChromiumPage = Page;
-pub type ChromiumTab = Page;
-pub type MixTab = WebPage;
-pub type SessionNoneElement = ElementsOneOwned<SessionElement>;
-pub type WebNoneElement = ElementsOneOwned<WebElement>;
-
 #[cfg(test)]
 mod tests {
     use super::{
-        Browser, Chromium, ChromiumElement, ChromiumFrame, ChromiumOptions, ChromiumPage,
-        ChromiumTab, Element, ElementListAttrsItem, ElementListContentItem, ElementListMetaItem,
-        ElementRect, ElementStates, ElementWait, ElementsOneClicker, ElementsOneOwned,
-        ElementsOneRect, ElementsOneScroller, ElementsOneSelector, ElementsOneSetter,
-        ElementsOneStates, ElementsOneWait, Frame, LaunchOptions, LocatorBatchInput, MixTab,
-        NoneElement, OPENPAGE_BROWSER_PATH_ENV, Page, PageNavigationSnapshot, SelectIndexInput,
-        SelectOptionInput, SessionElement, SessionNoneElement, TimeoutConfig, WebElement,
-        WebElementRect, WebElementStates, WebElementWait, WebNoneElement, WebPage,
+        Element, ElementListAttrsItem, ElementListContentItem, ElementListMetaItem, ElementRect,
+        ElementStates, ElementWait, ElementsOneClicker, ElementsOneRect, ElementsOneScroller,
+        ElementsOneSelector, ElementsOneSetter, ElementsOneStates, ElementsOneWait,
+        LocatorBatchInput, OPENPAGE_BROWSER_PATH_ENV, PageNavigationSnapshot, SelectIndexInput,
+        SelectOptionInput, TimeoutConfig, WebElementRect, WebElementStates, WebElementWait,
         WebSelectOptionInput,
     };
-
-    #[test]
-    fn chromium_aliases_match_core_types() {
-        let _ = (|_: &Chromium, _: &Browser| {}) as fn(&Chromium, &Browser);
-        let _ = (|_: &ChromiumPage, _: &Page| {}) as fn(&ChromiumPage, &Page);
-        let _ = (|_: &ChromiumTab, _: &Page| {}) as fn(&ChromiumTab, &Page);
-        let _ = (|_: &MixTab, _: &WebPage| {}) as fn(&MixTab, &WebPage);
-        let _ = (|_: &ChromiumFrame, _: &Frame| {}) as fn(&ChromiumFrame, &Frame);
-        let _ = (|_: &ChromiumElement, _: &Element| {}) as fn(&ChromiumElement, &Element);
-        let _ =
-            (|_: &ChromiumOptions, _: &LaunchOptions| {}) as fn(&ChromiumOptions, &LaunchOptions);
-        let _ = (|_: &NoneElement, _: &ElementsOneOwned<Element>| {})
-            as fn(&NoneElement, &ElementsOneOwned<Element>);
-        let _ = (|_: &SessionNoneElement, _: &ElementsOneOwned<SessionElement>| {})
-            as fn(&SessionNoneElement, &ElementsOneOwned<SessionElement>);
-        let _ = (|_: &WebNoneElement, _: &ElementsOneOwned<WebElement>| {})
-            as fn(&WebNoneElement, &ElementsOneOwned<WebElement>);
-    }
 
     #[test]
     fn element_object_wrapper_types_are_exported() {

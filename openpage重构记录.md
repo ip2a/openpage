@@ -603,3 +603,31 @@ cd python && uv run python -m compileall -q openpage
 cd python && uv run python ../tests/python/test_download_wait.py
 89 tests passed
 ```
+
+### 里程碑 1：删除 Rust 顶层历史类型别名（2026-07-23）
+
+状态：已完成。
+
+Rust crate 顶层已直接删除以下历史别名，不提供兼容：
+
+```text
+Chromium
+ChromiumPage
+ChromiumTab
+ChromiumElement
+ChromiumFrame
+ChromiumOptions
+MixTab
+NoneElement
+SessionNoneElement
+WebNoneElement
+```
+
+同时删除只用于证明这些兼容别名存在的测试。核心真实类型保持 `Browser`、`Page`、`Element`、`Frame`、`LaunchOptions` 等正式名称。
+
+验证：
+
+```text
+cargo check -p openpage --lib
+Rust 顶层公开类型定向测试通过
+```
