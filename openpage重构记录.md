@@ -1399,3 +1399,22 @@ cargo check --workspace --manifest-path rust/Cargo.toml
 ```
 
 结果：通过。
+
+### 里程碑 35：移除 Rust 正式源码中的 Fallback 命名和帧回退路径（2026-07-23）
+
+状态：阶段完成。
+
+- 元素帧定位不再在描述失败时静默切换到另一套 frame-id 查询路径，正式查询失败直接返回错误；
+- Cookie 作用域推断、公共后缀近似计算、下载路径发现和默认值处理改为正式语义命名，不再使用 fallback 命名；
+- 删除相关 fallback 判断函数及其兼容式分支。
+
+当前剩余的 `incompatible` 仅表示 daemon 版本不匹配状态；`string-compatible` 仅表示值类型可转换语义，均不是兼容 API 或兼容层。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check --workspace --manifest-path rust/Cargo.toml
+```
+
+结果：通过。

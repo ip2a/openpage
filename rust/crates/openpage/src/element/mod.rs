@@ -574,11 +574,11 @@ impl Element {
         }
     }
 
-    fn click_failed_outcome<T>(err: OpenPageError, fallback: T) -> OpenPageResult<T> {
+    fn click_failed_outcome<T>(err: OpenPageError, default_value: T) -> OpenPageResult<T> {
         if click_failed_should_raise() {
             Err(err)
         } else {
-            Ok(fallback)
+            Ok(default_value)
         }
     }
 
@@ -3797,11 +3797,7 @@ impl Element {
         let page = self.page_wrapper();
         let main_frame_id = page.main_frame_id()?;
 
-        let described_frame_id = match self.describe_frame_id() {
-            Ok(frame_id) => frame_id,
-            Err(err) if should_fallback_frame_id_lookup(&err) => None,
-            Err(err) => return Err(err),
-        };
+        let described_frame_id = self.describe_frame_id()?;
         if let Some(frame_id) = described_frame_id {
             return Ok(frame_id);
         }
@@ -5123,17 +5119,6 @@ pub(crate) fn build_js_invocation(
         Ok(format!(
             "function() {{ const __args = {args_json}; return (function(...args) {{ {script} }}).apply(this, __args); }}"
         ))
-    }
-}
-
-fn should_fallback_frame_id_lookup(error: &OpenPageError) -> bool {
-    match error {
-        OpenPageError::PageOperation(message) => {
-            message.contains("Could not find node with given id")
-                || message.contains("No object Id found")
-                || message.contains("No object id found")
-        }
-        _ => false,
     }
 }
 

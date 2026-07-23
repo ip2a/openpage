@@ -270,10 +270,10 @@ impl Page {
                     .evaluate(params)
                     .await
                     .map_err(|err| OpenPageError::JavaScript(err.to_string()))?;
-                let fallback = result.value().cloned();
+                let default_value = result.value().cloned();
                 match result.into_value::<Value>() {
                     Ok(value) => Ok(value),
-                    Err(_) => Ok(fallback.unwrap_or(Value::Null)),
+                    Err(_) => Ok(default_value.unwrap_or(Value::Null)),
                 }
             },
             timeout_ms,
@@ -1673,7 +1673,7 @@ impl Page {
         }
         self.runtime.block_on(async {
             for cookie in &cookies {
-                set_page_cookie_with_scope_fallback(&self.inner, cookie, current_url.as_ref())
+                set_page_cookie_with_inferred_scope(&self.inner, cookie, current_url.as_ref())
                     .await?;
             }
             Ok(())

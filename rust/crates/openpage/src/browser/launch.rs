@@ -1176,8 +1176,8 @@ pub(super) fn make_temp_user_data_dir(base: Option<&Path>) -> OpenPageResult<Pat
         .duration_since(UNIX_EPOCH)
         .map_err(|err| browser_launch_error("create user data temp suffix", err))?
         .as_nanos();
-    let fallback = std::env::temp_dir();
-    let base = base.unwrap_or_else(|| fallback.as_path());
+    let default_base = std::env::temp_dir();
+    let base = base.unwrap_or_else(|| default_base.as_path());
     let path = base.join(format!("openpage-browser-{suffix}"));
     std::fs::create_dir_all(&path).map_err(|err| {
         OpenPageError::BrowserLaunch(browser_temp_dir_create_failed_message(
@@ -1208,8 +1208,8 @@ pub(super) fn make_temp_download_dir(base: Option<&Path>) -> OpenPageResult<Path
         .duration_since(UNIX_EPOCH)
         .map_err(|err| browser_launch_error("create download temp suffix", err))?
         .as_nanos();
-    let fallback = std::env::temp_dir();
-    let base = base.unwrap_or_else(|| fallback.as_path());
+    let default_base = std::env::temp_dir();
+    let base = base.unwrap_or_else(|| default_base.as_path());
     let path = base.join(format!("openpage-downloads-{suffix}"));
     std::fs::create_dir_all(&path).map_err(|err| {
         OpenPageError::BrowserLaunch(browser_temp_dir_create_failed_message(
@@ -1340,9 +1340,9 @@ pub(super) fn download_source_path(
         }
     }
 
-    let fallback = download_dir.join(&info.guid);
-    if fallback.exists() {
-        return Ok(fallback);
+    let discovered_path = download_dir.join(&info.guid);
+    if discovered_path.exists() {
+        return Ok(discovered_path);
     }
 
     Err(OpenPageError::Timeout(

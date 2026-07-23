@@ -2326,7 +2326,7 @@ fn load_public_suffix_list() -> Option<PublicSuffixList> {
     PublicSuffixList::from_bytes(&bytes).ok()
 }
 
-fn fallback_registrable_domain(host: &str) -> String {
+fn approximate_registrable_domain(host: &str) -> String {
     let labels = host
         .split('.')
         .filter(|label| !label.is_empty())
@@ -2347,7 +2347,7 @@ fn registrable_domain_for_host(host: &str) -> String {
     load_public_suffix_list()
         .and_then(|list| list.domain(host.as_bytes()))
         .and_then(|domain| String::from_utf8(domain.as_bytes().to_vec()).ok())
-        .unwrap_or_else(|| fallback_registrable_domain(host))
+        .unwrap_or_else(|| approximate_registrable_domain(host))
 }
 
 fn cookie_domain_candidates_for_url(url: &Url) -> Vec<String> {
@@ -2531,7 +2531,7 @@ async fn page_has_cookie(
     }))
 }
 
-async fn set_page_cookie_with_scope_fallback(
+async fn set_page_cookie_with_inferred_scope(
     page: &OxPage,
     cookie: &SessionCookieParam,
     current_url: Option<&Url>,
