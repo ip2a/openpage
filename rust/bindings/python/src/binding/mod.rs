@@ -47,6 +47,7 @@ impl PyBrowser {
             .map(|inner| Self { inner })
             .map_err(error)
     }
+    #[pyo3(signature = (url=None))]
     fn new_page(&self, url: Option<&str>) -> PyResult<PyPage> {
         self.inner
             .new_page(url)
@@ -125,7 +126,7 @@ impl PyElement {
 
 #[pymethods]
 impl PySession {
-    #[staticmethod]
+    #[new]
     fn create() -> PyResult<Self> {
         Session::new(SessionOptions::default())
             .map(|inner| Self { inner })

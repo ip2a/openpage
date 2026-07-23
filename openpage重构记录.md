@@ -795,3 +795,57 @@ cargo fmt --all
 cargo check -p openpage --lib
 cargo check -p openpage-python
 ```
+
+### 里程碑 9：Python 顶层门面收敛（2026-07-23）
+
+状态：阶段完成。
+
+Python 顶层现在只公开四个入口：
+
+| 名称 | 语义 |
+|---|---|
+| `Browser` | 浏览器进程和多标签页容器 |
+| `Page` | 浏览器中的实时页面 |
+| `Session` | HTTP 会话和静态请求 |
+| `open()` | 快速创建浏览器页面的便捷函数 |
+
+使用方式：
+
+```python
+from openpage import Browser, Page, Session, open
+
+browser = Browser.launch()
+page = browser.new_page()
+page.goto("https://example.com")
+
+response = Session().get("https://example.com")
+document = response.document
+title = document.find("title")
+```
+
+已删除 Python 端旧页面分类和薄封装堆叠：
+
+```text
+ChromiumPage
+SessionPage
+WebPage
+SessionElement
+s_ele / s_eles
+options / states / wait / settings / window 的旧门面模块
+```
+
+Page 保留直接便利操作：
+
+```python
+page.click("#submit")
+page.input("#name", "hello")
+page.text("#title")
+page.attr("#link", "href")
+```
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml
+cargo check -p openpage-python --manifest-path rust/Cargo.toml
+```
