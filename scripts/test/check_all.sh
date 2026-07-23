@@ -10,5 +10,4 @@ cargo test --manifest-path rust/Cargo.toml -- --test-threads=1
 bash scripts/test/mcp_smoke_test.sh
 
 bash scripts/dev/dev_install.sh
-python/.venv/bin/python tests/python/test_compat_download_wait.py
-python/.venv/bin/python tests/python/test_openpage.py
+python/.venv/bin/python tests/python/test_facade.py

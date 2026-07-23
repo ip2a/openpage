@@ -1237,3 +1237,21 @@ cargo test -p openpage session::snapshot::tests::session_ --manifest-path rust/C
 ```
 
 结果：目标测试通过；Session 相关 61 个测试全部通过。
+
+### 里程碑 26：收口公共测试入口和项目主说明（2026-07-23）
+
+状态：阶段完成。
+
+- 删除公共测试脚本对已移除 Python 兼容测试文件的引用；
+- `scripts/test/check_all.sh` 现在只执行正式的 `tests/python/test_facade.py`；
+- 重写根 README，移除旧复合页面、旧查询名称、兼容工具和历史 Python 门面描述；
+- README 现在只描述 Rust-first 核心模型、`Browser` / `Page` / `Session` 门面、CLI/MCP 边界和当前验证入口。
+
+验证：
+
+```text
+bash -n scripts/test/check_all.sh
+bash scripts/test/check_all.sh
+```
+
+结果：Rust workspace、MCP smoke、Python 扩展安装和正式 Python 门面测试全部通过。
