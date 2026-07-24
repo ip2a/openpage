@@ -670,6 +670,16 @@ fn dispatch_page(state: &mut ServePage, op: &str, params: &Value) -> OpenPageRes
                 "entries": entries,
             }))
         }
+        "page.goto" => {
+            let url = required_str(params, "url")?;
+            let navigation_token = state.record_navigation_baseline();
+            page.goto(url)?;
+            if optional_bool(params, "wait").unwrap_or(true) {
+                state.wait_for_doc_loaded(optional_u64(params, "timeout_ms").unwrap_or(10_000))?;
+            }
+            state.clear_navigation_baseline();
+            Ok(json!({"navigated": true, "url": url, "navigation_token": navigation_token}))
+        }
         "page.reload" => {
             let navigation_token = state.record_navigation_baseline();
             page.refresh(optional_bool(params, "ignore_cache").unwrap_or(false))?;

@@ -419,26 +419,18 @@ fn run_goto(args: GotoArgs) -> OpenPageResult<()> {
     ensure_page_session(&args.session)?;
     let result = rpc_page(
         &args.session,
-        "page.get",
+        "page.goto",
         json!({
             "url": args.url,
+            "wait": args.wait,
+            "timeout_ms": 10_000,
         }),
     )?;
-    if args.wait {
-        let _ = rpc_page(
-            &args.session,
-            "wait.doc_loaded",
-            json!({
-                "timeout_ms": 10_000,
-            }),
-        )?;
-    }
-    let url = rpc_page(&args.session, "page.url", Value::Null)?;
     print_page_json(
         &args.session,
         json!({
             "loaded": true,
-            "url": url.get("url").cloned(),
+            "url": result.get("url").cloned(),
             "navigation_token": result.get("navigation_token").cloned(),
         }),
     )
@@ -1594,7 +1586,7 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
     if let Some(url) = &args.url {
         let _ = rpc_page(
             &args.session,
-            "page.get",
+            "page.goto",
             json!({
                 "url": url,
             }),
