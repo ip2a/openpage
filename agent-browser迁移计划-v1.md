@@ -165,12 +165,25 @@ diff_screenshot(base_bytes, cur_bytes, threshold=0.1)
 
 ## 待完善功能点（拆分后更清晰）
 
-| 点 | 性质 | 说明 |
+| 点 | 性质 | 状态 |
 |---|---|---|
-| RefTarget 加 `backend_node_id` 快路径 | 功能 | `Element` 已有 `backend_node_id()`，但 `RefTarget` 没存；当前每次解析走 cssPath 多次 find |
-| ref 编号跨 snapshot 连续 | 功能 | `register_snapshot_entries` 每次 `clear()` 从 e1 重来 |
-| `@ref` 多写法 | 功能 | 仅认 `@e1`，agent-browser 还认 `ref=e1`/`e1` |
-| role/name 用 chromiumoxide Accessibility 域做 hybrid 校验 | 功能 | 现为 JS 启发式，可选用浏览器原生 a11y 补充 |
+| RefTarget 加 `backend_node_id` 快路径 | 功能 | ✅ 已完成（见下） |
+| ref 编号跨 snapshot 连续 | 功能 | 待办：`register_snapshot_entries` 每次 `clear()` 从 e1 重来 |
+| `@ref` 多写法 | 功能 | ✅ 无需改：`parse_ref` 已支持 `@e1`/`ref=e1`/`e1` 三种（与 agent-browser 一致） |
+| role/name 用 chromiumoxide Accessibility 域做 hybrid 校验 | 功能 | 待办：现为 JS 启发式，可选用浏览器原生 a11y 补充 |
+
+### backend_node_id 快路径 — ✅ 完成
+
+`RefTarget` 增加 `backend_node_id: Option<BackendNodeId>`（不进 `key()`，免得 refresh 破坏去重）。`find_ref` 在 target/frame 校验后、cssPath 之前加 tier-0 快路径：
+
+```
+backend_node_id (page.resolve_dom_backend_node_id，一次 CDP 调用)
+  → 失败降级 cssPath → xpath → text/name+元数据（原三级自愈保留）
+```
+
+- `register_element`/`refresh_ref_target` 存入 `element.backend_node_id()`；`register_snapshot_entries`（JS 无法产出 bnid）存 `None`，首次 resolve 后由 `refresh_ref_target` 自动 warm up。
+- **决定性验证**：warm e1 后突变元素（删 id + 改文本 + 前插新 button，使 cssPath/xpath/text 兜底**全部失效或指向错误节点**），第二次 `text @e1` 仍返回原节点的新文本 → 证明快路径经 backendNodeId 定位，非降级兜底。
+- 收益：兼具 agent-browser 的 backendNodeId 快路径 + openpage 原有的多级自愈兜底。
 
 ## 决策记录
 

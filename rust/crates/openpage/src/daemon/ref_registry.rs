@@ -1,4 +1,5 @@
 use super::*;
+use chromiumoxide::cdp::browser_protocol::dom::BackendNodeId;
 
 // --- ref types ---
 #[derive(Default)]
@@ -12,6 +13,7 @@ pub(super) struct RefRegistry {
 struct RefTarget {
     target_id: String,
     frame_target: Option<String>,
+    backend_node_id: Option<BackendNodeId>,
     css_path: Option<String>,
     xpath: Option<String>,
     role: Option<String>,
@@ -144,6 +146,12 @@ impl ServePage {
                 "ref @{ref_id} belongs to another page or frame; run `openpage snapshot` again"
             )));
         }
+        if let Some(backend_node_id) = target.backend_node_id
+            && let Ok(element) = self.page.resolve_dom_backend_node_id(backend_node_id)
+        {
+            self.refresh_ref_target(ref_id, &element)?;
+            return Ok(element);
+        }
         if let Some(element) = self.find_ref_by_locator_hints(&target) {
             self.refresh_ref_target(ref_id, &element)?;
             return Ok(element);
@@ -182,6 +190,7 @@ impl ServePage {
         Ok(self.refs.borrow_mut().register(RefTarget {
             target_id: self.current_target_id(),
             frame_target: self.active_frame_target.clone(),
+            backend_node_id: Some(element.backend_node_id()),
             css_path,
             xpath,
             role,
@@ -262,6 +271,7 @@ impl ServePage {
             RefTarget {
                 target_id: self.current_target_id(),
                 frame_target: self.active_frame_target.clone(),
+                backend_node_id: Some(element.backend_node_id()),
                 css_path,
                 xpath,
                 role,
@@ -297,6 +307,7 @@ impl ServePage {
                 RefTarget {
                     target_id: target_id.clone(),
                     frame_target: frame_target.clone(),
+                    backend_node_id: None,
                     css_path,
                     xpath,
                     role: obj
