@@ -317,6 +317,8 @@ pub fn openpage_error_kind(error: &OpenPageError) -> &'static str {
         OpenPageError::BrowserOperation(_) => "browser_operation",
         OpenPageError::PageOperation(_) => "page_operation",
         OpenPageError::ElementNotFound(_) => "element_not_found",
+        OpenPageError::ElementDetached(_) => "element_detached",
+        OpenPageError::ElementAmbiguous(_) => "element_ambiguous",
         OpenPageError::UnsupportedLocator(_) => "unsupported_locator",
         OpenPageError::UnsupportedOperation(detail) if detail_maps_to_invalid_input(detail) => {
             "invalid_input"
@@ -386,6 +388,8 @@ pub fn openpage_error_from_kind(kind: &str, message: impl Into<String>) -> OpenP
         "browser_operation" | "daemon_transient" => OpenPageError::BrowserOperation(message),
         "page_operation" => OpenPageError::PageOperation(message),
         "element_not_found" => OpenPageError::ElementNotFound(message),
+        "element_detached" => OpenPageError::ElementDetached(message),
+        "element_ambiguous" => OpenPageError::ElementAmbiguous(message),
         "unsupported_locator" => OpenPageError::UnsupportedLocator(message),
         "invalid_input" | "unsupported_operation" => OpenPageError::UnsupportedOperation(message),
         "javascript" => OpenPageError::JavaScript(message),
@@ -495,6 +499,8 @@ fn openpage_error_detail(error: &OpenPageError) -> &str {
         | OpenPageError::BrowserOperation(detail)
         | OpenPageError::PageOperation(detail)
         | OpenPageError::ElementNotFound(detail)
+        | OpenPageError::ElementDetached(detail)
+        | OpenPageError::ElementAmbiguous(detail)
         | OpenPageError::UnsupportedLocator(detail)
         | OpenPageError::UnsupportedOperation(detail)
         | OpenPageError::JavaScript(detail)
@@ -1017,6 +1023,14 @@ mod tests {
                 "element_not_found",
             ),
             (
+                OpenPageError::ElementDetached("x".to_string()),
+                "element_detached",
+            ),
+            (
+                OpenPageError::ElementAmbiguous("x".to_string()),
+                "element_ambiguous",
+            ),
+            (
                 OpenPageError::UnsupportedLocator("x".to_string()),
                 "unsupported_locator",
             ),
@@ -1533,6 +1547,18 @@ mod tests {
             }
             other => panic!("unexpected error variant: {other:?}"),
         }
+    }
+
+    #[test]
+    fn reconstructs_element_relocation_error_kinds() {
+        assert!(matches!(
+            openpage_error_from_kind("element_detached", "stale"),
+            OpenPageError::ElementDetached(message) if message == "stale"
+        ));
+        assert!(matches!(
+            openpage_error_from_kind("element_ambiguous", "two matches"),
+            OpenPageError::ElementAmbiguous(message) if message == "two matches"
+        ));
     }
 
     #[test]

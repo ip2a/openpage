@@ -285,7 +285,8 @@ impl Page {
                 Arc::clone(&self.none_element_config),
                 Arc::clone(&self.frame_cache),
                 Arc::clone(&self.frame_none_element_configs),
-            ))
+            )
+            .with_query_path(vec![locator]))
         })
     }
 

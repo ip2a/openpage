@@ -10,6 +10,8 @@ pub enum OpenPageError {
     BrowserOperation(String),
     PageOperation(String),
     ElementNotFound(String),
+    ElementDetached(String),
+    ElementAmbiguous(String),
     UnsupportedLocator(String),
     UnsupportedOperation(String),
     JavaScript(String),
@@ -34,6 +36,14 @@ impl fmt::Display for OpenPageError {
             Self::ElementNotFound(detail) => {
                 localized_error_with_detail("element not found", "没有找到元素", detail)
             }
+            Self::ElementDetached(detail) => {
+                localized_error_with_detail("element is detached", "元素已失效", detail)
+            }
+            Self::ElementAmbiguous(detail) => localized_error_with_detail(
+                "element relocation is ambiguous",
+                "元素重新定位存在歧义",
+                detail,
+            ),
             Self::UnsupportedLocator(detail) => localized_error_with_detail(
                 "unsupported locator syntax",
                 "定位符语法不受支持",

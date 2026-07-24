@@ -53,12 +53,14 @@ use crate::settings::{
     click_at_count_must_be_positive_message, click_failed_covered_message,
     click_failed_hidden_or_disabled_message, click_failed_moving_message,
     click_failed_no_rect_message, click_failed_outside_viewport_message,
-    data_url_missing_comma_message, element_frame_viewport_offset_unavailable_message,
-    element_html_unavailable_message, element_index_must_start_message,
-    element_no_visible_rect_message, element_offset_not_found_message,
-    element_operation_failed_message, element_rect_corner_coordinate_count_message,
+    data_url_missing_comma_message, detached_element_has_no_query_source_message,
+    element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
+    element_index_must_start_message, element_no_visible_rect_message,
+    element_offset_not_found_message, element_operation_failed_message,
+    element_query_source_missing_message, element_rect_corner_coordinate_count_message,
     element_rect_corners_parse_failed_message, element_rect_corners_unexpected_value_message,
-    element_relative_not_found_message, element_resource_attribute_missing_message,
+    element_relative_not_found_message, element_relocation_ambiguous_message,
+    element_relocation_not_found_message, element_resource_attribute_missing_message,
     element_resource_unavailable_message, element_tag_name_unavailable_message,
     element_top_frame_check_failed_message, frame_index_must_start_message,
     frame_index_out_of_range_message, hover_failed_not_interactable_message,
@@ -210,6 +212,7 @@ pub struct Element {
     none_element_config: ElementsOneConfigHandle,
     frame_cache: FrameCacheHandle,
     frame_none_element_configs: FrameNoneElementConfigCacheHandle,
+    query_path: Option<Vec<Locator>>,
 }
 
 pub struct ElementClicker<'a> {
@@ -412,7 +415,97 @@ impl Element {
             none_element_config,
             frame_cache,
             frame_none_element_configs,
+            query_path: None,
         }
+    }
+
+    pub(crate) fn with_query_path(mut self, query_path: Vec<Locator>) -> Self {
+        self.query_path = Some(query_path);
+        self
+    }
+
+    fn from_resolved_inner(&self, inner: OxElement) -> Self {
+        let mut element = Self::new(
+            Arc::clone(&self.runtime),
+            self.page.clone(),
+            self.browser.clone(),
+            self.uploader.clone(),
+            inner,
+            self.javascript_timeout_ms,
+            Arc::clone(&self.none_element_config),
+            Arc::clone(&self.frame_cache),
+            Arc::clone(&self.frame_none_element_configs),
+        );
+        element.query_path = self.query_path.clone();
+        element
+    }
+
+    fn query_path_with(&self, locator: Locator) -> Option<Vec<Locator>> {
+        self.query_path.as_ref().map(|path| {
+            let mut path = path.clone();
+            path.push(locator);
+            path
+        })
+    }
+
+    fn resolved_for_operation(&self) -> OpenPageResult<Option<Self>> {
+        if self.is_alive()? {
+            return Ok(None);
+        }
+        let path = self.query_path.as_ref().ok_or_else(|| {
+            OpenPageError::ElementDetached(detached_element_has_no_query_source_message())
+        })?;
+        let inner = self.resolve_unique_query_path(path)?;
+        Ok(Some(self.from_resolved_inner(inner)))
+    }
+
+    fn resolve_unique_query_path(&self, path: &[Locator]) -> OpenPageResult<OxElement> {
+        let mut scope: Option<OxElement> = None;
+        for locator in path {
+            let elements = match (scope.take(), locator.kind()) {
+                (None, LocatorKind::Css) => self.runtime.block_on(async {
+                    run_element_lookup_future_with_cdp_timeout(
+                        self.page.find_elements(locator.query().to_string()),
+                        "relocate element",
+                    )
+                    .await
+                })?,
+                (None, LocatorKind::XPath) => self.runtime.block_on(async {
+                    run_element_lookup_future_with_cdp_timeout(
+                        self.page.find_xpaths(locator.query().to_string()),
+                        "relocate element by xpath",
+                    )
+                    .await
+                })?,
+                (Some(parent), LocatorKind::Css) => self.runtime.block_on(async {
+                    run_element_lookup_future_with_cdp_timeout(
+                        parent.find_elements(locator.query().to_string()),
+                        "relocate child element",
+                    )
+                    .await
+                })?,
+                (Some(parent), LocatorKind::XPath) => self
+                    .from_resolved_inner(parent)
+                    .find_all_by_xpath(locator.query())?
+                    .into_iter()
+                    .map(|element| element.inner)
+                    .collect(),
+            };
+            match elements.len() {
+                0 => {
+                    return Err(OpenPageError::ElementNotFound(
+                        element_relocation_not_found_message(locator.raw()),
+                    ));
+                }
+                1 => scope = elements.into_iter().next(),
+                count => {
+                    return Err(OpenPageError::ElementAmbiguous(
+                        element_relocation_ambiguous_message(locator.raw(), count),
+                    ));
+                }
+            }
+        }
+        scope.ok_or_else(|| OpenPageError::ElementDetached(element_query_source_missing_message()))
     }
 
     pub(crate) fn backend_node_id(&self) -> BackendNodeId {
@@ -478,6 +571,9 @@ impl Element {
         timeout_ms: Option<u64>,
         wait_stop: bool,
     ) -> OpenPageResult<bool> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.click_with_options(by_js, timeout_ms, wait_stop);
+        }
         if self.click_option_via_select()? {
             return Ok(true);
         }
@@ -568,6 +664,9 @@ impl Element {
         button: &str,
         count: u32,
     ) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.click_at(offset_x, offset_y, button, count);
+        }
         validate_click_at_count(count)?;
         let button = parse_mouse_button(button)?;
         self.click_at_runtime(offset_x, offset_y, button, count)
@@ -639,7 +738,11 @@ impl Element {
     where
         I: Into<ActionsInput<'a>>,
     {
-        let values = select_input_values(text.into());
+        let text = text.into();
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.input_with_options_and_timeout(text, clear, by_js, timeout_ms);
+        }
+        let values = select_input_values(text);
         if values.len() != 1 {
             return self.input_keys_with_options_and_timeout(values, clear, by_js, timeout_ms);
         }
@@ -699,7 +802,11 @@ impl Element {
     where
         I: Into<ActionsInput<'a>>,
     {
-        let values = select_input_values(values.into());
+        let values = values.into();
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.input_keys_with_options_and_timeout(values, clear, by_js, timeout_ms);
+        }
+        let values = select_input_values(values);
         if self.tag()? == "input" && self.attr("type")?.as_deref() == Some("file") {
             return self.set_file_input_files(&values);
         }
@@ -741,6 +848,9 @@ impl Element {
     }
 
     fn clear_with_mode_and_timeout(&self, by_js: bool, timeout_ms: u64) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.clear_with_mode_and_timeout(by_js, timeout_ms);
+        }
         if by_js {
             self.set_text_value("")?;
             return Ok(());
@@ -839,6 +949,9 @@ impl Element {
         as_expr: bool,
         timeout_ms: Option<u64>,
     ) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.run_async_js_with_options(script, args, as_expr, timeout_ms);
+        }
         let script = load_javascript_source(script)?;
         let js = build_js_invocation(script.as_ref(), args, as_expr)?;
         let timeout_ms = Some(resolve_javascript_timeout_ms(
@@ -857,6 +970,9 @@ impl Element {
         F: Into<UploadFilesInput<'a>>,
     {
         let files = normalize_file_input_paths(files)?;
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.set_file_input_files(files);
+        }
         if files.is_empty() {
             return Err(OpenPageError::PageOperation(
                 set_file_input_requires_at_least_one_file_message(),
@@ -877,6 +993,9 @@ impl Element {
     }
 
     pub fn press_key(&self, key: &str) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.press_key(key);
+        }
         self.runtime.block_on(async {
             run_element_future_with_cdp_timeout(self.inner.press_key(key), "press key").await?;
             Ok(())
@@ -1155,6 +1274,9 @@ impl Element {
     }
 
     pub fn scroll_to_see(&self, center: Option<bool>) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.scroll_to_see(center);
+        }
         self.runtime.block_on(async {
             run_element_future_with_cdp_timeout(self.inner.scroll_into_view(), "scroll into view")
                 .await?;
@@ -1176,6 +1298,9 @@ impl Element {
     }
 
     fn run_scroll_script(&self, script: &str) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.run_scroll_script(script);
+        }
         self.run_js(script)?;
         Ok(())
     }
@@ -1734,6 +1859,9 @@ impl Element {
     }
 
     pub fn remove_attr(&self, name: &str) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.remove_attr(name);
+        }
         let script = format!(
             "this.removeAttribute({name}); return true;",
             name = json_string(name)?,
@@ -1743,6 +1871,9 @@ impl Element {
     }
 
     pub fn set_attr(&self, name: &str, value: &str) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.set_attr(name, value);
+        }
         let script = format!(
             "this.setAttribute({name}, {value}); return true;",
             name = json_string(name)?,
@@ -1753,6 +1884,9 @@ impl Element {
     }
 
     pub fn set_property(&self, name: &str, value: &Value) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.set_property(name, value);
+        }
         let script = format!(
             "this[{name}] = {value}; return true;",
             name = json_string(name)?,
@@ -1764,6 +1898,9 @@ impl Element {
     }
 
     pub fn set_style(&self, name: &str, value: &str) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.set_style(name, value);
+        }
         let script = format!(
             "this.style.setProperty({name}, {value}); return true;",
             name = json_string(name)?,
@@ -1941,6 +2078,9 @@ impl Element {
     }
 
     pub fn focus(&self) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.focus();
+        }
         self.runtime.block_on(async {
             run_element_future_with_cdp_timeout(self.inner.focus(), "focus").await?;
             Ok(())
@@ -1948,6 +2088,9 @@ impl Element {
     }
 
     pub fn submit(&self) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.submit();
+        }
         let result = self.run_js(
             "const form = this.tagName === 'FORM' ? this : this.form; \
              if (!(form instanceof HTMLFormElement)) return false; \
@@ -1983,6 +2126,9 @@ impl Element {
         offset_y: Option<f64>,
         timeout_ms: u64,
     ) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.hover_with_offset_and_timeout(offset_x, offset_y, timeout_ms);
+        }
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         if !self.has_rect()? {
             return Err(OpenPageError::PageOperation(
@@ -2021,6 +2167,9 @@ impl Element {
     }
 
     pub fn drag(&self, offset_x: f64, offset_y: f64, duration_secs: f64) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.drag(offset_x, offset_y, duration_secs);
+        }
         let start = self.clickable_point()?;
         let target = Point::new(start.x + offset_x, start.y + offset_y);
         self.drag_between(start, target, duration_secs)
@@ -2040,10 +2189,16 @@ impl Element {
     }
 
     pub fn drag_to_point(&self, x: f64, y: f64, duration_secs: f64) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.drag_to_point(x, y, duration_secs);
+        }
         self.drag_to_point_from_self(Point::new(x, y), duration_secs)
     }
 
     pub fn set_checked(&self, checked: bool) -> OpenPageResult<()> {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.set_checked(checked);
+        }
         let script = format!(
             "const next = {checked}; \
              if (this.checked === next) return true; \
@@ -3137,31 +3292,37 @@ impl Element {
         L: Into<LocatorInput<'a>>,
     {
         let locator = Locator::from_input(locator)?;
-        match locator.kind() {
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.find(locator.raw());
+        }
+        let query_path = self.query_path_with(locator.clone());
+        let mut element = match locator.kind() {
             LocatorKind::Css => self.runtime.block_on(async {
-                let element = run_element_lookup_future_with_cdp_timeout(
+                let inner = run_element_lookup_future_with_cdp_timeout(
                     self.inner.find_element(locator.query().to_string()),
                     "find element",
                 )
                 .await?;
-                Ok(Element::new(
+                Ok::<Element, OpenPageError>(Element::new(
                     Arc::clone(&self.runtime),
                     self.page.clone(),
                     self.browser.clone(),
                     self.uploader.clone(),
-                    element,
+                    inner,
                     self.javascript_timeout_ms,
                     Arc::clone(&self.none_element_config),
                     Arc::clone(&self.frame_cache),
                     Arc::clone(&self.frame_none_element_configs),
                 ))
-            }),
+            })?,
             LocatorKind::XPath => nth_element_from_start(
                 self.find_all_by_xpath(locator.query())?,
                 1,
                 "child element not found",
-            ),
-        }
+            )?,
+        };
+        element.query_path = query_path;
+        Ok(element)
     }
 
     pub fn get_frame<'a, L>(&self, target: L) -> OpenPageResult<Frame>
@@ -3243,6 +3404,9 @@ impl Element {
         L: Into<LocatorInput<'a>>,
     {
         let locator = Locator::from_input(locator)?;
+        if let Some(element) = self.resolved_for_operation()? {
+            return element.find_all(locator.raw());
+        }
         match locator.kind() {
             LocatorKind::Css => self.runtime.block_on(async {
                 let elements = run_element_lookup_future_with_cdp_timeout(

@@ -2073,3 +2073,55 @@ cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threa
                                                                                 195 通过
 python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
 ```
+
+
+### 里程碑 55：Element 动态 DOM 安全重定位（2026-07-24）
+
+状态：阶段二 Element 动态 DOM 稳定性完成。
+
+Rust Core 的 `Element` 现在保存由唯一查询形成的完整路径：
+
+```text
+Page.find(locator)
+└── Element.find(locator)
+    └── Element.find(locator)
+```
+
+每次正式元素操作和链式查询前先验证原节点。原节点失效时，Rust 按路径逐级重新查询，并要求每一级恰好匹配一个元素：
+
+```text
+0 个匹配     -> ElementNotFound / element_not_found
+1 个匹配     -> 继续解析并执行操作
+多个匹配     -> ElementAmbiguous / element_ambiguous
+无查询来源   -> ElementDetached / element_detached
+```
+
+边界保持严格：
+
+- `Page.find()` 结果可保存根查询路径；
+- 只有父元素本身具有唯一查询路径时，`Element.find()` 才延伸路径；
+- `find_all()` 返回的列表元素不保存位置推断信息，节点失效后明确失败；
+- CSS 与 XPath 链式路径均支持逐级重新解析；
+- 不修改原 `Element`，不增加锁、可变节点容器或恢复编排类型；
+- Python 仍是 PyO3 薄门面，没有等待、验证或重定位逻辑；
+- 安全重定位是 Rust `Element` 的正式语义，不是 fallback。
+
+真实 Chromium 验证覆盖：
+
+1. CSS 唯一链式元素被 DOM 替换后继续点击成功；
+2. XPath 唯一链式元素被 DOM 替换后继续点击成功；
+3. 重定位查询匹配 0 个元素时明确返回找不到；
+4. 重定位查询匹配多个元素时明确返回歧义；
+5. `find_all()` 元素失效后明确返回 detached。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check                    通过
+cargo check --workspace --manifest-path rust/Cargo.toml                       通过
+cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                339 通过
+cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                195 通过
+python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
+```

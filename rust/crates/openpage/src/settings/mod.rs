@@ -1943,6 +1943,31 @@ pub(crate) fn shadow_root_object_id_unavailable_message() -> String {
     )
 }
 
+pub(crate) fn detached_element_has_no_query_source_message() -> String {
+    localized_message(
+        "the original node is detached and has no unique query source",
+        "原节点已失效，且没有可用于唯一重新定位的查询来源",
+    )
+}
+
+pub(crate) fn element_relocation_not_found_message(locator: &str) -> String {
+    localized_message(
+        &format!("relocation query matched no element: {locator}"),
+        &format!("重新定位查询没有匹配任何元素：{locator}"),
+    )
+}
+
+pub(crate) fn element_relocation_ambiguous_message(locator: &str, count: usize) -> String {
+    localized_message(
+        &format!("relocation query matched {count} elements: {locator}"),
+        &format!("重新定位查询匹配了 {count} 个元素：{locator}"),
+    )
+}
+
+pub(crate) fn element_query_source_missing_message() -> String {
+    localized_message("element has no query source", "元素没有查询来源")
+}
+
 pub(crate) fn javascript_execution_timed_out_message() -> String {
     localized_message("javascript execution timed out", "JavaScript 执行超时")
 }

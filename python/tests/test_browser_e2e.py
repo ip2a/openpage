@@ -14,7 +14,24 @@ CHROME = os.environ.get(
     "OPENPAGE_BROWSER_PATH",
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
 )
-HTML = """<!doctype html><html><head><title>OpenPage E2E</title></head><body>
+HTML = """<!doctype html><html><head><title>OpenPage E2E</title>
+<script>
+function rerenderDynamic() {
+  document.querySelector('#dynamic').innerHTML = `<button class="target" onclick="document.querySelector('#title').textContent='relocated'">Dynamic 2</button>`;
+}
+function removeDynamic() {
+  document.querySelector('#dynamic').innerHTML = '';
+}
+function rerenderXpath() {
+  document.querySelector('#xpath-dynamic').innerHTML = `<button class="xpath-target" onclick="document.querySelector('#title').textContent='xpath-relocated'">XPath 2</button>`;
+}
+function duplicateTarget() {
+  document.querySelector('#ambiguous').innerHTML = `<button class="target">A</button><button class="target">B</button>`;
+}
+function replaceList() {
+  document.querySelector('#listed').innerHTML = `<button class="item">Replacement</button>`;
+}
+</script></head><body>
 <input id='name'>
 <input id='hidden-input' hidden>
 <div style='position:relative'><input id='covered-input'><div style='position:absolute;inset:0;z-index:1'></div></div>
@@ -26,6 +43,15 @@ HTML = """<!doctype html><html><head><title>OpenPage E2E</title></head><body>
 <form id='form' onsubmit="event.preventDefault();document.querySelector('#title').textContent='submitted'"><input id='form-input'></form>
 <div id='hoverable' onmouseover="document.querySelector('#title').textContent='hovered'">Hover</div>
 <div style='position:relative'><div id='covered-hover'>Covered hover</div><div style='position:absolute;inset:0;z-index:1'></div></div>
+<div id='dynamic'><button class='target' onclick="document.querySelector('#title').textContent='relocated'">Dynamic</button></div>
+<button id='rerender' onclick="rerenderDynamic()">Rerender</button>
+<button id='remove-dynamic' onclick="removeDynamic()">Remove dynamic</button>
+<div id='xpath-dynamic'><button class='xpath-target' onclick="document.querySelector('#title').textContent='xpath-relocated'">XPath</button></div>
+<button id='rerender-xpath' onclick="rerenderXpath()">Rerender XPath</button>
+<div id='ambiguous'><button class='target'>One</button></div>
+<button id='duplicate' onclick="duplicateTarget()">Duplicate</button>
+<div id='listed'><button class='item'>Listed</button></div>
+<button id='replace-list' onclick="replaceList()">Replace list</button>
 </body></html>"""
 
 
@@ -89,6 +115,37 @@ class BrowserEndToEndTests(unittest.TestCase):
                     self.assertEqual(page.text("#title"), "submitted")
                     with self.assertRaisesRegex(RuntimeError, "not associated with a form"):
                         page.find("#content").submit()
+
+                    dynamic = page.find("#dynamic").find(".target")
+                    page.click("#rerender")
+                    self.assertEqual(page.text("#dynamic .target"), "Dynamic 2")
+                    self.assertFalse(dynamic.is_alive())
+                    dynamic.click()
+                    self.assertEqual(page.text("#title"), "relocated")
+
+                    missing = page.find("#dynamic").find(".target")
+                    page.click("#remove-dynamic")
+                    with self.assertRaisesRegex(RuntimeError, "relocation query matched no element"):
+                        missing.click()
+
+                    xpath = page.find("xpath://div[@id='xpath-dynamic']").find(
+                        "xpath:.//button"
+                    )
+                    page.click("#rerender-xpath")
+                    self.assertFalse(xpath.is_alive())
+                    xpath.click()
+                    self.assertEqual(page.text("#title"), "xpath-relocated")
+
+                    ambiguous = page.find("#ambiguous").find(".target")
+                    page.click("#duplicate")
+                    with self.assertRaisesRegex(RuntimeError, "relocation is ambiguous"):
+                        ambiguous.click()
+
+                    listed = page.find("#listed").find_all(".item")[0]
+                    page.click("#replace-list")
+                    with self.assertRaisesRegex(RuntimeError, "detached"):
+                        listed.click()
+
                     self.assertTrue(page.snapshot())
                     screenshot = Path(directory) / "screenshot.png"
                     page.save_screenshot(str(screenshot))
