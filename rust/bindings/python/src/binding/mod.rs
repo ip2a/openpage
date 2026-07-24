@@ -28,6 +28,44 @@ fn error(value: CoreOpenPageError) -> PyErr {
     })
 }
 
+/// Diff two text snapshots (Myers algorithm). Returns a JSON string with
+/// `identical`, `changed`, `additions`, `removals`, `unchanged`, and the
+/// unified `diff` text. (Parsed into a dict by the Python facade.)
+#[pyfunction]
+pub fn diff_text(before: String, after: String) -> String {
+    let result = openpage::diff::diff_snapshots(&before, &after);
+    serde_json::json!({
+        "identical": !result.changed,
+        "changed": result.changed,
+        "additions": result.additions,
+        "removals": result.removals,
+        "unchanged": result.unchanged,
+        "diff": result.diff,
+    })
+    .to_string()
+}
+
+/// Diff two screenshot images pixel-by-pixel. `threshold` is the per-channel
+/// color distance in 0.0..=1.0 (fraction of 255). Returns a JSON string with
+/// `matched`, `mismatch_percentage`, `different_pixels`, `total_pixels`, and
+/// `dimension_mismatch` (only present when image sizes differ).
+#[pyfunction]
+#[pyo3(signature = (baseline, current, threshold=0.1))]
+pub fn diff_screenshot(baseline: &[u8], current: &[u8], threshold: f64) -> PyResult<String> {
+    let result = openpage::diff::diff_screenshot(baseline, current, threshold)
+        .map_err(PyRuntimeError::new_err)?;
+    let mut payload = serde_json::json!({
+        "matched": result.matched,
+        "mismatch_percentage": result.mismatch_percentage,
+        "different_pixels": result.different_pixels,
+        "total_pixels": result.total_pixels,
+    });
+    if let Some(dim) = result.dimension_mismatch {
+        payload["dimension_mismatch"] = dim;
+    }
+    Ok(payload.to_string())
+}
+
 #[pyclass(module = "openpage_rs", name = "Browser")]
 pub struct PyBrowser {
     inner: Browser,
@@ -960,6 +998,8 @@ impl PyInterceptedRequest {
 }
 
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(diff_text, m)?)?;
+    m.add_function(wrap_pyfunction!(diff_screenshot, m)?)?;
     m.add_class::<PyBrowser>()?;
     m.add_class::<PyPage>()?;
     m.add_class::<PyElement>()?;

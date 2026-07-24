@@ -3,6 +3,7 @@ pub mod browser;
 pub mod config;
 pub mod console;
 pub mod daemon;
+pub mod diff;
 pub mod download;
 pub mod element;
 pub mod element_list;
@@ -37,6 +38,7 @@ pub use config::{
     openpage_home, resolve_browser_executable_path, user_config_path, workspace_config_path,
 };
 pub use console::{Console, ConsoleMessage, ConsoleSteps};
+pub use diff::{ScreenshotDiffResult, SnapshotDiffResult};
 pub use download::{DownloadInfo, DownloadMission, DownloadState};
 pub use element::{
     Element, ElementClicker, ElementDragTarget, ElementRect, ElementResource, ElementScroller,

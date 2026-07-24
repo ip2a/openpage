@@ -47,6 +47,9 @@ pub enum Command {
     Html(SessionArgs),
     /// Get a compact agent-friendly snapshot of the page
     Snapshot(SnapshotArgs),
+    /// Diff two snapshots or screenshots (no session required, pure computation)
+    #[command(subcommand)]
+    Diff(DiffCommand),
     /// Take a screenshot
     Screenshot(ScreenshotArgs),
     /// Take a screenshot of a specific element
@@ -463,6 +466,37 @@ impl SnapshotFormat {
             Self::Json => "json",
         }
     }
+}
+
+#[derive(Debug, Subcommand)]
+pub enum DiffCommand {
+    /// Diff two text snapshots (Myers algorithm, unified output)
+    Snapshot(DiffTextArgs),
+    /// Diff two screenshot images pixel-by-pixel
+    Screenshot(DiffScreenshotArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct DiffTextArgs {
+    /// File with the before/baseline text
+    #[arg(long)]
+    pub before: PathBuf,
+    /// File with the after/current text
+    #[arg(long)]
+    pub after: PathBuf,
+}
+
+#[derive(Debug, Args)]
+pub struct DiffScreenshotArgs {
+    /// Baseline (before) image file
+    #[arg(long)]
+    pub baseline: PathBuf,
+    /// Current (after) image file
+    #[arg(long)]
+    pub current: PathBuf,
+    /// Per-channel color distance threshold in 0.0..=1.0 (fraction of 255)
+    #[arg(long, default_value_t = 0.1)]
+    pub threshold: f64,
 }
 
 #[derive(Debug, Args)]

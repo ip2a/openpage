@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use crate::cli::args::{
     AlertCommand, AttrArgs, BatchArgs, BrowserCommand, BrowserLogsArgs, BrowserStartArgs,
     BrowserStopArgs, ClearCacheArgs, Cli, ClickAtArgs, ClickForNewTabArgs, ClickToDownloadArgs,
-    ClickToUploadArgs, ClipboardCommand, Command, CookiesCommand, DownloadArgs,
+    ClickToUploadArgs, ClipboardCommand, Command, CookiesCommand, DiffCommand, DownloadArgs,
     DownloadsCancelArgs, DownloadsCommand, DownloadsModeArgs, DownloadsOpenArgs, DownloadsPathArgs,
     DragArgs, DragInArgs, DragToArgs, DragToPointArgs, ElementArgs, ElementScrollArgs, FillArgs,
     FindInPageArgs, FrameCommand, GotoArgs, HistoryCommand, HoverAtArgs, InterceptCommand, JsArgs,
@@ -63,6 +63,7 @@ fn run_single(command: Command) -> OpenPageResult<()> {
         Command::IsHeadless(args) => run_is_headless(args),
         Command::Html(args) => run_html(args),
         Command::Snapshot(args) => run_snapshot(args),
+        Command::Diff(command) => run_diff(command),
         Command::Screenshot(args) => run_screenshot(args),
         Command::ScreenshotElement(args) => run_screenshot_element(args),
         Command::Click(args) => run_click(args),
@@ -2064,6 +2065,43 @@ fn response_result(response: Response) -> OpenPageResult<Value> {
         Err(openpage::protocol::openpage_error_from_response_error(
             error,
         ))
+    }
+}
+
+fn run_diff(command: DiffCommand) -> OpenPageResult<()> {
+    match command {
+        DiffCommand::Snapshot(args) => {
+            let before = fs::read_to_string(&args.before)
+                .map_err(|e| OpenPageError::Io(format!("read before file: {e}")))?;
+            let after = fs::read_to_string(&args.after)
+                .map_err(|e| OpenPageError::Io(format!("read after file: {e}")))?;
+            let result = openpage::diff::diff_snapshots(&before, &after);
+            print_json(simple_ok(json!({
+                "changed": result.changed,
+                "additions": result.additions,
+                "removals": result.removals,
+                "unchanged": result.unchanged,
+                "diff": result.diff,
+            })))
+        }
+        DiffCommand::Screenshot(args) => {
+            let baseline = fs::read(&args.baseline)
+                .map_err(|e| OpenPageError::Io(format!("read baseline image: {e}")))?;
+            let current = fs::read(&args.current)
+                .map_err(|e| OpenPageError::Io(format!("read current image: {e}")))?;
+            let result = openpage::diff::diff_screenshot(&baseline, &current, args.threshold)
+                .map_err(OpenPageError::Io)?;
+            let mut payload = json!({
+                "matched": result.matched,
+                "mismatch_percentage": result.mismatch_percentage,
+                "different_pixels": result.different_pixels,
+                "total_pixels": result.total_pixels,
+            });
+            if let Some(dim) = result.dimension_mismatch {
+                payload["dimension_mismatch"] = dim;
+            }
+            print_json(simple_ok(payload))
+        }
     }
 }
 
