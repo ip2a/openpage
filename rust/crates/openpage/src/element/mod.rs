@@ -61,11 +61,11 @@ use crate::settings::{
     element_relative_not_found_message, element_resource_attribute_missing_message,
     element_resource_unavailable_message, element_tag_name_unavailable_message,
     element_top_frame_check_failed_message, frame_index_must_start_message,
-    frame_index_out_of_range_message, javascript_execution_timed_out_message,
-    multi_select_action_required_message, no_new_tab_message,
-    parent_element_index_must_start_message, parent_element_level_must_start_message,
-    relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
-    resolve_frame_owner_viewport_location_failed_message,
+    frame_index_out_of_range_message, input_failed_not_interactable_message,
+    javascript_execution_timed_out_message, multi_select_action_required_message,
+    no_new_tab_message, parent_element_index_must_start_message,
+    parent_element_level_must_start_message, relative_direction_index_must_start_message,
+    resolve_element_frame_id_failed_message, resolve_frame_owner_viewport_location_failed_message,
     resolve_frame_viewport_offset_failed_message,
     resolve_top_viewport_screen_origin_failed_message,
     resolve_top_window_device_pixel_ratio_failed_message, resolved_node_missing_object_id_message,
@@ -641,7 +641,7 @@ impl Element {
         if clear && should_clear_before_typing(text) {
             self.clear_with_mode(false)?;
         } else {
-            self.focus_or_click()?;
+            self.prepare_for_keyboard_input()?;
         }
         execute_page_command_blocking(
             self.runtime.as_ref(),
@@ -675,7 +675,7 @@ impl Element {
         if clear && should_clear_before_typing_sequence(&values) {
             self.clear_with_mode(false)?;
         } else {
-            self.focus_or_click()?;
+            self.prepare_for_keyboard_input()?;
         }
         let (modifiers, keys_to_type) = split_text_or_keys_with_modifiers(&values);
         if modifiers != 0 {
@@ -695,26 +695,22 @@ impl Element {
     }
 
     pub fn clear_with_mode(&self, by_js: bool) -> OpenPageResult<()> {
-        if by_js || cfg!(target_os = "macos") || !self.can_keyboard_clear()? {
+        if by_js {
             self.set_text_value("")?;
             return Ok(());
         }
-        self.focus_or_click()?;
-        self.run_js(
-            "if (typeof this.select === 'function') { \
-                 this.select(); \
-                 return true; \
-             } \
-             if (this.isContentEditable) { \
-                 const selection = window.getSelection(); \
-                 if (!selection) return true; \
-                 const range = document.createRange(); \
-                 range.selectNodeContents(this); \
-                 selection.removeAllRanges(); \
-                 selection.addRange(range); \
-             } \
-             return true;",
-        )?;
+        if !self.can_keyboard_clear()? {
+            return Err(OpenPageError::PageOperation(
+                input_failed_not_interactable_message(),
+            ));
+        }
+        self.prepare_for_keyboard_input()?;
+        let modifier = if cfg!(target_os = "macos") {
+            MODIFIER_META
+        } else {
+            MODIFIER_CTRL
+        };
+        self.press_key_with_modifiers("a", modifier)?;
         self.press_key("Delete")
     }
 
@@ -742,11 +738,19 @@ impl Element {
         )
     }
 
-    fn focus_or_click(&self) -> OpenPageResult<()> {
-        if self.focus().is_ok() {
-            return Ok(());
+    fn prepare_for_keyboard_input(&self) -> OpenPageResult<()> {
+        if !self.has_rect()? || !self.is_displayed()? || !self.is_enabled()? {
+            return Err(OpenPageError::PageOperation(
+                input_failed_not_interactable_message(),
+            ));
         }
-        self.click()
+        self.scroll_to_see(Some(false))?;
+        if !self.is_in_viewport()? || self.is_covered()? {
+            return Err(OpenPageError::PageOperation(
+                input_failed_not_interactable_message(),
+            ));
+        }
+        self.focus()
     }
 
     pub fn run_async_js(&self, script: &str) -> OpenPageResult<()> {

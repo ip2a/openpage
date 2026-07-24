@@ -16,6 +16,8 @@ CHROME = os.environ.get(
 )
 HTML = """<!doctype html><html><head><title>OpenPage E2E</title></head><body>
 <input id='name'>
+<input id='hidden-input' hidden>
+<div style='position:relative'><input id='covered-input'><div style='position:absolute;inset:0;z-index:1'></div></div>
 <button id='submit' onclick="document.querySelector('#title').textContent=document.querySelector('#name').value">Go</button>
 <h1 id='title'>empty</h1><a id='link' href='next'>next</a>
 <button id='hidden' hidden onclick="document.querySelector('#title').textContent='hidden-clicked'">Hidden</button>
@@ -62,14 +64,20 @@ class BrowserEndToEndTests(unittest.TestCase):
                     self.assertTrue(page.attr("#link", "href").endswith("/next"))
                     self.assertEqual(page.find("#content").find(".child").text(), "child")
                     page.input("#name", "hello")
+                    page.find("#name").clear()
+                    page.input("#name", "world")
                     page.click("#submit")
-                    self.assertEqual(page.text("#title"), "hello")
+                    self.assertEqual(page.text("#title"), "world")
+                    with self.assertRaisesRegex(RuntimeError, "not visible, enabled, or editable"):
+                        page.find("#hidden-input").input("ignored")
+                    with self.assertRaisesRegex(RuntimeError, "not visible, enabled, or editable"):
+                        page.find("#covered-input").input("ignored")
                     with self.assertRaisesRegex(RuntimeError, "has no rect"):
                         page.find("#hidden").click()
-                    self.assertEqual(page.text("#title"), "hello")
+                    self.assertEqual(page.text("#title"), "world")
                     with self.assertRaisesRegex(RuntimeError, "covered"):
                         page.find("#covered").click()
-                    self.assertEqual(page.text("#title"), "hello")
+                    self.assertEqual(page.text("#title"), "world")
                     self.assertTrue(page.snapshot())
                     screenshot = Path(directory) / "screenshot.png"
                     page.save_screenshot(str(screenshot))

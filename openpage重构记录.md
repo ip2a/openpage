@@ -1907,3 +1907,40 @@ python/.venv/bin/python -m unittest discover -s python/tests -v                 
 ```
 
 说明：`openpage-app` 测试共享进程环境，必须单线程运行；并行运行会产生测试间环境竞争，不属于本次点击改动。
+
+
+### 里程碑 51：输入与清空动作删除隐式回退（2026-07-24）
+
+状态：阶段一子项完成。
+
+Rust Core 的普通输入和普通清空现在先确认元素具有可见位置、已启用、位于视口且未被遮挡，再执行真实键盘交互。
+
+删除两条隐式回退：
+
+```text
+聚焦失败后自动改为点击
+macOS 或无法键盘清空时自动改为 JavaScript 赋值
+```
+
+`by_js=true` 仍是调用方明确选择的脚本模式，不作为失败恢复路径。普通 `clear()` 统一执行真实的全选和 Delete 键；元素不具备键盘输入条件时直接返回错误。
+
+真实 Chromium Python 端到端测试确认：
+
+```text
+普通输入成功
+普通清空后可以重新输入
+隐藏输入框明确失败
+被遮挡输入框明确失败
+失败输入不会产生静默成功
+```
+
+验证：
+
+```text
+cargo check --workspace --manifest-path rust/Cargo.toml                       通过
+cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                338 通过
+cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                195 通过
+python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
+```

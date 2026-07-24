@@ -242,6 +242,13 @@ pub(crate) fn click_failed_covered_message() -> String {
     )
 }
 
+pub(crate) fn input_failed_not_interactable_message() -> String {
+    localized_message(
+        "input failed because element is not visible, enabled, or editable",
+        "输入失败，因为元素不可见、未启用或不可编辑",
+    )
+}
+
 pub(crate) fn element_no_visible_rect_message() -> String {
     localized_message(
         "element does not have a visible rect",
