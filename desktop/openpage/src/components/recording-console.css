@@ -1,0 +1,138 @@
+.recording-console {
+  font: 14px/1.5 Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #e8edf5;
+  width: min(900px, 100%);
+  margin: 0 auto;
+  padding: 32px;
+}
+.recording-console header,
+.recording-console .toolbar,
+.recording-console .summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.recording-console header {
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+.recording-console h1 {
+  margin: 4px 0 0;
+  font-size: 28px;
+}
+.recording-console .eyebrow {
+  color: #7f8ca3;
+  letter-spacing: 0.16em;
+  font-size: 11px;
+}
+.recording-console .badge {
+  border: 1px solid #394557;
+  border-radius: 99px;
+  padding: 5px 10px;
+  color: #9ba8bb;
+}
+.recording-console .badge.live {
+  color: #7ee2a8;
+  border-color: #2d9d62;
+}
+.recording-console button {
+  border: 1px solid #394557;
+  border-radius: 7px;
+  padding: 9px 14px;
+  color: #e8edf5;
+  background: #1b2330;
+  cursor: pointer;
+}
+.recording-console button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.recording-console button.primary {
+  background: #3d6df2;
+  border-color: #5680ff;
+}
+.recording-console .summary {
+  margin: 28px 0 12px;
+  color: #9ba8bb;
+}
+.recording-console .summary strong {
+  color: #e8edf5;
+  font-size: 24px;
+}
+.recording-console .summary button {
+  margin-left: auto;
+  padding: 5px 10px;
+}
+.recording-console ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.recording-console li {
+  display: grid;
+  grid-template-columns: 32px 100px 1fr;
+  gap: 12px;
+  align-items: start;
+  border-top: 1px solid #252e3b;
+  padding: 16px 0;
+}
+.recording-console li > span {
+  color: #7f8ca3;
+}
+.recording-console code {
+  color: #91b4ff;
+}
+.recording-console pre {
+  margin: 0;
+  white-space: pre-wrap;
+  color: #aeb9c9;
+  font-size: 12px;
+}
+.recording-console .error {
+  color: #ff9c9c;
+  border: 1px solid #7d4242;
+  padding: 10px;
+  border-radius: 6px;
+}
+.recording-console .session {
+  margin-bottom: 12px;
+  color: #9ba8bb;
+}
+.recording-console .session input {
+  margin-left: 8px;
+  border: 1px solid #394557;
+  border-radius: 6px;
+  padding: 7px 9px;
+  color: #e8edf5;
+  background: #1b2330;
+}
+.recording-console .step-body {
+  min-width: 0;
+}
+.recording-console .locator {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #394557;
+  border-radius: 6px;
+  padding: 7px 9px;
+  color: #e8edf5;
+  background: #1b2330;
+  margin-bottom: 8px;
+}
+.recording-console .step-actions {
+  grid-column: 3;
+  display: flex;
+  gap: 6px;
+}
+.recording-console .step-actions button {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.recording-console .current-url {
+  display: block;
+  margin-top: 8px;
+  color: #7f8ca3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
