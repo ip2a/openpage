@@ -345,11 +345,21 @@ impl PyPage {
             .map(|inner| PyDocument { inner })
             .map_err(error)
     }
-    fn click(&self, locator: &str) -> PyResult<()> {
-        self.inner.click(locator).map_err(error)
+    #[pyo3(signature = (locator, timeout_ms=None))]
+    fn click(&self, locator: &str, timeout_ms: Option<u64>) -> PyResult<()> {
+        match timeout_ms {
+            Some(timeout_ms) => self.inner.click_with_timeout(locator, timeout_ms),
+            None => self.inner.click(locator),
+        }
+        .map_err(error)
     }
-    fn input(&self, locator: &str, text: &str) -> PyResult<()> {
-        self.inner.fill(locator, text).map_err(error)
+    #[pyo3(signature = (locator, text, timeout_ms=None))]
+    fn input(&self, locator: &str, text: &str, timeout_ms: Option<u64>) -> PyResult<()> {
+        match timeout_ms {
+            Some(timeout_ms) => self.inner.fill_with_timeout(locator, text, timeout_ms),
+            None => self.inner.fill(locator, text),
+        }
+        .map_err(error)
     }
     fn text(&self, locator: &str) -> PyResult<Option<String>> {
         self.inner.text(locator).map_err(error)
@@ -373,11 +383,21 @@ impl PyElement {
             .map(|items| items.into_iter().map(|inner| PyElement { inner }).collect())
             .map_err(error)
     }
-    fn click(&self) -> PyResult<()> {
-        self.inner.click().map_err(error)
+    #[pyo3(signature = (timeout_ms=None))]
+    fn click(&self, timeout_ms: Option<u64>) -> PyResult<()> {
+        match timeout_ms {
+            Some(timeout_ms) => self.inner.click_with_timeout(timeout_ms),
+            None => self.inner.click(),
+        }
+        .map_err(error)
     }
-    fn clear(&self) -> PyResult<()> {
-        self.inner.clear().map_err(error)
+    #[pyo3(signature = (timeout_ms=None))]
+    fn clear(&self, timeout_ms: Option<u64>) -> PyResult<()> {
+        match timeout_ms {
+            Some(timeout_ms) => self.inner.clear_with_timeout(timeout_ms),
+            None => self.inner.clear(),
+        }
+        .map_err(error)
     }
     fn press_key(&self, key: &str) -> PyResult<()> {
         self.inner.press_key(key).map_err(error)
@@ -388,11 +408,21 @@ impl PyElement {
     fn submit(&self) -> PyResult<()> {
         self.inner.submit().map_err(error)
     }
-    fn hover(&self) -> PyResult<()> {
-        self.inner.hover().map_err(error)
+    #[pyo3(signature = (timeout_ms=None))]
+    fn hover(&self, timeout_ms: Option<u64>) -> PyResult<()> {
+        match timeout_ms {
+            Some(timeout_ms) => self.inner.hover_with_timeout(timeout_ms),
+            None => self.inner.hover(),
+        }
+        .map_err(error)
     }
-    fn input(&self, text: &str) -> PyResult<()> {
-        self.inner.input(text).map_err(error)
+    #[pyo3(signature = (text, timeout_ms=None))]
+    fn input(&self, text: &str, timeout_ms: Option<u64>) -> PyResult<()> {
+        match timeout_ms {
+            Some(timeout_ms) => self.inner.input_with_timeout(text, timeout_ms),
+            None => self.inner.input(text),
+        }
+        .map_err(error)
     }
     fn text(&self) -> PyResult<Option<String>> {
         self.inner.text().map_err(error)

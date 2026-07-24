@@ -66,10 +66,10 @@ class BrowserEndToEndTests(unittest.TestCase):
                     self.assertEqual(page.text("#title"), "empty")
                     self.assertTrue(page.attr("#link", "href").endswith("/next"))
                     self.assertEqual(page.find("#content").find(".child").text(), "child")
-                    page.input("#name", "hello")
-                    page.find("#name").clear()
-                    page.input("#name", "world")
-                    page.click("#submit")
+                    page.input("#name", "hello", timeout_ms=1_000)
+                    page.find("#name").clear(timeout_ms=1_000)
+                    page.find("#name").input("world", timeout_ms=1_000)
+                    page.click("#submit", timeout_ms=1_000)
                     self.assertEqual(page.text("#title"), "world")
                     with self.assertRaisesRegex(RuntimeError, "not visible, enabled, or editable"):
                         page.find("#hidden-input").input("ignored")
@@ -81,7 +81,7 @@ class BrowserEndToEndTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "covered"):
                         page.find("#covered").click()
                     self.assertEqual(page.text("#title"), "world")
-                    page.find("#hoverable").hover()
+                    page.find("#hoverable").hover(timeout_ms=1_000)
                     self.assertEqual(page.text("#title"), "hovered")
                     with self.assertRaisesRegex(RuntimeError, "hover failed"):
                         page.find("#covered-hover").hover()

@@ -464,7 +464,11 @@ impl Element {
     }
 
     pub fn click(&self) -> OpenPageResult<()> {
-        self.click_with_options(Some(false), None, true)?;
+        self.click_with_timeout(DEFAULT_CLICK_TIMEOUT_MS)
+    }
+
+    pub fn click_with_timeout(&self, timeout_ms: u64) -> OpenPageResult<()> {
+        self.click_with_options(Some(false), Some(timeout_ms), true)?;
         Ok(())
     }
 
@@ -608,16 +612,36 @@ impl Element {
     where
         I: Into<ActionsInput<'a>>,
     {
-        self.input_with_options(text, false, false)
+        self.input_with_timeout(text, DEFAULT_CLICK_TIMEOUT_MS)
+    }
+
+    pub fn input_with_timeout<'a, I>(&self, text: I, timeout_ms: u64) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
+        self.input_with_options_and_timeout(text, false, false, timeout_ms)
     }
 
     pub fn input_with_options<'a, I>(&self, text: I, clear: bool, by_js: bool) -> OpenPageResult<()>
     where
         I: Into<ActionsInput<'a>>,
     {
+        self.input_with_options_and_timeout(text, clear, by_js, DEFAULT_CLICK_TIMEOUT_MS)
+    }
+
+    fn input_with_options_and_timeout<'a, I>(
+        &self,
+        text: I,
+        clear: bool,
+        by_js: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
         let values = select_input_values(text.into());
         if values.len() != 1 {
-            return self.input_keys_with_options(values, clear, by_js);
+            return self.input_keys_with_options_and_timeout(values, clear, by_js, timeout_ms);
         }
         let text = values
             .first()
@@ -640,9 +664,9 @@ impl Element {
             return Ok(());
         }
         if clear && should_clear_before_typing(text) {
-            self.clear_with_mode(false)?;
+            self.clear_with_timeout(timeout_ms)?;
         } else {
-            self.prepare_for_keyboard_input()?;
+            self.prepare_for_keyboard_input(timeout_ms)?;
         }
         execute_page_command_blocking(
             self.runtime.as_ref(),
@@ -662,6 +686,19 @@ impl Element {
     where
         I: Into<ActionsInput<'a>>,
     {
+        self.input_keys_with_options_and_timeout(values, clear, by_js, DEFAULT_CLICK_TIMEOUT_MS)
+    }
+
+    fn input_keys_with_options_and_timeout<'a, I>(
+        &self,
+        values: I,
+        clear: bool,
+        by_js: bool,
+        timeout_ms: u64,
+    ) -> OpenPageResult<()>
+    where
+        I: Into<ActionsInput<'a>>,
+    {
         let values = select_input_values(values.into());
         if self.tag()? == "input" && self.attr("type")?.as_deref() == Some("file") {
             return self.set_file_input_files(&values);
@@ -674,9 +711,9 @@ impl Element {
             return Ok(());
         }
         if clear && should_clear_before_typing_sequence(&values) {
-            self.clear_with_mode(false)?;
+            self.clear_with_timeout(timeout_ms)?;
         } else {
-            self.prepare_for_keyboard_input()?;
+            self.prepare_for_keyboard_input(timeout_ms)?;
         }
         let (modifiers, keys_to_type) = split_text_or_keys_with_modifiers(&values);
         if modifiers != 0 {
@@ -692,10 +729,18 @@ impl Element {
     }
 
     pub fn clear(&self) -> OpenPageResult<()> {
-        self.clear_with_mode(false)
+        self.clear_with_timeout(DEFAULT_CLICK_TIMEOUT_MS)
+    }
+
+    pub fn clear_with_timeout(&self, timeout_ms: u64) -> OpenPageResult<()> {
+        self.clear_with_mode_and_timeout(false, timeout_ms)
     }
 
     pub fn clear_with_mode(&self, by_js: bool) -> OpenPageResult<()> {
+        self.clear_with_mode_and_timeout(by_js, DEFAULT_CLICK_TIMEOUT_MS)
+    }
+
+    fn clear_with_mode_and_timeout(&self, by_js: bool, timeout_ms: u64) -> OpenPageResult<()> {
         if by_js {
             self.set_text_value("")?;
             return Ok(());
@@ -705,7 +750,7 @@ impl Element {
                 input_failed_not_interactable_message(),
             ));
         }
-        self.prepare_for_keyboard_input()?;
+        self.prepare_for_keyboard_input(timeout_ms)?;
         let modifier = if cfg!(target_os = "macos") {
             MODIFIER_META
         } else {
@@ -739,14 +784,34 @@ impl Element {
         )
     }
 
-    fn prepare_for_keyboard_input(&self) -> OpenPageResult<()> {
-        if !self.has_rect()? || !self.is_displayed()? || !self.is_enabled()? {
+    fn prepare_for_keyboard_input(&self, timeout_ms: u64) -> OpenPageResult<()> {
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        let mut ready = self.has_rect()? && self.is_displayed()? && self.is_enabled()?;
+        while !ready && Instant::now() < deadline {
+            sleep(Duration::from_millis(10));
+            ready = self.has_rect()? && self.is_displayed()? && self.is_enabled()?;
+        }
+        if !ready {
+            return Err(OpenPageError::PageOperation(
+                input_failed_not_interactable_message(),
+            ));
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() || !self.wait_until_stop_moving(remaining.as_millis() as u64)? {
             return Err(OpenPageError::PageOperation(
                 input_failed_not_interactable_message(),
             ));
         }
         self.scroll_to_see(Some(false))?;
-        if !self.is_in_viewport()? || self.is_covered()? {
+        let mut interactable = self.is_in_viewport()? && !self.is_covered()?;
+        while !interactable && Instant::now() < deadline {
+            sleep(Duration::from_millis(10));
+            interactable = self.is_displayed()?
+                && self.is_enabled()?
+                && self.is_in_viewport()?
+                && !self.is_covered()?;
+        }
+        if !interactable {
             return Err(OpenPageError::PageOperation(
                 input_failed_not_interactable_message(),
             ));
@@ -1897,7 +1962,11 @@ impl Element {
     }
 
     pub fn hover(&self) -> OpenPageResult<()> {
-        self.hover_with_offset(None, None)
+        self.hover_with_timeout(DEFAULT_CLICK_TIMEOUT_MS)
+    }
+
+    pub fn hover_with_timeout(&self, timeout_ms: u64) -> OpenPageResult<()> {
+        self.hover_with_offset_and_timeout(None, None, timeout_ms)
     }
 
     pub fn hover_with_offset(
@@ -1905,7 +1974,16 @@ impl Element {
         offset_x: Option<f64>,
         offset_y: Option<f64>,
     ) -> OpenPageResult<()> {
-        let deadline = Instant::now() + Duration::from_millis(DEFAULT_CLICK_TIMEOUT_MS);
+        self.hover_with_offset_and_timeout(offset_x, offset_y, DEFAULT_CLICK_TIMEOUT_MS)
+    }
+
+    fn hover_with_offset_and_timeout(
+        &self,
+        offset_x: Option<f64>,
+        offset_y: Option<f64>,
+        timeout_ms: u64,
+    ) -> OpenPageResult<()> {
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         if !self.has_rect()? {
             return Err(OpenPageError::PageOperation(
                 hover_failed_not_interactable_message(),

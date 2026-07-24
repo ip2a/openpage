@@ -1982,3 +1982,47 @@ cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threa
                                                                                 195 通过
 python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
 ```
+
+
+### 里程碑 53：统一动作单次超时门面（2026-07-24）
+
+状态：阶段一动作与等待语义完成。
+
+Rust Core 新增明确的单次动作超时入口：
+
+```text
+Page.click_with_timeout(locator, timeout_ms)
+Page.fill_with_timeout(locator, text, timeout_ms)
+Element.click_with_timeout(timeout_ms)
+Element.input_with_timeout(text, timeout_ms)
+Element.clear_with_timeout(timeout_ms)
+Element.hover_with_timeout(timeout_ms)
+```
+
+Page 级动作使用同一个截止时间覆盖“等待元素出现”和“执行元素动作”，不会分别消费两份完整超时。默认调用继续由 Rust 的页面隐式等待设置或元素默认动作超时决定。
+
+Python 只公开对应的可选关键字，不包含等待循环或动作编排：
+
+```python
+page.click(locator, timeout_ms=None)
+page.input(locator, text, timeout_ms=None)
+element.click(timeout_ms=None)
+element.input(text, timeout_ms=None)
+element.clear(timeout_ms=None)
+element.hover(timeout_ms=None)
+```
+
+输入等待现在会在单次预算内检查位置、可见、启用、稳定、视口和遮挡状态；超时后明确失败，不使用脚本或其他动作回退。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check                    通过
+cargo check --workspace --manifest-path rust/Cargo.toml                       通过
+cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                338 通过
+cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                195 通过
+python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
+真实 Chromium 中 Python timeout_ms 关键字调用                                  通过
+```

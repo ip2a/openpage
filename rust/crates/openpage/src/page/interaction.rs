@@ -14,16 +14,37 @@ impl Page {
     where
         L: Into<LocatorInput<'a>>,
     {
-        self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
-            .click()
+        self.click_with_timeout(locator, self.implicit_wait_timeout_ms()?)
+    }
+
+    pub fn click_with_timeout<'a, L>(&self, locator: L, timeout_ms: u64) -> OpenPageResult<()>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        self.wait_for(locator, timeout_ms)?
+            .click_with_timeout(remaining_timeout_ms(deadline))
     }
 
     pub fn fill<'a, L>(&self, locator: L, text: &str) -> OpenPageResult<()>
     where
         L: Into<LocatorInput<'a>>,
     {
-        self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
-            .input(text)
+        self.fill_with_timeout(locator, text, self.implicit_wait_timeout_ms()?)
+    }
+
+    pub fn fill_with_timeout<'a, L>(
+        &self,
+        locator: L,
+        text: &str,
+        timeout_ms: u64,
+    ) -> OpenPageResult<()>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        self.wait_for(locator, timeout_ms)?
+            .input_with_timeout(text, remaining_timeout_ms(deadline))
     }
 
     pub fn text<'a, L>(&self, locator: L) -> OpenPageResult<Option<String>>
