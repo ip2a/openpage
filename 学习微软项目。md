@@ -2,42 +2,41 @@
 
 ## 一、目标与边界
 
-OpenPage 不做 Playwright 的全量复制，而是吸收其在 Chromium 自动化中的成熟设计，形成：
+OpenPage 不复制 Playwright，而是吸收其在 Chromium 自动化中的成熟设计，形成：
 
 > Chromium-first、Rust-first、Python 薄门面、适合脚本与 Agent 的浏览器自动化 SDK。
 
-明确边界：
+核心边界：
 
 - 只重点支持 Google Chrome / Chromium；
-- 不规划 Firefox 和 WebKit；
 - Rust 是唯一领域模型和行为来源；
 - Python 只提供 PyO3 薄门面；
-- 不增加 Helper、Adapter、Runtime 产品层、兼容层或 fallback；
-- 不为了对标 Playwright 而复制其测试运行器、Fixture 和 Reporter；
-- 顶层设计优先保持 `Browser / Page / Session` 简洁模型。
+- 顶层优先保持 `Browser / Page / Session`；
+- 不增加 Helper、Adapter、Runtime 产品层、兼容层、废弃别名或 fallback；
+- 不复制 Playwright Test、Fixture、Reporter；
+- Context 隔离已完成研究，但暂不进入当前实施计划。
 
-## 二、当前主要差距
+## 二、主要差距
 
-| 环节 | OpenPage 当前状态 | Playwright 值得学习的部分 | 优先级 |
+| 环节 | OpenPage 当前状态 | 值得学习的能力 | 优先级 |
 |---|---|---|---|
-| 动作可靠性 | 已有点击、输入、悬停、提交等操作 | 操作前自动完成存在、唯一、可见、稳定、未遮挡、可交互检查 | P0 |
-| Element 稳定性 | `find()` 返回实时 `Element` | DOM 重渲染后可以重新定位，减少 stale element | P0 |
-| 等待模型 | 已有显式等待方法 | 等待融入点击、输入、导航等动作，不要求用户手工编排 | P0 |
-| 语义定位 | 主要依赖 CSS/XPath | role、text、label、placeholder、test id 等面向用户语义的定位 | P0 |
-| 页面隔离 | 主要是 `Browser → Page`，部分隔离参数归属不够清晰 | 使用独立浏览上下文隔离 Cookie、Storage、权限和网络配置 | P1 |
-| 网络控制 | Rust 已有部分网络能力，Python 门面尚未完整公开 | 请求监听、响应监听、失败事件、拦截、继续、终止和 Mock | P1 |
-| 错误诊断 | 已有错误返回，但自动化现场信息仍可加强 | 错误携带操作、定位条件、URL、超时和元素状态 | P1 |
-| Chrome 专项能力 | 已有标签页、Cookie、下载、上传、截图等能力 | 继续强化 iframe、Shadow DOM、CDP、弹窗及页面生命周期稳定性 | P2 |
+| 动作与等待 | 已有点击、输入和显式等待 | 操作内部自动完成存在、唯一、可见、稳定、未遮挡、可交互检查 | P0 |
+| Element 稳定性 | `find()` 返回实时 `Element` | 动态 DOM 中安全地重新确认目标，避免 stale element | P0 |
+| 语义定位 | 主要使用 CSS/XPath | role、text、label、placeholder、test id | P0 |
+| 网络控制 | Rust 已有部分能力，Python 门面尚未完整公开 | 请求/响应监听、失败事件、拦截、继续、终止和 Mock | P1 |
+| 错误诊断 | 已有错误返回 | 错误携带操作、定位条件、URL、超时和元素状态 | P1 |
+| Chrome 专项能力 | 已有标签页、Cookie、上传、下载、截图等能力 | 继续强化 iframe、Shadow DOM、CDP 和页面生命周期 | P2 |
 
-## 三、执行计划
+## 三、正式执行计划
 
-### 阶段一：动作可靠性
+### 阶段一：统一动作可靠性与等待语义
 
-目标：现有动作在动态页面中稳定执行，不增加新顶层概念。
+目标：让等待成为 Rust 动作语义的一部分，不要求 Python 用户手工编排。
 
 覆盖：
 
 ```python
+page.goto(url)
 page.click(locator)
 page.input(locator, text)
 element.click()
@@ -46,7 +45,7 @@ element.submit()
 element.hover()
 ```
 
-Rust Core 内部应统一完成：
+Rust Core 内部统一完成：
 
 1. 等待元素存在；
 2. 检查匹配唯一性；
@@ -55,8 +54,18 @@ Rust Core 内部应统一完成：
 5. 检查元素稳定；
 6. 检查元素是否被遮挡；
 7. 检查元素能否接收对应动作；
-8. 在超时前按照统一规则重试；
+8. 在明确的超时范围内重试；
 9. 返回结构化错误。
+
+超时模型：
+
+| 项目 | 设计要求 |
+|---|---|
+| 默认操作超时 | 由 Rust 统一管理 |
+| 页面加载超时 | 与元素操作超时分离 |
+| 单次覆盖 | 稳定后允许 `timeout_ms` 参数 |
+| 单位 | Python/Rust 统一使用毫秒 |
+| 超时错误 | 包含操作、定位条件、URL、等待状态和最终原因 |
 
 验收标准：
 
@@ -64,11 +73,17 @@ Rust Core 内部应统一完成：
 page.click("#submit")
 ```
 
-正常情况下不要求用户预先调用 `page.wait_for()`。
+正常情况下无需预先调用：
 
-### 阶段二：Element 动态稳定性
+```python
+page.wait_for("#submit")
+```
 
-目标：保留 `Element` 名称和直观语义，同时增强动态 DOM 中的可靠性。
+不增加 `WaitManager`、`ActionHelper` 或 Python 编排层。
+
+### 阶段二：Element 动态 DOM 稳定性
+
+目标：保留 `Element` 名称和直观语义，同时增强动态页面中的可靠性。
 
 保留：
 
@@ -83,43 +98,40 @@ child.click()
 - Element 保存足够的原始定位信息；
 - 链式查询保留父级查询作用域；
 - 每次动作前验证节点是否仍然有效；
-- 节点失效时按照原定位条件重新查询；
-- 区分“元素找不到”和“原节点失效”；
+- 原节点失效时，仅在目标仍可无歧义识别时重新查询；
+- 区分“元素找不到”“原节点失效”和“重新定位结果有歧义”；
 - 不新增公开 `Locator` 类型。
 
-验收标准：页面局部重渲染后，在定位语义仍然成立的情况下，Element 可以继续完成操作。
+#### 安全重定位边界
 
-### 阶段三：统一等待模型
+重新定位是正式动作语义，不是 fallback。
 
-目标：等待是 Rust 动作语义的一部分，而不是 Python 用户必须编排的步骤。
+允许重新定位：
 
-统一覆盖：
-
-```python
-page.goto(...)
-page.click(...)
-page.input(...)
-element.click(...)
-element.input(...)
-element.hover(...)
-element.submit(...)
+```text
+原定位条件仍唯一匹配同一语义目标
+父级作用域仍有效
+页面重渲染仅替换了 DOM 节点
 ```
 
-需要明确：
+必须报错：
 
-| 项目 | 要求 |
-|---|---|
-| 默认操作超时 | 由 Rust 统一管理 |
-| 页面加载超时 | 与元素操作超时分离 |
-| 单次覆盖 | 稳定后允许 `timeout_ms` 参数 |
-| 超时值 | 使用毫秒，保持 Python/Rust 一致 |
-| 超时错误 | 包含操作、定位条件、URL、等待状态和最终失败原因 |
+```text
+定位条件匹配多个元素
+find_all() 返回列表后顺序发生变化
+无法证明新节点仍是原目标
+父级作用域已经发生歧义
+```
 
-不增加 `WaitManager`、`ActionHelper` 或编排类。
+原则：
 
-### 阶段四：语义定位
+> 允许安全重定位，拒绝有歧义的自动恢复。
 
-目标：在保留 CSS/XPath 的基础上，增加稳定、面向用户语义的定位方式。
+验收标准：页面局部重渲染后，在定位语义仍然唯一成立时，Element 可以继续操作；不能唯一确认目标时必须明确失败。
+
+### 阶段三：语义定位
+
+目标：保留 CSS/XPath，同时增加面向用户语义的稳定定位方式。
 
 继续保留：
 
@@ -139,57 +151,22 @@ page.find_placeholder("请输入用户名")
 page.find_test_id("submit")
 ```
 
-Element 同样支持作用域内查询：
+Element 支持作用域内查询：
 
 ```python
 page.find_role("dialog").find_text("确认")
 ```
 
-原则：
+实施原则：
 
 - 定位逻辑进入 Rust Core；
 - Python 只暴露调用签名；
-- 不增加 LocatorBuilder、SelectorHelper 等类型；
+- 不增加 LocatorBuilder、SelectorHelper；
 - 不一次性复制 Playwright 全部 Locator API；
-- 每增加一种定位方式，都必须有真实页面验证。
+- 每种定位方式必须有 Rust 测试和真实 Chrome 验证；
+- 名称、匹配范围及严格性必须先形成统一契约。
 
-### 阶段五：页面隔离语义
-
-目标：在不急于增加公开 `BrowserContext` 类型的前提下，先纠正能力归属。
-
-当前需要重新审视：
-
-```python
-page.new_page(new_context=True)
-```
-
-创建隔离浏览环境属于 Browser，而不是 Page。短期候选设计：
-
-```python
-browser.new_page(isolated=True)
-```
-
-或者：
-
-```python
-browser.new_page(new_context=True)
-```
-
-隔离范围至少包括：
-
-- Cookie；
-- Local Storage；
-- Session Storage；
-- Cache；
-- User Agent；
-- Proxy；
-- 权限；
-- 下载设置；
-- 页面生命周期。
-
-只有当 OpenPage 明确需要管理多账号、多代理、多用户并行以及一个隔离环境内的多个 Page 时，再决定是否公开 `Context`。
-
-### 阶段六：网络监听和拦截
+### 阶段四：网络监听与拦截
 
 目标：从 Rust Core 直接公开稳定的页面网络能力。
 
@@ -209,19 +186,24 @@ page.fulfill(...)
 
 - 请求和响应监听；
 - 请求失败事件；
-- URL/资源类型过滤；
+- URL 和资源类型过滤；
 - 请求终止；
 - 请求继续及参数修改；
 - Mock 响应；
-- Cookie 与 Session 的明确交换能力。
+- Browser/Page Cookie 与 Session 的明确交换能力。
 
-不增加 Python 侧 NetworkManager、InterceptorAdapter 或回退处理层。
+实现原则：
 
-### 阶段七：错误和诊断
+- 事件和网络行为由 Rust Core 提供；
+- Python 只绑定稳定门面；
+- 不增加 Python 侧 NetworkManager、InterceptorAdapter；
+- 不用轮询或回退模拟正式事件能力。
 
-目标：自动化失败后可以直接定位问题，不依赖猜测。
+### 阶段五：错误与诊断
 
-错误信息至少包含：
+目标：自动化失败后能直接定位问题。
+
+错误至少包含：
 
 ```text
 operation
@@ -243,15 +225,24 @@ timeout=10000ms
 reason=element was found but remained hidden
 ```
 
-优先做好单次操作错误、截图、HTML 和 Document 快照，不立即建设完整 Trace 平台。
+优先完善：
 
-### 阶段八：Chrome 专项能力
+- 单次动作错误；
+- 导航错误；
+- 元素状态；
+- 页面截图；
+- HTML；
+- Document 快照。
 
-继续强化：
+当前不建设完整 Trace 平台。
+
+### 阶段六：Chrome 专项能力
+
+继续审计和强化：
 
 - iframe；
 - Shadow DOM；
-- 下载与上传；
+- 上传与下载；
 - Popup 和标签页；
 - JavaScript 对话框；
 - Cookie 和 Storage；
@@ -261,22 +252,73 @@ reason=element was found but remained hidden
 - 剪贴板和页面缩放；
 - 页面加载及生命周期状态。
 
-## 四、推荐实施顺序
+优先修复现有能力的正确性和稳定性，不为了数量扩充无明确需求的 API。
+
+## 四、实施顺序
 
 ```text
-1. 动作可靠性
-2. Element 动态稳定性
-3. 统一等待模型
-4. 语义定位
-5. 页面隔离语义
-6. 网络监听与拦截
-7. 错误和诊断
-8. Chrome 专项能力
+1. 统一动作可靠性与等待语义
+2. Element 动态 DOM 稳定性
+3. 语义定位
+4. 网络监听与拦截
+5. 错误与诊断
+6. Chrome 专项能力
 ```
 
-前四项决定 OpenPage 的基础使用体验，应优先于新增大量 API。
+每个阶段均遵循：
 
-## 五、明确不做
+```text
+确认 Rust 领域契约
+→ 修改 Rust Core
+→ Rust 测试
+→ Python 薄门面
+→ 真实 Chrome 验证
+→ 更新文档
+→ Git 提交
+```
+
+## 五、暂缓事项：Context 隔离
+
+状态：**已研究，暂缓实施，不属于当前执行阶段。**
+
+当前不新增或迁移以下公开门面：
+
+```python
+browser.new_context()
+browser.new_page(isolated=True)
+browser.new_page(new_context=True)
+```
+
+也不调整现有 API 来提前为 Context 铺路。
+
+重新评估 Context 的触发条件：
+
+1. 一个隔离登录环境需要同时管理多个 Page；
+2. 同一 Browser 内运行多个账号；
+3. 每个账号需要独立 Proxy、权限或网络规则；
+4. 需要保存和恢复整组登录状态；
+5. 需要一次关闭某个会话及其全部 Page；
+6. 并行任务需要以隔离会话作为生命周期边界。
+
+只有触发正式产品需求后，才重新确认是否采用：
+
+```text
+Browser
+└── Context
+    └── Page
+```
+
+在此之前保持：
+
+```text
+Browser
+└── Page
+
+Session
+└── Response
+```
+
+## 六、明确不做
 
 ```text
 Firefox 支持
@@ -285,7 +327,7 @@ Playwright Test 克隆
 内置 Fixture 系统
 内置 Reporter 系统
 为了模仿而公开 BrowserType
-过早公开 BrowserContext
+当前阶段公开 BrowserContext
 新增 Locator 顶层类型
 Helper
 Adapter
@@ -295,11 +337,9 @@ fallback
 废弃别名
 ```
 
-## 六、Playwright BrowserContext 是什么
+## 七、Playwright BrowserContext 学习记录
 
-`BrowserContext` 是一个浏览器进程内部的独立浏览会话，可以理解为成本较低的无痕用户配置环境。
-
-关系如下：
+`BrowserContext` 是一个浏览器进程内部的独立浏览会话，可以理解为成本较低的无痕用户环境：
 
 ```text
 Browser
@@ -310,94 +350,41 @@ Browser
     └── Page B1
 ```
 
-同一个 Context 内的 Page 共享：
+同一个 Context 内的 Page 共享会话环境，包括 Cookie、Storage、Cache、权限、User Agent、网络规则和登录状态。不同 Context 相互隔离；关闭 Context 会关闭其内部 Page 并释放相关资源。
 
-- Cookie；
-- Local Storage；
-- Session Storage 所属会话环境；
-- Cache；
-- 权限；
-- User Agent 等上下文配置；
-- 网络监听和拦截规则；
-- 登录状态。
-
-不同 Context 之间的数据相互隔离。关闭 Context 会一次性关闭并释放其内部页面和相关资源。
-
-典型使用方式：
+典型关系：
 
 ```python
 browser = chromium.launch()
 context = browser.new_context()
 page = context.new_page()
-page.goto("https://example.com")
 context.close()
 browser.close()
 ```
 
-## 七、BrowserContext 是否是顶层概念
+### 它是不是 Playwright 的顶层概念
 
-需要区分两个含义。
+从领域模型看，它是正式公开、拥有独立 API 和生命周期的核心对象，不是内部实现细节。
 
-### 在 Playwright 领域模型中：是
-
-`BrowserContext` 是 Playwright 正式公开、拥有独立 API 和生命周期的核心领域对象。用户可以直接创建、持有、配置和关闭它。因此它属于 Playwright 的主要公开概念，而不是内部实现细节。
-
-### 在 Python 包导入层面：不是最外层启动入口
-
-用户通常不会从 BrowserContext 开始创建对象，而是：
+从启动层级看，它不是最外层入口：
 
 ```text
-Playwright → BrowserType → Browser → BrowserContext → Page
+Playwright
+└── BrowserType
+    └── Browser
+        └── BrowserContext
+            └── Page
 ```
 
-所以它是公开核心类型和 Browser 下一级领域对象，但不是类似 `chromium.launch()` 的最初入口。
+因此准确表述是：
 
-## 八、OpenPage 是否应该立即公开 Context
+> BrowserContext 是 Playwright 的公开核心领域类型，是 Browser 下一级对象，但不是最外层启动入口。
 
-当前结论：不立即公开。
+## 八、最终决策
 
-OpenPage 当前模型：
-
-```text
-Browser
-└── Page
-
-Session
-└── Response
-```
-
-在多数单页面脚本和 Agent 场景中，Context 可以先作为 Browser 创建隔离 Page 时的内部资源：
-
-```python
-page = browser.new_page(isolated=True)
-```
-
-这能保持顶层模型简洁。
-
-当以下需求成为正式产品需求时，再公开 Context：
-
-1. 一个隔离登录环境需要同时管理多个 Page；
-2. 同一 Browser 内运行多个账号；
-3. 每个账号需要独立 Proxy、权限或网络规则；
-4. 用户需要单独保存和恢复整组登录状态；
-5. 用户需要明确关闭某个会话及其全部 Page；
-6. 并行任务需要以隔离会话作为生命周期边界。
-
-达到这些条件后，合理模型应是：
-
-```text
-Browser
-└── Context
-    └── Page
-```
-
-在此之前，不应只因为 Playwright 有 `BrowserContext` 就增加一个公开类型。
-
-## 九、当前设计结论
-
-- Playwright 的 Context 设计本身是合理且成熟的；
-- Context 解决的是浏览会话隔离和生命周期管理，不是普通页面查询问题；
-- OpenPage 当前可以先吸收其隔离原则，而不复制其公开类型；
-- 短期应把 `new_context` 能力从 Page 语义移动到 Browser；
-- 是否公开 Context，应由多账号、多页面共享会话、独立代理和并行隔离需求决定；
-- 不应为了 API 对标而增加没有明确用户价值的顶层概念。
+- Playwright 的 Context 设计合理，但解决的是浏览会话隔离和生命周期管理；
+- OpenPage 当前没有足够需求证明必须增加公开 Context；
+- 当前正式计划聚焦动作可靠性、Element 稳定性、语义定位、网络能力和错误诊断；
+- Context 仅保留为学习记录和后续触发式决策，不进入本轮实现；
+- 不为未来可能的 Context 预留抽象、参数或兼容入口；
+- 后续若需求触发，必须重新进行 Rust/Python 顶层设计确认。
