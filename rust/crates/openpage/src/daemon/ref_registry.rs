@@ -59,16 +59,22 @@ impl RefRegistry {
 
 impl RefTarget {
     fn key(&self) -> String {
+        // Identity for dedup: a CSS path uniquely addresses a single element, so
+        // it alone is a stable identity. Fall back to xpath only when css_path is
+        // absent. Metadata (role/tag/name/text) and the position-volatile xpath
+        // are deliberately excluded so the same node keeps its ref_id across
+        // minor text or sibling-order changes.
+        let locator = self
+            .css_path
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .or_else(|| self.xpath.as_deref().filter(|value| !value.is_empty()))
+            .unwrap_or("");
         format!(
-            "{}|{}|{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}",
             self.target_id,
             self.frame_target.as_deref().unwrap_or(""),
-            self.css_path.as_deref().unwrap_or(""),
-            self.xpath.as_deref().unwrap_or(""),
-            self.role.as_deref().unwrap_or(""),
-            self.tag.as_deref().unwrap_or(""),
-            self.name.as_deref().unwrap_or(""),
-            self.text.as_deref().unwrap_or("")
+            locator
         )
     }
 }
@@ -284,14 +290,13 @@ impl ServePage {
     }
 
     pub(super) fn register_snapshot_entries(&self, entries: &mut [Value]) {
-        self.refs.borrow_mut().clear();
+        // Refs persist across snapshots: register() reuses the existing ref_id
+        // when an element's identity key matches, and assigns the next continuing
+        // id to new elements, so `e3` keeps meaning the same element across calls.
         let target_id = self.current_target_id();
         let frame_target = self.active_frame_target.clone();
         for entry in entries {
             let Some(obj) = entry.as_object_mut() else {
-                continue;
-            };
-            let Some(ref_id) = obj.get("ref").and_then(Value::as_str).map(str::to_string) else {
                 continue;
             };
             let css_path = obj
@@ -302,32 +307,31 @@ impl ServePage {
                 .remove("_xpath")
                 .and_then(|value| value.as_str().map(ToString::to_string))
                 .filter(|value| !value.is_empty());
-            self.refs.borrow_mut().register_as(
-                ref_id,
-                RefTarget {
-                    target_id: target_id.clone(),
-                    frame_target: frame_target.clone(),
-                    backend_node_id: None,
-                    css_path,
-                    xpath,
-                    role: obj
-                        .get("role")
-                        .and_then(Value::as_str)
-                        .map(ToString::to_string),
-                    tag: obj
-                        .get("tag")
-                        .and_then(Value::as_str)
-                        .map(ToString::to_string),
-                    name: obj
-                        .get("name")
-                        .and_then(Value::as_str)
-                        .map(ToString::to_string),
-                    text: obj
-                        .get("text")
-                        .and_then(Value::as_str)
-                        .map(ToString::to_string),
-                },
-            );
+            let target = RefTarget {
+                target_id: target_id.clone(),
+                frame_target: frame_target.clone(),
+                backend_node_id: None,
+                css_path,
+                xpath,
+                role: obj
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+                tag: obj
+                    .get("tag")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+                name: obj
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+                text: obj
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+            };
+            let ref_id = self.refs.borrow_mut().register(target);
+            obj["ref"] = Value::String(ref_id);
         }
     }
 }
