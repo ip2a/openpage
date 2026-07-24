@@ -18,6 +18,8 @@ HTML = """<!doctype html><html><head><title>OpenPage E2E</title></head><body>
 <input id='name'>
 <button id='submit' onclick="document.querySelector('#title').textContent=document.querySelector('#name').value">Go</button>
 <h1 id='title'>empty</h1><a id='link' href='next'>next</a>
+<button id='hidden' hidden onclick="document.querySelector('#title').textContent='hidden-clicked'">Hidden</button>
+<div style='position:relative'><button id='covered' onclick="document.querySelector('#title').textContent='covered-clicked'">Covered</button><div style='position:absolute;inset:0;z-index:1'></div></div>
 <div id='content'><span class='child'>child</span></div>
 </body></html>"""
 
@@ -61,6 +63,12 @@ class BrowserEndToEndTests(unittest.TestCase):
                     self.assertEqual(page.find("#content").find(".child").text(), "child")
                     page.input("#name", "hello")
                     page.click("#submit")
+                    self.assertEqual(page.text("#title"), "hello")
+                    with self.assertRaisesRegex(RuntimeError, "has no rect"):
+                        page.find("#hidden").click()
+                    self.assertEqual(page.text("#title"), "hello")
+                    with self.assertRaisesRegex(RuntimeError, "covered"):
+                        page.find("#covered").click()
                     self.assertEqual(page.text("#title"), "hello")
                     self.assertTrue(page.snapshot())
                     screenshot = Path(directory) / "screenshot.png"

@@ -8,7 +8,6 @@ use crate::error::{OpenPageError, OpenPageResult};
 #[derive(Debug, Clone, PartialEq)]
 pub struct SettingsSnapshot {
     pub raise_when_element_not_found: bool,
-    pub raise_when_click_failed: bool,
     pub raise_when_wait_failed: bool,
     pub singleton_tab_obj: bool,
     pub cdp_timeout: f64,
@@ -22,7 +21,6 @@ impl Default for SettingsSnapshot {
     fn default() -> Self {
         Self {
             raise_when_element_not_found: false,
-            raise_when_click_failed: false,
             raise_when_wait_failed: false,
             singleton_tab_obj: true,
             cdp_timeout: 30.0,
@@ -37,7 +35,6 @@ impl Default for SettingsSnapshot {
 pub struct Settings;
 
 pub trait SettingsChain {
-    fn set_raise_when_click_failed(self, on_off: bool) -> Settings;
     fn set_raise_when_wait_failed(self, on_off: bool) -> Settings;
     fn set_singleton_tab_obj(self, on_off: bool) -> Settings;
     fn set_cdp_timeout(self, second: f64) -> Settings;
@@ -54,11 +51,6 @@ impl Settings {
 
     pub fn reset() -> Self {
         restore(SettingsSnapshot::default());
-        Self
-    }
-
-    pub fn set_raise_when_click_failed(on_off: bool) -> Self {
-        with_settings_write(|settings| settings.raise_when_click_failed = on_off);
         Self
     }
 
@@ -106,10 +98,6 @@ impl Settings {
 }
 
 impl SettingsChain for Settings {
-    fn set_raise_when_click_failed(self, on_off: bool) -> Settings {
-        Settings::set_raise_when_click_failed(on_off)
-    }
-
     fn set_raise_when_wait_failed(self, on_off: bool) -> Settings {
         Settings::set_raise_when_wait_failed(on_off)
     }
@@ -185,10 +173,6 @@ pub(crate) fn wait_failed_should_raise() -> bool {
     snapshot().raise_when_wait_failed
 }
 
-pub(crate) fn click_failed_should_raise() -> bool {
-    snapshot().raise_when_click_failed
-}
-
 pub(crate) fn singleton_tab_obj_enabled() -> bool {
     snapshot().singleton_tab_obj
 }
@@ -225,15 +209,36 @@ pub(crate) fn timeout_duration_millis(timeout: Duration) -> u64 {
 
 pub(crate) fn click_failed_no_rect_message() -> String {
     localized_message(
-        "simulated click failed because element has no rect",
-        "模拟点击失败，因为元素没有位置及大小",
+        "click failed because element has no rect",
+        "点击失败，因为元素没有位置及大小",
     )
 }
 
 pub(crate) fn click_failed_hidden_or_disabled_message() -> String {
     localized_message(
-        "simulated click failed because element is hidden or disabled",
-        "模拟点击失败，因为元素被隐藏或被禁用",
+        "click failed because element is hidden or disabled",
+        "点击失败，因为元素被隐藏或被禁用",
+    )
+}
+
+pub(crate) fn click_failed_moving_message() -> String {
+    localized_message(
+        "click failed because element did not stop moving",
+        "点击失败，因为元素未停止移动",
+    )
+}
+
+pub(crate) fn click_failed_outside_viewport_message() -> String {
+    localized_message(
+        "click failed because element is outside the viewport",
+        "点击失败，因为元素不在视口内",
+    )
+}
+
+pub(crate) fn click_failed_covered_message() -> String {
+    localized_message(
+        "click failed because element is covered",
+        "点击失败，因为元素被遮挡",
     )
 }
 

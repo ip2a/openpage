@@ -1862,3 +1862,48 @@ Python Browser/Page 真实 Chromium 端到端测试                         通�
 ```
 
 说明：测试使用独立本地 HTTP 进程，避免外部网络和代理环境造成非项目因素的不确定性。Rust 内部的 Tokio `runtime` 仅作为异步实现细节保留，不属于 Python 产品门面。
+
+
+### 里程碑 50：点击动作改为严格失败语义（2026-07-24）
+
+状态：阶段一子项完成。
+
+Rust Core 删除点击失败可被吞掉的全局配置及分支：
+
+```text
+SettingsSnapshot.raise_when_click_failed
+Settings::set_raise_when_click_failed()
+SettingsChain::set_raise_when_click_failed()
+click_failed_should_raise()
+click_failed_result()
+click_failed_outcome()
+```
+
+普通点击现在只执行真实浏览器交互，并统一检查：
+
+```text
+元素具有位置及大小
+元素停止移动
+元素可见且启用
+滚动后位于视口内
+元素未被遮挡
+CDP 鼠标点击成功
+```
+
+任一步骤失败都会直接返回错误。JavaScript 点击仅在调用方明确传入 `by_js=true` 时执行，不再作为无位置、不可见、视口外、被遮挡或真实点击失败后的隐式回退。
+
+真实 Chromium Python 端到端测试新增失败路径，确认隐藏元素及被遮挡元素不会被点击，也不会静默成功；正常按钮点击保持成功。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check                    通过
+cargo check --workspace --manifest-path rust/Cargo.toml                       通过
+cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                338 通过
+cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                195 通过
+python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
+```
+
+说明：`openpage-app` 测试共享进程环境，必须单线程运行；并行运行会产生测试间环境竞争，不属于本次点击改动。

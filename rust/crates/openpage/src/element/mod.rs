@@ -50,20 +50,22 @@ use crate::session::{
 };
 use crate::settings::{
     blob_src_data_url_required_message, browser_backed_element_only_message, cdp_timeout_duration,
-    click_at_count_must_be_positive_message, click_failed_hidden_or_disabled_message,
-    click_failed_no_rect_message, click_failed_should_raise, data_url_missing_comma_message,
-    element_frame_viewport_offset_unavailable_message, element_html_unavailable_message,
-    element_index_must_start_message, element_no_visible_rect_message,
-    element_offset_not_found_message, element_operation_failed_message,
-    element_rect_corner_coordinate_count_message, element_rect_corners_parse_failed_message,
-    element_rect_corners_unexpected_value_message, element_relative_not_found_message,
-    element_resource_attribute_missing_message, element_resource_unavailable_message,
-    element_tag_name_unavailable_message, element_top_frame_check_failed_message,
-    frame_index_must_start_message, frame_index_out_of_range_message,
-    javascript_execution_timed_out_message, multi_select_action_required_message,
-    no_new_tab_message, parent_element_index_must_start_message,
-    parent_element_level_must_start_message, relative_direction_index_must_start_message,
-    resolve_element_frame_id_failed_message, resolve_frame_owner_viewport_location_failed_message,
+    click_at_count_must_be_positive_message, click_failed_covered_message,
+    click_failed_hidden_or_disabled_message, click_failed_moving_message,
+    click_failed_no_rect_message, click_failed_outside_viewport_message,
+    data_url_missing_comma_message, element_frame_viewport_offset_unavailable_message,
+    element_html_unavailable_message, element_index_must_start_message,
+    element_no_visible_rect_message, element_offset_not_found_message,
+    element_operation_failed_message, element_rect_corner_coordinate_count_message,
+    element_rect_corners_parse_failed_message, element_rect_corners_unexpected_value_message,
+    element_relative_not_found_message, element_resource_attribute_missing_message,
+    element_resource_unavailable_message, element_tag_name_unavailable_message,
+    element_top_frame_check_failed_message, frame_index_must_start_message,
+    frame_index_out_of_range_message, javascript_execution_timed_out_message,
+    multi_select_action_required_message, no_new_tab_message,
+    parent_element_index_must_start_message, parent_element_level_must_start_message,
+    relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
+    resolve_frame_owner_viewport_location_failed_message,
     resolve_frame_viewport_offset_failed_message,
     resolve_top_viewport_screen_origin_failed_message,
     resolve_top_window_device_pixel_ratio_failed_message, resolved_node_missing_object_id_message,
@@ -461,7 +463,7 @@ impl Element {
     }
 
     pub fn click(&self) -> OpenPageResult<()> {
-        let _ = self.click_with_options(Some(false), None, true)?;
+        self.click_with_options(Some(false), None, true)?;
         Ok(())
     }
 
@@ -486,19 +488,14 @@ impl Element {
             sleep(Duration::from_millis(1));
             has_rect = self.has_rect()?;
         }
-
         if !has_rect {
-            if by_js == Some(false) {
-                return Err(OpenPageError::PageOperation(click_failed_no_rect_message()));
-            }
-            self.run_js("this.click(); return true;")?;
-            return Ok(true);
+            return Err(OpenPageError::PageOperation(click_failed_no_rect_message()));
         }
 
         if wait_stop {
             let remaining = deadline.saturating_duration_since(Instant::now());
-            if !remaining.is_zero() {
-                let _ = self.wait_until_stop_moving(remaining.as_millis() as u64);
+            if remaining.is_zero() || !self.wait_until_stop_moving(remaining.as_millis() as u64)? {
+                return Err(OpenPageError::PageOperation(click_failed_moving_message()));
             }
         }
 
@@ -509,29 +506,24 @@ impl Element {
             sleep(Duration::from_millis(1));
             can_click = self.is_enabled()? && self.is_displayed()?;
         }
-
         if !can_click {
-            if by_js == Some(false) {
-                return Self::click_failed_result(&click_failed_hidden_or_disabled_message());
-            }
-            self.run_js("this.click(); return true;")?;
-            return Ok(true);
+            return Err(OpenPageError::PageOperation(
+                click_failed_hidden_or_disabled_message(),
+            ));
         }
-
         if !self.is_in_viewport()? {
-            self.run_js("this.click(); return true;")?;
-            return Ok(true);
+            return Err(OpenPageError::PageOperation(
+                click_failed_outside_viewport_message(),
+            ));
         }
 
-        if by_js != Some(false) && self.is_covered().unwrap_or(false) {
-            self.run_js("this.click(); return true;")?;
-            return Ok(true);
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() || !self.wait_until_not_covered(remaining.as_millis() as u64)? {
+            return Err(OpenPageError::PageOperation(click_failed_covered_message()));
         }
 
-        match self.click_at_runtime(None, None, MouseButton::Left, 1) {
-            Ok(()) => Ok(true),
-            Err(err) => Self::click_failed_outcome(err, false),
-        }
+        self.click_at_runtime(None, None, MouseButton::Left, 1)?;
+        Ok(true)
     }
 
     pub fn click_left_with_options(
@@ -564,22 +556,6 @@ impl Element {
         )
     }
 
-    fn click_failed_result(message: &str) -> OpenPageResult<bool> {
-        if click_failed_should_raise() {
-            Err(OpenPageError::PageOperation(message.to_string()))
-        } else {
-            Ok(false)
-        }
-    }
-
-    fn click_failed_outcome<T>(err: OpenPageError, default_value: T) -> OpenPageResult<T> {
-        if click_failed_should_raise() {
-            Err(err)
-        } else {
-            Ok(default_value)
-        }
-    }
-
     pub fn click_at(
         &self,
         offset_x: Option<f64>,
@@ -589,10 +565,7 @@ impl Element {
     ) -> OpenPageResult<()> {
         validate_click_at_count(count)?;
         let button = parse_mouse_button(button)?;
-        match self.click_at_runtime(offset_x, offset_y, button, count) {
-            Ok(()) => Ok(()),
-            Err(err) => Self::click_failed_outcome(err, ()),
-        }
+        self.click_at_runtime(offset_x, offset_y, button, count)
     }
 
     fn click_at_runtime(
