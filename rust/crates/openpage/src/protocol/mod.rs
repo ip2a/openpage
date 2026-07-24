@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::sync::OnceLock;
 
 use crate::browser::OPENPAGE_BROWSER_PATH_ENV;
-use crate::error::OpenPageError;
+use crate::error::{ErrorDiagnostic, OpenPageError};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Request {
@@ -44,6 +44,20 @@ pub struct ResponseError {
     pub retryable: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggested_action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locator: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matched_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub element_state: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
 }
 
 impl Response {
@@ -103,6 +117,13 @@ impl Response {
                 reasons,
                 retryable,
                 suggested_action,
+                operation: None,
+                locator: None,
+                url: None,
+                timeout: None,
+                matched_count: None,
+                element_state: None,
+                failure_reason: None,
             }),
         }
     }
@@ -304,7 +325,7 @@ fn known_io_fix(detail: &str) -> Option<Cow<'static, str>> {
 }
 
 pub fn openpage_error_kind(error: &OpenPageError) -> &'static str {
-    match error {
+    match error.root() {
         OpenPageError::BrowserLaunch(_) => "browser_launch",
         OpenPageError::BrowserOperation(detail)
             if detail.starts_with("daemon transient for session `") =>
@@ -329,12 +350,13 @@ pub fn openpage_error_kind(error: &OpenPageError) -> &'static str {
         OpenPageError::Io(_) => "io",
         OpenPageError::Timeout(_) => "timeout",
         OpenPageError::Serialization(_) => "serialization",
+        OpenPageError::Diagnosed { .. } => unreachable!("root error cannot be diagnosed"),
     }
 }
 
 pub fn simple_openpage_error(error: &OpenPageError) -> Value {
     let context = openpage_error_context(error);
-    simple_error_with_context(
+    let mut payload = simple_error_with_context(
         openpage_error_kind(error),
         shell_error_message(error),
         context.fix.map(|value| value.into_owned()),
@@ -353,12 +375,19 @@ pub fn simple_openpage_error(error: &OpenPageError) -> Value {
         },
         context.retryable,
         context.suggested_action.map(ToString::to_string),
-    )
+    );
+    if let (Some(diagnostic), Some(error_payload)) = (
+        error.diagnostic(),
+        payload.get_mut("error").and_then(Value::as_object_mut),
+    ) {
+        insert_error_diagnostic(error_payload, diagnostic);
+    }
+    payload
 }
 
 pub fn response_openpage_error(id: Option<Value>, error: &OpenPageError) -> Response {
     let context = openpage_error_context(error);
-    Response::error_with_context(
+    let mut response = Response::error_with_context(
         id,
         openpage_error_kind(error),
         openpage_error_detail(error),
@@ -378,7 +407,45 @@ pub fn response_openpage_error(id: Option<Value>, error: &OpenPageError) -> Resp
         },
         context.retryable,
         context.suggested_action.map(ToString::to_string),
-    )
+    );
+    if let (Some(diagnostic), Some(response_error)) = (error.diagnostic(), response.error.as_mut())
+    {
+        response_error.operation = diagnostic.operation.clone();
+        response_error.locator = diagnostic.locator.clone();
+        response_error.url = diagnostic.url.clone();
+        response_error.timeout = diagnostic.timeout_ms;
+        response_error.matched_count = diagnostic.matched_count;
+        response_error.element_state = diagnostic.element_state.clone();
+        response_error.failure_reason = diagnostic.failure_reason.clone();
+    }
+    response
+}
+
+fn insert_error_diagnostic(
+    payload: &mut serde_json::Map<String, Value>,
+    diagnostic: &ErrorDiagnostic,
+) {
+    if let Some(value) = &diagnostic.operation {
+        payload.insert("operation".to_string(), Value::String(value.clone()));
+    }
+    if let Some(value) = &diagnostic.locator {
+        payload.insert("locator".to_string(), Value::String(value.clone()));
+    }
+    if let Some(value) = &diagnostic.url {
+        payload.insert("url".to_string(), Value::String(value.clone()));
+    }
+    if let Some(value) = diagnostic.timeout_ms {
+        payload.insert("timeout".to_string(), Value::from(value));
+    }
+    if let Some(value) = diagnostic.matched_count {
+        payload.insert("matched_count".to_string(), Value::from(value));
+    }
+    if let Some(value) = &diagnostic.element_state {
+        payload.insert("element_state".to_string(), Value::String(value.clone()));
+    }
+    if let Some(value) = &diagnostic.failure_reason {
+        payload.insert("failure_reason".to_string(), Value::String(value.clone()));
+    }
 }
 
 pub fn openpage_error_from_kind(kind: &str, message: impl Into<String>) -> OpenPageError {
@@ -410,7 +477,16 @@ pub fn openpage_error_from_structured(
 }
 
 pub fn openpage_error_from_response_error(error: ResponseError) -> OpenPageError {
-    openpage_error_from_structured_context(
+    let diagnostic = ErrorDiagnostic {
+        operation: error.operation,
+        locator: error.locator,
+        url: error.url,
+        timeout_ms: error.timeout,
+        matched_count: error.matched_count,
+        element_state: error.element_state,
+        failure_reason: error.failure_reason,
+    };
+    let result = openpage_error_from_structured_context(
         &error.kind,
         error.message,
         error.fix.as_deref(),
@@ -419,7 +495,12 @@ pub fn openpage_error_from_response_error(error: ResponseError) -> OpenPageError
         error.reasons.as_deref(),
         error.retryable,
         error.suggested_action.as_deref(),
-    )
+    );
+    if diagnostic == ErrorDiagnostic::default() {
+        result
+    } else {
+        result.diagnosed(diagnostic)
+    }
 }
 
 pub fn openpage_error_from_structured_context(
@@ -494,7 +575,7 @@ pub fn openpage_error_from_structured_context(
 }
 
 fn openpage_error_detail(error: &OpenPageError) -> &str {
-    match error {
+    match error.root() {
         OpenPageError::BrowserLaunch(detail)
         | OpenPageError::BrowserOperation(detail)
         | OpenPageError::PageOperation(detail)
@@ -508,6 +589,7 @@ fn openpage_error_detail(error: &OpenPageError) -> &str {
         | OpenPageError::Io(detail)
         | OpenPageError::Timeout(detail)
         | OpenPageError::Serialization(detail) => detail,
+        OpenPageError::Diagnosed { .. } => unreachable!("root error cannot be diagnosed"),
     }
 }
 
@@ -587,7 +669,7 @@ struct ErrorContext<'a> {
 }
 
 fn openpage_error_context(error: &OpenPageError) -> ErrorContext<'_> {
-    let detail = match error {
+    let detail = match error.root() {
         OpenPageError::BrowserLaunch(detail) => {
             return ErrorContext {
                 fix: known_browser_launch_fix(detail),
@@ -1051,6 +1133,30 @@ mod tests {
         for (error, expected) in cases {
             assert_eq!(openpage_error_kind(&error), expected);
         }
+    }
+
+    #[test]
+    fn diagnosed_errors_round_trip_through_protocol() {
+        let error =
+            OpenPageError::PageOperation("covered".to_string()).diagnosed(ErrorDiagnostic {
+                operation: Some("click".to_string()),
+                locator: Some("#submit".to_string()),
+                url: Some("https://example.com".to_string()),
+                timeout_ms: Some(10_000),
+                matched_count: Some(1),
+                element_state: Some("not actionable".to_string()),
+                failure_reason: Some("covered".to_string()),
+            });
+        let response = response_openpage_error(None, &error);
+        let serialized = serde_json::to_value(&response).expect("serialize response");
+        assert_eq!(serialized["error"]["operation"], "click");
+        assert_eq!(serialized["error"]["timeout"], 10_000);
+        assert_eq!(serialized["error"]["matched_count"], 1);
+
+        let reconstructed =
+            openpage_error_from_response_error(response.error.expect("response error"));
+        assert_eq!(reconstructed.diagnostic(), error.diagnostic());
+        assert_eq!(openpage_error_kind(&reconstructed), "page_operation");
     }
 
     #[test]

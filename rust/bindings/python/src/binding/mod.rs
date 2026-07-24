@@ -1,15 +1,31 @@
 use openpage::{
     Browser, Document, DocumentElement, Element, InterceptedRequest, Interceptor, LaunchOptions,
-    Listener, ListenerPacket, ListenerRequest, ListenerResponse, Page, Response, Session,
-    SessionOptions,
+    Listener, ListenerPacket, ListenerRequest, ListenerResponse,
+    OpenPageError as CoreOpenPageError, Page, Response, Session, SessionOptions,
 };
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 use std::path::Path;
 
-fn error(value: impl std::fmt::Display) -> PyErr {
-    PyRuntimeError::new_err(value.to_string())
+fn error(value: CoreOpenPageError) -> PyErr {
+    let message = value.to_string();
+    let kind = openpage::protocol::openpage_error_kind(&value);
+    let diagnostic = value.diagnostic().cloned();
+    Python::attach(|py| {
+        let error = PyRuntimeError::new_err(message);
+        let instance = error.value(py);
+        let _ = instance.setattr("kind", kind);
+        let diagnostic = diagnostic.unwrap_or_default();
+        let _ = instance.setattr("operation", diagnostic.operation);
+        let _ = instance.setattr("locator", diagnostic.locator);
+        let _ = instance.setattr("url", diagnostic.url);
+        let _ = instance.setattr("timeout", diagnostic.timeout_ms);
+        let _ = instance.setattr("matched_count", diagnostic.matched_count);
+        let _ = instance.setattr("element_state", diagnostic.element_state);
+        let _ = instance.setattr("failure_reason", diagnostic.failure_reason);
+        error
+    })
 }
 
 #[pyclass(module = "openpage_rs", name = "Browser")]

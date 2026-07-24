@@ -50,7 +50,7 @@ pub use element_list::{
     ElementsOneOwned, ElementsOneRect, ElementsOneScroller, ElementsOneSelector, ElementsOneSetter,
     ElementsOneStates, ElementsOneWait, ElementsSearch,
 };
-pub use error::{OpenPageError, OpenPageResult};
+pub use error::{ErrorDiagnostic, OpenPageError, OpenPageResult};
 pub use intercept::{InterceptedRequest, InterceptedRequestInfo, Interceptor};
 pub use listener::{
     Listener, ListenerAssociatedCookie, ListenerBlockedSetCookie, ListenerExemptedSetCookie,

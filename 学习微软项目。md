@@ -92,7 +92,7 @@ page.wait_for("#submit")
 | 输入动作可靠性 | 已完成 | 输入前检查可交互状态；聚焦失败不再回退点击；非 JS 清空不再回退脚本赋值 |
 | 提交、悬停统一语义 | 已完成 | submit 仅使用 Chrome `requestSubmit()`；hover 检查可见、稳定、视口和遮挡状态 |
 | 单次 `timeout_ms` 门面 | 已完成 | Page/Element 的点击、输入、清空和悬停支持单次毫秒超时，等待预算由 Rust 统一消费 |
-| 结构化动作错误 | 待执行 | 在阶段五统一完成完整诊断字段 |
+| 结构化动作错误 | 已完成 | Rust 动作错误携带 operation、locator、URL、timeout、匹配数量、元素状态和失败原因 |
 
 ### 阶段二：Element 动态 DOM 稳定性
 
@@ -281,16 +281,28 @@ timeout=10000ms
 reason=element was found but remained hidden
 ```
 
-优先完善：
+当前进度（2026-07-24）：
 
-- 单次动作错误；
-- 导航错误；
-- 元素状态；
-- 页面截图；
-- HTML；
-- Document 快照。
+| 子项 | 状态 | 结果 |
+|---|---|---|
+| Rust 诊断模型 | 已完成 | `ErrorDiagnostic` 是正式领域 payload，包含 operation、locator、url、timeout_ms、matched_count、element_state、failure_reason |
+| 错误种类稳定性 | 已完成 | `OpenPageError::Diagnosed` 包装原始错误，Display 与 root kind 保持不变 |
+| 动作诊断 | 已完成 | `click`、`fill`、`text`、`attr` 在 Rust 行为发生处附加定位与最终状态 |
+| 导航诊断 | 已完成 | `goto` 在 Rust 附加 operation、URL、timeout 和失败原因 |
+| daemon 协议 | 已完成 | `ResponseError` 序列化和反序列化完整保留全部诊断字段 |
+| Python 薄映射 | 已完成 | `RuntimeError` 直接暴露稳定 `kind` 及七个可选诊断属性，不解析错误字符串 |
+| 失败后显式取证 | 已完成 | `page.html()`、`page.snapshot()`、`page.save_screenshot()` 均通过真实 Chrome 验证 |
+| 完整 Trace 平台 | 不实施 | 不在每个异常中隐式抓取 HTML、截图或 Document 大对象 |
 
-当前不建设完整 Trace 平台。
+职责边界：
+
+- 诊断字段由 Rust Core 在动作和导航发生处生成；
+- 协议层只负责无损传输，不推断诊断内容；
+- Python 只把 Rust 字段设置到异常实例，不分类、不编排、不解析字符串；
+- HTML、截图和 Document 快照继续由调用方在需要时显式获取，避免异常路径产生大 payload 和隐式副作用；
+- 不增加 ErrorManager、TraceHelper、Adapter、Runtime、兼容错误别名或 fallback。
+
+验证：Rust Core 343 项、openpage-app 195 项、Python 真实 Chrome E2E 1 项全部通过。
 
 ### 阶段六：Chrome 专项能力
 

@@ -21,9 +21,28 @@ impl Page {
     where
         L: Into<LocatorInput<'a>>,
     {
+        let locator = Locator::from_input(locator)?;
+        let locator_text = locator.raw().to_string();
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
-        self.wait_for(locator, timeout_ms)?
-            .click_with_timeout(remaining_timeout_ms(deadline))
+        self.wait_for(locator.raw(), timeout_ms)
+            .and_then(|element| element.click_with_timeout(remaining_timeout_ms(deadline)))
+            .map_err(|error| {
+                let matched_count = match error.root() {
+                    OpenPageError::ElementNotFound(_) => Some(0),
+                    OpenPageError::PageOperation(_) => Some(1),
+                    _ => None,
+                };
+                let failure_reason = error.to_string();
+                error.diagnosed(ErrorDiagnostic {
+                    operation: Some("click".to_string()),
+                    locator: Some(locator_text),
+                    url: self.url().ok(),
+                    timeout_ms: Some(timeout_ms),
+                    matched_count,
+                    element_state: Some("not actionable".to_string()),
+                    failure_reason: Some(failure_reason),
+                })
+            })
     }
 
     pub fn fill<'a, L>(&self, locator: L, text: &str) -> OpenPageResult<()>
@@ -42,25 +61,80 @@ impl Page {
     where
         L: Into<LocatorInput<'a>>,
     {
+        let locator = Locator::from_input(locator)?;
+        let locator_text = locator.raw().to_string();
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
-        self.wait_for(locator, timeout_ms)?
-            .input_with_timeout(text, remaining_timeout_ms(deadline))
+        self.wait_for(locator.raw(), timeout_ms)
+            .and_then(|element| element.input_with_timeout(text, remaining_timeout_ms(deadline)))
+            .map_err(|error| {
+                let matched_count = match error.root() {
+                    OpenPageError::ElementNotFound(_) => Some(0),
+                    OpenPageError::PageOperation(_) => Some(1),
+                    _ => None,
+                };
+                let failure_reason = error.to_string();
+                error.diagnosed(ErrorDiagnostic {
+                    operation: Some("fill".to_string()),
+                    locator: Some(locator_text),
+                    url: self.url().ok(),
+                    timeout_ms: Some(timeout_ms),
+                    matched_count,
+                    element_state: Some("not editable".to_string()),
+                    failure_reason: Some(failure_reason),
+                })
+            })
     }
 
     pub fn text<'a, L>(&self, locator: L) -> OpenPageResult<Option<String>>
     where
         L: Into<LocatorInput<'a>>,
     {
-        self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
-            .text()
+        let locator = Locator::from_input(locator)?;
+        let timeout_ms = self.implicit_wait_timeout_ms()?;
+        self.wait_for(locator.raw(), timeout_ms)
+            .and_then(|element| element.text())
+            .map_err(|error| {
+                let matched_count = match error.root() {
+                    OpenPageError::ElementNotFound(_) => Some(0),
+                    _ => Some(1),
+                };
+                let failure_reason = error.to_string();
+                error.diagnosed(ErrorDiagnostic {
+                    operation: Some("text".to_string()),
+                    locator: Some(locator.raw().to_string()),
+                    url: self.url().ok(),
+                    timeout_ms: Some(timeout_ms),
+                    matched_count,
+                    element_state: Some("text unavailable".to_string()),
+                    failure_reason: Some(failure_reason),
+                })
+            })
     }
 
     pub fn attr<'a, L>(&self, locator: L, name: &str) -> OpenPageResult<Option<String>>
     where
         L: Into<LocatorInput<'a>>,
     {
-        self.wait_for(locator, self.implicit_wait_timeout_ms()?)?
-            .attr(name)
+        let locator = Locator::from_input(locator)?;
+        let timeout_ms = self.implicit_wait_timeout_ms()?;
+        self.wait_for(locator.raw(), timeout_ms)
+            .and_then(|element| element.attr(name))
+            .map_err(|error| {
+                let matched_count = match error.root() {
+                    OpenPageError::ElementNotFound(_) => Some(0),
+                    _ => Some(1),
+                };
+                let failure_reason = error.to_string();
+                error.diagnosed(ErrorDiagnostic {
+                    operation: Some("attr".to_string()),
+                    locator: Some(locator.raw().to_string()),
+                    url: self.url().ok(),
+                    timeout_ms: Some(timeout_ms),
+                    matched_count,
+                    element_state: Some("attribute unavailable".to_string()),
+                    failure_reason: Some(failure_reason),
+                })
+            })
     }
 
     pub fn active_element(&self) -> OpenPageResult<Option<Element>> {

@@ -2221,3 +2221,62 @@ cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threa
                                                                                 195 通过
 python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
 ```
+
+
+### 里程碑 58：结构化错误与诊断（2026-07-24）
+
+状态：阶段五错误与诊断完成。
+
+Rust Core 新增正式领域 payload `ErrorDiagnostic`，不建立 Helper、Adapter 或独立诊断管理层：
+
+| 字段 | 含义 | 不适用时 |
+|---|---|---|
+| `operation` | 失败的动作或导航名称 | `None` |
+| `locator` | 动作使用的定位条件 | `None` |
+| `url` | 失败发生时页面或导航目标 URL | `None` |
+| `timeout_ms` | 本次操作的毫秒超时预算 | `None` |
+| `matched_count` | 最终定位匹配数量 | `None` |
+| `element_state` | 最终元素状态 | `None` |
+| `failure_reason` | Rust 行为层确认的直接失败原因 | `None` |
+
+`OpenPageError::Diagnosed` 包装原始错误并保留其 Display、稳定 kind 和 root 错误种类。`Page.click()`、`fill()`、`text()`、`attr()` 与 `goto()` 在 Rust 行为发生处附加诊断，Python 不参与状态判断。
+
+CLI/daemon 的 `ResponseError` 对全部字段进行序列化和反序列化 round-trip；跨进程恢复后仍保留原 root kind 和诊断数据。
+
+Python 继续使用内置 `RuntimeError`，仅由 PyO3 将 Rust 数据薄映射为异常属性：
+
+```python
+try:
+    page.click("#hidden", timeout_ms=1_000)
+except RuntimeError as error:
+    print(error.kind)
+    print(error.operation)
+    print(error.locator)
+    print(error.url)
+    print(error.timeout)
+    print(error.matched_count)
+    print(error.element_state)
+    print(error.failure_reason)
+```
+
+真实 Chrome E2E 验证隐藏元素点击失败时上述字段完整可读，同时验证：
+
+```python
+page.html()
+page.snapshot()
+page.save_screenshot(path)
+```
+
+HTML、Document 快照和截图是失败后显式取证能力，不自动塞入每个异常。这样避免大 payload、文件写入及隐式副作用；当前不建设完整 Trace 平台。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check                    通过
+cargo check --workspace --manifest-path rust/Cargo.toml                       通过
+cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                343 通过
+cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                195 通过
+python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
+```

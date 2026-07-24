@@ -77,7 +77,7 @@ use crate::element::{
     resolve_javascript_timeout_ms,
 };
 use crate::element_list::ElementsOneConfigHandle;
-use crate::error::{OpenPageError, OpenPageResult};
+use crate::error::{ErrorDiagnostic, OpenPageError, OpenPageResult};
 use crate::intercept::Interceptor;
 use crate::listener::Listener;
 use crate::locator::{

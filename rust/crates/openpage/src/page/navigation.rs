@@ -6,29 +6,43 @@ impl Page {
     }
 
     pub fn goto(&self, url: &str) -> OpenPageResult<()> {
-        let (retry_times, retry_interval_millis) = self.navigation_retry_config()?;
-        let load_mode = self.load_mode_value()?;
-        let url = normalize_navigation_target(url)?;
-        let mut last_err = None;
+        let requested_url = url.to_string();
+        let timeout_ms = self.navigation_page_load_timeout_ms().ok();
+        (|| {
+            let (retry_times, retry_interval_millis) = self.navigation_retry_config()?;
+            let load_mode = self.load_mode_value()?;
+            let url = normalize_navigation_target(url)?;
+            let mut last_err = None;
 
-        for attempt in 0..=retry_times {
-            match self.goto_once(&url, load_mode) {
-                Ok(()) => return Ok(()),
-                Err(err) => {
-                    last_err = Some(err);
-                    if attempt == retry_times {
-                        break;
+            for attempt in 0..=retry_times {
+                match self.goto_once(&url, load_mode) {
+                    Ok(()) => return Ok(()),
+                    Err(err) => {
+                        last_err = Some(err);
+                        if attempt == retry_times {
+                            break;
+                        }
                     }
+                }
+
+                if retry_interval_millis > 0 {
+                    sleep(Duration::from_millis(retry_interval_millis));
                 }
             }
 
-            if retry_interval_millis > 0 {
-                sleep(Duration::from_millis(retry_interval_millis));
-            }
-        }
-
-        Err(last_err
-            .unwrap_or_else(|| OpenPageError::Timeout(page_connect_timed_out_message(&url))))
+            Err(last_err
+                .unwrap_or_else(|| OpenPageError::Timeout(page_connect_timed_out_message(&url))))
+        })()
+        .map_err(|error| {
+            let failure_reason = error.to_string();
+            error.diagnosed(ErrorDiagnostic {
+                operation: Some("goto".to_string()),
+                url: Some(requested_url),
+                timeout_ms,
+                failure_reason: Some(failure_reason),
+                ..ErrorDiagnostic::default()
+            })
+        })
     }
 
     fn goto_once(&self, url: &str, load_mode: LoadMode) -> OpenPageResult<()> {

@@ -133,8 +133,16 @@ class BrowserEndToEndTests(unittest.TestCase):
                         page.find("#hidden-input").input("ignored")
                     with self.assertRaisesRegex(RuntimeError, "not visible, enabled, or editable"):
                         page.find("#covered-input").input("ignored")
-                    with self.assertRaisesRegex(RuntimeError, "has no rect"):
-                        page.find("#hidden").click()
+                    with self.assertRaisesRegex(RuntimeError, "has no rect") as failure:
+                        page.click("#hidden", timeout_ms=1_000)
+                    self.assertEqual(failure.exception.kind, "page_operation")
+                    self.assertEqual(failure.exception.operation, "click")
+                    self.assertEqual(failure.exception.locator, "#hidden")
+                    self.assertEqual(failure.exception.timeout, 1_000)
+                    self.assertIn("index.html", failure.exception.url)
+                    self.assertEqual(failure.exception.matched_count, 1)
+                    self.assertEqual(failure.exception.element_state, "not actionable")
+                    self.assertIn("has no rect", failure.exception.failure_reason)
                     self.assertEqual(page.text("#title"), "world")
                     with self.assertRaisesRegex(RuntimeError, "covered"):
                         page.find("#covered").click()
@@ -237,6 +245,7 @@ class BrowserEndToEndTests(unittest.TestCase):
                     intercepted.abort()
                     interceptor.stop()
 
+                    self.assertIn("OpenPage E2E", page.html())
                     self.assertTrue(page.snapshot())
                     screenshot = Path(directory) / "screenshot.png"
                     page.save_screenshot(str(screenshot))
