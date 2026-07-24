@@ -61,18 +61,19 @@ use crate::settings::{
     element_relative_not_found_message, element_resource_attribute_missing_message,
     element_resource_unavailable_message, element_tag_name_unavailable_message,
     element_top_frame_check_failed_message, frame_index_must_start_message,
-    frame_index_out_of_range_message, input_failed_not_interactable_message,
-    javascript_execution_timed_out_message, multi_select_action_required_message,
-    no_new_tab_message, parent_element_index_must_start_message,
-    parent_element_level_must_start_message, relative_direction_index_must_start_message,
-    resolve_element_frame_id_failed_message, resolve_frame_owner_viewport_location_failed_message,
+    frame_index_out_of_range_message, hover_failed_not_interactable_message,
+    input_failed_not_interactable_message, javascript_execution_timed_out_message,
+    multi_select_action_required_message, no_new_tab_message,
+    parent_element_index_must_start_message, parent_element_level_must_start_message,
+    relative_direction_index_must_start_message, resolve_element_frame_id_failed_message,
+    resolve_frame_owner_viewport_location_failed_message,
     resolve_frame_viewport_offset_failed_message,
     resolve_top_viewport_screen_origin_failed_message,
     resolve_top_window_device_pixel_ratio_failed_message, resolved_node_missing_object_id_message,
     scan_frame_marker_failed_message, scan_frame_marker_javascript_failed_message,
     select_element_required_message, set_file_input_requires_at_least_one_file_message,
-    shadow_root_object_id_unavailable_message, timeout_duration_millis, timeout_error,
-    top_window_device_pixel_ratio_lookup_failed_message,
+    shadow_root_object_id_unavailable_message, submit_requires_form_message,
+    timeout_duration_millis, timeout_error, top_window_device_pixel_ratio_lookup_failed_message,
     top_window_device_pixel_ratio_not_numeric_message,
     top_window_viewport_size_lookup_failed_message, unsupported_key_message,
     unsupported_mouse_button_message, value_coordinate_not_numeric_message,
@@ -1883,22 +1884,16 @@ impl Element {
 
     pub fn submit(&self) -> OpenPageResult<()> {
         let result = self.run_js(
-            "const form = this.tagName === 'FORM' ? this : this.closest('form'); \
-             if (!form) return false; \
-             if (typeof form.requestSubmit === 'function') { \
-                 form.requestSubmit(); \
-                 return true; \
-             } \
-             form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); \
-             form.submit(); \
+            "const form = this.tagName === 'FORM' ? this : this.form; \
+             if (!(form instanceof HTMLFormElement)) return false; \
+             form.requestSubmit(); \
              return true;",
         )?;
-        if !value_as_bool(result, "submit")? {
-            return Err(OpenPageError::PageOperation(
-                "element is not inside a form".to_string(),
-            ));
+        if value_as_bool(result, "submit")? {
+            Ok(())
+        } else {
+            Err(OpenPageError::PageOperation(submit_requires_form_message()))
         }
-        Ok(())
     }
 
     pub fn hover(&self) -> OpenPageResult<()> {
@@ -1910,6 +1905,25 @@ impl Element {
         offset_x: Option<f64>,
         offset_y: Option<f64>,
     ) -> OpenPageResult<()> {
+        let deadline = Instant::now() + Duration::from_millis(DEFAULT_CLICK_TIMEOUT_MS);
+        if !self.has_rect()? {
+            return Err(OpenPageError::PageOperation(
+                hover_failed_not_interactable_message(),
+            ));
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() || !self.wait_until_stop_moving(remaining.as_millis() as u64)? {
+            return Err(OpenPageError::PageOperation(
+                hover_failed_not_interactable_message(),
+            ));
+        }
+        self.scroll_to_see(Some(false))?;
+        if !self.is_displayed()? || !self.is_in_viewport()? || self.is_covered()? {
+            return Err(OpenPageError::PageOperation(
+                hover_failed_not_interactable_message(),
+            ));
+        }
+
         if offset_x.is_none() && offset_y.is_none() {
             return self.runtime.block_on(async {
                 run_element_future_with_cdp_timeout(self.inner.hover(), "hover").await?;
@@ -1917,11 +1931,6 @@ impl Element {
             });
         }
 
-        self.runtime.block_on(async {
-            run_element_future_with_cdp_timeout(self.inner.scroll_into_view(), "scroll into view")
-                .await?;
-            Ok::<(), OpenPageError>(())
-        })?;
         let (x, y) = self.offset_target_point(offset_x, offset_y)?;
         self.runtime.block_on(async {
             run_element_page_future_with_cdp_timeout(

@@ -249,6 +249,20 @@ pub(crate) fn input_failed_not_interactable_message() -> String {
     )
 }
 
+pub(crate) fn hover_failed_not_interactable_message() -> String {
+    localized_message(
+        "hover failed because element is not visible, stable, or able to receive pointer events",
+        "悬停失败，因为元素不可见、不稳定或无法接收指针事件",
+    )
+}
+
+pub(crate) fn submit_requires_form_message() -> String {
+    localized_message(
+        "submit failed because element is not associated with a form",
+        "提交失败，因为元素不属于任何表单",
+    )
+}
+
 pub(crate) fn element_no_visible_rect_message() -> String {
     localized_message(
         "element does not have a visible rect",

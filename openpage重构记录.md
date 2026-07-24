@@ -1944,3 +1944,41 @@ cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threa
                                                                                 195 通过
 python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
 ```
+
+
+### 里程碑 52：提交与悬停动作收口（2026-07-24）
+
+状态：阶段一子项完成。
+
+`Element.submit()` 只使用当前 Chrome 正式支持的 `HTMLFormElement.requestSubmit()`，删除手工派发 submit 事件后再调用 `form.submit()` 的兼容回退。元素未关联表单时直接返回明确错误。
+
+`Element.hover()` 和偏移悬停现在执行真实指针动作前会检查：
+
+```text
+元素具有可见位置
+元素已经停止移动
+滚动后位于视口内
+元素未被其他节点遮挡
+```
+
+不满足条件时直接失败，不通过 JavaScript 模拟悬停。
+
+真实 Chromium Python 端到端测试确认：
+
+```text
+普通悬停触发 mouseover
+被遮挡元素悬停明确失败
+表单元素 submit 触发标准 submit 事件
+非表单元素 submit 明确失败
+```
+
+验证：
+
+```text
+cargo check --workspace --manifest-path rust/Cargo.toml                       通过
+cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                338 通过
+cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                195 通过
+python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
+```

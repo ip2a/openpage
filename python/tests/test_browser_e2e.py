@@ -23,6 +23,9 @@ HTML = """<!doctype html><html><head><title>OpenPage E2E</title></head><body>
 <button id='hidden' hidden onclick="document.querySelector('#title').textContent='hidden-clicked'">Hidden</button>
 <div style='position:relative'><button id='covered' onclick="document.querySelector('#title').textContent='covered-clicked'">Covered</button><div style='position:absolute;inset:0;z-index:1'></div></div>
 <div id='content'><span class='child'>child</span></div>
+<form id='form' onsubmit="event.preventDefault();document.querySelector('#title').textContent='submitted'"><input id='form-input'></form>
+<div id='hoverable' onmouseover="document.querySelector('#title').textContent='hovered'">Hover</div>
+<div style='position:relative'><div id='covered-hover'>Covered hover</div><div style='position:absolute;inset:0;z-index:1'></div></div>
 </body></html>"""
 
 
@@ -78,6 +81,14 @@ class BrowserEndToEndTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "covered"):
                         page.find("#covered").click()
                     self.assertEqual(page.text("#title"), "world")
+                    page.find("#hoverable").hover()
+                    self.assertEqual(page.text("#title"), "hovered")
+                    with self.assertRaisesRegex(RuntimeError, "hover failed"):
+                        page.find("#covered-hover").hover()
+                    page.find("#form-input").submit()
+                    self.assertEqual(page.text("#title"), "submitted")
+                    with self.assertRaisesRegex(RuntimeError, "not associated with a form"):
+                        page.find("#content").submit()
                     self.assertTrue(page.snapshot())
                     screenshot = Path(directory) / "screenshot.png"
                     page.save_screenshot(str(screenshot))
