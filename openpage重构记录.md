@@ -2026,3 +2026,50 @@ cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threa
 python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
 真实 Chromium 中 Python timeout_ms 关键字调用                                  通过
 ```
+
+
+### 里程碑 54：删除 Rust 与 CLI 的旧 `ele` 命名（2026-07-24）
+
+状态：阶段二命名清理完成。
+
+Rust Core 和公开调用链统一采用完整的 `element` / `elements` 命名，直接删除旧兼容入口，不保留废弃别名：
+
+```text
+remove_ele                 -> remove_element
+add_ele                    -> add_element
+frame_ele                  -> frame_element
+active_ele                 -> active_element
+get_frame_ele              -> get_frame_element
+get_frame_eles             -> get_frame_elements
+wait_for_ele_*             -> wait_for_element_*
+```
+
+CLI 与 daemon 的正式操作协议同步收口：
+
+```text
+wait.eles_loaded           -> wait.elements_loaded
+wait.ele_displayed         -> wait.element_displayed
+wait.ele_hidden            -> wait.element_hidden
+wait.ele_enabled           -> wait.element_enabled
+wait.ele_disabled          -> wait.element_disabled
+wait.ele_deleted           -> wait.element_deleted
+wait.ele_clickable         -> wait.element_clickable
+wait.ele_has_rect          -> wait.element_has_rect
+wait.ele_covered           -> wait.element_covered
+wait.ele_not_covered       -> wait.element_not_covered
+wait.ele_stop_moving       -> wait.element_stop_moving
+```
+
+旧协议字符串、旧 Rust 方法和双分支兼容均已删除。历史 API 基线、第三方参考项目和旧研究记录仍按其原始内容保存，不属于可执行兼容代码。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check                    通过
+cargo check --workspace --manifest-path rust/Cargo.toml                       通过
+cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                338 通过
+cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                195 通过
+python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
+```

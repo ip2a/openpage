@@ -13,10 +13,6 @@ impl Frame {
         &self.frame_element
     }
 
-    pub fn frame_ele(&self) -> &Element {
-        self.frame_element()
-    }
-
     pub fn owner(&self) -> &Page {
         &self.page
     }
@@ -383,7 +379,7 @@ impl Frame {
                 return Ok(frame);
             }
         }
-        let frame_element = page.get_frame_ele(self.frame_element())?;
+        let frame_element = page.get_frame_element(self.frame_element())?;
         page.frame_from_element_with_config_source(frame_element, &self.none_element_config)
     }
 
@@ -751,10 +747,6 @@ impl Frame {
         }
     }
 
-    pub fn active_ele(&self) -> OpenPageResult<Option<Element>> {
-        self.active_element()
-    }
-
     pub fn find<'a, L>(&self, locator: L) -> OpenPageResult<Element>
     where
         L: Into<LocatorInput<'a>>,
@@ -814,7 +806,7 @@ impl Frame {
             _ => {}
         }
         self.page.frame_from_element_with_config_source(
-            self.get_frame_ele(target)?,
+            self.get_frame_element(target)?,
             &self.none_element_config,
         )
     }
@@ -859,14 +851,14 @@ impl Frame {
         self.get_frame_with_timeout(index.into_frame_index(), timeout_ms)
     }
 
-    pub fn get_frame_ele<'a, L>(&self, target: L) -> OpenPageResult<Element>
+    pub fn get_frame_element<'a, L>(&self, target: L) -> OpenPageResult<Element>
     where
         L: Into<PageFrameTarget<'a>>,
     {
         self.resolve_frame_target(target.into())
     }
 
-    pub fn get_frame_ele_with_timeout<'a, L>(
+    pub fn get_frame_element_with_timeout<'a, L>(
         &self,
         target: L,
         timeout_ms: u64,
@@ -877,7 +869,7 @@ impl Frame {
         let target = target.into();
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         loop {
-            match self.get_frame_ele(target.clone()) {
+            match self.get_frame_element(target.clone()) {
                 Ok(element) => return Ok(element),
                 Err(err) => {
                     if Instant::now() >= deadline {
@@ -892,14 +884,14 @@ impl Frame {
         }
     }
 
-    pub fn get_frame_ele_by_index<I>(&self, index: I) -> OpenPageResult<Element>
+    pub fn get_frame_element_by_index<I>(&self, index: I) -> OpenPageResult<Element>
     where
         I: FrameIndexInput,
     {
-        self.get_frame_ele(index.into_frame_index())
+        self.get_frame_element(index.into_frame_index())
     }
 
-    pub fn get_frame_ele_by_index_with_timeout<I>(
+    pub fn get_frame_element_by_index_with_timeout<I>(
         &self,
         index: I,
         timeout_ms: u64,
@@ -907,14 +899,14 @@ impl Frame {
     where
         I: FrameIndexInput,
     {
-        self.get_frame_ele_with_timeout(index.into_frame_index(), timeout_ms)
+        self.get_frame_element_with_timeout(index.into_frame_index(), timeout_ms)
     }
 
     pub fn get_frames<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Frame>>
     where
         L: Into<LocatorInput<'a>>,
     {
-        self.get_frame_eles(locator)?
+        self.get_frame_elements(locator)?
             .into_iter()
             .map(|element| {
                 self.page
@@ -956,7 +948,7 @@ impl Frame {
         }
     }
 
-    pub fn get_frame_eles<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
+    pub fn get_frame_elements<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
     where
         L: Into<LocatorInput<'a>>,
     {
@@ -964,7 +956,7 @@ impl Frame {
         self.find_all(locator.as_str())
     }
 
-    pub fn get_frame_eles_with_timeout<'a, L>(
+    pub fn get_frame_elements_with_timeout<'a, L>(
         &self,
         locator: Option<L>,
         timeout_ms: u64,
@@ -975,7 +967,7 @@ impl Frame {
         let locator = optional_frame_locator_input(locator)?;
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         loop {
-            match self.get_frame_eles(Some(locator.as_str())) {
+            match self.get_frame_elements(Some(locator.as_str())) {
                 Ok(elements) if !elements.is_empty() => return Ok(elements),
                 Ok(_) => {}
                 Err(err) => {
@@ -1612,7 +1604,7 @@ impl Frame {
                 frame_index_must_start_message(),
             ));
         }
-        let frames = self.get_frame_eles(None::<&str>)?;
+        let frames = self.get_frame_elements(None::<&str>)?;
         let resolved_index = if index > 0 {
             (index as usize).checked_sub(1)
         } else {

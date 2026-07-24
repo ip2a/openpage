@@ -109,13 +109,6 @@ impl Page {
         }
     }
 
-    pub fn remove_ele<'a, L>(&self, target: L) -> OpenPageResult<bool>
-    where
-        L: Into<PageElementTarget<'a>>,
-    {
-        self.remove_element(target)
-    }
-
     pub fn add_element_html<'a, 'b, I, B>(
         &self,
         html: &str,
@@ -198,20 +191,6 @@ impl Page {
             }
             PageElementContent::Info(info) => self.add_element_info(info, insert_to, before),
         }
-    }
-
-    pub fn add_ele<'a, 'b, 'c, C, I, B>(
-        &self,
-        content: C,
-        insert_to: Option<I>,
-        before: Option<B>,
-    ) -> OpenPageResult<Element>
-    where
-        C: Into<PageElementContent<'c>>,
-        I: Into<PageElementTarget<'a>>,
-        B: Into<PageElementTarget<'b>>,
-    {
-        self.add_element(content, insert_to, before)
     }
 
     pub fn add_element_info<'a, 'b, I, B, H>(

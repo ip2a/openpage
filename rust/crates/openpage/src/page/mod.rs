@@ -1508,7 +1508,7 @@ fn page_frame_element_by_index(page: &Page, index: isize) -> OpenPageResult<Elem
             frame_index_must_start_message(),
         ));
     }
-    let frames = page.get_frame_eles(None::<&str>)?;
+    let frames = page.get_frame_elements(None::<&str>)?;
     let resolved_index = if index > 0 {
         (index as usize).checked_sub(1)
     } else {

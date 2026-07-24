@@ -2487,7 +2487,7 @@ fn run_count(args: ElementArgs) -> OpenPageResult<()> {
 fn run_wait_visible(args: WaitElementArgs) -> OpenPageResult<()> {
     let ready = rpc_page(
         &args.session,
-        "wait.ele_displayed",
+        "wait.element_displayed",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
     )?
     .get("ready")
@@ -2499,7 +2499,7 @@ fn run_wait_visible(args: WaitElementArgs) -> OpenPageResult<()> {
 fn run_wait_hidden(args: WaitElementArgs) -> OpenPageResult<()> {
     let ready = rpc_page(
         &args.session,
-        "wait.ele_hidden",
+        "wait.element_hidden",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
     )?
     .get("ready")
@@ -2511,7 +2511,7 @@ fn run_wait_hidden(args: WaitElementArgs) -> OpenPageResult<()> {
 fn run_wait_enabled(args: WaitElementArgs) -> OpenPageResult<()> {
     let ready = rpc_page(
         &args.session,
-        "wait.ele_enabled",
+        "wait.element_enabled",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
     )?
     .get("ready")
@@ -2523,7 +2523,7 @@ fn run_wait_enabled(args: WaitElementArgs) -> OpenPageResult<()> {
 fn run_wait_disabled(args: WaitElementArgs) -> OpenPageResult<()> {
     let ready = rpc_page(
         &args.session,
-        "wait.ele_disabled",
+        "wait.element_disabled",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
     )?
     .get("ready")
@@ -2535,7 +2535,7 @@ fn run_wait_disabled(args: WaitElementArgs) -> OpenPageResult<()> {
 fn run_wait_deleted(args: WaitElementArgs) -> OpenPageResult<()> {
     let ready = rpc_page(
         &args.session,
-        "wait.ele_deleted",
+        "wait.element_deleted",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
     )?
     .get("ready")
@@ -2547,7 +2547,7 @@ fn run_wait_deleted(args: WaitElementArgs) -> OpenPageResult<()> {
 fn run_wait_clickable(args: WaitElementArgs) -> OpenPageResult<()> {
     let ready = rpc_page(
         &args.session,
-        "wait.ele_clickable",
+        "wait.element_clickable",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
     )?
     .get("ready")
@@ -2559,7 +2559,7 @@ fn run_wait_clickable(args: WaitElementArgs) -> OpenPageResult<()> {
 fn run_wait_has_rect(args: WaitElementArgs) -> OpenPageResult<()> {
     let ready = rpc_page(
         &args.session,
-        "wait.ele_has_rect",
+        "wait.element_has_rect",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
     )?
     .get("ready")
@@ -2571,7 +2571,7 @@ fn run_wait_has_rect(args: WaitElementArgs) -> OpenPageResult<()> {
 fn run_wait_covered(args: WaitElementArgs) -> OpenPageResult<()> {
     let ready = rpc_page(
         &args.session,
-        "wait.ele_covered",
+        "wait.element_covered",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
     )?
     .get("ready")
@@ -2583,7 +2583,7 @@ fn run_wait_covered(args: WaitElementArgs) -> OpenPageResult<()> {
 fn run_wait_not_covered(args: WaitElementArgs) -> OpenPageResult<()> {
     let ready = rpc_page(
         &args.session,
-        "wait.ele_not_covered",
+        "wait.element_not_covered",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
     )?
     .get("ready")
@@ -2595,7 +2595,7 @@ fn run_wait_not_covered(args: WaitElementArgs) -> OpenPageResult<()> {
 fn run_wait_stop_moving(args: WaitElementArgs) -> OpenPageResult<()> {
     let ready = rpc_page(
         &args.session,
-        "wait.ele_stop_moving",
+        "wait.element_stop_moving",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
     )?
     .get("ready")
@@ -2750,7 +2750,7 @@ fn run_wait_for_title(args: WaitForTitleArgs) -> OpenPageResult<()> {
 fn run_wait_for_elements_loaded(args: WaitElementsLoadedArgs) -> OpenPageResult<()> {
     let loaded = rpc_page(
         &args.session,
-        "wait.eles_loaded",
+        "wait.elements_loaded",
         json!({
             "locators": args.locators,
             "any_one": args.any_one,
@@ -2795,7 +2795,7 @@ fn run_wait_for_text(args: WaitForTextArgs) -> OpenPageResult<()> {
 fn run_wait_disabled_or_deleted(args: WaitElementArgs) -> OpenPageResult<()> {
     let ready = rpc_page(
         &args.session,
-        "wait.ele_disabled_or_deleted",
+        "wait.element_disabled_or_deleted",
         json!({"locator": args.locator, "timeout_ms": args.timeout}),
     )?
     .get("ready")

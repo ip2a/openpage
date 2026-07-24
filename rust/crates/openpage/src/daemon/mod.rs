@@ -2094,58 +2094,58 @@ fn dispatch_page(state: &mut ServePage, op: &str, params: &Value) -> OpenPageRes
                 optional_u64(params, "interval_ms").unwrap_or(100),
             )?
         })),
-        "wait.eles_loaded" | "wait.elements_loaded" => Ok(json!({
+        "wait.elements_loaded" => Ok(json!({
             "loaded": page.wait_for_elements_loaded(
                 &required_string_array(params, "locators")?,
                 optional_bool(params, "any_one").unwrap_or(false),
                 optional_u64(params, "timeout_ms").unwrap_or(10_000),
             )?
         })),
-        "wait.ele_displayed" => Ok(json!({
+        "wait.element_displayed" => Ok(json!({
             "ready": state.find(&required_locator_string(params)?)?
                 .wait_until_displayed(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
         })),
-        "wait.ele_hidden" => Ok(json!({
+        "wait.element_hidden" => Ok(json!({
             "ready": state.find(&required_locator_string(params)?)?
                 .wait_until_hidden(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
         })),
-        "wait.ele_enabled" => Ok(json!({
+        "wait.element_enabled" => Ok(json!({
             "ready": state.find(&required_locator_string(params)?)?
                 .wait_until_enabled(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
         })),
-        "wait.ele_disabled" => Ok(json!({
+        "wait.element_disabled" => Ok(json!({
             "ready": state.find(&required_locator_string(params)?)?.wait_until_disabled(
                 optional_u64(params, "timeout_ms").unwrap_or(10_000),
             )?
         })),
-        "wait.ele_deleted" => Ok(json!({
+        "wait.element_deleted" => Ok(json!({
             "ready": wait_for_deleted(
                 state,
                 &required_locator_string(params)?,
                 optional_u64(params, "timeout_ms").unwrap_or(10_000),
             )?
         })),
-        "wait.ele_clickable" => Ok(json!({
+        "wait.element_clickable" => Ok(json!({
             "ready": state.find(&required_locator_string(params)?)?
                 .wait_until_clickable(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
         })),
-        "wait.ele_has_rect" => Ok(json!({
+        "wait.element_has_rect" => Ok(json!({
             "ready": state.find(&required_locator_string(params)?)?
                 .wait_until_has_rect(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
         })),
-        "wait.ele_covered" => Ok(json!({
+        "wait.element_covered" => Ok(json!({
             "ready": state.find(&required_locator_string(params)?)?
                 .wait_until_covered(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
         })),
-        "wait.ele_not_covered" => Ok(json!({
+        "wait.element_not_covered" => Ok(json!({
             "ready": state.find(&required_locator_string(params)?)?
                 .wait_until_not_covered(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
         })),
-        "wait.ele_stop_moving" => Ok(json!({
+        "wait.element_stop_moving" => Ok(json!({
             "ready": state.find(&required_locator_string(params)?)?
                 .wait_until_stop_moving(optional_u64(params, "timeout_ms").unwrap_or(10_000))?
         })),
-        "wait.ele_disabled_or_deleted" => Ok(json!({
+        "wait.element_disabled_or_deleted" => Ok(json!({
             "ready": wait_for_disabled_or_deleted(
                 state,
                 &required_locator_string(params)?,
@@ -3299,7 +3299,7 @@ fn wait_for_deleted(state: &ServePage, locator: &str, timeout_ms: u64) -> OpenPa
         }
 
         if Instant::now() >= deadline {
-            return wait_timeout_result("wait.ele_deleted", timeout_ms);
+            return wait_timeout_result("wait.element_deleted", timeout_ms);
         }
         sleep(Duration::from_millis(50));
     }
@@ -3323,7 +3323,7 @@ fn wait_for_disabled_or_deleted(
         }
 
         if Instant::now() >= deadline {
-            return wait_timeout_result("wait.ele_disabled_or_deleted", timeout_ms);
+            return wait_timeout_result("wait.element_disabled_or_deleted", timeout_ms);
         }
         sleep(Duration::from_millis(50));
     }

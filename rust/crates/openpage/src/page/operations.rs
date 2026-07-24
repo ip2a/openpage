@@ -386,52 +386,68 @@ impl Page {
         }
     }
 
-    pub fn wait_for_ele_displayed<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<bool>
+    pub fn wait_for_element_displayed<'a, L>(
+        &self,
+        target: L,
+        timeout_ms: u64,
+    ) -> OpenPageResult<bool>
     where
         L: Into<PageElementTarget<'a>>,
     {
-        self.wait_for_ele_state(target, timeout_ms, |ele, remaining| {
+        self.wait_for_element_state(target, timeout_ms, |ele, remaining| {
             ele.wait_until_displayed(remaining)
         })
     }
 
-    pub fn wait_for_ele_hidden<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<bool>
+    pub fn wait_for_element_hidden<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<bool>
     where
         L: Into<PageElementTarget<'a>>,
     {
-        self.wait_for_ele_state(target, timeout_ms, |ele, remaining| {
+        self.wait_for_element_state(target, timeout_ms, |ele, remaining| {
             ele.wait_until_hidden(remaining)
         })
     }
 
-    pub fn wait_for_ele_enabled<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<bool>
+    pub fn wait_for_element_enabled<'a, L>(
+        &self,
+        target: L,
+        timeout_ms: u64,
+    ) -> OpenPageResult<bool>
     where
         L: Into<PageElementTarget<'a>>,
     {
-        self.wait_for_ele_state(target, timeout_ms, |ele, remaining| {
+        self.wait_for_element_state(target, timeout_ms, |ele, remaining| {
             ele.wait_until_enabled(remaining)
         })
     }
 
-    pub fn wait_for_ele_deleted<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<bool>
+    pub fn wait_for_element_deleted<'a, L>(
+        &self,
+        target: L,
+        timeout_ms: u64,
+    ) -> OpenPageResult<bool>
     where
         L: Into<PageElementTarget<'a>>,
     {
-        self.wait_for_ele_state(target, timeout_ms, |ele, remaining| {
+        self.wait_for_element_state(target, timeout_ms, |ele, remaining| {
             ele.wait_until_deleted(remaining)
         })
     }
 
-    pub fn wait_for_ele_clickable<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<bool>
+    pub fn wait_for_element_clickable<'a, L>(
+        &self,
+        target: L,
+        timeout_ms: u64,
+    ) -> OpenPageResult<bool>
     where
         L: Into<PageElementTarget<'a>>,
     {
-        self.wait_for_ele_state(target, timeout_ms, |ele, remaining| {
+        self.wait_for_element_state(target, timeout_ms, |ele, remaining| {
             ele.wait_until_clickable(remaining)
         })
     }
 
-    fn wait_for_ele_state<'a, L, F>(
+    fn wait_for_element_state<'a, L, F>(
         &self,
         target: L,
         timeout_ms: u64,
@@ -444,7 +460,7 @@ impl Page {
         match target.into() {
             PageElementTarget::Locator(locator) => {
                 let locator = Locator::from_input(locator)?;
-                self.wait_for_ele_state_raw(locator.raw(), timeout_ms, wait_fn)
+                self.wait_for_element_state_raw(locator.raw(), timeout_ms, wait_fn)
             }
             target => wait_fn(
                 resolve_page_element_target(self, target)?.element(),
@@ -453,7 +469,7 @@ impl Page {
         }
     }
 
-    fn wait_for_ele_state_raw<F>(
+    fn wait_for_element_state_raw<F>(
         &self,
         locator: &str,
         timeout_ms: u64,
@@ -470,7 +486,7 @@ impl Page {
                 Err(_) => {
                     sleep(Duration::from_millis(50));
                     if Instant::now() >= deadline {
-                        return wait_timeout_result("Page::wait_for_ele_state()", timeout_ms);
+                        return wait_timeout_result("Page::wait_for_element_state()", timeout_ms);
                     }
                 }
             }
@@ -497,7 +513,7 @@ impl Page {
             }
             _ => {}
         }
-        self.frame_from_element(self.get_frame_ele(target)?)
+        self.frame_from_element(self.get_frame_element(target)?)
     }
 
     pub fn get_frame_with_timeout<'a, L>(&self, target: L, timeout_ms: u64) -> OpenPageResult<Frame>
@@ -540,14 +556,14 @@ impl Page {
         self.get_frame_with_timeout(index.into_frame_index(), timeout_ms)
     }
 
-    pub fn get_frame_ele<'a, L>(&self, target: L) -> OpenPageResult<Element>
+    pub fn get_frame_element<'a, L>(&self, target: L) -> OpenPageResult<Element>
     where
         L: Into<PageFrameTarget<'a>>,
     {
         resolve_page_frame_target(self, target.into())
     }
 
-    pub fn get_frame_ele_with_timeout<'a, L>(
+    pub fn get_frame_element_with_timeout<'a, L>(
         &self,
         target: L,
         timeout_ms: u64,
@@ -558,7 +574,7 @@ impl Page {
         let target = target.into();
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         loop {
-            match self.get_frame_ele(target.clone()) {
+            match self.get_frame_element(target.clone()) {
                 Ok(element) => return Ok(element),
                 Err(err) => {
                     if Instant::now() >= deadline {
@@ -573,14 +589,14 @@ impl Page {
         }
     }
 
-    pub fn get_frame_ele_by_index<I>(&self, index: I) -> OpenPageResult<Element>
+    pub fn get_frame_element_by_index<I>(&self, index: I) -> OpenPageResult<Element>
     where
         I: FrameIndexInput,
     {
-        self.get_frame_ele(index.into_frame_index())
+        self.get_frame_element(index.into_frame_index())
     }
 
-    pub fn get_frame_ele_by_index_with_timeout<I>(
+    pub fn get_frame_element_by_index_with_timeout<I>(
         &self,
         index: I,
         timeout_ms: u64,
@@ -588,14 +604,14 @@ impl Page {
     where
         I: FrameIndexInput,
     {
-        self.get_frame_ele_with_timeout(index.into_frame_index(), timeout_ms)
+        self.get_frame_element_with_timeout(index.into_frame_index(), timeout_ms)
     }
 
     pub fn get_frames<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Frame>>
     where
         L: Into<LocatorInput<'a>>,
     {
-        self.get_frame_eles(locator)?
+        self.get_frame_elements(locator)?
             .into_iter()
             .map(|element| self.frame_from_element(element))
             .collect()
@@ -634,14 +650,15 @@ impl Page {
         }
     }
 
-    pub fn get_frame_eles<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
+    pub fn get_frame_elements<'a, L>(&self, locator: Option<L>) -> OpenPageResult<Vec<Element>>
     where
         L: Into<LocatorInput<'a>>,
     {
         let locator = Locator::from_input(optional_frame_locator_input(locator)?.as_str())?;
         let batch = next_page_marker();
         let script = frame_find_all_script(&locator, &batch)?;
-        let markers = value_as_string_vec(self.run_js(&script)?, "page get_frame_eles() result")?;
+        let markers =
+            value_as_string_vec(self.run_js(&script)?, "page get_frame_elements() result")?;
         let mut elements = Vec::with_capacity(markers.len());
         for marker in markers {
             let element = self.find(&marker_xpath(&marker))?;
@@ -651,7 +668,7 @@ impl Page {
         Ok(elements)
     }
 
-    pub fn get_frame_eles_with_timeout<'a, L>(
+    pub fn get_frame_elements_with_timeout<'a, L>(
         &self,
         locator: Option<L>,
         timeout_ms: u64,
@@ -662,7 +679,7 @@ impl Page {
         let locator = optional_frame_locator_input(locator)?;
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
         loop {
-            match self.get_frame_eles(Some(locator.as_str())) {
+            match self.get_frame_elements(Some(locator.as_str())) {
                 Ok(elements) if !elements.is_empty() => return Ok(elements),
                 Ok(_) => {}
                 Err(err) => {
@@ -1941,7 +1958,7 @@ impl Page {
         locator: &str,
         config_source: &ElementsOneConfigHandle,
     ) -> OpenPageResult<Frame> {
-        let element = self.get_frame_ele(locator)?;
+        let element = self.get_frame_element(locator)?;
         self.frame_from_element_with_config_source(element, config_source)
     }
 
