@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use crate::error::{OpenPageError, OpenPageResult};
 use crate::settings::{
     attribute_locator_requires_assignment_message, empty_locator_not_allowed_message,
+    role_locator_invalid_message, semantic_locator_requires_non_empty_value_message,
     text_locator_requires_non_empty_text_message, unsupported_by_locator_message,
 };
 
@@ -230,6 +231,42 @@ impl Locator {
             return Ok(Self::new(raw, LocatorKind::XPath, xpath));
         }
 
+        if let Some(query) = raw.strip_prefix("role=") {
+            let (role, name) = parse_role_locator(raw, query)?;
+            let role = xpath_string_literal(role);
+            let role_match = format!(
+                "@role={role} or (not(@role) and ((self::button and {role}='button') or (self::a and @href and {role}='link') or (self::input and (@type='button' or @type='submit' or @type='reset') and {role}='button') or (self::input and @type='checkbox' and {role}='checkbox') or (self::input and @type='radio' and {role}='radio') or (self::select and {role}='combobox') or (self::textarea and {role}='textbox') or (self::input and (not(@type) or @type='text' or @type='email' or @type='search' or @type='tel' or @type='url' or @type='password') and {role}='textbox')))"
+            );
+            let xpath = match name {
+                Some(name) => {
+                    let name = xpath_string_literal(name);
+                    format!(
+                        ".//*[({role_match}) and (normalize-space(@aria-label)={name} or normalize-space(.)={name} or normalize-space(@value)={name})]"
+                    )
+                }
+                None => format!(".//*[{role_match}]"),
+            };
+            return Ok(Self::new(raw, LocatorKind::XPath, xpath));
+        }
+
+        for (prefix, attribute) in [("placeholder=", "placeholder"), ("testid=", "data-testid")] {
+            if let Some(value) = raw.strip_prefix(prefix) {
+                let value = require_semantic_value(prefix.trim_end_matches('='), value)?;
+                let css = format!(r#"[{attribute}="{}"]"#, css_escape_string(value));
+                return Ok(Self::new(raw, LocatorKind::Css, css));
+            }
+        }
+
+        if let Some(value) = raw.strip_prefix("label=") {
+            let value = require_semantic_value("label", value)?;
+            let text = xpath_string_literal(value);
+            let controls = "self::input or self::textarea or self::select or self::button";
+            let xpath = format!(
+                ".//label[normalize-space(.)={text}]//*[{controls}] | .//label[normalize-space(.)={text}]/following::*[{controls} and @id=preceding::label[normalize-space(.)={text}][1]/@for][1]"
+            );
+            return Ok(Self::new(raw, LocatorKind::XPath, xpath));
+        }
+
         if let Some(query) = raw.strip_prefix('@') {
             let query = query.trim();
             if query.starts_with('e')
@@ -301,6 +338,41 @@ impl Locator {
             query: query.into(),
         }
     }
+}
+
+fn require_semantic_value<'a>(kind: &str, value: &'a str) -> OpenPageResult<&'a str> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(OpenPageError::UnsupportedLocator(
+            semantic_locator_requires_non_empty_value_message(kind),
+        ));
+    }
+    Ok(value)
+}
+
+fn parse_role_locator<'a>(raw: &str, query: &'a str) -> OpenPageResult<(&'a str, Option<&'a str>)> {
+    let query = query.trim();
+    let (role, name) = match query.split_once("[name=") {
+        Some((role, name)) => {
+            let name = name.strip_suffix(']').ok_or_else(|| {
+                OpenPageError::UnsupportedLocator(role_locator_invalid_message(raw))
+            })?;
+            let name = name.trim();
+            let name = if (name.starts_with('\'') && name.ends_with('\''))
+                || (name.starts_with('"') && name.ends_with('"'))
+            {
+                &name[1..name.len() - 1]
+            } else {
+                name
+            };
+            (
+                role.trim(),
+                Some(require_semantic_value("role name", name)?),
+            )
+        }
+        None => (query, None),
+    };
+    Ok((require_semantic_value("role", role)?, name))
 }
 
 fn xpath_string_literal(value: &str) -> String {
@@ -498,6 +570,41 @@ mod tests {
         assert_eq!(locator.kind(), LocatorKind::XPath);
         assert!(locator.query().contains("normalize-space(.)"));
         assert!(locator.query().contains("not(.//*"));
+    }
+
+    #[test]
+    fn parse_semantic_locators_into_native_queries() {
+        let role = Locator::parse("role=button[name='Submit']").expect("role locator");
+        let label = Locator::parse("label=Email").expect("label locator");
+        let placeholder = Locator::parse("placeholder=Search").expect("placeholder locator");
+        let testid = Locator::parse("testid=checkout").expect("testid locator");
+
+        assert_eq!(role.kind(), LocatorKind::XPath);
+        assert!(role.query().contains("self::button"));
+        assert!(role.query().contains("Submit"));
+        assert_eq!(label.kind(), LocatorKind::XPath);
+        assert!(label.query().contains("self::input"));
+        assert_eq!(placeholder.kind(), LocatorKind::Css);
+        assert_eq!(placeholder.query(), r#"[placeholder="Search"]"#);
+        assert_eq!(testid.kind(), LocatorKind::Css);
+        assert_eq!(testid.query(), r#"[data-testid="checkout"]"#);
+    }
+
+    #[test]
+    fn semantic_locators_reject_empty_values_and_invalid_role_syntax() {
+        for raw in ["role=", "label=", "placeholder=", "testid="] {
+            assert!(
+                matches!(
+                    Locator::parse(raw),
+                    Err(crate::OpenPageError::UnsupportedLocator(_))
+                ),
+                "{raw} should fail"
+            );
+        }
+        assert!(matches!(
+            Locator::parse("role=button[name='Submit'"),
+            Err(crate::OpenPageError::UnsupportedLocator(_))
+        ));
     }
 
     #[test]

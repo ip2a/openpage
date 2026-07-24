@@ -2125,3 +2125,40 @@ cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threa
                                                                                 195 通过
 python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
 ```
+
+
+### 里程碑 56：统一 `find()` 语义定位（2026-07-24）
+
+状态：阶段三语义定位完成。
+
+Page 与 Element 继续只使用同一个 `find()` / `find_all()` 门面，没有增加 `find_role`、`find_text` 等平行方法：
+
+```python
+page.find("text=Login")
+page.find("role=button[name='Submit']")
+page.find("label=Email")
+page.find("placeholder=Search")
+page.find("testid=checkout")
+```
+
+所有语法在 Rust `Locator::parse()` 中解析：
+
+- `text=`：包含文本且选择最小匹配元素；
+- `role=`：显式 ARIA role、常用 HTML 隐式 role，可选精确名称；
+- `label=`：包裹控件或 `for` / `id` 关联控件；
+- `placeholder=`：精确属性匹配；
+- `testid=`：精确匹配 `data-testid`。
+
+Element 链式查询复用相同解析，不增加 Builder、Helper、Adapter，也不在 Python 实现查询。空值和无效 role 语法明确返回 `UnsupportedLocator`，并提供中英文错误信息。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check                    通过
+cargo check --workspace --manifest-path rust/Cargo.toml                       通过
+cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                341 通过
+cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                195 通过
+python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
+```

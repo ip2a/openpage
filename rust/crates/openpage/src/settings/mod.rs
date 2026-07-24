@@ -1330,6 +1330,20 @@ pub(crate) fn text_locator_requires_non_empty_text_message() -> String {
     )
 }
 
+pub(crate) fn semantic_locator_requires_non_empty_value_message(kind: &str) -> String {
+    localized_message(
+        &format!("{kind} locator requires a non-empty value"),
+        &format!("{kind} 定位符需要非空值"),
+    )
+}
+
+pub(crate) fn role_locator_invalid_message(raw: &str) -> String {
+    localized_message(
+        &format!("invalid role locator: {raw}"),
+        &format!("无效的 role 定位符：{raw}"),
+    )
+}
+
 pub(crate) fn attribute_locator_requires_assignment_message(raw: &str) -> String {
     match current_language_code() {
         Some("zh_cn") => format!("属性定位符需要 @name=value 格式: {raw}"),

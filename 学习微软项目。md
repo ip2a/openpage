@@ -172,21 +172,35 @@ page.find(".item")
 page.find("//button")
 ```
 
-候选门面：
+正式门面继续统一使用 `find()`，不扩张顶层方法数量：
 
 ```python
-page.find_role("button", name="登录")
-page.find_text("提交")
-page.find_label("用户名")
-page.find_placeholder("请输入用户名")
-page.find_test_id("submit")
+page.find("role=button[name='登录']")
+page.find("text=提交")
+page.find("label=用户名")
+page.find("placeholder=请输入用户名")
+page.find("testid=submit")
 ```
 
-Element 支持作用域内查询：
+Element 使用同一套语法完成作用域内查询：
 
 ```python
-page.find_role("dialog").find_text("确认")
+page.find("role=dialog").find("text=确认")
 ```
+
+当前进度（2026-07-24）：
+
+| 子项 | 状态 | 结果 |
+|---|---|---|
+| 文本定位 | 已完成 | `text=` 定位包含目标文本的最小元素 |
+| 角色定位 | 已完成 | `role=` 支持显式角色、常用 HTML 隐式角色及可选精确名称 |
+| 标签定位 | 已完成 | `label=` 支持包裹控件和 `for` / `id` 关联控件 |
+| 占位符定位 | 已完成 | `placeholder=` 使用精确属性匹配 |
+| 测试标识定位 | 已完成 | `testid=` 对应 `data-testid` 精确匹配 |
+| Page/Element 统一作用域 | 已完成 | 两者复用 Rust `Locator::parse()`，Python 不包含定位实现 |
+| 验证 | 已完成 | Rust 解析测试和真实 Chromium Page/Element 查询通过 |
+
+正式契约：默认精确匹配 role 名称、label、placeholder 和 testid；`text=` 保留包含匹配。当前不引入正则、大小写选项或公开 `Locator` 对象。
 
 实施原则：
 

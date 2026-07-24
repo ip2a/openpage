@@ -33,6 +33,11 @@ function replaceList() {
 }
 </script></head><body>
 <input id='name'>
+<label for='email'>Email</label><input id='email'>
+<input id='search' placeholder='Search'>
+<button id='semantic-submit' aria-label='Submit'>Send</button>
+<button data-testid='checkout'>Checkout</button>
+<div id='semantic-scope'><button aria-label='Scoped'>Inside</button></div>
 <input id='hidden-input' hidden>
 <div style='position:relative'><input id='covered-input'><div style='position:absolute;inset:0;z-index:1'></div></div>
 <button id='submit' onclick="document.querySelector('#title').textContent=document.querySelector('#name').value">Go</button>
@@ -92,6 +97,20 @@ class BrowserEndToEndTests(unittest.TestCase):
                     self.assertEqual(page.text("#title"), "empty")
                     self.assertTrue(page.attr("#link", "href").endswith("/next"))
                     self.assertEqual(page.find("#content").find(".child").text(), "child")
+                    self.assertEqual(page.find("text=empty").attr("id"), "title")
+                    self.assertEqual(
+                        page.find("role=button[name='Submit']").attr("id"),
+                        "semantic-submit",
+                    )
+                    self.assertEqual(page.find("label=Email").attr("id"), "email")
+                    self.assertEqual(page.find("placeholder=Search").attr("id"), "search")
+                    self.assertEqual(page.find("testid=checkout").text(), "Checkout")
+                    self.assertEqual(
+                        page.find("#semantic-scope")
+                        .find("role=button[name='Scoped']")
+                        .text(),
+                        "Inside",
+                    )
                     page.input("#name", "hello", timeout_ms=1_000)
                     page.find("#name").clear(timeout_ms=1_000)
                     page.find("#name").input("world", timeout_ms=1_000)
