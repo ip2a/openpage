@@ -3,6 +3,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -31,6 +32,10 @@ function duplicateTarget() {
 function replaceList() {
   document.querySelector('#listed').innerHTML = `<button class="item">Replacement</button>`;
 }
+function requestAborted() {
+  const image = new Image();
+  image.src = '/aborted';
+}
 </script></head><body>
 <input id='name'>
 <label for='email'>Email</label><input id='email'>
@@ -57,6 +62,7 @@ function replaceList() {
 <button id='duplicate' onclick="duplicateTarget()">Duplicate</button>
 <div id='listed'><button class='item'>Listed</button></div>
 <button id='replace-list' onclick="replaceList()">Replace list</button>
+<button id='request-aborted' onclick="requestAborted()">Abort request</button>
 </body></html>"""
 
 
@@ -92,7 +98,14 @@ class BrowserEndToEndTests(unittest.TestCase):
                 )
                 page = browser.new_page()
                 try:
-                    page.goto(f"http://127.0.0.1:{port}/")
+                    listener = page.listen()
+                    listener.start(targets=["index.html"], methods=["GET"])
+                    page.goto(f"http://127.0.0.1:{port}/index.html")
+                    packet = listener.wait(timeout_ms=2_000)
+                    self.assertEqual(packet.method, "GET")
+                    self.assertEqual(packet.response.status, 200)
+                    self.assertIn(b"OpenPage E2E", packet.response.body)
+                    listener.stop()
                     self.assertEqual(page.title(), "OpenPage E2E")
                     self.assertEqual(page.text("#title"), "empty")
                     self.assertTrue(page.attr("#link", "href").endswith("/next"))
@@ -164,6 +177,65 @@ class BrowserEndToEndTests(unittest.TestCase):
                     page.click("#replace-list")
                     with self.assertRaisesRegex(RuntimeError, "detached"):
                         listed.click()
+
+                    mock_page = browser.new_page()
+                    interceptor = mock_page.intercept()
+                    interceptor.start(targets=["/mock"])
+                    mock_errors = []
+
+                    def navigate_mock() -> None:
+                        try:
+                            mock_page.goto(f"http://127.0.0.1:{port}/mock")
+                        except Exception as exc:
+                            mock_errors.append(exc)
+
+                    mock_thread = threading.Thread(target=navigate_mock)
+                    mock_thread.start()
+                    intercepted = interceptor.wait(timeout_ms=2_000)
+                    self.assertEqual(intercepted.method, "GET")
+                    intercepted.fulfill(
+                        200,
+                        b"<html><body><h1 id='mocked'>Mocked</h1></body></html>",
+                        {"content-type": "text/html; charset=utf-8"},
+                    )
+                    mock_thread.join(2)
+                    self.assertFalse(mock_thread.is_alive())
+                    self.assertFalse(mock_errors)
+                    self.assertEqual(mock_page.text("#mocked"), "Mocked")
+                    interceptor.stop()
+                    mock_page.close()
+
+                    continue_page = browser.new_page()
+                    interceptor = continue_page.intercept()
+                    interceptor.start(targets=["index.html"])
+                    continue_errors = []
+
+                    def navigate_continued() -> None:
+                        try:
+                            continue_page.goto(
+                                f"http://127.0.0.1:{port}/index.html"
+                            )
+                        except Exception as exc:
+                            continue_errors.append(exc)
+
+                    continue_thread = threading.Thread(target=navigate_continued)
+                    continue_thread.start()
+                    intercepted = interceptor.wait(timeout_ms=2_000)
+                    intercepted.continue_request()
+                    continue_thread.join(2)
+                    self.assertFalse(continue_thread.is_alive())
+                    self.assertFalse(continue_errors)
+                    self.assertEqual(continue_page.title(), "OpenPage E2E")
+                    interceptor.stop()
+                    continue_page.close()
+
+                    interceptor = page.intercept()
+                    interceptor.start(targets=["/aborted"])
+                    page.click("#request-aborted")
+                    intercepted = interceptor.wait(timeout_ms=2_000)
+                    self.assertEqual(intercepted.resource_type, "Image")
+                    intercepted.abort()
+                    interceptor.stop()
 
                     self.assertTrue(page.snapshot())
                     screenshot = Path(directory) / "screenshot.png"

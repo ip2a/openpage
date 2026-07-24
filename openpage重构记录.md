@@ -2162,3 +2162,62 @@ cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threa
                                                                                 195 通过
 python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
 ```
+
+
+### 里程碑 57：网络监听与拦截 Python 薄门面（2026-07-24）
+
+状态：阶段四网络监听与拦截完成。
+
+Rust Core 现有 `Listener` 与 `Interceptor` 继续作为唯一领域模型和行为来源。Python 只新增 PyO3 类型映射，并由 Page 返回：
+
+```python
+listener = page.listen()
+listener.start(targets=["index.html"], methods=["GET"])
+packet = listener.wait(timeout_ms=2_000)
+listener.stop()
+
+interceptor = page.intercept()
+interceptor.start(targets=["/mock"])
+request = interceptor.wait(timeout_ms=2_000)
+request.continue_request()
+request.abort()
+request.fulfill(200, b"mocked")
+interceptor.stop()
+```
+
+正式网络数据门面：
+
+| 类型 | 主要内容 |
+|---|---|
+| `NetworkPacket` | URL、method、resource type、失败状态、request、response |
+| `NetworkRequest` | URL、method、headers、post data、query params |
+| `NetworkResponse` | URL、status、status text、headers、MIME type、body bytes |
+| `InterceptedRequest` | 请求信息及 continue、abort、fulfill 动作 |
+
+设计边界：
+
+- `abort()` 在 Rust Core 中定义为正式请求动作，而不是绑定层拼装 Chromium 错误原因；
+- 网络等待和 `Page.goto()` 在 PyO3 阻塞期间释放 GIL，使 Python 能在另一线程处理被暂停的请求；
+- Python 不实现过滤、队列、响应体读取、请求决策或状态机；
+- 不增加 callback 第二套事件体系；
+- 不增加 NetworkManager、Helper、Adapter、Runtime、兼容别名或 fallback；
+- 网络类型不加入 Python 顶层 `__all__`，顶层仍保持 `Browser / Page / Session / open`。
+
+真实 Chrome 验证覆盖：
+
+1. 监听文档 GET 请求并读取状态码与响应体；
+2. `continue_request()` 放行真实文档导航；
+3. `fulfill()` 返回自定义 HTML 并完成页面渲染；
+4. `abort()` 终止真实图片子资源请求。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check                    通过
+cargo check --workspace --manifest-path rust/Cargo.toml                       通过
+cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                341 通过
+cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                195 通过
+python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
+```

@@ -1,5 +1,6 @@
 use openpage::{
-    Browser, Document, DocumentElement, Element, LaunchOptions, Page, Response, Session,
+    Browser, Document, DocumentElement, Element, InterceptedRequest, Interceptor, LaunchOptions,
+    Listener, ListenerPacket, ListenerRequest, ListenerResponse, Page, Response, Session,
     SessionOptions,
 };
 use pyo3::exceptions::PyRuntimeError;
@@ -38,6 +39,30 @@ pub struct PyDocument {
 #[pyclass(module = "openpage_rs", name = "DocumentElement")]
 pub struct PyDocumentElement {
     inner: DocumentElement,
+}
+#[pyclass(module = "openpage_rs", name = "NetworkListener")]
+pub struct PyNetworkListener {
+    inner: Listener,
+}
+#[pyclass(module = "openpage_rs", name = "NetworkPacket")]
+pub struct PyNetworkPacket {
+    inner: ListenerPacket,
+}
+#[pyclass(module = "openpage_rs", name = "NetworkRequest")]
+pub struct PyNetworkRequest {
+    inner: ListenerRequest,
+}
+#[pyclass(module = "openpage_rs", name = "NetworkResponse")]
+pub struct PyNetworkResponse {
+    inner: ListenerResponse,
+}
+#[pyclass(module = "openpage_rs", name = "NetworkInterceptor")]
+pub struct PyNetworkInterceptor {
+    inner: Interceptor,
+}
+#[pyclass(module = "openpage_rs", name = "InterceptedRequest")]
+pub struct PyInterceptedRequest {
+    inner: InterceptedRequest,
 }
 
 #[pymethods]
@@ -106,8 +131,8 @@ impl PyBrowser {
 
 #[pymethods]
 impl PyPage {
-    fn goto(&self, url: &str) -> PyResult<()> {
-        self.inner.goto(url).map_err(error)
+    fn goto(&self, py: Python<'_>, url: &str) -> PyResult<()> {
+        py.detach(|| self.inner.goto(url)).map_err(error)
     }
     #[pyo3(signature = (ignore_cache=false))]
     fn refresh(&self, ignore_cache: bool) -> PyResult<()> {
@@ -323,6 +348,16 @@ impl PyPage {
         self.inner
             .save_screenshot(Path::new(path), full_page)
             .map_err(error)
+    }
+    fn listen(&self) -> PyNetworkListener {
+        PyNetworkListener {
+            inner: self.inner.listener(),
+        }
+    }
+    fn intercept(&self) -> PyNetworkInterceptor {
+        PyNetworkInterceptor {
+            inner: self.inner.interceptor(),
+        }
     }
     fn close(&self) -> PyResult<()> {
         self.inner.clone().close().map_err(error)
@@ -612,6 +647,206 @@ impl PyDocumentElement {
     }
 }
 
+#[pymethods]
+impl PyNetworkListener {
+    #[pyo3(signature = (targets=None, is_regex=false, methods=None, resource_types=None))]
+    fn start(
+        &self,
+        targets: Option<Vec<String>>,
+        is_regex: bool,
+        methods: Option<Vec<String>>,
+        resource_types: Option<Vec<String>>,
+    ) -> PyResult<()> {
+        self.inner
+            .start(targets, is_regex, methods, resource_types)
+            .map_err(error)
+    }
+    #[pyo3(signature = (timeout_ms=None))]
+    fn wait(&self, py: Python<'_>, timeout_ms: Option<u64>) -> PyResult<PyNetworkPacket> {
+        py.detach(|| self.inner.wait_one(timeout_ms))
+            .map(|inner| PyNetworkPacket { inner })
+            .map_err(error)
+    }
+    fn clear(&self) -> PyResult<()> {
+        self.inner.clear().map_err(error)
+    }
+    fn stop(&self) -> PyResult<()> {
+        self.inner.stop().map_err(error)
+    }
+    #[getter]
+    fn is_listening(&self) -> PyResult<bool> {
+        self.inner.is_listening().map_err(error)
+    }
+}
+
+#[pymethods]
+impl PyNetworkPacket {
+    #[getter]
+    fn url(&self) -> String {
+        self.inner.url.clone()
+    }
+    #[getter]
+    fn method(&self) -> String {
+        self.inner.method.clone()
+    }
+    #[getter]
+    fn resource_type(&self) -> Option<String> {
+        self.inner.resource_type.clone()
+    }
+    #[getter]
+    fn is_failed(&self) -> bool {
+        self.inner.is_failed
+    }
+    #[getter]
+    fn request(&self) -> PyNetworkRequest {
+        PyNetworkRequest {
+            inner: self.inner.request.clone(),
+        }
+    }
+    #[getter]
+    fn response(&self) -> Option<PyNetworkResponse> {
+        self.inner
+            .response
+            .clone()
+            .map(|inner| PyNetworkResponse { inner })
+    }
+}
+
+#[pymethods]
+impl PyNetworkRequest {
+    #[getter]
+    fn url(&self) -> String {
+        self.inner.url.clone()
+    }
+    #[getter]
+    fn method(&self) -> String {
+        self.inner.method.clone()
+    }
+    #[getter]
+    fn headers(&self) -> std::collections::HashMap<String, String> {
+        self.inner.headers.clone()
+    }
+    #[getter]
+    fn post_data(&self) -> Option<String> {
+        self.inner.post_data.clone()
+    }
+    #[getter]
+    fn params(&self) -> std::collections::HashMap<String, String> {
+        self.inner.params()
+    }
+}
+
+#[pymethods]
+impl PyNetworkResponse {
+    #[getter]
+    fn url(&self) -> String {
+        self.inner.url.clone()
+    }
+    #[getter]
+    fn status(&self) -> i64 {
+        self.inner.status
+    }
+    #[getter]
+    fn status_text(&self) -> String {
+        self.inner.status_text.clone()
+    }
+    #[getter]
+    fn headers(&self) -> std::collections::HashMap<String, String> {
+        self.inner.headers.clone()
+    }
+    #[getter]
+    fn mime_type(&self) -> String {
+        self.inner.mime_type.clone()
+    }
+    #[getter]
+    fn body(&self, py: Python<'_>) -> PyResult<Option<Py<PyBytes>>> {
+        self.inner
+            .body_bytes()
+            .map(|body| body.map(|body| PyBytes::new(py, &body).unbind()))
+            .map_err(error)
+    }
+}
+
+#[pymethods]
+impl PyNetworkInterceptor {
+    #[pyo3(signature = (targets=None, is_regex=false, methods=None, resource_types=None))]
+    fn start(
+        &self,
+        targets: Option<Vec<String>>,
+        is_regex: bool,
+        methods: Option<Vec<String>>,
+        resource_types: Option<Vec<String>>,
+    ) -> PyResult<()> {
+        self.inner
+            .start(targets, is_regex, methods, resource_types)
+            .map_err(error)
+    }
+    #[pyo3(signature = (timeout_ms=None))]
+    fn wait(
+        &self,
+        py: Python<'_>,
+        timeout_ms: Option<u64>,
+    ) -> PyResult<Option<PyInterceptedRequest>> {
+        py.detach(|| self.inner.wait(timeout_ms))
+            .map(|request| request.map(|inner| PyInterceptedRequest { inner }))
+            .map_err(error)
+    }
+    fn stop(&self) -> PyResult<()> {
+        self.inner.stop().map_err(error)
+    }
+    #[getter]
+    fn is_listening(&self) -> PyResult<bool> {
+        self.inner.is_listening().map_err(error)
+    }
+}
+
+#[pymethods]
+impl PyInterceptedRequest {
+    #[getter]
+    fn url(&self) -> String {
+        self.inner.url()
+    }
+    #[getter]
+    fn method(&self) -> String {
+        self.inner.method()
+    }
+    #[getter]
+    fn headers(&self) -> std::collections::HashMap<String, String> {
+        self.inner.headers()
+    }
+    #[getter]
+    fn resource_type(&self) -> String {
+        self.inner.resource_type()
+    }
+    #[pyo3(signature = (url=None, method=None, headers=None, post_data=None))]
+    fn continue_request(
+        &self,
+        url: Option<&str>,
+        method: Option<&str>,
+        headers: Option<std::collections::HashMap<String, String>>,
+        post_data: Option<&str>,
+    ) -> PyResult<()> {
+        self.inner
+            .continue_request(url, method, headers, post_data)
+            .map_err(error)
+    }
+    fn abort(&self) -> PyResult<()> {
+        self.inner.abort().map_err(error)
+    }
+    #[pyo3(signature = (status, body=None, headers=None, phrase=None))]
+    fn fulfill(
+        &self,
+        status: i64,
+        body: Option<&[u8]>,
+        headers: Option<std::collections::HashMap<String, String>>,
+        phrase: Option<&str>,
+    ) -> PyResult<()> {
+        self.inner
+            .fulfill(status, body, headers, phrase)
+            .map_err(error)
+    }
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBrowser>()?;
     m.add_class::<PyPage>()?;
@@ -620,5 +855,11 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyResponse>()?;
     m.add_class::<PyDocument>()?;
     m.add_class::<PyDocumentElement>()?;
+    m.add_class::<PyNetworkListener>()?;
+    m.add_class::<PyNetworkPacket>()?;
+    m.add_class::<PyNetworkRequest>()?;
+    m.add_class::<PyNetworkResponse>()?;
+    m.add_class::<PyNetworkInterceptor>()?;
+    m.add_class::<PyInterceptedRequest>()?;
     Ok(())
 }

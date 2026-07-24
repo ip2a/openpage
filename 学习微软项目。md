@@ -215,34 +215,45 @@ page.find("role=dialog").find("text=确认")
 
 目标：从 Rust Core 直接公开稳定的页面网络能力。
 
-候选能力：
+正式门面：
 
 ```python
-page.on_request(...)
-page.on_response(...)
-page.on_request_failed(...)
-page.intercept(...)
-page.abort(...)
-page.continue_request(...)
-page.fulfill(...)
+listener = page.listen()
+listener.start(targets=["/api"], methods=["GET"])
+packet = listener.wait(timeout_ms=2_000)
+listener.stop()
+
+interceptor = page.intercept()
+interceptor.start(targets=["/api"])
+request = interceptor.wait(timeout_ms=2_000)
+request.continue_request()
+request.abort()
+request.fulfill(200, b"ok", {"content-type": "text/plain"})
+interceptor.stop()
 ```
 
-覆盖：
+当前进度（2026-07-24）：
 
-- 请求和响应监听；
-- 请求失败事件；
-- URL 和资源类型过滤；
-- 请求终止；
-- 请求继续及参数修改；
-- Mock 响应；
-- Browser/Page Cookie 与 Session 的明确交换能力。
+| 子项 | 状态 | 结果 |
+|---|---|---|
+| 请求、响应与失败监听 | 已完成 | `NetworkPacket` 公开 request、response 与 `is_failed` |
+| 网络过滤 | 已完成 | 支持 URL、正则、method 与 resource type 过滤 |
+| Response body | 已完成 | Python 以 `bytes` 读取 Rust listener 保存的响应体 |
+| 请求继续 | 已完成 | `continue_request()` 支持原样继续及 URL、method、headers、post data 修改 |
+| 请求终止 | 已完成 | Rust `InterceptedRequest.abort()` 是正式领域动作 |
+| Mock 响应 | 已完成 | `fulfill()` 支持 status、body、headers 与 phrase |
+| 真实 Chrome 验证 | 已完成 | listener、continue、abort、fulfill 均通过本地 HTTP E2E |
 
-实现原则：
+职责边界：
 
-- 事件和网络行为由 Rust Core 提供；
-- Python 只绑定稳定门面；
-- 不增加 Python 侧 NetworkManager、InterceptorAdapter；
-- 不用轮询或回退模拟正式事件能力。
+- `Listener`、`Interceptor`、packet 和 intercepted request 均由 Rust Core 定义；
+- Python 只绑定对象、参数与返回值，不保存队列，不判断过滤条件，不执行网络行为；
+- 网络对象不进入 `openpage` 顶层核心概念，由 `Page.listen()` / `Page.intercept()` 返回；
+- 当前正式模型是同步 `start / wait / stop`，不并行增加 callback 事件系统；
+- 不增加 Python `NetworkManager`、Helper、Adapter 或 Runtime；
+- 不用轮询、兼容分支或 fallback 模拟网络事件。
+
+Cookie 仍使用现有 Page/Session 各自的正式 cookie 能力；本阶段不增加隐式双向同步或新的交换管理层。
 
 ### 阶段五：错误与诊断
 

@@ -446,6 +446,10 @@ impl InterceptedRequest {
         })
     }
 
+    pub fn abort(&self) -> OpenPageResult<()> {
+        self.fail(ErrorReason::Aborted)
+    }
+
     pub fn fail(&self, reason: ErrorReason) -> OpenPageResult<()> {
         with_pending_request(&self.shared, &self.info.request_id, || {
             let request_id = self.info.request_id.clone();
