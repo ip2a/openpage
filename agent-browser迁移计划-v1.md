@@ -168,9 +168,9 @@ diff_screenshot(base_bytes, cur_bytes, threshold=0.1)
 | 点 | 性质 | 状态 |
 |---|---|---|
 | RefTarget 加 `backend_node_id` 快路径 | 功能 | ✅ 已完成（见下） |
-| ref 编号跨 snapshot 连续 | 功能 | 待办：`register_snapshot_entries` 每次 `clear()` 从 e1 重来 |
+| ref 编号跨 snapshot 连续 | 功能 | ✅ 已完成（见下） |
 | `@ref` 多写法 | 功能 | ✅ 无需改：`parse_ref` 已支持 `@e1`/`ref=e1`/`e1` 三种（与 agent-browser 一致） |
-| role/name 用 chromiumoxide Accessibility 域做 hybrid 校验 | 功能 | 待办：现为 JS 启发式，可选用浏览器原生 a11y 补充 |
+| role/name 用 chromiumoxide Accessibility 域做 hybrid 校验 | 功能 | ⏸ 评估后并入"快照重写"里程碑（见下），不作独立 patch |
 
 ### backend_node_id 快路径 — ✅ 完成
 
@@ -184,6 +184,24 @@ backend_node_id (page.resolve_dom_backend_node_id，一次 CDP 调用)
 - `register_element`/`refresh_ref_target` 存入 `element.backend_node_id()`；`register_snapshot_entries`（JS 无法产出 bnid）存 `None`，首次 resolve 后由 `refresh_ref_target` 自动 warm up。
 - **决定性验证**：warm e1 后突变元素（删 id + 改文本 + 前插新 button，使 cssPath/xpath/text 兜底**全部失效或指向错误节点**），第二次 `text @e1` 仍返回原节点的新文本 → 证明快路径经 backendNodeId 定位，非降级兜底。
 - 收益：兼具 agent-browser 的 backendNodeId 快路径 + openpage 原有的多级自愈兜底。
+
+### ref 编号跨 snapshot 连续 — ✅ 完成
+
+- `register_snapshot_entries` 不再 `clear()`，改用 `RefRegistry::register`：按元素身份 key 复用已有 ref_id，新元素取递增 id，并把 registry 分配的 id 写回条目（快照文本与 refs map 一致）。
+- `RefTarget::key` 改为**稳定身份**：`target_id | frame | css_path`（cssPath 为空才退回 xpath），剔除位置易变的 xpath 和可变的 role/tag/name/text——cssPath 本就是唯一选择器，不影响去重正确性。
+- **验证**：同页二次 snapshot ref_id 完全复用；前插新 button + 改 Submit 文本为 "Go" 后再 snapshot，Submit 仍为 `e1`（cssPath 身份未变）、新 button 取递增 `e3`。
+- 收益：agent 跨轮上下文里 `e3` 始终指同一元素（与 agent-browser 一致），且对兄弟节点插入/文本变动鲁棒。
+
+### role/name AX hybrid — ⏸ 评估后并入"快照重写"
+
+经最大算力评估，**干净的轻量 hybrid 做不了**，根因是关联阻塞：
+
+- JS 遍历产出的快照条目**没有 backendNodeId**（页面内 JS 拿不到 CDP 节点 id），而 `Accessibility.getFullAxTree` 的 `AxNode` 靠 `backend_dom_node_id` 标识——两者无法干净关联。
+- 唯一干净解是 **AX 快照重写**（用 AX 树替代 JS 遍历，原生拿 role/name/backendNodeId）——即你之前列入"后续自己做"的里程碑；且会改变解析模型（cssPath/xpath 要么每节点 resolve，要么像 agent-browser 弃用）。
+- bolt-on（getDocument 树 + cssPath 匹配）需 ~100 行脆弱代码、cssPath 计算须与 JS 逐字对齐，属 over-engineering：JS 启发式已覆盖 aria-label/title/alt/placeholder/label/text 等常见场景，AX 仅在复杂 ARIA（aria-labelledby 多引用、自定义 widget）边缘更准，ROI 不支撑此复杂度。
+- resolve-time AX 富集（C3）只在 tier-4 兜底有效，且改不了 agent 看到的快照文本（来自 JS 条目），价值过边缘。
+
+**结论**：此项不是独立"完善点"，其干净实现即"快照重写"里程碑本身。留待该里程碑统一处理（届时 AX 原生 role/name + backendNodeId 一并解决，A/B 的 snapshot 路径也直接受益）。当前不引入妥协性 patch。
 
 ## 决策记录
 
