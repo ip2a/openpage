@@ -1,7 +1,7 @@
 use openpage::{
-    Browser, Document, DocumentElement, Element, InterceptedRequest, Interceptor, LaunchOptions,
-    Listener, ListenerPacket, ListenerRequest, ListenerResponse,
-    OpenPageError as CoreOpenPageError, Page, Response, Session, SessionOptions,
+    Browser, Document, DocumentElement, Element, Frame, InterceptedRequest, Interceptor,
+    LaunchOptions, Listener, ListenerPacket, ListenerRequest, ListenerResponse,
+    OpenPageError as CoreOpenPageError, Page, Response, Session, SessionOptions, ShadowRoot,
 };
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
@@ -39,6 +39,14 @@ pub struct PyPage {
 #[pyclass(module = "openpage_rs", name = "Element")]
 pub struct PyElement {
     inner: Element,
+}
+#[pyclass(module = "openpage_rs", name = "Frame")]
+pub struct PyFrame {
+    inner: Frame,
+}
+#[pyclass(module = "openpage_rs", name = "ShadowRoot")]
+pub struct PyShadowRoot {
+    inner: ShadowRoot,
 }
 #[pyclass(module = "openpage_rs", name = "Session")]
 pub struct PySession {
@@ -378,6 +386,15 @@ impl PyPage {
     fn close(&self) -> PyResult<()> {
         self.inner.clone().close().map_err(error)
     }
+    #[pyo3(signature = (locator, timeout_ms=None))]
+    fn frame(&self, locator: &str, timeout_ms: Option<u64>) -> PyResult<PyFrame> {
+        match timeout_ms {
+            Some(timeout_ms) => self.inner.frame_with_timeout(locator, timeout_ms),
+            None => self.inner.frame(locator),
+        }
+        .map(|inner| PyFrame { inner })
+        .map_err(error)
+    }
     fn find(&self, locator: &str) -> PyResult<PyElement> {
         self.inner
             .find(locator)
@@ -397,11 +414,11 @@ impl PyPage {
             .map_err(error)
     }
     #[pyo3(signature = (locator, timeout_ms=None))]
-    fn click(&self, locator: &str, timeout_ms: Option<u64>) -> PyResult<()> {
-        match timeout_ms {
+    fn click(&self, py: Python<'_>, locator: &str, timeout_ms: Option<u64>) -> PyResult<()> {
+        py.detach(|| match timeout_ms {
             Some(timeout_ms) => self.inner.click_with_timeout(locator, timeout_ms),
             None => self.inner.click(locator),
-        }
+        })
         .map_err(error)
     }
     #[pyo3(signature = (locator, text, timeout_ms=None))]
@@ -422,6 +439,12 @@ impl PyPage {
 
 #[pymethods]
 impl PyElement {
+    fn shadow_root(&self) -> PyResult<Option<PyShadowRoot>> {
+        self.inner
+            .shadow_root()
+            .map(|root| root.map(|inner| PyShadowRoot { inner }))
+            .map_err(error)
+    }
     fn find(&self, locator: &str) -> PyResult<PyElement> {
         self.inner
             .find(locator)
@@ -435,11 +458,11 @@ impl PyElement {
             .map_err(error)
     }
     #[pyo3(signature = (timeout_ms=None))]
-    fn click(&self, timeout_ms: Option<u64>) -> PyResult<()> {
-        match timeout_ms {
+    fn click(&self, py: Python<'_>, timeout_ms: Option<u64>) -> PyResult<()> {
+        py.detach(|| match timeout_ms {
             Some(timeout_ms) => self.inner.click_with_timeout(timeout_ms),
             None => self.inner.click(),
-        }
+        })
         .map_err(error)
     }
     #[pyo3(signature = (timeout_ms=None))]
@@ -497,6 +520,79 @@ impl PyElement {
     #[pyo3(signature = (timeout_ms=10_000))]
     fn wait_until_hidden(&self, timeout_ms: u64) -> PyResult<bool> {
         self.inner.wait_until_hidden(timeout_ms).map_err(error)
+    }
+}
+
+#[pymethods]
+impl PyFrame {
+    #[getter]
+    fn id(&self) -> String {
+        self.inner.id().to_string()
+    }
+    fn url(&self) -> PyResult<Option<String>> {
+        self.inner.url().map_err(error)
+    }
+    fn title(&self) -> PyResult<Option<String>> {
+        self.inner.title().map_err(error)
+    }
+    fn find(&self, locator: &str) -> PyResult<PyElement> {
+        self.inner
+            .find(locator)
+            .map(|inner| PyElement { inner })
+            .map_err(error)
+    }
+    fn find_all(&self, locator: &str) -> PyResult<Vec<PyElement>> {
+        self.inner
+            .find_all(locator)
+            .map(|elements| {
+                elements
+                    .into_iter()
+                    .map(|inner| PyElement { inner })
+                    .collect()
+            })
+            .map_err(error)
+    }
+    fn shadow_root(&self) -> PyResult<Option<PyShadowRoot>> {
+        self.inner
+            .shadow_root()
+            .map(|root| root.map(|inner| PyShadowRoot { inner }))
+            .map_err(error)
+    }
+}
+
+#[pymethods]
+impl PyShadowRoot {
+    fn html(&self) -> PyResult<String> {
+        self.inner.html().map_err(error)
+    }
+    fn host(&self) -> PyResult<PyElement> {
+        self.inner
+            .host()
+            .map(|inner| PyElement { inner })
+            .map_err(error)
+    }
+    fn find(&self, locator: &str) -> PyResult<PyElement> {
+        self.inner
+            .find(locator)
+            .map(|inner| PyElement { inner })
+            .map_err(error)
+    }
+    fn find_all(&self, locator: &str) -> PyResult<Vec<PyElement>> {
+        self.inner
+            .find_all(locator)
+            .map(|elements| {
+                elements
+                    .into_iter()
+                    .map(|inner| PyElement { inner })
+                    .collect()
+            })
+            .map_err(error)
+    }
+    fn snapshot(&self) -> PyResult<PyDocumentElement> {
+        self.inner
+            .snapshot_root()
+            .map(|inner| PyDocumentElement { inner })
+            .map_err(error)
     }
 }
 
@@ -867,6 +963,8 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBrowser>()?;
     m.add_class::<PyPage>()?;
     m.add_class::<PyElement>()?;
+    m.add_class::<PyFrame>()?;
+    m.add_class::<PyShadowRoot>()?;
     m.add_class::<PySession>()?;
     m.add_class::<PyResponse>()?;
     m.add_class::<PyDocument>()?;

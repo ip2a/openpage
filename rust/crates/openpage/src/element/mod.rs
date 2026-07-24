@@ -1437,7 +1437,6 @@ impl Element {
                 self.page.clone(),
                 shadow_root.backend_node_id,
                 remote_object_id,
-                self.inner.node_id,
                 self.javascript_timeout_ms,
                 Arc::clone(&self.none_element_config),
                 Arc::clone(&self.frame_cache),
@@ -3179,7 +3178,8 @@ impl Element {
                  if (!rect.width || !rect.height) { return false; } \
                  const x = Math.min(Math.max(rect.left + rect.width / 2, 0), window.innerWidth - 1); \
                  const y = Math.min(Math.max(rect.top + rect.height / 2, 0), window.innerHeight - 1); \
-                 const top = document.elementFromPoint(x, y); \
+                 const root = this.getRootNode(); \
+                 const top = root.elementFromPoint ? root.elementFromPoint(x, y) : document.elementFromPoint(x, y); \
                  return !!top && top !== this && !this.contains(top);",
             )?,
             "covered",
@@ -3583,7 +3583,8 @@ impl Element {
                  if (!rect.width || !rect.height) { return []; } \
                  const x = Math.min(Math.max(rect.left + rect.width / 2, 0), window.innerWidth - 1); \
                  const y = Math.min(Math.max(rect.top + rect.height / 2, 0), window.innerHeight - 1); \
-                 const top = document.elementFromPoint(x, y); \
+                 const root = this.getRootNode(); \
+                 const top = root.elementFromPoint ? root.elementFromPoint(x, y) : document.elementFromPoint(x, y); \
                  if (!top || top === this || this.contains(top)) { return []; } \
                  return [top];",
             )?

@@ -79,7 +79,6 @@ pub struct ShadowRoot {
     page: OxPage,
     backend_node_id: BackendNodeId,
     remote_object_id: RemoteObjectId,
-    host_node_id: NodeId,
     javascript_timeout_ms: u64,
     none_element_config: ElementsOneConfigHandle,
     frame_cache: FrameCacheHandle,
@@ -92,7 +91,6 @@ impl ShadowRoot {
         page: OxPage,
         backend_node_id: BackendNodeId,
         remote_object_id: RemoteObjectId,
-        host_node_id: NodeId,
         javascript_timeout_ms: u64,
         none_element_config: ElementsOneConfigHandle,
         frame_cache: FrameCacheHandle,
@@ -103,7 +101,6 @@ impl ShadowRoot {
             page,
             backend_node_id,
             remote_object_id,
-            host_node_id,
             javascript_timeout_ms,
             none_element_config,
             frame_cache,
@@ -127,11 +124,41 @@ impl ShadowRoot {
     }
 
     pub fn host(&self) -> OpenPageResult<Element> {
-        nth_element_from_start(
-            self.resolve_node_ids(&[self.host_node_id])?,
-            1,
-            &shadow_root_host_element_not_found_message(),
-        )
+        let marker = next_marker_batch();
+        let attribute = serde_json::to_string(MARKER_ATTRIBUTE)
+            .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
+        let marker_json = serde_json::to_string(&marker)
+            .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
+        self.run_js(&format!(
+            "this.host.setAttribute({attribute}, {marker_json}); return {marker_json};"
+        ))?;
+        let query = marker_search_query(&marker);
+        let element = self.runtime.block_on(async {
+            run_shadow_root_lookup_future_with_cdp_timeout(
+                self.page.find_xpath(query),
+                "resolve shadow root host",
+            )
+            .await
+        });
+        let cleanup = self.run_js(&format!("this.host.removeAttribute({attribute});"));
+        match (element, cleanup) {
+            (Ok(element), Ok(_)) => Ok(Element::new(
+                Arc::clone(&self.runtime),
+                self.page.clone(),
+                None,
+                None,
+                element,
+                self.javascript_timeout_ms,
+                Arc::clone(&self.none_element_config),
+                Arc::clone(&self.frame_cache),
+                Arc::clone(&self.frame_none_element_configs),
+            )),
+            (Err(err), _) => Err(OpenPageError::ElementNotFound(format!(
+                "{}: {err}",
+                shadow_root_host_element_not_found_message()
+            ))),
+            (Ok(_), Err(err)) => Err(err),
+        }
     }
 
     pub fn backend_node_id(&self) -> BackendNodeId {

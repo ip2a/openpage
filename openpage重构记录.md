@@ -2280,3 +2280,63 @@ cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threa
                                                                                 195 通过
 python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
 ```
+
+
+### 里程碑 59：Chrome 专项能力审计与关键路径强化（2026-07-24）
+
+状态：阶段六完成，Microsoft Playwright 学习路线的六个实施阶段全部落地。
+
+本轮没有扩张顶层概念。Python 顶层仍然只有：
+
+```text
+Browser
+Page
+Session
+open
+```
+
+`Frame` 与 `ShadowRoot` 是 Rust 正式领域对象，并仅由 `Page.frame()` 与 `Element.shadow_root()` 返回：
+
+```python
+frame = page.frame("#child-frame", timeout_ms=2_000)
+frame.find("#submit").click()
+
+shadow = page.find("#host").shadow_root()
+shadow.find("#submit").click()
+```
+
+关键正确性修复：
+
+- `Page.frame()` 与 `Page.find()` 使用同一 locator 语义；
+- Shadow DOM 元素遮挡检查在元素所属 ShadowRoot 内执行，不再把 host 误判为遮挡物；
+- `ShadowRoot.host()` 不保存易失效的前端 node id，而是从实时 shadow root 重新标记和解析 host；
+- Python Page/Element 点击执行 Rust 阻塞动作时释放 GIL，使另一 Python 线程可以处理点击触发的 JavaScript 对话框；
+- Python 仅做对象和参数映射，不包含 iframe、Shadow DOM、等待、点击或对话框编排。
+
+真实 Chrome E2E 现覆盖：
+
+| 分类 | 已验证路径 |
+|---|---|
+| iframe | 标题、URL、元素查找、点击 |
+| Shadow DOM | HTML、查找、点击、host、Document 快照 |
+| 上传下载 | file chooser 上传；指定路径下载并校验内容 |
+| Popup / 标签页 | 点击捕获新 Page、读取标题、关闭 |
+| 对话框 | 发现、读取、接受 alert |
+| Cookie / Storage | Cookie header、页面 Cookie、localStorage、sessionStorage |
+| 网络 | listen、continue、abort、fulfill |
+| 页面取证 | HTML、Document snapshot、文件截图 |
+| 页面状态 | zoom set/get/reset、ready state、loading、document loaded |
+
+Chrome DevTools Protocol 继续由 Rust Core 通过 chromiumoxide 类型化调用承载，不向 Python 公开任意字符串命令旁路。剪贴板 API 受 Chrome 页面权限控制；在 Context/权限模型暂缓期间，不通过 Page 方法隐式授权，也不增加权限 Helper。
+
+验证：
+
+```text
+cargo fmt --all --manifest-path rust/Cargo.toml -- --check                    通过
+cargo check --workspace --manifest-path rust/Cargo.toml                       通过
+cargo test -p openpage --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                343 通过
+cargo test -p openpage-app --lib --manifest-path rust/Cargo.toml -- --test-threads=1
+                                                                                195 通过
+python/.venv/bin/python -m unittest discover -s python/tests -v                 1 通过
+```

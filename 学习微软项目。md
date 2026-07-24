@@ -25,7 +25,7 @@ OpenPage 不复制 Playwright，而是吸收其在 Chromium 自动化中的成�
 | 语义定位 | 主要使用 CSS/XPath | role、text、label、placeholder、test id | P0 |
 | 网络控制 | Rust 已有部分能力，Python 门面尚未完整公开 | 请求/响应监听、失败事件、拦截、继续、终止和 Mock | P1 |
 | 错误诊断 | 已有错误返回 | 错误携带操作、定位条件、URL、超时和元素状态 | P1 |
-| Chrome 专项能力 | 已有标签页、Cookie、上传、下载、截图等能力 | 继续强化 iframe、Shadow DOM、CDP 和页面生命周期 | P2 |
+| Chrome 专项能力 | 已完成本轮审计与关键路径强化 | iframe、Shadow DOM、上传下载、Popup、对话框、Cookie/Storage、网络、截图和生命周期均有真实 Chrome 证据 | P2 |
 
 ## 三、正式执行计划
 
@@ -306,21 +306,43 @@ reason=element was found but remained hidden
 
 ### 阶段六：Chrome 专项能力
 
-继续审计和强化：
+状态：**本轮完成（2026-07-24）。**
 
-- iframe；
-- Shadow DOM；
-- 上传与下载；
-- Popup 和标签页；
-- JavaScript 对话框；
-- Cookie 和 Storage；
-- 网络拦截；
-- Chrome DevTools Protocol；
-- 截图和页面快照；
-- 剪贴板和页面缩放；
-- 页面加载及生命周期状态。
+能力审计矩阵：
 
-优先修复现有能力的正确性和稳定性，不为了数量扩充无明确需求的 API。
+| 能力 | Rust Core | Python 门面 | 真实 Chrome 结果 |
+|---|---|---|---|
+| iframe | 正式 `Frame` 领域对象；新增 locator 语义一致的 `Page.frame()` | `page.frame()` 返回非顶层 `Frame`，支持 `find()` / `find_all()` | iframe 标题、URL、查找和点击通过 |
+| Shadow DOM | 正式 `ShadowRoot`；修复 shadow 内遮挡判定和 host 重取 | `element.shadow_root()` 返回非顶层 `ShadowRoot` | 查找、点击、HTML、host、快照通过 |
+| 上传 | Rust upload chooser 和文件注入 | `page.click_to_upload()` | 本地文件上传及 change 事件通过 |
+| 下载 | Rust 浏览器下载和目标路径落盘 | `page.download_to()` | 本地 HTTP 文件下载及内容校验通过 |
+| Popup / 标签页 | Rust tab 生命周期与点击等待新页 | `click_for_new_page()`、`new_page()`、close/tab API | Popup 捕获、标题读取、关闭通过 |
+| JavaScript 对话框 | Rust AlertTracker 和处理动作 | `has_alert()`、`alert_text()`、`handle_alert()` | alert 发现、读取、接受通过 |
+| Cookie / Storage | Rust Page cookie 和 Web Storage 行为 | set/remove/clear cookie、local/session storage | 页面脚本读取 Cookie 与两类 Storage 通过 |
+| 网络 | Rust Listener / Interceptor | 阶段四薄门面 | listen、continue、abort、fulfill 通过 |
+| CDP | Rust 内部使用 chromiumoxide 的类型化 CDP 命令 | 不公开任意字符串 CDP 旁路 | 上述 Chrome 能力均通过类型化 CDP 驱动 |
+| 截图 / 页面快照 | Rust screenshot、HTML、Document snapshot | bytes/文件截图、`html()`、`snapshot()` | 文件截图、HTML、Document 通过 |
+| 页面缩放 | Rust Page zoom | set/get/reset zoom | 1.25 设置和 1.0 恢复通过 |
+| 剪贴板 | Rust 使用浏览器 Clipboard API | read/write 已有门面 | 受 Chrome 页面权限约束；Context/权限模型暂缓，本轮不隐式授权 |
+| 页面生命周期 | Rust ready/loading/document wait | `ready_state()`、`is_loading()`、`wait_for_doc_loaded()` | complete、非 loading、等待完成通过 |
+
+本阶段修复的真实缺口：
+
+1. Python 原先没有 iframe 与 Shadow DOM 门面；现在直接映射 Rust `Frame` / `ShadowRoot`，但不加入顶层 `__all__`；
+2. `document.elementFromPoint()` 会把 Shadow DOM 内元素误判为被 host 遮挡；现在使用元素所属 Document/ShadowRoot 的 `elementFromPoint()`；
+3. ShadowRoot 保存的前端 host node id 可能失效；现在通过 shadow root 自身重新标记并解析实时 host；
+4. Python 点击持有 GIL 时，另一线程无法处理由点击触发的阻塞对话框；Page/Element click 在 Rust 调用期间释放 GIL；
+5. `Page.frame()` 直接采用与 `find()` 一致的 locator 语义，不要求用户了解旧 frame id/name 特殊解析。
+
+明确边界：
+
+- `Frame`、`ShadowRoot` 是由 Page/Element 返回的次级领域对象，不成为新的顶层核心概念；
+- 不公开“任意 method + JSON”的通用 CDP 逃生口，避免绕过 Rust 领域契约；
+- 剪贴板读取所需权限属于未来 Context/权限设计，不在当前 Page 方法中隐式授予；
+- 不增加 FrameManager、ShadowHelper、ChromeAdapter、Runtime 产品层、兼容别名或 fallback；
+- 优先验证和修复已有能力，不为了数量复制 Playwright API。
+
+验证：Rust Core 343 项、openpage-app 195 项、Python 真实 Chrome E2E 1 项全部通过。
 
 ## 四、实施顺序
 

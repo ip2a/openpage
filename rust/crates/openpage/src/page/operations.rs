@@ -498,6 +498,20 @@ impl Page {
         wait_fn(&element, remaining.max(1))
     }
 
+    pub fn frame<'a, L>(&self, locator: L) -> OpenPageResult<Frame>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_from_element(self.find(locator)?)
+    }
+
+    pub fn frame_with_timeout<'a, L>(&self, locator: L, timeout_ms: u64) -> OpenPageResult<Frame>
+    where
+        L: Into<LocatorInput<'a>>,
+    {
+        self.frame_from_element(self.wait_for(locator, timeout_ms)?)
+    }
+
     pub fn get_frame<'a, L>(&self, target: L) -> OpenPageResult<Frame>
     where
         L: Into<PageFrameTarget<'a>>,

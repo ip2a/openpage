@@ -36,6 +36,10 @@ function requestAborted() {
   const image = new Image();
   image.src = '/aborted';
 }
+window.addEventListener('DOMContentLoaded', () => {
+  const root = document.querySelector('#shadow-host').attachShadow({mode: 'open'});
+  root.innerHTML = `<button id="shadow-button" onclick="this.textContent='Shadow clicked'">Shadow</button>`;
+});
 </script></head><body>
 <input id='name'>
 <label for='email'>Email</label><input id='email'>
@@ -63,7 +67,19 @@ function requestAborted() {
 <div id='listed'><button class='item'>Listed</button></div>
 <button id='replace-list' onclick="replaceList()">Replace list</button>
 <button id='request-aborted' onclick="requestAborted()">Abort request</button>
+<input id='upload' type='file' onchange="document.querySelector('#title').textContent=this.files[0].name">
+<button id='popup' onclick="window.open('/popup.html')">Popup</button>
+<button id='dialog' onclick="alert('OpenPage dialog')">Dialog</button>
+<button id='read-state' onclick="document.querySelector('#title').textContent=[localStorage.getItem('local'),sessionStorage.getItem('session'),document.cookie].join('|')">Read state</button>
+<iframe id='child-frame' src='/frame.html'></iframe>
+<div id='shadow-host'></div>
 </body></html>"""
+
+FRAME_HTML = """<!doctype html><html><head><title>Child Frame</title></head><body>
+<button id='frame-button' onclick="this.textContent='Frame clicked'">Frame</button>
+</body></html>"""
+
+POPUP_HTML = """<!doctype html><html><head><title>Popup Page</title></head><body>Popup</body></html>"""
 
 
 @unittest.skipUnless(Path(CHROME).is_file(), "Chrome/Chromium is not installed")
@@ -71,6 +87,8 @@ class BrowserEndToEndTests(unittest.TestCase):
     def test_local_http_page_navigation_queries_interaction_and_screenshot(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             Path(directory, "index.html").write_text(HTML, encoding="utf-8")
+            Path(directory, "frame.html").write_text(FRAME_HTML, encoding="utf-8")
+            Path(directory, "popup.html").write_text(POPUP_HTML, encoding="utf-8")
             with socket.socket() as probe:
                 probe.bind(("127.0.0.1", 0))
                 port = probe.getsockname()[1]
@@ -185,6 +203,74 @@ class BrowserEndToEndTests(unittest.TestCase):
                     page.click("#replace-list")
                     with self.assertRaisesRegex(RuntimeError, "detached"):
                         listed.click()
+
+                    frame = page.frame("#child-frame", timeout_ms=2_000)
+                    self.assertEqual(frame.title(), "Child Frame")
+                    self.assertIn("frame.html", frame.url())
+                    frame.find("#frame-button").click()
+                    self.assertEqual(frame.find("#frame-button").text(), "Frame clicked")
+
+                    shadow = page.find("#shadow-host").shadow_root()
+                    self.assertIsNotNone(shadow)
+                    self.assertIn("shadow-button", shadow.html())
+                    shadow.find("#shadow-button").click()
+                    self.assertEqual(shadow.find("#shadow-button").text(), "Shadow clicked")
+                    self.assertEqual(shadow.host().attr("id"), "shadow-host")
+                    self.assertTrue(shadow.snapshot())
+
+                    upload = Path(directory, "upload.txt")
+                    upload.write_text("upload", encoding="utf-8")
+                    self.assertTrue(
+                        page.click_to_upload("#upload", [str(upload)], timeout_ms=2_000)
+                    )
+                    self.assertEqual(page.text("#title"), "upload.txt")
+
+                    popup = page.click_for_new_page("#popup", timeout_ms=2_000)
+                    self.assertIsNotNone(popup)
+                    self.assertEqual(popup.title(), "Popup Page")
+                    popup.close()
+
+                    dialog_errors = []
+
+                    def open_dialog() -> None:
+                        try:
+                            page.click("#dialog")
+                        except Exception as exc:
+                            dialog_errors.append(exc)
+
+                    dialog_thread = threading.Thread(target=open_dialog)
+                    dialog_thread.start()
+                    deadline = time.monotonic() + 2
+                    while time.monotonic() < deadline and not page.has_alert():
+                        time.sleep(0.02)
+                    self.assertTrue(page.has_alert())
+                    self.assertEqual(page.alert_text(), "OpenPage dialog")
+                    self.assertEqual(page.handle_alert(True), "OpenPage dialog")
+                    dialog_thread.join(2)
+                    self.assertFalse(dialog_thread.is_alive())
+                    self.assertFalse(dialog_errors)
+
+                    page.set_cookie("openpage", "cookie", url=page.url())
+                    page.set_local_storage("local", "L")
+                    page.set_session_storage("session", "S")
+                    page.click("#read-state")
+                    self.assertIn("L|S|", page.text("#title"))
+                    self.assertIn("openpage=cookie", page.text("#title"))
+                    self.assertIn("openpage=cookie", page.cookie_header())
+
+                    page.set_zoom_factor(1.25)
+                    self.assertAlmostEqual(page.zoom_factor(), 1.25)
+                    page.reset_zoom_factor()
+                    self.assertAlmostEqual(page.zoom_factor(), 1.0)
+                    downloaded = Path(directory, "downloaded-frame.html")
+                    self.assertEqual(
+                        Path(page.download_to(f"http://127.0.0.1:{port}/frame.html", str(downloaded))),
+                        downloaded,
+                    )
+                    self.assertIn("Child Frame", downloaded.read_text(encoding="utf-8"))
+                    self.assertEqual(page.ready_state(), "complete")
+                    self.assertFalse(page.is_loading())
+                    self.assertTrue(page.wait_for_doc_loaded(timeout_ms=2_000))
 
                     mock_page = browser.new_page()
                     interceptor = mock_page.intercept()
