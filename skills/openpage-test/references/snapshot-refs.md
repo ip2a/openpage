@@ -97,6 +97,19 @@ openpage snapshot --session agent
 openpage click @e3 --session agent
 ```
 
+When the click is expected to navigate, combine the click with the existing
+navigation-token wait:
+
+```bash
+openpage click @e3 --wait-navigation --session agent
+```
+
+Pass secrets through stdin rather than process arguments:
+
+```bash
+printf '%s' "$PASSWORD" | openpage fill @e2 --stdin --session agent
+```
+
 over:
 
 ```bash
@@ -116,6 +129,9 @@ OPENPAGE_CONTENT_BOUNDARIES=1 \
 OPENPAGE_MAX_OUTPUT_CHARS=2000 \
 cargo run --manifest-path rust/Cargo.toml --bin openpage -- snapshot --session agent
 ```
+
+Use `snapshot --compact` when the caller only needs the selected text or JSON
+representation and should not receive duplicate `refs` metadata.
 
 This helps separate page content from surrounding tool chatter. It does **not** make page content trustworthy.
 

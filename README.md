@@ -90,6 +90,15 @@ cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- serve 
 cargo run --manifest-path rust/apps/openpage/Cargo.toml --bin openpage -- mcp --session agent
 ```
 
+标准登录流程可以直接使用 AX 快照、stdin 安全输入和点击后导航等待：
+
+```bash
+openpage snapshot --session agent
+printf '%s' "$OPENPAGE_PASSWORD" | openpage fill @e2 --stdin --session agent
+openpage click @e3 --wait-navigation --session agent
+openpage snapshot --mode semantic --compact --session agent
+```
+
 ## 设计边界
 
 - Rust 核心是唯一行为来源。
