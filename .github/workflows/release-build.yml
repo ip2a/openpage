@@ -122,3 +122,34 @@ jobs:
           name: openpage-darwin-x64
           path: dist/darwin-x64/*
           if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Package tarballs and checksums
+        shell: bash
+        run: |
+          set -e
+          for id in darwin-arm64 darwin-x64 linux-x64-gnu linux-arm64-gnu win32-x64-msvc; do
+            src="dist/openpage-$id"
+            if [ ! -d "$src" ]; then echo "[warn] missing $src, skipping"; continue; fi
+            if [ "$id" = "win32-x64-msvc" ]; then bin="openpage.exe"; else bin="openpage"; fi
+            tar -C "$src" -czf "openpage-$id.tar.gz" "$bin"
+            sha256sum "openpage-$id.tar.gz" > "openpage-$id.tar.gz.sha256"
+          done
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            openpage-*.tar.gz
+            openpage-*.tar.gz.sha256
+          generate_release_notes: true
