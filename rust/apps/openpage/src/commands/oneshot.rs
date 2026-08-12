@@ -728,7 +728,7 @@ fn run_click(args: ClickArgs) -> OpenPageResult<()> {
     let mut result = rpc_page(
         &args.session,
         "element.click",
-        json!({"locator": args.locator}),
+        json!({"locator": args.locator, "expected_revision": args.expected_revision}),
     )?;
     if !args.wait_navigation {
         return print_page_result(&args.session, result);
@@ -765,7 +765,7 @@ fn run_fill(args: FillArgs) -> OpenPageResult<()> {
     print_json(simple_ok(rpc_page(
         &args.session,
         "element.input",
-        json!({"locator": args.locator, "text": text}),
+        json!({"locator": args.locator, "text": text, "expected_revision": args.expected_revision}),
     )?))
 }
 
@@ -4062,6 +4062,30 @@ mod tests {
             panic!("expected click command");
         };
         assert!(args.wait_navigation);
+    }
+
+    #[test]
+    fn parses_click_and_fill_expected_revision() {
+        let cli = Cli::try_parse_from(["openpage", "click", "@e2", "--expected-revision", "r_7"])
+            .unwrap();
+        let Command::Click(args) = cli.command else {
+            panic!("expected click command");
+        };
+        assert_eq!(args.expected_revision.as_deref(), Some("r_7"));
+
+        let cli = Cli::try_parse_from([
+            "openpage",
+            "fill",
+            "@e2",
+            "value",
+            "--expected-revision",
+            "r_7",
+        ])
+        .unwrap();
+        let Command::Fill(args) = cli.command else {
+            panic!("expected fill command");
+        };
+        assert_eq!(args.expected_revision.as_deref(), Some("r_7"));
     }
 
     #[test]

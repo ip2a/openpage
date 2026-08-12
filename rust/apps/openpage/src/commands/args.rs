@@ -578,6 +578,9 @@ pub struct ElementArgs {
 #[derive(Debug, Args)]
 pub struct ClickArgs {
     pub locator: String,
+    /// Revision from the snapshot that produced an @ref locator
+    #[arg(long)]
+    pub expected_revision: Option<String>,
     /// Wait for the navigation triggered by this click to finish
     #[arg(long)]
     pub wait_navigation: bool,
@@ -599,6 +602,9 @@ pub struct OpenLinkArgs {
 #[derive(Debug, Args)]
 pub struct FillArgs {
     pub locator: String,
+    /// Revision from the snapshot that produced an @ref locator
+    #[arg(long)]
+    pub expected_revision: Option<String>,
     #[arg(required_unless_present = "stdin", conflicts_with = "stdin")]
     pub text: Option<String>,
     /// Read the value from stdin instead of exposing it in process arguments
