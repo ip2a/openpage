@@ -25,6 +25,20 @@ pub mod tools;
 pub mod upload;
 pub mod window;
 
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    static PROCESS_STATE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    pub(crate) fn lock_process_state() -> MutexGuard<'static, ()> {
+        PROCESS_STATE_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
+
 pub use alert::AlertTracker;
 pub use browser::{
     Browser, BrowserPageUrlInput, BrowserTabReference, BrowserTabSelector, BrowserTabTargetsInput,

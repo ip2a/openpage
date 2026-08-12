@@ -598,7 +598,6 @@ fn find_in_path(executable: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
@@ -607,8 +606,6 @@ mod tests {
     };
     use crate::Settings;
     use crate::settings::scoped_test_settings;
-
-    static CONFIG_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     struct EnvGuard {
         key: &'static str,
@@ -669,7 +666,7 @@ mod tests {
 
     #[test]
     fn resolved_config_uses_workspace_over_user() {
-        let _lock = CONFIG_TEST_LOCK.lock().expect("config test lock");
+        let _lock = crate::test_support::lock_process_state();
         let home = temp_dir("home");
         let cwd = temp_dir("cwd");
         let user_dir = home.join(".openpage");
@@ -711,7 +708,7 @@ mod tests {
 
     #[test]
     fn resolved_config_uses_env_over_workspace_and_user() {
-        let _lock = CONFIG_TEST_LOCK.lock().expect("config test lock");
+        let _lock = crate::test_support::lock_process_state();
         let home = temp_dir("home-env");
         let cwd = temp_dir("cwd-env");
         let user_dir = home.join(".openpage");
@@ -750,7 +747,7 @@ mod tests {
 
     #[test]
     fn resolved_config_tracks_user_data_dir_source() {
-        let _lock = CONFIG_TEST_LOCK.lock().expect("config test lock");
+        let _lock = crate::test_support::lock_process_state();
         let home = temp_dir("home-user-data-dir");
         let cwd = temp_dir("cwd-user-data-dir");
         let user_dir = home.join(".openpage");
@@ -778,7 +775,7 @@ mod tests {
 
     #[test]
     fn resolved_config_tracks_debugger_source() {
-        let _lock = CONFIG_TEST_LOCK.lock().expect("config test lock");
+        let _lock = crate::test_support::lock_process_state();
         let home = temp_dir("home-debugger-source");
         let cwd = temp_dir("cwd-debugger-source");
         let workspace_dir = cwd.join(".openpage");
@@ -804,7 +801,7 @@ mod tests {
 
     #[test]
     fn config_parse_errors_follow_language_setting() {
-        let _lock = CONFIG_TEST_LOCK.lock().expect("config test lock");
+        let _lock = crate::test_support::lock_process_state();
         let _settings = scoped_test_settings();
         Settings::reset();
 
@@ -849,7 +846,7 @@ mod tests {
 
     #[test]
     fn config_table_shape_errors_follow_language_setting() {
-        let _lock = CONFIG_TEST_LOCK.lock().expect("config test lock");
+        let _lock = crate::test_support::lock_process_state();
         let _settings = scoped_test_settings();
         Settings::reset();
 

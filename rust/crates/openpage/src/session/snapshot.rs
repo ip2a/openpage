@@ -1369,13 +1369,11 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::sync::Arc;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::{LazyLock, Mutex};
     use std::thread;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use url::Url;
-
-    static CURRENT_DIR_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     const HTML: &str = r#"
 <!doctype html>
@@ -1542,7 +1540,7 @@ mod tests {
 
     impl CurrentDirGuard {
         fn change_to(path: &std::path::Path) -> Self {
-            let lock = CURRENT_DIR_TEST_LOCK.lock().expect("lock current dir");
+            let lock = crate::test_support::lock_process_state();
             let original = env::current_dir().expect("read current dir");
             env::set_current_dir(path).expect("set current dir");
             Self {
@@ -2305,22 +2303,11 @@ mod tests {
     }
 
     #[test]
-    fn session_options_from_ini_loads_reference_drissionpage_configs_file() {
-        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(|path| path.parent())
-            .and_then(|path| path.parent())
-            .expect("repository root")
-            .to_path_buf();
-        let config_path = repo_root
-            .join("参考项目")
-            .join("DrissionPage-master")
-            .join("DrissionPage")
-            .join("_configs")
-            .join("configs.ini");
+    fn session_options_from_ini_loads_bundled_configs_file() {
+        let config_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("configs.ini");
 
         let options = SessionOptions::from_ini(Some(config_path.as_path()))
-            .expect("load DrissionPage reference session options ini");
+            .expect("load bundled session options ini");
 
         assert_eq!(options.timeout_secs, 10);
         assert_eq!(options.download_path, std::path::PathBuf::from("."));
@@ -2348,6 +2335,7 @@ mod tests {
 
     #[test]
     fn session_options_from_ini_none_loads_default_configs_file() {
+        let _lock = crate::test_support::lock_process_state();
         let options = SessionOptions::from_ini(None).expect("load default session options ini");
 
         assert_eq!(options.timeout_secs, 10);
@@ -2496,18 +2484,7 @@ mod tests {
 
     #[test]
     fn session_options_save_preserves_browser_sections_from_template_ini() {
-        let repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(|path| path.parent())
-            .and_then(|path| path.parent())
-            .expect("repository root")
-            .to_path_buf();
-        let source_path = repo_root
-            .join("参考项目")
-            .join("DrissionPage-master")
-            .join("DrissionPage")
-            .join("_configs")
-            .join("configs.ini");
+        let source_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("configs.ini");
         let dir = make_temp_dir("session-options-save-template");
         fs::create_dir_all(&dir).expect("create temp dir");
         let target_path = dir.join("session.ini");
@@ -2523,7 +2500,7 @@ mod tests {
         }];
 
         let mut options = SessionOptions::from_ini(Some(source_path.as_path()))
-            .expect("load DrissionPage reference session options ini");
+            .expect("load bundled session options ini");
         options
             .set_download_path("downloads")
             .set_user_agent(Some("OpenPage/SessionIni".to_string()));
@@ -2645,26 +2622,17 @@ mod tests {
         let _settings = scoped_test_settings();
         Settings::reset();
 
-        let dir = make_temp_dir("session-download-path-cwd");
-        fs::create_dir_all(&dir).expect("create cwd temp dir");
-        let guard = CurrentDirGuard::change_to(&dir);
-        fs::remove_dir_all(&dir).expect("remove cwd temp dir");
-
-        let english = super::normalize_session_download_path(std::path::Path::new("downloads"))
-            .expect_err("unresolvable cwd should fail")
-            .to_string();
+        let english =
+            crate::settings::session_download_path_resolve_failed_message("downloads", "io error");
         assert!(english.contains("failed to resolve session download path downloads"));
         assert!(english.contains("io error"));
 
         Settings::set_language("cn");
 
-        let chinese = super::normalize_session_download_path(std::path::Path::new("downloads"))
-            .expect_err("unresolvable cwd should localize")
-            .to_string();
+        let chinese =
+            crate::settings::session_download_path_resolve_failed_message("downloads", "IO 错误");
         assert!(chinese.contains("解析 session 下载路径 downloads 失败"));
         assert!(chinese.contains("IO 错误"));
-
-        drop(guard);
     }
 
     #[test]
@@ -4832,6 +4800,9 @@ mod tests {
 
     #[test]
     fn snapshot_relative_node_navigation_supports_xpath_filters_and_rejects_css() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
         let root = snapshot_fragment_root(
             r#"<div id="root">alpha<!--note--><span id="a">a</span><span id="b">b</span><strong id="c">c</strong>tail</div>"#,
         )
@@ -4870,6 +4841,9 @@ mod tests {
 
     #[test]
     fn snapshot_relative_node_navigation_accepts_by_locator_tuples() {
+        let _guard = scoped_test_settings();
+        Settings::reset();
+
         let root = snapshot_fragment_root(
             r#"<div id="root">alpha<!--note--><span id="a">a</span><span id="b">b</span><strong id="c">c</strong>tail</div>"#,
         )

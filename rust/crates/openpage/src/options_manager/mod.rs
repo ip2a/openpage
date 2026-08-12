@@ -522,7 +522,6 @@ mod tests {
     use std::env;
     use std::fs;
     use std::path::PathBuf;
-    use std::sync::{LazyLock, Mutex};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use serde_json::json;
@@ -530,8 +529,6 @@ mod tests {
     use super::{OptionsManager, parse_ini_json_like_value};
     use crate::Settings;
     use crate::settings::scoped_test_settings;
-
-    static CURRENT_DIR_TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     fn make_temp_dir(name: &str) -> PathBuf {
         let suffix = SystemTime::now()
@@ -550,7 +547,7 @@ mod tests {
 
     impl CurrentDirGuard {
         fn change_to(path: &PathBuf) -> Self {
-            let lock = CURRENT_DIR_TEST_LOCK.lock().expect("lock current dir");
+            let lock = crate::test_support::lock_process_state();
             let original = env::current_dir().expect("read current dir");
             env::set_current_dir(path).expect("set current dir");
             Self {

@@ -1426,15 +1426,21 @@ mod tests {
     struct EnvVarGuard {
         key: &'static str,
         previous: Option<std::ffi::OsString>,
+        _lock: std::sync::MutexGuard<'static, ()>,
     }
 
     impl EnvVarGuard {
         fn set(key: &'static str, value: &PathBuf) -> Self {
+            let lock = crate::test_support::lock_process_state();
             let previous = std::env::var_os(key);
             unsafe {
                 std::env::set_var(key, value);
             }
-            Self { key, previous }
+            Self {
+                key,
+                previous,
+                _lock: lock,
+            }
         }
     }
 

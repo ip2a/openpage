@@ -904,6 +904,9 @@ mod tests {
 
     #[test]
     fn shadow_root_selector_errors_preserve_timeouts() {
+        let _guard = crate::settings::scoped_test_settings();
+        Settings::reset();
+
         let timeout = shadow_root_selector_error(OpenPageError::Timeout("slow".to_string()));
         assert!(
             matches!(timeout, OpenPageError::Timeout(ref message) if message == "slow"),
