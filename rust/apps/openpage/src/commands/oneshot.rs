@@ -1,5 +1,6 @@
 use clap::Parser;
 use serde::{Deserialize, Serialize};
+use std::cell::RefCell;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -34,6 +35,10 @@ use openpage::daemon::client::{
 #[cfg(test)]
 use openpage::daemon::client::{daemon_inventory_summary_json, incomplete_daemon_reasons};
 use openpage::protocol::{Request, Response, print_output_json, simple_ok};
+
+thread_local! {
+    static CAPTURED_OUTPUT: RefCell<Option<Vec<Value>>> = const { RefCell::new(None) };
+}
 
 pub fn run(command: Command) -> OpenPageResult<i32> {
     match command {
@@ -568,7 +573,7 @@ fn run_html(args: SessionArgs) -> OpenPageResult<()> {
 }
 
 fn run_snapshot(args: SnapshotArgs) -> OpenPageResult<()> {
-    print_json(simple_ok(rpc_page(
+    let result = rpc_page(
         &args.session,
         "page.snapshot",
         json!({
@@ -579,11 +584,16 @@ fn run_snapshot(args: SnapshotArgs) -> OpenPageResult<()> {
             "depth": args.depth,
             "selector": args.selector,
         }),
-    )?))
+    )?;
+    print_json(simple_ok(paginate_snapshot_result(
+        result,
+        args.max_output,
+        args.offset,
+    )))
 }
 
 fn run_screenshot(args: ScreenshotArgs) -> OpenPageResult<()> {
-    let _ = rpc_page(
+    let mut result = rpc_page(
         &args.session,
         "page.screenshot",
         json!({
@@ -591,11 +601,12 @@ fn run_screenshot(args: ScreenshotArgs) -> OpenPageResult<()> {
             "full_page": args.full_page,
         }),
     )?;
-    print_json(simple_ok(json!({"saved": true, "output": args.output})))
+    add_screenshot_metadata(&mut result, &args.output)?;
+    print_json(simple_ok(result))
 }
 
 fn run_screenshot_element(args: ScreenshotElementArgs) -> OpenPageResult<()> {
-    let _ = rpc_page(
+    let mut result = rpc_page(
         &args.session,
         "element.screenshot",
         json!({
@@ -603,7 +614,114 @@ fn run_screenshot_element(args: ScreenshotElementArgs) -> OpenPageResult<()> {
             "path": args.output,
         }),
     )?;
-    print_json(simple_ok(json!({"saved": true, "output": args.output})))
+    add_screenshot_metadata(&mut result, &args.output)?;
+    if let Some(object) = result.as_object_mut() {
+        object.insert("locator".to_string(), Value::String(args.locator));
+    }
+    print_json(simple_ok(result))
+}
+
+fn add_screenshot_metadata(result: &mut Value, output: &Path) -> OpenPageResult<()> {
+    let size = fs::metadata(output)
+        .map_err(|err| OpenPageError::Io(format!("read screenshot metadata: {err}")))?
+        .len();
+    let object = result.as_object_mut().ok_or_else(|| {
+        OpenPageError::Serialization("screenshot response must be a JSON object".to_string())
+    })?;
+    object.insert("saved".to_string(), Value::Bool(true));
+    object.insert("output".to_string(), json!(output));
+    object.insert("size".to_string(), json!(size));
+    object.insert(
+        "mime_type".to_string(),
+        Value::String("image/png".to_string()),
+    );
+    object.insert("truncated".to_string(), Value::Bool(false));
+    object.insert("next_offset".to_string(), Value::Null);
+    Ok(())
+}
+
+fn paginate_snapshot_result(mut result: Value, max_output: usize, offset: usize) -> Value {
+    let Some(object) = result.as_object_mut() else {
+        return result;
+    };
+
+    if let Some(entries) = object.get("snapshot").and_then(Value::as_array).cloned() {
+        let total = entries.len();
+        let start = offset.min(total);
+        let mut used = 0usize;
+        let mut page = Vec::new();
+        for entry in entries.iter().skip(start) {
+            let entry_size = serde_json::to_string(entry)
+                .map(|value| value.chars().count())
+                .unwrap_or_default();
+            if !page.is_empty() && used.saturating_add(entry_size) > max_output {
+                break;
+            }
+            used = used.saturating_add(entry_size);
+            page.push(entry.clone());
+        }
+        let end = start + page.len();
+        let page_refs = page
+            .iter()
+            .filter_map(|entry| entry.get("ref").and_then(Value::as_str))
+            .collect::<std::collections::HashSet<_>>();
+        if let Some(refs) = object.get_mut("refs").and_then(Value::as_object_mut) {
+            refs.retain(|key, _| page_refs.contains(key.as_str()));
+        }
+        object.remove("text");
+        object.insert("snapshot".to_string(), Value::Array(page));
+        object.insert("count".to_string(), json!(end - start));
+        object.insert("total_count".to_string(), json!(total));
+        object.insert("offset".to_string(), json!(start));
+        let has_more = end < total;
+        let daemon_truncated = object
+            .get("truncated")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        object.insert(
+            "truncated".to_string(),
+            Value::Bool(has_more || daemon_truncated),
+        );
+        object.insert(
+            "next_offset".to_string(),
+            if has_more { json!(end) } else { Value::Null },
+        );
+        return result;
+    }
+
+    if let Some(text) = object
+        .get("text")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+    {
+        let chars = text.chars().collect::<Vec<_>>();
+        let start = offset.min(chars.len());
+        let end = start.saturating_add(max_output).min(chars.len());
+        let page = chars[start..end].iter().collect::<String>();
+        if let Some(refs) = object.get_mut("refs").and_then(Value::as_object_mut) {
+            refs.retain(|key, _| page.contains(key));
+        }
+        object.insert("text".to_string(), Value::String(page));
+        object.insert("offset".to_string(), json!(start));
+        let has_more = end < chars.len();
+        let daemon_truncated = object
+            .get("truncated")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        object.insert(
+            "truncated".to_string(),
+            Value::Bool(has_more || daemon_truncated),
+        );
+        object.insert(
+            "next_offset".to_string(),
+            if has_more { json!(end) } else { Value::Null },
+        );
+        return result;
+    }
+
+    object.entry("truncated").or_insert(Value::Bool(false));
+    object.insert("next_offset".to_string(), Value::Null);
+    result
 }
 
 fn run_click(args: ClickArgs) -> OpenPageResult<()> {
@@ -1731,35 +1849,87 @@ fn run_batch(args: BatchArgs) -> OpenPageResult<i32> {
             return Ok(1);
         }
     };
+    let total = commands.len();
+    let mut entries = Vec::with_capacity(total);
     let mut had_error = false;
 
-    for command_args in commands {
+    for (index, command_args) in commands.into_iter().enumerate() {
         if command_args.is_empty() {
             continue;
         }
-
-        let command = match parse_batch_command(&command_args) {
-            Ok(command) => command,
-            Err(err) => {
-                print_json(batch_error_payload(&err))?;
-                had_error = true;
-                if args.bail {
-                    break;
-                }
-                continue;
-            }
+        let command_text = command_args.join(" ");
+        let entry = match parse_batch_command(&command_args) {
+            Ok(command) => match capture_command_output(command) {
+                Ok(payload) => batch_entry(index, command_text, payload),
+                Err(err) => batch_entry(
+                    index,
+                    command_text,
+                    openpage::protocol::simple_openpage_error(&err),
+                ),
+            },
+            Err(err) => batch_entry(index, command_text, batch_error_payload(&err)),
         };
-
-        if let Err(err) = run_single(command) {
-            print_json(openpage::protocol::simple_openpage_error(&err))?;
-            had_error = true;
-            if args.bail {
-                break;
-            }
+        let failed = !entry["ok"].as_bool().unwrap_or(false);
+        entries.push(entry);
+        had_error |= failed;
+        if failed && args.bail {
+            break;
         }
     }
 
+    let executed = entries.len();
+    let result = json!({
+        "commands": entries,
+        "total": total,
+        "executed": executed,
+        "bailed": args.bail && had_error && executed < total,
+        "per_command": args.per_command,
+    });
+    print_json(simple_ok(result))?;
     Ok(if had_error { 1 } else { 0 })
+}
+
+fn capture_command_output(command: Command) -> OpenPageResult<Value> {
+    CAPTURED_OUTPUT.with(|captured| {
+        let previous = captured.replace(Some(Vec::new()));
+        debug_assert!(
+            previous.is_none(),
+            "batch output capture must not be nested"
+        );
+    });
+    let run_result = run_single(command);
+    let output = CAPTURED_OUTPUT.with(|captured| captured.replace(None).unwrap_or_default());
+    run_result?;
+    match output.as_slice() {
+        [payload] => Ok(payload.clone()),
+        [] => Err(OpenPageError::Serialization(
+            "batch command produced no JSON output".to_string(),
+        )),
+        _ => Err(OpenPageError::Serialization(
+            "batch command produced multiple JSON outputs".to_string(),
+        )),
+    }
+}
+
+fn batch_entry(index: usize, command: String, payload: Value) -> Value {
+    if payload.get("ok").and_then(Value::as_bool) == Some(true) {
+        json!({
+            "index": index,
+            "command": command,
+            "ok": true,
+            "result": payload.get("result").cloned().unwrap_or(Value::Null),
+        })
+    } else {
+        json!({
+            "index": index,
+            "command": command,
+            "ok": false,
+            "error": payload.get("error").cloned().unwrap_or_else(|| json!({
+                "kind": "unknown",
+                "message": "command failed without a structured error",
+            })),
+        })
+    }
 }
 
 fn batch_error_payload(error: &OpenPageError) -> Value {
@@ -2143,7 +2313,17 @@ fn run_diff(command: DiffCommand) -> OpenPageResult<()> {
 }
 
 fn print_json(value: Value) -> OpenPageResult<()> {
-    print_output_json(&value);
+    let captured = CAPTURED_OUTPUT.with(|captured| {
+        let mut captured = captured.borrow_mut();
+        let Some(values) = captured.as_mut() else {
+            return false;
+        };
+        values.push(value.clone());
+        true
+    });
+    if !captured {
+        print_output_json(&value);
+    }
     Ok(())
 }
 
@@ -5373,6 +5553,117 @@ mod tests {
                 .exists(),
             "inactive read command should not create version sidecar"
         );
+    }
+
+    #[test]
+    fn screenshot_metadata_includes_size_revision_and_pagination_fields() {
+        let output = unique_openpage_home("screenshot-metadata").join("page.png");
+        std::fs::create_dir_all(output.parent().unwrap()).unwrap();
+        std::fs::write(&output, b"png-bytes").unwrap();
+        let mut result = json!({"saved": true, "revision": "r_3"});
+
+        super::add_screenshot_metadata(&mut result, &output).unwrap();
+
+        assert_eq!(result["revision"], "r_3");
+        assert_eq!(result["size"], 9);
+        assert_eq!(result["mime_type"], "image/png");
+        assert_eq!(result["truncated"], false);
+        assert!(result["next_offset"].is_null());
+        let _ = std::fs::remove_dir_all(output.parent().unwrap());
+    }
+
+    #[test]
+    fn snapshot_defaults_to_json_with_pagination_defaults() {
+        let cli = Cli::try_parse_from(["openpage", "snapshot", "--session", "agent"]).unwrap();
+        let Command::Snapshot(args) = cli.command else {
+            panic!("expected snapshot command");
+        };
+        assert!(matches!(
+            args.format,
+            crate::cli::args::SnapshotFormat::Json
+        ));
+        assert_eq!(args.max_output, 20_000);
+        assert_eq!(args.offset, 0);
+    }
+
+    #[test]
+    fn parses_screenshot_output_flag() {
+        let cli = Cli::try_parse_from([
+            "openpage",
+            "screenshot",
+            "--session",
+            "agent",
+            "--output",
+            "/tmp/page.png",
+        ])
+        .unwrap();
+        let Command::Screenshot(args) = cli.command else {
+            panic!("expected screenshot command");
+        };
+        assert_eq!(args.output, PathBuf::from("/tmp/page.png"));
+    }
+
+    #[test]
+    fn paginates_json_snapshot_without_dangling_refs() {
+        let result = super::paginate_snapshot_result(
+            json!({
+                "revision": "r_4",
+                "text": "full text",
+                "refs": {
+                    "@e1": {"revision": "r_4"},
+                    "@e2": {"revision": "r_4"},
+                    "@e3": {"revision": "r_4"}
+                },
+                "snapshot": [
+                    {"ref": "@e1", "name": "one"},
+                    {"ref": "@e2", "name": "two"},
+                    {"ref": "@e3", "name": "three"}
+                ]
+            }),
+            1,
+            1,
+        );
+
+        assert_eq!(result["revision"], "r_4");
+        assert_eq!(result["snapshot"].as_array().unwrap().len(), 1);
+        assert_eq!(result["snapshot"][0]["ref"], "@e2");
+        assert_eq!(result["refs"].as_object().unwrap().len(), 1);
+        assert!(result["refs"].get("@e2").is_some());
+        assert_eq!(result["count"], 1);
+        assert_eq!(result["total_count"], 3);
+        assert_eq!(result["truncated"], true);
+        assert_eq!(result["next_offset"], 2);
+        assert!(result.get("text").is_none());
+    }
+
+    #[test]
+    fn completed_snapshot_page_has_null_next_offset() {
+        let result = super::paginate_snapshot_result(
+            json!({"snapshot": [{"ref": "@e1"}], "refs": {"@e1": {}}}),
+            20_000,
+            0,
+        );
+        assert_eq!(result["truncated"], false);
+        assert!(result["next_offset"].is_null());
+    }
+
+    #[test]
+    fn batch_entries_preserve_structured_success_and_error() {
+        let success = super::batch_entry(
+            0,
+            "snapshot".to_string(),
+            json!({"ok": true, "result": {"revision": "r_2"}}),
+        );
+        let failure = super::batch_entry(
+            1,
+            "click @old".to_string(),
+            json!({"ok": false, "error": {"kind": "stale_ref", "retryable": true}}),
+        );
+
+        assert_eq!(success["index"], 0);
+        assert_eq!(success["result"]["revision"], "r_2");
+        assert_eq!(failure["index"], 1);
+        assert_eq!(failure["error"]["kind"], "stale_ref");
     }
 
     #[test]

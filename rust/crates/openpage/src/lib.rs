@@ -1,5 +1,6 @@
 pub mod alert;
 pub mod browser;
+pub mod capture;
 pub mod config;
 pub mod console;
 pub mod daemon;

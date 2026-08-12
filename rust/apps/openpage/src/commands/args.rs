@@ -433,7 +433,7 @@ pub struct SnapshotArgs {
     #[arg(long, value_enum, default_value_t = SnapshotMode::Interactive)]
     pub mode: SnapshotMode,
     /// Snapshot output shape inside the JSON result
-    #[arg(long, value_enum, default_value_t = SnapshotFormat::Text)]
+    #[arg(long, value_enum, default_value_t = SnapshotFormat::Json)]
     pub format: SnapshotFormat,
     /// Include raw element entries in addition to the compact text
     #[arg(long)]
@@ -447,6 +447,12 @@ pub struct SnapshotArgs {
     /// Restrict snapshot traversal to a CSS selector subtree
     #[arg(long)]
     pub selector: Option<String>,
+    /// Maximum snapshot content characters returned in this page
+    #[arg(long, default_value_t = 20_000)]
+    pub max_output: usize,
+    /// Entry or character offset for paginated snapshot output
+    #[arg(long, default_value_t = 0)]
+    pub offset: usize,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -545,6 +551,7 @@ pub struct ReloadArgs {
 
 #[derive(Debug, Args)]
 pub struct ScreenshotArgs {
+    #[arg(long)]
     pub output: PathBuf,
     #[arg(long, default_value = "default")]
     pub session: String,
@@ -555,6 +562,7 @@ pub struct ScreenshotArgs {
 #[derive(Debug, Args)]
 pub struct ScreenshotElementArgs {
     pub locator: String,
+    #[arg(long)]
     pub output: PathBuf,
     #[arg(long, default_value = "default")]
     pub session: String,
@@ -1415,12 +1423,15 @@ pub struct ServeArgs {
 
 #[derive(Debug, Args)]
 #[command(
-    after_help = "Examples:\n  openpage batch --bail \"browser start --session review --headless https://example.com\" \"wait-for-ready --session review\" \"snapshot --session review\" \"browser stop --session review\"\n\n  printf '%s\\n' '[ [\"browser\",\"start\",\"--session\",\"review\",\"--headless\",\"https://example.com\"], [\"title\",\"--session\",\"review\"], [\"browser\",\"stop\",\"--session\",\"review\"] ]' | openpage batch\n\nOutput:\n  Each command writes its own JSON result as a separate line. `--bail` stops after the first failing command."
+    after_help = "Examples:\n  openpage batch --bail \"browser start --session review --headless https://example.com\" \"wait-for-ready --session review\" \"snapshot --session review\" \"browser stop --session review\"\n\n  printf '%s\\n' '[ [\"browser\",\"start\",\"--session\",\"review\",\"--headless\",\"https://example.com\"], [\"title\",\"--session\",\"review\"], [\"browser\",\"stop\",\"--session\",\"review\"] ]' | openpage batch\n\nOutput:\n  Returns one JSON envelope with a `result.commands` array. `--bail` stops after the first failing command."
 )]
 pub struct BatchArgs {
     /// Stop on the first failing command
     #[arg(long)]
     pub bail: bool,
+    /// Return one structured entry per command (enabled by default)
+    #[arg(long, default_value_t = true)]
+    pub per_command: bool,
     /// Quoted commands to execute. If omitted, reads JSON from stdin as an array of argv arrays.
     pub commands: Vec<String>,
 }
