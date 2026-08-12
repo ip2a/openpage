@@ -1,42 +1,55 @@
-.DS_Store
-.pytest_cache/
-.ruff_cache/
-__pycache__/
-*.pyc
-*.pyo
-*.so
-*.dylib
-*.dll
-*.egg-info/
-.venv/
-python/.venv/
-python/.mypy_cache/
-python/.coverage
-rust/target/
-dist/
-wheelhouse/
-target/
+# Default: ignore everything at the repository root.
+/*
 
-# Local JS dependency installs
-node_modules/
-package-lock.json
+# Repository metadata and core files.
+!/.gitignore
+!/README.md
+!/platforms.toml
+!/pyproject.toml
+!/run_debug.sh
 
-# Local editor / analysis state
-.idea/
-.codegraph/
+# Project whitelist.
+!/.github/
+!/.github/**
+!/desktop/
+!/desktop/**
+!/examples/
+!/examples/**
+!/npm/
+!/npm/**
+!/python/
+!/python/**
+!/refactor/
+!/refactor/**
+!/rust/
+!/rust/**
+!/scripts/
+!/scripts/**
+!/skills/
+!/skills/**
+!/tests/
+!/tests/**
 
-# Local unpacked competitor/reference projects
-参考项目/agent-browser-main/
-参考项目/agent-browser-main.zip
-参考项目/stagehand-main/
-参考项目/stagehand-main.zip
-参考项目/DrissionPage-master/.codegraph/
-package.json
-重要参考文档/
-desktop/openpage/node_modules/
-desktop/openpage/dist/
-desktop/openpage/src-tauri/target/
-
-desktop/openpage/tsconfig.tsbuildinfo
-desktop/openpage/src-tauri/Cargo.lock
-desktop/openpage/src-tauri/gen/
+# Generated files inside whitelisted directories.
+**/.DS_Store
+**/.pytest_cache/
+**/.ruff_cache/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.so
+**/*.dylib
+**/*.dll
+**/*.egg-info/
+**/.venv/
+**/.mypy_cache/
+**/.coverage
+**/node_modules/
+**/dist/
+**/npm/packages/internal/openpage-bin-*/bin/openpage
+**/target/
+**/wheelhouse/
+**/package-lock.json
+**/tsconfig.tsbuildinfo
+/desktop/openpage/src-tauri/Cargo.lock
+/desktop/openpage/src-tauri/gen/
