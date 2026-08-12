@@ -558,6 +558,7 @@ pub(super) fn snapshot_payload(state: &mut ServePage, params: &Value) -> OpenPag
         }
     };
     state.register_snapshot_entries(&mut entries);
+    let revision = state.current_revision();
 
     let mut payload = payload_object(
         "text",
@@ -570,7 +571,10 @@ pub(super) fn snapshot_payload(state: &mut ServePage, params: &Value) -> OpenPag
         title.as_deref(),
     );
     if !options.compact {
-        payload.insert("refs".to_string(), Value::Object(snapshot_refs(&entries)));
+        payload.insert(
+            "refs".to_string(),
+            Value::Object(snapshot_refs(&entries, &revision)),
+        );
     }
     payload.insert("count".to_string(), json!(entries.len()));
     payload.insert("mode".to_string(), json!(options.mode.as_str()));
@@ -733,7 +737,7 @@ fn format_snapshot_text(entries: &[Value], title: Option<&str>, origin: Option<&
     lines.join("\n")
 }
 
-fn snapshot_refs(entries: &[Value]) -> Map<String, Value> {
+fn snapshot_refs(entries: &[Value], revision: &str) -> Map<String, Value> {
     let mut refs = Map::new();
     for entry in entries {
         let Some(obj) = entry.as_object() else {
@@ -744,6 +748,7 @@ fn snapshot_refs(entries: &[Value]) -> Map<String, Value> {
         };
 
         let mut ref_obj = Map::new();
+        ref_obj.insert("revision".to_string(), Value::String(revision.to_string()));
         if let Some(role) = obj.get("role").and_then(Value::as_str) {
             ref_obj.insert("role".to_string(), Value::String(role.to_string()));
         }
@@ -856,5 +861,17 @@ mod tests {
         );
 
         assert_eq!(text, "@e1 button \"Sign in\"");
+    }
+    #[test]
+    fn snapshot_refs_include_revision() {
+        let entries = vec![json!({
+            "ref": "@e1",
+            "role": "button",
+            "name": "Save"
+        })];
+
+        let refs = snapshot_refs(&entries, "r_2");
+        assert_eq!(refs["@e1"]["revision"], "r_2");
+        assert_eq!(refs["@e1"]["role"], "button");
     }
 }

@@ -58,6 +58,10 @@ pub struct ResponseError {
     pub element_state: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_revision: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_revision: Option<String>,
 }
 
 impl Response {
@@ -124,6 +128,8 @@ impl Response {
                 matched_count: None,
                 element_state: None,
                 failure_reason: None,
+                current_revision: None,
+                expected_revision: None,
             }),
         }
     }
@@ -325,6 +331,13 @@ fn known_io_fix(detail: &str) -> Option<Cow<'static, str>> {
 }
 
 pub fn openpage_error_kind(error: &OpenPageError) -> &'static str {
+    if error
+        .diagnostic()
+        .and_then(|diagnostic| diagnostic.failure_reason.as_deref())
+        == Some("stale_ref")
+    {
+        return "stale_ref";
+    }
     match error.root() {
         OpenPageError::BrowserLaunch(_) => "browser_launch",
         OpenPageError::BrowserOperation(detail)
@@ -417,6 +430,8 @@ pub fn response_openpage_error(id: Option<Value>, error: &OpenPageError) -> Resp
         response_error.matched_count = diagnostic.matched_count;
         response_error.element_state = diagnostic.element_state.clone();
         response_error.failure_reason = diagnostic.failure_reason.clone();
+        response_error.current_revision = diagnostic.current_revision.clone();
+        response_error.expected_revision = diagnostic.expected_revision.clone();
     }
     response
 }
@@ -446,6 +461,15 @@ fn insert_error_diagnostic(
     if let Some(value) = &diagnostic.failure_reason {
         payload.insert("failure_reason".to_string(), Value::String(value.clone()));
     }
+    if let Some(value) = &diagnostic.current_revision {
+        payload.insert("current_revision".to_string(), Value::String(value.clone()));
+    }
+    if let Some(value) = &diagnostic.expected_revision {
+        payload.insert(
+            "expected_revision".to_string(),
+            Value::String(value.clone()),
+        );
+    }
 }
 
 pub fn openpage_error_from_kind(kind: &str, message: impl Into<String>) -> OpenPageError {
@@ -454,7 +478,7 @@ pub fn openpage_error_from_kind(kind: &str, message: impl Into<String>) -> OpenP
         "browser_launch" => OpenPageError::BrowserLaunch(message),
         "browser_operation" | "daemon_transient" => OpenPageError::BrowserOperation(message),
         "page_operation" => OpenPageError::PageOperation(message),
-        "element_not_found" => OpenPageError::ElementNotFound(message),
+        "element_not_found" | "stale_ref" => OpenPageError::ElementNotFound(message),
         "element_detached" => OpenPageError::ElementDetached(message),
         "element_ambiguous" => OpenPageError::ElementAmbiguous(message),
         "unsupported_locator" => OpenPageError::UnsupportedLocator(message),
@@ -485,6 +509,8 @@ pub fn openpage_error_from_response_error(error: ResponseError) -> OpenPageError
         matched_count: error.matched_count,
         element_state: error.element_state,
         failure_reason: error.failure_reason,
+        current_revision: error.current_revision,
+        expected_revision: error.expected_revision,
     };
     let result = openpage_error_from_structured_context(
         &error.kind,
@@ -669,6 +695,20 @@ struct ErrorContext<'a> {
 }
 
 fn openpage_error_context(error: &OpenPageError) -> ErrorContext<'_> {
+    if error
+        .diagnostic()
+        .and_then(|diagnostic| diagnostic.failure_reason.as_deref())
+        == Some("stale_ref")
+    {
+        return ErrorContext {
+            fix: Some(Cow::Borrowed(
+                "Run `openpage snapshot` again and retry with the new ref and revision.",
+            )),
+            retryable: Some(true),
+            suggested_action: Some("re-snapshot"),
+            ..ErrorContext::default()
+        };
+    }
     let detail = match error.root() {
         OpenPageError::BrowserLaunch(detail) => {
             return ErrorContext {
@@ -1146,12 +1186,16 @@ mod tests {
                 matched_count: Some(1),
                 element_state: Some("not actionable".to_string()),
                 failure_reason: Some("covered".to_string()),
+                current_revision: Some("r_2".to_string()),
+                expected_revision: Some("r_1".to_string()),
             });
         let response = response_openpage_error(None, &error);
         let serialized = serde_json::to_value(&response).expect("serialize response");
         assert_eq!(serialized["error"]["operation"], "click");
         assert_eq!(serialized["error"]["timeout"], 10_000);
         assert_eq!(serialized["error"]["matched_count"], 1);
+        assert_eq!(serialized["error"]["current_revision"], "r_2");
+        assert_eq!(serialized["error"]["expected_revision"], "r_1");
 
         let reconstructed =
             openpage_error_from_response_error(response.error.expect("response error"));
@@ -1653,6 +1697,15 @@ mod tests {
             }
             other => panic!("unexpected error variant: {other:?}"),
         }
+    }
+
+    #[test]
+    fn reconstructs_stale_ref_kind() {
+        let error = openpage_error_from_kind("stale_ref", "revision r_1 is stale");
+        assert!(matches!(
+            error,
+            OpenPageError::ElementNotFound(message) if message == "revision r_1 is stale"
+        ));
     }
 
     #[test]

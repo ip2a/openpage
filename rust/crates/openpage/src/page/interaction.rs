@@ -41,6 +41,7 @@ impl Page {
                     matched_count,
                     element_state: Some("not actionable".to_string()),
                     failure_reason: Some(failure_reason),
+                    ..ErrorDiagnostic::default()
                 })
             })
     }
@@ -81,6 +82,7 @@ impl Page {
                     matched_count,
                     element_state: Some("not editable".to_string()),
                     failure_reason: Some(failure_reason),
+                    ..ErrorDiagnostic::default()
                 })
             })
     }
@@ -107,6 +109,7 @@ impl Page {
                     matched_count,
                     element_state: Some("text unavailable".to_string()),
                     failure_reason: Some(failure_reason),
+                    ..ErrorDiagnostic::default()
                 })
             })
     }
@@ -133,6 +136,7 @@ impl Page {
                     matched_count,
                     element_state: Some("attribute unavailable".to_string()),
                     failure_reason: Some(failure_reason),
+                    ..ErrorDiagnostic::default()
                 })
             })
     }

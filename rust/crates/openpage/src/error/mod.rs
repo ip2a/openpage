@@ -13,6 +13,8 @@ pub struct ErrorDiagnostic {
     pub matched_count: Option<usize>,
     pub element_state: Option<String>,
     pub failure_reason: Option<String>,
+    pub current_revision: Option<String>,
+    pub expected_revision: Option<String>,
 }
 
 #[derive(Debug)]
@@ -141,6 +143,8 @@ mod tests {
                 matched_count: Some(0),
                 element_state: Some("not actionable".to_string()),
                 failure_reason: Some("missing".to_string()),
+                current_revision: Some("r_2".to_string()),
+                expected_revision: Some("r_1".to_string()),
             });
 
         assert!(matches!(error.root(), OpenPageError::ElementNotFound(_)));
@@ -149,6 +153,8 @@ mod tests {
         assert_eq!(diagnostic.locator.as_deref(), Some("#submit"));
         assert_eq!(diagnostic.timeout_ms, Some(10_000));
         assert_eq!(diagnostic.matched_count, Some(0));
+        assert_eq!(diagnostic.current_revision.as_deref(), Some("r_2"));
+        assert_eq!(diagnostic.expected_revision.as_deref(), Some("r_1"));
         assert_eq!(error.to_string(), "element not found: missing");
     }
 }

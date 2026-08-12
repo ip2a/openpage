@@ -16,7 +16,7 @@ use crate::browser::{DownloadFileExistsMode, LoadMode};
 use crate::config::{ConfigOverrides, load_resolved_config};
 use crate::download::DownloadMission;
 use crate::element::Element;
-use crate::error::{OpenPageError, OpenPageResult};
+use crate::error::{ErrorDiagnostic, OpenPageError, OpenPageResult};
 use crate::page::{ActionsDragData, PageNavigationSnapshot};
 use crate::page::{Frame, Page};
 use crate::protocol::{Request, Response};
@@ -24,10 +24,12 @@ use crate::recorder::{RecordedAction, RecordedFlow, RecordedTarget, RecordedValu
 use crate::settings::wait_timeout_result;
 
 use ref_registry::{RefRegistry, parse_ref};
+use revision::RevisionRegistry;
 
 pub mod client;
 mod operations;
 mod ref_registry;
+mod revision;
 mod snapshot;
 
 pub fn run_tcp(port: u16, session: &str) -> OpenPageResult<()> {
@@ -119,6 +121,7 @@ struct ServePage {
     attached: bool,
     active_frame_target: Option<String>,
     refs: RefCell<RefRegistry>,
+    revisions: RevisionRegistry,
     navigation_baseline: Option<NavigationBaseline>,
     navigation_tickets: HashMap<String, NavigationTicket>,
     next_navigation_ticket_id: u64,
@@ -149,6 +152,7 @@ impl ServePage {
             attached,
             active_frame_target: None,
             refs: RefCell::new(RefRegistry::default()),
+            revisions: RevisionRegistry::default(),
             navigation_baseline: None,
             navigation_tickets: HashMap::new(),
             next_navigation_ticket_id: 1,
@@ -222,6 +226,54 @@ impl ServePage {
 
     fn current_target_id(&self) -> String {
         self.page.target_id()
+    }
+
+    fn current_revision(&self) -> String {
+        self.revisions.current(&self.current_target_id())
+    }
+
+    fn bump_revision(&mut self) -> String {
+        self.revisions.bump(&self.current_target_id())
+    }
+
+    fn validate_expected_revision(
+        &self,
+        operation: &str,
+        locator: &str,
+        expected_revision: Option<&str>,
+    ) -> OpenPageResult<()> {
+        validate_expected_revision(
+            operation,
+            locator,
+            &self.current_revision(),
+            expected_revision,
+        )
+    }
+
+    fn find_revisioned(
+        &self,
+        operation: &str,
+        locator: &str,
+        expected_revision: Option<&str>,
+    ) -> OpenPageResult<Element> {
+        if parse_ref(locator).is_none() {
+            return self.find(locator);
+        }
+        self.validate_expected_revision(operation, locator, expected_revision)?;
+        self.find(locator).map_err(|error| {
+            let message = match error.root() {
+                OpenPageError::ElementNotFound(message) => message.clone(),
+                _ => return error,
+            };
+            OpenPageError::ElementNotFound(message).diagnosed(ErrorDiagnostic {
+                operation: Some(operation.to_string()),
+                locator: Some(locator.to_string()),
+                current_revision: Some(self.current_revision()),
+                expected_revision: expected_revision.map(ToString::to_string),
+                failure_reason: Some("stale_ref".to_string()),
+                ..ErrorDiagnostic::default()
+            })
+        })
     }
 
     fn find(&self, locator: &str) -> OpenPageResult<Element> {
@@ -560,7 +612,7 @@ fn dispatch_page(state: &mut ServePage, op: &str, params: &Value) -> OpenPageRes
         state.discard_stale_navigation_baseline();
     }
     let page = state.page.clone();
-    match op {
+    let mut result = match op {
         "recorder.start" => {
             page.recorder().start()?;
             Ok(json!(page.recorder().status()?))
@@ -1192,19 +1244,20 @@ fn dispatch_page(state: &mut ServePage, op: &str, params: &Value) -> OpenPageRes
             let target = required_str(params, "target")?;
             if matches!(target, "main" | "root" | "page") {
                 state.clear_frame();
-                return Ok(json!({"switched": true, "frame": "main"}));
-            }
-            let frame = if let Ok(index) = target.parse::<usize>() {
-                page.get_frame_context_by_index(index)?
+                Ok(json!({"switched": true, "frame": "main"}))
             } else {
-                page.get_frame_context(target)?
-            };
-            state.switch_frame(Some(format!("id:{}", frame.id())));
-            Ok(json!({
-                "switched": true,
-                "frame_id": frame.id(),
-                "target": target,
-            }))
+                let frame = if let Ok(index) = target.parse::<usize>() {
+                    page.get_frame_context_by_index(index)?
+                } else {
+                    page.get_frame_context(target)?
+                };
+                state.switch_frame(Some(format!("id:{}", frame.id())));
+                Ok(json!({
+                    "switched": true,
+                    "frame_id": frame.id(),
+                    "target": target,
+                }))
+            }
         }
         "page.find" => {
             let element = state.find(&required_locator_string(params)?)?;
@@ -1310,8 +1363,11 @@ fn dispatch_page(state: &mut ServePage, op: &str, params: &Value) -> OpenPageRes
             current_page_origin(state).as_deref(),
         )),
         "page.ele.click" | "element.click" => {
+            let locator = required_locator_string(params)?;
             let navigation_token = state.record_navigation_baseline();
-            state.find(&required_locator_string(params)?)?.click()?;
+            state
+                .find_revisioned("click", &locator, optional_str(params, "expected_revision"))?
+                .click()?;
             Ok(json!({"clicked": true, "navigation_token": navigation_token}))
         }
         "page.ele.click_right" | "element.click_right" => {
@@ -1345,8 +1401,9 @@ fn dispatch_page(state: &mut ServePage, op: &str, params: &Value) -> OpenPageRes
             Ok(json!({"clicked": true, "navigation_token": navigation_token}))
         }
         "page.ele.input" | "element.input" => {
+            let locator = required_locator_string(params)?;
             state
-                .find(&required_locator_string(params)?)?
+                .find_revisioned("fill", &locator, optional_str(params, "expected_revision"))?
                 .input(required_str(params, "text")?)?;
             Ok(json!({"input": true}))
         }
@@ -1931,7 +1988,109 @@ fn dispatch_page(state: &mut ServePage, op: &str, params: &Value) -> OpenPageRes
         _ => Err(OpenPageError::UnsupportedOperation(format!(
             "unsupported op: {op}"
         ))),
+    }?;
+
+    let revision = if operation_bumps_revision(op) {
+        state.bump_revision()
+    } else {
+        state.current_revision()
+    };
+    if let Some(payload) = result.as_object_mut() {
+        payload.insert("revision".to_string(), Value::String(revision));
     }
+    Ok(result)
+}
+
+fn validate_expected_revision(
+    operation: &str,
+    locator: &str,
+    current_revision: &str,
+    expected_revision: Option<&str>,
+) -> OpenPageResult<()> {
+    let Some(expected_revision) = expected_revision else {
+        return Ok(());
+    };
+    if expected_revision == current_revision {
+        return Ok(());
+    }
+
+    Err(OpenPageError::ElementNotFound(format!(
+        "revision {expected_revision} is stale, current is {current_revision}"
+    ))
+    .diagnosed(ErrorDiagnostic {
+        operation: Some(operation.to_string()),
+        locator: Some(locator.to_string()),
+        current_revision: Some(current_revision.to_string()),
+        expected_revision: Some(expected_revision.to_string()),
+        failure_reason: Some("stale_ref".to_string()),
+        ..ErrorDiagnostic::default()
+    }))
+}
+
+fn operation_bumps_revision(op: &str) -> bool {
+    matches!(
+        op,
+        "recorder.replay"
+            | "page.back"
+            | "page.forward"
+            | "history.go"
+            | "page.goto"
+            | "page.reload"
+            | "page.activate"
+            | "page.run_js"
+            | "page.input"
+            | "page.type"
+            | "page.type_with_interval"
+            | "tab.new"
+            | "tab.switch"
+            | "tab.close"
+            | "window.switch"
+            | "window.close"
+            | "frame.switch"
+            | "page.ele.click"
+            | "element.click"
+            | "page.ele.click_right"
+            | "element.click_right"
+            | "page.ele.click_middle"
+            | "element.click_middle"
+            | "page.ele.click_multi"
+            | "element.click_multi"
+            | "page.ele.click_at"
+            | "element.click_at"
+            | "page.ele.input"
+            | "element.input"
+            | "page.ele.clear"
+            | "element.clear"
+            | "page.ele.submit"
+            | "element.submit"
+            | "page.ele.check"
+            | "element.check"
+            | "page.ele.uncheck"
+            | "element.uncheck"
+            | "page.ele.press_key"
+            | "element.press_key"
+            | "page.ele.select"
+            | "element.select"
+            | "page.ele.select_all_options"
+            | "element.select_all_options"
+            | "page.ele.clear_selected_options"
+            | "element.clear_selected_options"
+            | "page.ele.invert_selected_options"
+            | "element.invert_selected_options"
+            | "page.ele.upload"
+            | "element.upload"
+            | "page.ele.click_to_upload"
+            | "element.click_to_upload"
+            | "page.ele.click_for_new_tab"
+            | "element.click_for_new_tab"
+            | "page.ele.drag"
+            | "element.drag"
+            | "page.ele.drag_to_point"
+            | "element.drag_to_point"
+            | "page.ele.run_js"
+            | "element.run_js"
+            | "page.drag_in"
+    )
 }
 
 fn required_target(request: &Request) -> OpenPageResult<String> {
@@ -2773,7 +2932,11 @@ fn replay_recorded_flow(state: &mut ServePage, params: &Value) -> OpenPageResult
 
 #[cfg(test)]
 mod locator_chain_tests {
-    use super::{normalize_locator_shorthand, parse_locator_chain_step, split_locator_chain};
+    use super::{
+        normalize_locator_shorthand, operation_bumps_revision, parse_locator_chain_step,
+        split_locator_chain, validate_expected_revision,
+    };
+    use crate::protocol::{openpage_error_kind, simple_openpage_error};
 
     #[test]
     fn preserves_delimiters_inside_locator_values() {
@@ -2812,5 +2975,47 @@ mod locator_chain_tests {
             normalize_locator_shorthand("text:'Save >> now'"),
             "text=Save >> now"
         );
+    }
+    #[test]
+    fn accepts_matching_or_omitted_revision() {
+        assert!(validate_expected_revision("click", "@e1", "r_2", Some("r_2")).is_ok());
+        assert!(validate_expected_revision("click", "@e1", "r_2", None).is_ok());
+    }
+
+    #[test]
+    fn rejects_stale_revision_with_resnapshot_contract() {
+        let error = validate_expected_revision("fill", "@e1", "r_2", Some("r_1"))
+            .expect_err("stale revision must fail");
+        assert_eq!(openpage_error_kind(&error), "stale_ref");
+
+        let payload = simple_openpage_error(&error);
+        assert_eq!(payload["error"]["retryable"], true);
+        assert_eq!(payload["error"]["suggested_action"], "re-snapshot");
+        assert_eq!(payload["error"]["current_revision"], "r_2");
+        assert_eq!(payload["error"]["expected_revision"], "r_1");
+        assert_eq!(payload["error"]["operation"], "fill");
+        assert_eq!(payload["error"]["locator"], "@e1");
+    }
+    #[test]
+    fn revision_bumps_only_for_page_state_changes() {
+        for operation in [
+            "page.goto",
+            "page.reload",
+            "element.click",
+            "element.input",
+            "page.run_js",
+            "frame.switch",
+        ] {
+            assert!(operation_bumps_revision(operation), "{operation}");
+        }
+        for operation in [
+            "page.snapshot",
+            "page.url",
+            "page.title",
+            "page.screenshot",
+            "element.attr",
+        ] {
+            assert!(!operation_bumps_revision(operation), "{operation}");
+        }
     }
 }
