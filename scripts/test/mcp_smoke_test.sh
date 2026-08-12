@@ -15,7 +15,9 @@ import json, sys
 rows = [json.loads(line) for line in sys.stdin if line.strip()]
 assert len(rows) == 2, rows
 assert rows[0]["result"]["serverInfo"]["name"] == "openpage"
-assert rows[1]["result"]["tools"][0]["name"] == "openpage"
+expected = {"help", "openpage", "snapshot", "navigate", "click", "fill"}
+actual = {tool["name"] for tool in rows[1]["result"]["tools"]}
+assert expected <= actual, actual
 '
 
 echo "[ok] MCP stdio smoke test passed"

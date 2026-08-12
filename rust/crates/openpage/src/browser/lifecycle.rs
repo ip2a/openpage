@@ -32,6 +32,7 @@ impl Browser {
 
         if let Some(state) = Arc::get_mut(&mut browser.inner) {
             state.browser_pid = self.inner.browser_pid;
+            state.owns_browser = self.inner.owns_browser;
             state.headless = self.inner.headless;
             state.temp_user_data_dir = self.inner.temp_user_data_dir.clone();
             state.temp_download_dir = self.inner.temp_download_dir.clone();
@@ -55,13 +56,16 @@ impl Browser {
     }
 
     pub fn close(&self) -> OpenPageResult<()> {
-        self.inner.runtime.block_on(async {
-            let mut browser =
-                lock_with_cdp_timeout(&self.inner.browser, "Browser::close().lock()").await?;
-            run_browser_future_with_cdp_timeout(browser.close(), "Browser::close()").await?;
-            run_browser_future_with_cdp_timeout(browser.wait(), "Browser::close().wait()").await?;
-            Ok::<(), OpenPageError>(())
-        })?;
+        if self.inner.owns_browser {
+            self.inner.runtime.block_on(async {
+                let mut browser =
+                    lock_with_cdp_timeout(&self.inner.browser, "Browser::close().lock()").await?;
+                run_browser_future_with_cdp_timeout(browser.close(), "Browser::close()").await?;
+                run_browser_future_with_cdp_timeout(browser.wait(), "Browser::close().wait()")
+                    .await?;
+                Ok::<(), OpenPageError>(())
+            })?;
+        }
         if let Ok(mut cache) = self.inner.page_cache.lock() {
             cache.clear();
         }

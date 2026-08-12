@@ -55,7 +55,7 @@ pub enum Command {
     /// Take a screenshot of a specific element
     ScreenshotElement(ScreenshotElementArgs),
     /// Click an element by locator or @ref
-    Click(ElementArgs),
+    Click(ClickArgs),
     /// Fill an input element
     Fill(FillArgs),
     /// Focus an element
@@ -373,6 +373,16 @@ pub struct BrowserStartArgs {
     pub url: Option<String>,
     #[arg(long, default_value = "default")]
     pub session: String,
+    /// Connect to an already running browser through its CDP debugger URL
+    #[arg(
+        long,
+        value_name = "DEBUGGER_URL",
+        conflicts_with_all = [
+            "browser_path", "user_data_dir", "port", "head", "headless",
+            "width", "height", "no_sandbox", "incognito", "mute", "replace"
+        ]
+    )]
+    pub attach: Option<String>,
     /// Override the browser executable for this launch. If omitted, runtime starts from launch config defaults; OPENPAGE_BROWSER_PATH can still override per-process.
     #[arg(long)]
     pub browser_path: Option<PathBuf>,
@@ -428,6 +438,9 @@ pub struct SnapshotArgs {
     /// Include raw element entries in addition to the compact text
     #[arg(long)]
     pub raw: bool,
+    /// Omit duplicate refs/text fields from the selected output format
+    #[arg(long)]
+    pub compact: bool,
     /// Limit traversal depth relative to the selected root
     #[arg(long)]
     pub depth: Option<usize>,
@@ -555,6 +568,16 @@ pub struct ElementArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct ClickArgs {
+    pub locator: String,
+    /// Wait for the navigation triggered by this click to finish
+    #[arg(long)]
+    pub wait_navigation: bool,
+    #[arg(long, default_value = "default")]
+    pub session: String,
+}
+
+#[derive(Debug, Args)]
 pub struct OpenLinkArgs {
     pub locator: String,
     #[arg(long)]
@@ -568,7 +591,11 @@ pub struct OpenLinkArgs {
 #[derive(Debug, Args)]
 pub struct FillArgs {
     pub locator: String,
-    pub text: String,
+    #[arg(required_unless_present = "stdin", conflicts_with = "stdin")]
+    pub text: Option<String>,
+    /// Read the value from stdin instead of exposing it in process arguments
+    #[arg(long)]
+    pub stdin: bool,
     #[arg(long, default_value = "default")]
     pub session: String,
 }

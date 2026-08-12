@@ -2120,6 +2120,14 @@ impl Page {
         &self,
         backend_node_id: BackendNodeId,
     ) -> OpenPageResult<Element> {
+        self.resolve_dom_backend_node_id_in_frame(backend_node_id, None)
+    }
+
+    pub(crate) fn resolve_dom_backend_node_id_in_frame(
+        &self,
+        backend_node_id: BackendNodeId,
+        frame: Option<&Frame>,
+    ) -> OpenPageResult<Element> {
         let node_id = self.runtime.block_on(async {
             let resolved = execute_page_command_async(
                 &self.inner,
@@ -2142,12 +2150,25 @@ impl Page {
                 requested.node_id,
             )
         })?;
-        self.resolve_dom_node_id(node_id, "frame owner could not be resolved to an element")
+        self.resolve_dom_node_id_in_frame(
+            node_id,
+            frame,
+            "DOM backend node could not be resolved to an element",
+        )
     }
 
     fn resolve_dom_node_id(
         &self,
         node_id: chromiumoxide::cdp::browser_protocol::dom::NodeId,
+        error_message: &str,
+    ) -> OpenPageResult<Element> {
+        self.resolve_dom_node_id_in_frame(node_id, None, error_message)
+    }
+
+    fn resolve_dom_node_id_in_frame(
+        &self,
+        node_id: chromiumoxide::cdp::browser_protocol::dom::NodeId,
+        frame: Option<&Frame>,
         error_message: &str,
     ) -> OpenPageResult<Element> {
         let marker = next_page_marker();
@@ -2158,7 +2179,11 @@ impl Page {
             "Page::resolve_dom_node_id()",
         )?;
 
-        let element = self.find(marker_selector(&marker).as_str());
+        let selector = marker_selector(&marker);
+        let element = match frame {
+            Some(frame) => frame.find(selector.as_str()),
+            None => self.find(selector.as_str()),
+        };
         let cleanup = self.runtime.block_on(async {
             let _ = execute_page_command_async(
                 &self.inner,

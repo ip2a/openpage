@@ -11,17 +11,17 @@ use serde_json::{Value, json};
 
 use crate::cli::args::{
     AlertCommand, AttrArgs, BatchArgs, BrowserCommand, BrowserLogsArgs, BrowserStartArgs,
-    BrowserStopArgs, ClearCacheArgs, Cli, ClickAtArgs, ClickForNewTabArgs, ClickToDownloadArgs,
-    ClickToUploadArgs, ClipboardCommand, Command, CookiesCommand, DiffCommand, DownloadArgs,
-    DownloadsCancelArgs, DownloadsCommand, DownloadsModeArgs, DownloadsOpenArgs, DownloadsPathArgs,
-    DragArgs, DragInArgs, DragToArgs, DragToPointArgs, ElementArgs, ElementScrollArgs, FillArgs,
-    FindInPageArgs, FrameCommand, GotoArgs, HistoryCommand, HoverAtArgs, InterceptCommand, JsArgs,
-    KeyArgs, LocateArgs, OpenLinkArgs, PageTextArgs, PdfArgs, PermissionSetArgs,
-    PermissionsCommand, PressArgs, RecorderCommand, ReloadArgs, SaveArgs, ScreenshotArgs,
-    ScreenshotElementArgs, ScrollArgs, ScrollIntoViewArgs, SelectArgs, SelectRangeArgs,
-    SelectTextArgs, SessionArgs, ShortcutArgs, SnapshotArgs, StorageCommand, StorageScope,
-    TabCommand, TabDuplicateArgs, TabReopenArgs, TypeWithIntervalArgs, UploadArgs, WaitArgs,
-    WaitElementArgs, WaitElementsLoadedArgs, WaitForDownloadArgs, WaitForFunctionArgs,
+    BrowserStopArgs, ClearCacheArgs, Cli, ClickArgs, ClickAtArgs, ClickForNewTabArgs,
+    ClickToDownloadArgs, ClickToUploadArgs, ClipboardCommand, Command, CookiesCommand, DiffCommand,
+    DownloadArgs, DownloadsCancelArgs, DownloadsCommand, DownloadsModeArgs, DownloadsOpenArgs,
+    DownloadsPathArgs, DragArgs, DragInArgs, DragToArgs, DragToPointArgs, ElementArgs,
+    ElementScrollArgs, FillArgs, FindInPageArgs, FrameCommand, GotoArgs, HistoryCommand,
+    HoverAtArgs, InterceptCommand, JsArgs, KeyArgs, LocateArgs, OpenLinkArgs, PageTextArgs,
+    PdfArgs, PermissionSetArgs, PermissionsCommand, PressArgs, RecorderCommand, ReloadArgs,
+    SaveArgs, ScreenshotArgs, ScreenshotElementArgs, ScrollArgs, ScrollIntoViewArgs, SelectArgs,
+    SelectRangeArgs, SelectTextArgs, SessionArgs, ShortcutArgs, SnapshotArgs, StorageCommand,
+    StorageScope, TabCommand, TabDuplicateArgs, TabReopenArgs, TypeWithIntervalArgs, UploadArgs,
+    WaitArgs, WaitElementArgs, WaitElementsLoadedArgs, WaitForDownloadArgs, WaitForFunctionArgs,
     WaitForNavigationArgs, WaitForTextArgs, WaitForTitleArgs, WaitForUrlArgs, WaitTimeoutArgs,
     WindowCloseArgs, WindowCommand, WindowMoveArgs, WindowSwitchArgs, ZoomCommand, ZoomSetArgs,
     ZoomStepArgs,
@@ -575,6 +575,7 @@ fn run_snapshot(args: SnapshotArgs) -> OpenPageResult<()> {
             "mode": args.mode.as_str(),
             "format": args.format.as_str(),
             "raw": args.raw,
+            "compact": args.compact,
             "depth": args.depth,
             "selector": args.selector,
         }),
@@ -605,22 +606,48 @@ fn run_screenshot_element(args: ScreenshotElementArgs) -> OpenPageResult<()> {
     print_json(simple_ok(json!({"saved": true, "output": args.output})))
 }
 
-fn run_click(args: ElementArgs) -> OpenPageResult<()> {
-    print_page_result(
+fn run_click(args: ClickArgs) -> OpenPageResult<()> {
+    let mut result = rpc_page(
         &args.session,
-        rpc_page(
-            &args.session,
-            "element.click",
-            json!({"locator": args.locator}),
-        )?,
-    )
+        "element.click",
+        json!({"locator": args.locator}),
+    )?;
+    if !args.wait_navigation {
+        return print_page_result(&args.session, result);
+    }
+
+    let token = result
+        .get("navigation_token")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            OpenPageError::BrowserOperation("click did not return a navigation token".to_string())
+        })?
+        .to_string();
+    let navigation = rpc_page(
+        &args.session,
+        "wait.navigation",
+        json!({"timeout_ms": 10000, "token": token}),
+    )?;
+    if let Some(object) = result.as_object_mut() {
+        object.remove("navigation_token");
+        object.insert("navigation".to_string(), navigation);
+    }
+    print_json(simple_ok(result))
 }
 
 fn run_fill(args: FillArgs) -> OpenPageResult<()> {
+    let text = if args.stdin {
+        let mut text = String::new();
+        std::io::stdin().read_to_string(&mut text)?;
+        text
+    } else {
+        args.text.unwrap_or_default()
+    };
     print_json(simple_ok(rpc_page(
         &args.session,
         "element.input",
-        json!({"locator": args.locator, "text": args.text}),
+        json!({"locator": args.locator, "text": text}),
     )?))
 }
 
@@ -1565,6 +1592,7 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
         "page.create",
         json!({
             "session": args.session,
+            "attach": args.attach,
             "headless": headless,
             "browser_path": args.browser_path,
             "user_data_dir": args.user_data_dir,
@@ -1597,6 +1625,7 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
         .get("existing")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let attached = browser_start_attached(&create);
     let port = read_port(&args.session)?;
 
     let payload = if !existing {
@@ -1608,6 +1637,7 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
             "incognito": args.incognito,
             "mute": args.mute,
             "url": args.url,
+            "attached": attached,
         })
     } else {
         json!({
@@ -1619,6 +1649,7 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
             "incognito": args.incognito,
             "mute": args.mute,
             "url": args.url,
+            "attached": attached,
         })
     };
 
@@ -1627,6 +1658,16 @@ fn start_browser(args: BrowserStartArgs) -> OpenPageResult<()> {
         args.url.as_deref(),
         payload,
     )))
+}
+
+fn browser_start_attached(create: &Value) -> bool {
+    // Older daemons omitted this field for existing sessions. Defaulting to
+    // false is conservative; the current request cannot reveal how that
+    // existing session was originally created.
+    create
+        .get("attached")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
 }
 
 fn stop_browser_session(session: &str, quiet: bool) -> OpenPageResult<()> {
@@ -1786,6 +1827,10 @@ fn parse_batch_command(command_args: &[String]) -> OpenPageResult<Command> {
         )),
         Command::Serve(_) => Err(OpenPageError::UnsupportedOperation(
             "batch cannot execute `serve`; use top-level `serve` separately".to_string(),
+        )),
+        Command::Fill(args) if args.stdin => Err(OpenPageError::UnsupportedOperation(
+            "batch cannot execute `fill --stdin`; run it as a separate top-level command"
+                .to_string(),
         )),
         command => Ok(command),
     }
@@ -3181,8 +3226,9 @@ fn run_frame(command: FrameCommand) -> OpenPageResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        RecentlyClosedTab, read_recently_closed_tabs, recently_closed_tabs_path,
-        record_recently_closed_tabs, tail_log_lines, write_recently_closed_tabs,
+        RecentlyClosedTab, browser_start_attached, read_recently_closed_tabs,
+        recently_closed_tabs_path, record_recently_closed_tabs, tail_log_lines,
+        write_recently_closed_tabs,
     };
     use clap::Parser;
     use serde_json::{Value, json};
@@ -3247,6 +3293,57 @@ mod tests {
             cli.command,
             crate::cli::args::Command::Browser { .. }
         ));
+    }
+
+    #[test]
+    fn missing_server_attach_state_does_not_guess_from_request() {
+        assert!(!browser_start_attached(&json!({"existing": true})));
+        assert!(browser_start_attached(&json!({"attached": true})));
+    }
+
+    #[test]
+    fn parses_attach_and_rejects_launch_only_options() {
+        let cli = Cli::try_parse_from([
+            "openpage",
+            "browser",
+            "start",
+            "--attach",
+            "http://127.0.0.1:9222",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Browser(BrowserCommand::Start(args)) => {
+                assert_eq!(args.attach.as_deref(), Some("http://127.0.0.1:9222"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+        for option in [
+            "--browser-path",
+            "--user-data-dir",
+            "--port",
+            "--headless",
+            "--width",
+            "--height",
+            "--no-sandbox",
+            "--incognito",
+            "--mute",
+        ] {
+            let mut argv = vec![
+                "openpage",
+                "browser",
+                "start",
+                "--attach",
+                "http://127.0.0.1:9222",
+                option,
+            ];
+            if matches!(
+                option,
+                "--browser-path" | "--user-data-dir" | "--port" | "--width" | "--height"
+            ) {
+                argv.push("1");
+            }
+            assert!(Cli::try_parse_from(argv).is_err(), "accepted {option}");
+        }
     }
 
     #[test]
@@ -3690,6 +3787,7 @@ mod tests {
             "--format",
             "json",
             "--raw",
+            "--compact",
             "--depth",
             "4",
             "--selector",
@@ -3762,7 +3860,61 @@ mod tests {
 
     #[test]
     fn parses_click_with_ref() {
-        Cli::try_parse_from(["openpage", "click", "@e5", "--session", "agent"]).unwrap();
+        let cli = Cli::try_parse_from(["openpage", "click", "@e5", "--session", "agent"]).unwrap();
+        let Command::Click(args) = cli.command else {
+            panic!("expected click command");
+        };
+        assert!(!args.wait_navigation);
+    }
+
+    #[test]
+    fn parses_click_wait_navigation() {
+        let cli = Cli::try_parse_from([
+            "openpage",
+            "click",
+            "@e5",
+            "--wait-navigation",
+            "--session",
+            "agent",
+        ])
+        .unwrap();
+        let Command::Click(args) = cli.command else {
+            panic!("expected click command");
+        };
+        assert!(args.wait_navigation);
+    }
+
+    #[test]
+    fn parses_fill_text_or_stdin() {
+        let cli = Cli::try_parse_from(["openpage", "fill", "@e2", "secret", "--session", "agent"])
+            .unwrap();
+        let Command::Fill(args) = cli.command else {
+            panic!("expected fill command");
+        };
+        assert_eq!(args.text.as_deref(), Some("secret"));
+        assert!(!args.stdin);
+
+        let cli = Cli::try_parse_from(["openpage", "fill", "@e2", "--stdin", "--session", "agent"])
+            .unwrap();
+        let Command::Fill(args) = cli.command else {
+            panic!("expected fill command");
+        };
+        assert!(args.text.is_none());
+        assert!(args.stdin);
+
+        assert!(Cli::try_parse_from(["openpage", "fill", "@e2"]).is_err());
+        assert!(Cli::try_parse_from(["openpage", "fill", "@e2", "secret", "--stdin"]).is_err());
+    }
+
+    #[test]
+    fn batch_rejects_fill_stdin() {
+        let args = ["fill", "@e2", "--stdin"]
+            .into_iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        let error =
+            super::parse_batch_command(&args).expect_err("stdin fill must be rejected in batch");
+        assert!(error.to_string().contains("fill --stdin"));
     }
 
     #[test]

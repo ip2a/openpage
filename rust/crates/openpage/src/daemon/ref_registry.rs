@@ -65,11 +65,28 @@ impl RefTarget {
         // are deliberately excluded so the same node keeps its ref_id across
         // minor text or sibling-order changes.
         let locator = self
-            .css_path
-            .as_deref()
-            .filter(|value| !value.is_empty())
-            .or_else(|| self.xpath.as_deref().filter(|value| !value.is_empty()))
-            .unwrap_or("");
+            .backend_node_id
+            .map(|value| format!("backend:{}", value.inner()))
+            .or_else(|| {
+                self.css_path
+                    .as_deref()
+                    .filter(|value| !value.is_empty())
+                    .map(|value| format!("css:{value}"))
+            })
+            .or_else(|| {
+                self.xpath
+                    .as_deref()
+                    .filter(|value| !value.is_empty())
+                    .map(|value| format!("xpath:{value}"))
+            })
+            .unwrap_or_else(|| {
+                format!(
+                    "semantic:{}:{}:{}",
+                    self.role.as_deref().unwrap_or(""),
+                    self.name.as_deref().unwrap_or(""),
+                    self.text.as_deref().unwrap_or("")
+                )
+            });
         format!(
             "{}|{}|{}",
             self.target_id,
@@ -153,7 +170,10 @@ impl ServePage {
             )));
         }
         if let Some(backend_node_id) = target.backend_node_id
-            && let Ok(element) = self.page.resolve_dom_backend_node_id(backend_node_id)
+            && let Ok(element) = self.page.resolve_dom_backend_node_id_in_frame(
+                backend_node_id,
+                self.current_frame()?.as_ref(),
+            )
         {
             self.refresh_ref_target(ref_id, &element)?;
             return Ok(element);
@@ -221,6 +241,24 @@ impl ServePage {
     }
 
     fn reresolve_ref_target(&self, target: &RefTarget) -> OpenPageResult<Option<Element>> {
+        if let (Some(role), Some(name)) = (target.role.as_deref(), target.name.as_deref()) {
+            let name = normalize_agent_text(name);
+            if !role.is_empty() && !name.is_empty() && !name.contains(']') {
+                let locator = format!("role={role}[name={name}]");
+                if let Ok(elements) = self.find_all_raw(&locator) {
+                    let mut matches = Vec::new();
+                    for element in elements {
+                        if candidate_matches_ref_target(&element, target)? {
+                            matches.push(element);
+                        }
+                    }
+                    if matches.len() == 1 {
+                        return Ok(matches.into_iter().next());
+                    }
+                }
+            }
+        }
+
         let mut queries = Vec::new();
         for value in [target.name.as_deref(), target.text.as_deref()] {
             let Some(value) = value
@@ -307,10 +345,18 @@ impl ServePage {
                 .remove("_xpath")
                 .and_then(|value| value.as_str().map(ToString::to_string))
                 .filter(|value| !value.is_empty());
+            let backend_node_id = obj
+                .remove("_backendNodeId")
+                .and_then(|value| value.as_i64())
+                .map(BackendNodeId::new);
+            obj.remove("_frameId");
+            if obj.get("role").and_then(Value::as_str) == Some("statictext") {
+                continue;
+            }
             let target = RefTarget {
                 target_id: target_id.clone(),
                 frame_target: frame_target.clone(),
-                backend_node_id: None,
+                backend_node_id,
                 css_path,
                 xpath,
                 role: obj
@@ -331,7 +377,40 @@ impl ServePage {
                     .map(ToString::to_string),
             };
             let ref_id = self.refs.borrow_mut().register(target);
-            obj["ref"] = Value::String(ref_id);
+            obj.insert("ref".to_string(), Value::String(ref_id));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn target(backend_node_id: i64) -> RefTarget {
+        RefTarget {
+            target_id: "page".to_string(),
+            frame_target: None,
+            backend_node_id: Some(BackendNodeId::new(backend_node_id)),
+            css_path: None,
+            xpath: None,
+            role: Some("button".to_string()),
+            tag: None,
+            name: Some("Save".to_string()),
+            text: None,
+        }
+    }
+
+    #[test]
+    fn backend_node_ids_do_not_share_refs() {
+        let mut refs = RefRegistry::default();
+        assert_eq!(refs.register(target(10)), "e1");
+        assert_eq!(refs.register(target(11)), "e2");
+    }
+
+    #[test]
+    fn backend_node_id_reuses_ref() {
+        let mut refs = RefRegistry::default();
+        assert_eq!(refs.register(target(10)), "e1");
+        assert_eq!(refs.register(target(10)), "e1");
     }
 }

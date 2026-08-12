@@ -5,7 +5,10 @@ import openpage
 
 class FacadeTests(unittest.TestCase):
     def test_public_surface_is_core_facade(self) -> None:
-        self.assertEqual(openpage.__all__, ["Browser", "Page", "Session", "open"])
+        self.assertEqual(
+            openpage.__all__,
+            ["Browser", "Page", "Session", "open", "diff_text", "diff_screenshot"],
+        )
         self.assertEqual(openpage.Browser.__name__, "Browser")
         self.assertEqual(openpage.Page.__name__, "Page")
         self.assertEqual(openpage.Session.__name__, "Session")

@@ -60,7 +60,11 @@ pub(super) fn build_browser_config(
     }
 
     for arg in &options.args {
-        builder = builder.arg(arg.as_str());
+        let arg = arg.strip_prefix("--").unwrap_or(arg);
+        builder = match arg.split_once('=') {
+            Some((key, value)) => builder.arg((key, value)),
+            None => builder.arg(arg),
+        };
     }
 
     if options.mute {

@@ -787,11 +787,21 @@ impl Default for LaunchOptions {
             width: 1280,
             height: 900,
             no_sandbox: false,
-            args: Vec::new(),
+            args: vec![
+                "--no-default-browser-check".to_string(),
+                "--disable-suggestions-ui".to_string(),
+                "--no-first-run".to_string(),
+                "--disable-infobars".to_string(),
+                "--disable-popup-blocking".to_string(),
+                "--hide-crash-restore-bubble".to_string(),
+                "--disable-features=PrivacySandboxSettings4".to_string(),
+            ],
             incognito: false,
             ignore_https_errors: false,
             extensions: Vec::new(),
-            disable_default_args: false,
+            // chromiumoxide's defaults include --enable-automation, which displays Chrome's
+            // automation-control banner. OpenPage supplies its own minimal defaults instead.
+            disable_default_args: true,
             proxy: None,
             mute: false,
             no_js: false,
@@ -820,6 +830,8 @@ struct BrowserState {
     browser: Mutex<OxBrowser>,
     debugger_address: String,
     browser_pid: Option<u32>,
+    /// Whether closing this handle is allowed to close the browser process.
+    owns_browser: bool,
     downloads: DownloadStore,
     newest_tab_id: Arc<StdMutex<Option<String>>>,
     download_path: StdMutex<Option<PathBuf>>,
@@ -1230,5 +1242,28 @@ fn move_newest_tab_info_to_front(infos: &mut Vec<TabInfo>, tracked_newest_tab_id
     {
         let newest = infos.remove(index);
         infos.insert(0, newest);
+    }
+}
+
+#[cfg(test)]
+mod launch_options_tests {
+    use super::LaunchOptions;
+
+    #[test]
+    fn default_launch_hides_automation_infobar() {
+        let options = LaunchOptions::default();
+        assert!(options.is_disable_default_args());
+        assert!(
+            options
+                .arguments()
+                .iter()
+                .any(|arg| arg == "--disable-infobars")
+        );
+        assert!(
+            options
+                .arguments()
+                .iter()
+                .all(|arg| arg != "--enable-automation")
+        );
     }
 }

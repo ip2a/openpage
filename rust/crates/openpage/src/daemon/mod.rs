@@ -116,6 +116,7 @@ struct ServeState {
 
 struct ServePage {
     page: Page,
+    attached: bool,
     active_frame_target: Option<String>,
     refs: RefCell<RefRegistry>,
     navigation_baseline: Option<NavigationBaseline>,
@@ -142,9 +143,10 @@ struct NavigationTicket {
 }
 
 impl ServePage {
-    fn new(page: Page) -> Self {
+    fn new(page: Page, attached: bool) -> Self {
         Self {
             page,
+            attached,
             active_frame_target: None,
             refs: RefCell::new(RefRegistry::default()),
             navigation_baseline: None,
@@ -2155,11 +2157,7 @@ fn locate_chain_payload(state: &mut ServePage, chain: &str) -> OpenPageResult<Va
 }
 
 fn resolve_locator_chain(state: &ServePage, chain: &str) -> OpenPageResult<(Element, Vec<String>)> {
-    let parts = chain
-        .split(">>")
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>();
+    let parts = split_locator_chain(chain)?;
     if parts.is_empty() {
         return Err(OpenPageError::UnsupportedLocator(
             "locator chain is empty".to_string(),
@@ -2172,34 +2170,41 @@ fn resolve_locator_chain(state: &ServePage, chain: &str) -> OpenPageResult<(Elem
 
     for part in parts.iter().skip(1) {
         let (op, locator) = parse_locator_chain_step(part)?;
-        element = match op {
+        element = match match op {
             "parent" => match locator {
-                Some(locator) => element.parent_with(locator.as_str(), 1)?,
-                None => element.parent()?,
+                Some(locator) => element.parent_with(locator.as_str(), 1),
+                None => element.parent(),
             },
             "child" => match locator {
-                Some(locator) => element.child_with(Some(locator.as_str()), 1)?,
-                None => element.child()?,
+                Some(locator) => element.child_with(Some(locator.as_str()), 1),
+                None => element.child(),
             },
             "prev" | "previous" => match locator {
-                Some(locator) => element.prev_with(Some(locator.as_str()), 1)?,
-                None => element.prev()?,
+                Some(locator) => element.prev_with(Some(locator.as_str()), 1),
+                None => element.prev(),
             },
             "next" => match locator {
-                Some(locator) => element.next_with(Some(locator.as_str()), 1)?,
-                None => element.next()?,
+                Some(locator) => element.next_with(Some(locator.as_str()), 1),
+                None => element.next(),
             },
             "before" => match locator {
-                Some(locator) => element.before_with(Some(locator.as_str()), 1)?,
-                None => element.before()?,
+                Some(locator) => element.before_with(Some(locator.as_str()), 1),
+                None => element.before(),
             },
             "after" => match locator {
-                Some(locator) => element.after_with(Some(locator.as_str()), 1)?,
-                None => element.after()?,
+                Some(locator) => element.after_with(Some(locator.as_str()), 1),
+                None => element.after(),
             },
             other => {
                 return Err(OpenPageError::UnsupportedLocator(format!(
                     "unsupported locator chain step: {other}"
+                )));
+            }
+        } {
+            Ok(element) => element,
+            Err(error) => {
+                return Err(OpenPageError::UnsupportedLocator(format!(
+                    "locator chain step `{part}` failed: {error}"
                 )));
             }
         };
@@ -2207,6 +2212,76 @@ fn resolve_locator_chain(state: &ServePage, chain: &str) -> OpenPageResult<(Elem
     }
 
     Ok((element, steps))
+}
+
+fn split_locator_chain(chain: &str) -> OpenPageResult<Vec<&str>> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    let mut quote = None;
+    let mut escaped = false;
+    let mut nesting = 0usize;
+    let bytes = chain.as_bytes();
+    let mut index = 0;
+
+    while index < bytes.len() {
+        let character = bytes[index] as char;
+        if escaped {
+            escaped = false;
+            index += 1;
+            continue;
+        }
+        if character == '\\' && quote.is_some() {
+            escaped = true;
+            index += 1;
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if character == active_quote {
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        match character {
+            '\'' | '"' => quote = Some(character),
+            '[' | '(' | '{' => nesting += 1,
+            ']' | ')' | '}' => {
+                nesting = nesting.checked_sub(1).ok_or_else(|| {
+                    OpenPageError::UnsupportedLocator(
+                        "unbalanced locator chain delimiters".to_string(),
+                    )
+                })?
+            }
+            '>' if nesting == 0 && bytes.get(index + 1) == Some(&b'>') => {
+                let part = chain[start..index].trim();
+                if part.is_empty() {
+                    return Err(OpenPageError::UnsupportedLocator(
+                        "locator chain contains an empty step".to_string(),
+                    ));
+                }
+                parts.push(part);
+                index += 2;
+                start = index;
+                continue;
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+
+    if quote.is_some() || nesting != 0 || escaped {
+        return Err(OpenPageError::UnsupportedLocator(
+            "unterminated locator chain quote or delimiter".to_string(),
+        ));
+    }
+    let part = chain[start..].trim();
+    if part.is_empty() {
+        return Err(OpenPageError::UnsupportedLocator(
+            "locator chain contains an empty step".to_string(),
+        ));
+    }
+    parts.push(part);
+    Ok(parts)
 }
 
 fn parse_locator_chain_step(step: &str) -> OpenPageResult<(&str, Option<String>)> {
@@ -2694,4 +2769,48 @@ fn replay_recorded_flow(state: &mut ServePage, params: &Value) -> OpenPageResult
         replayed += 1;
     }
     Ok(json!({"replayed": replayed, "version": flow.version}))
+}
+
+#[cfg(test)]
+mod locator_chain_tests {
+    use super::{normalize_locator_shorthand, parse_locator_chain_step, split_locator_chain};
+
+    #[test]
+    fn preserves_delimiters_inside_locator_values() {
+        assert_eq!(
+            split_locator_chain(r#"root >> child text:"A >> B" >> next [data-value="x>>y"]"#)
+                .unwrap(),
+            vec![
+                "root",
+                "child text:\"A >> B\"",
+                "next [data-value=\"x>>y\"]"
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_empty_or_unterminated_steps() {
+        for chain in [
+            ">> parent",
+            "root >>",
+            "root >> >> parent",
+            "root >> text:\"unfinished",
+        ] {
+            assert!(
+                split_locator_chain(chain).is_err(),
+                "accepted malformed chain: {chain}"
+            );
+        }
+    }
+
+    #[test]
+    fn parses_step_and_normalizes_text_shorthand() {
+        let (op, locator) = parse_locator_chain_step("child text:\"Learn more\"").unwrap();
+        assert_eq!(op, "child");
+        assert_eq!(locator.as_deref(), Some("text=Learn more"));
+        assert_eq!(
+            normalize_locator_shorthand("text:'Save >> now'"),
+            "text=Save >> now"
+        );
+    }
 }

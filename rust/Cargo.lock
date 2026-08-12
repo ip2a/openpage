@@ -1339,6 +1339,7 @@ dependencies = [
  "scraper",
  "serde",
  "serde_json",
+ "shlex",
  "similar",
  "skyscraper",
  "thiserror 2.0.18",

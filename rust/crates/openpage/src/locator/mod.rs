@@ -241,7 +241,7 @@ impl Locator {
                 Some(name) => {
                     let name = xpath_string_literal(name);
                     format!(
-                        ".//*[({role_match}) and (normalize-space(@aria-label)={name} or normalize-space(.)={name} or normalize-space(@value)={name})]"
+                        ".//*[({role_match}) and (normalize-space(@aria-label)={name} or normalize-space(@placeholder)={name} or normalize-space(@title)={name} or normalize-space(@alt)={name} or normalize-space(@name)={name} or normalize-space(.)={name} or normalize-space(@value)={name})]"
                     )
                 }
                 None => format!(".//*[{role_match}]"),

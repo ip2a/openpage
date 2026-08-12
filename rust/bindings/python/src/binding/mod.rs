@@ -3,9 +3,9 @@ use openpage::{
     LaunchOptions, Listener, ListenerPacket, ListenerRequest, ListenerResponse,
     OpenPageError as CoreOpenPageError, Page, Response, Session, SessionOptions, ShadowRoot,
 };
-use pyo3::exceptions::PyRuntimeError;
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyBytes;
+use pyo3::types::{PyAny, PyBytes, PyModule};
 use std::path::Path;
 
 fn error(value: CoreOpenPageError) -> PyErr {
@@ -139,8 +139,41 @@ impl PyBrowser {
         download_path=None,
         user_data_path=None,
         no_js=None,
+        download_file_exists=None,
+        load_mode=None,
+        retry_times=None,
+        retry_interval_millis=None,
+        remote_debugging_port=None,
+        address=None,
+        ws_address=None,
+        width=None,
+        height=None,
+        no_sandbox=None,
+        args=None,
+        ignore_https_errors=None,
+        extensions=None,
+        disable_default_args=None,
+        mute=None,
+        no_imgs=None,
+        tmp_path=None,
+        cache_path=None,
+        auto_port=None,
+        auto_port_scope=None,
+        existing_only=None,
+        system_user_path=None,
+        new_env=None,
+        base_timeout_secs=None,
+        page_load_timeout_secs=None,
+        script_timeout_secs=None,
+        prefs=None,
+        prefs_to_remove=None,
+        clear_file_flags=None,
+        flags=None,
+        source_ini_path=None,
     ))]
+    #[allow(clippy::too_many_arguments)]
     fn launch(
+        py: Python<'_>,
         browser_path: Option<&str>,
         headless: Option<bool>,
         incognito: Option<bool>,
@@ -149,8 +182,43 @@ impl PyBrowser {
         download_path: Option<&str>,
         user_data_path: Option<&str>,
         no_js: Option<bool>,
+        download_file_exists: Option<&str>,
+        load_mode: Option<&str>,
+        retry_times: Option<usize>,
+        retry_interval_millis: Option<u64>,
+        remote_debugging_port: Option<u16>,
+        address: Option<&str>,
+        ws_address: Option<&str>,
+        width: Option<u32>,
+        height: Option<u32>,
+        no_sandbox: Option<bool>,
+        args: Option<Vec<String>>,
+        ignore_https_errors: Option<bool>,
+        extensions: Option<Vec<String>>,
+        disable_default_args: Option<bool>,
+        mute: Option<bool>,
+        no_imgs: Option<bool>,
+        tmp_path: Option<&str>,
+        cache_path: Option<&str>,
+        auto_port: Option<bool>,
+        auto_port_scope: Option<(u16, u16)>,
+        existing_only: Option<bool>,
+        system_user_path: Option<bool>,
+        new_env: Option<bool>,
+        base_timeout_secs: Option<f64>,
+        page_load_timeout_secs: Option<f64>,
+        script_timeout_secs: Option<f64>,
+        prefs: Option<&Bound<'_, PyAny>>,
+        prefs_to_remove: Option<Vec<String>>,
+        clear_file_flags: Option<bool>,
+        flags: Option<Vec<String>>,
+        source_ini_path: Option<&str>,
     ) -> PyResult<Self> {
-        let mut options = LaunchOptions::default();
+        let mut options = match source_ini_path {
+            Some(path) => LaunchOptions::from_ini(Some(Path::new(path))).map_err(error)?,
+            None => LaunchOptions::default(),
+        };
+
         if let Some(path) = browser_path {
             options.set_browser_path(path);
         }
@@ -169,15 +237,109 @@ impl PyBrowser {
         if let Some(path) = download_path {
             options.set_download_path(path);
         }
-        if let Some(path) = user_data_path {
-            options.set_user_data_path(path);
-        }
         if let Some(value) = no_js {
             options.no_js(value);
         }
+        if let Some(value) = download_file_exists {
+            options.when_download_file_exists(value).map_err(error)?;
+        }
+        if let Some(value) = load_mode {
+            options.set_load_mode(value).map_err(error)?;
+        }
+        options.set_retry(retry_times, retry_interval_millis);
+        options.set_timeouts(
+            base_timeout_secs,
+            page_load_timeout_secs,
+            script_timeout_secs,
+        );
+        if let Some(value) = width {
+            options.width = value;
+        }
+        if let Some(value) = height {
+            options.height = value;
+        }
+        if let Some(value) = no_sandbox {
+            options.no_sandbox = value;
+        }
+        if let Some(value) = args {
+            options.args = value;
+        }
+        if let Some(value) = ignore_https_errors {
+            options.ignore_certificate_errors(value);
+        }
+        if let Some(value) = extensions {
+            options.extensions = value.into_iter().map(Into::into).collect();
+        }
+        if let Some(value) = disable_default_args {
+            options.disable_default_args = value;
+        }
+        if let Some(value) = mute {
+            options.mute(value);
+        }
+        if let Some(value) = no_imgs {
+            options.no_imgs(value);
+        }
+        if let Some(path) = tmp_path {
+            options.set_tmp_path(path);
+        }
+        if let Some(path) = cache_path {
+            options.set_cache_path(path);
+        }
+        if let Some(value) = existing_only {
+            options.existing_only(value);
+        }
+        if let Some(value) = system_user_path {
+            options.use_system_user_path(value);
+        }
+        if let Some(path) = user_data_path {
+            options.set_user_data_path(path);
+        }
+        if let Some(value) = new_env {
+            options.new_env(value);
+        }
+        if let Some(value) = remote_debugging_port {
+            options.set_local_port(value);
+        }
+        if let Some(value) = address {
+            options.set_address(value);
+        }
+        if let Some(value) = ws_address {
+            options.set_address(value);
+        }
+        if auto_port.is_some() || auto_port_scope.is_some() {
+            options
+                .auto_port_with_scope(auto_port.unwrap_or(true), auto_port_scope)
+                .map_err(error)?;
+        }
+        if let Some(value) = prefs {
+            let json = PyModule::import(py, "json")?;
+            let text: String = json.call_method1("dumps", (value,))?.extract()?;
+            options.prefs = serde_json::from_str(&text)
+                .map_err(|err| PyValueError::new_err(format!("invalid prefs: {err}")))?;
+        }
+        if let Some(value) = prefs_to_remove {
+            options.prefs_to_remove = value;
+        }
+        if let Some(value) = clear_file_flags {
+            options.clear_file_flags = value;
+        }
+        if let Some(value) = flags {
+            options.flags = value;
+        }
+
         Browser::launch(options)
             .map(|inner| Self { inner })
             .map_err(error)
+    }
+    #[staticmethod]
+    fn connect(debugger_url: &str) -> PyResult<Self> {
+        Browser::connect(debugger_url)
+            .map(|inner| Self { inner })
+            .map_err(error)
+    }
+    #[staticmethod]
+    fn attach(debugger_url: &str) -> PyResult<Self> {
+        Self::connect(debugger_url)
     }
     #[pyo3(signature = (url=None))]
     fn new_page(&self, url: Option<&str>) -> PyResult<PyPage> {

@@ -1,4 +1,63 @@
 use super::*;
+use chromiumoxide::cdp::browser_protocol::accessibility::{AxNode, AxValue, GetFullAxTreeParams};
+use chromiumoxide::cdp::browser_protocol::page::FrameId;
+
+const MAX_SNAPSHOT_ENTRIES: usize = 200;
+
+const INTERACTIVE_AX_ROLES: &[&str] = &[
+    "button",
+    "link",
+    "textbox",
+    "checkbox",
+    "radio",
+    "combobox",
+    "listbox",
+    "menuitem",
+    "menuitemcheckbox",
+    "menuitemradio",
+    "option",
+    "searchbox",
+    "slider",
+    "spinbutton",
+    "switch",
+    "tab",
+    "treeitem",
+    "iframe",
+];
+
+const CONTENT_AX_ROLES: &[&str] = &[
+    "heading",
+    "cell",
+    "gridcell",
+    "columnheader",
+    "rowheader",
+    "listitem",
+    "article",
+    "region",
+    "main",
+    "navigation",
+    "paragraph",
+    "term",
+    "definition",
+    "status",
+    "alert",
+    "note",
+    "figure",
+    "caption",
+];
+
+#[derive(Debug)]
+struct AxSnapshotNode {
+    parent_id: Option<String>,
+    role: String,
+    name: String,
+    value: Option<String>,
+    backend_node_id: Option<i64>,
+    frame_id: Option<String>,
+    state: Map<String, Value>,
+    ignored: bool,
+    children: Vec<usize>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AgentSnapshotMode {
@@ -59,6 +118,7 @@ struct AgentSnapshotOptions {
     mode: AgentSnapshotMode,
     format: AgentSnapshotFormat,
     raw: bool,
+    compact: bool,
     depth: usize,
     selector: Option<String>,
 }
@@ -75,6 +135,7 @@ impl AgentSnapshotOptions {
             mode,
             format,
             raw: optional_bool(params, "raw").unwrap_or(false),
+            compact: optional_bool(params, "compact").unwrap_or(false),
             depth,
             selector: optional_string(params, "selector"),
         })
@@ -86,7 +147,7 @@ fn agent_snapshot_script(options: &AgentSnapshotOptions) -> OpenPageResult<Strin
         "mode": options.mode.as_str(),
         "depth": options.depth,
         "selector": options.selector,
-        "maxEntries": 200,
+        "maxEntries": MAX_SNAPSHOT_ENTRIES,
     }))
     .map_err(|err| OpenPageError::Serialization(err.to_string()))?;
 
@@ -270,17 +331,232 @@ fn agent_snapshot_script(options: &AgentSnapshotOptions) -> OpenPageResult<Strin
     ))
 }
 
+fn ax_value_text(value: Option<&AxValue>) -> Option<String> {
+    value
+        .and_then(|value| value.value.as_ref())
+        .map(|value| match value {
+            Value::String(value) => value.clone(),
+            other => other.to_string(),
+        })
+        .map(|value| clip_agent_text(&normalize_agent_text(&value), 160))
+        .filter(|value| !value.is_empty())
+}
+
+fn ax_snapshot_nodes(nodes: Vec<AxNode>) -> (Vec<AxSnapshotNode>, Vec<usize>) {
+    let ids = nodes
+        .iter()
+        .enumerate()
+        .map(|(index, node)| (node.node_id.as_ref().to_string(), index))
+        .collect::<HashMap<_, _>>();
+    let mut result = nodes
+        .iter()
+        .map(|node| {
+            let mut state = Map::new();
+            for property in node.properties.as_deref().unwrap_or_default() {
+                let key = match property.name.as_ref() {
+                    "disabled" => "disabled",
+                    "checked" => "checked",
+                    "selected" => "selected",
+                    "focused" => "focused",
+                    "expanded" => "expanded",
+                    "required" => "required",
+                    _ => continue,
+                };
+                if let Some(value) = property.value.value.clone() {
+                    state.insert(key.to_string(), value);
+                }
+            }
+            AxSnapshotNode {
+                parent_id: node.parent_id.as_ref().map(|id| id.as_ref().to_string()),
+                role: ax_value_text(node.role.as_ref())
+                    .unwrap_or_default()
+                    .to_ascii_lowercase(),
+                name: ax_value_text(node.name.as_ref()).unwrap_or_default(),
+                value: ax_value_text(node.value.as_ref()),
+                backend_node_id: node.backend_dom_node_id.map(|id| *id.inner()),
+                frame_id: node.frame_id.as_ref().map(|id| id.as_ref().to_string()),
+                state,
+                ignored: node.ignored,
+                children: Vec::new(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let mut roots = Vec::new();
+    for index in 0..result.len() {
+        let parent = result[index]
+            .parent_id
+            .as_deref()
+            .and_then(|id| ids.get(id))
+            .copied();
+        if let Some(parent) = parent {
+            result[parent].children.push(index);
+        } else {
+            roots.push(index);
+        }
+    }
+    (result, roots)
+}
+
+fn includes_ax_node(node: &AxSnapshotNode, mode: AgentSnapshotMode) -> bool {
+    if node.ignored
+        || node.role.is_empty()
+        || node.role == "inlinetextbox"
+        || node.backend_node_id.is_none()
+    {
+        return false;
+    }
+    let interactive = INTERACTIVE_AX_ROLES.contains(&node.role.as_str());
+    let content = CONTENT_AX_ROLES.contains(&node.role.as_str());
+    match mode {
+        AgentSnapshotMode::Interactive => interactive,
+        AgentSnapshotMode::Semantic => {
+            interactive || content || (node.role == "statictext" && !node.name.is_empty())
+        }
+        AgentSnapshotMode::All => {
+            interactive || content || !node.name.is_empty() || node.value.is_some()
+        }
+    }
+}
+
+fn render_ax_entries(
+    nodes: &[AxSnapshotNode],
+    roots: &[usize],
+    options: &AgentSnapshotOptions,
+) -> (Vec<Value>, bool) {
+    fn visit(
+        nodes: &[AxSnapshotNode],
+        index: usize,
+        options: &AgentSnapshotOptions,
+        depth: usize,
+        parent_display: Option<&str>,
+        entries: &mut Vec<Value>,
+        truncated: &mut bool,
+    ) {
+        if entries.len() >= MAX_SNAPSHOT_ENTRIES {
+            *truncated = true;
+            return;
+        }
+        let node = &nodes[index];
+        let mut included = includes_ax_node(node, options.mode);
+        if node.role == "statictext" && parent_display == Some(node.name.as_str()) {
+            included = false;
+        }
+        if included && depth > options.depth {
+            return;
+        }
+
+        let next_depth = if included { depth + 1 } else { depth };
+        let next_display = if included && !node.name.is_empty() {
+            Some(node.name.as_str())
+        } else {
+            parent_display
+        };
+        if included {
+            let mut entry = Map::new();
+            entry.insert("role".to_string(), json!(node.role));
+            entry.insert("name".to_string(), json!(node.name));
+            entry.insert("depth".to_string(), json!(depth));
+            if let Some(value) = node.value.as_deref() {
+                entry.insert("value".to_string(), json!(value));
+            }
+            if let Some(backend_node_id) = node.backend_node_id {
+                entry.insert("_backendNodeId".to_string(), json!(backend_node_id));
+            }
+            if let Some(frame_id) = node.frame_id.as_deref() {
+                entry.insert("_frameId".to_string(), json!(frame_id));
+            }
+            if !node.state.is_empty() {
+                entry.insert("state".to_string(), Value::Object(node.state.clone()));
+            }
+            entries.push(Value::Object(entry));
+        }
+
+        for child in &node.children {
+            visit(
+                nodes,
+                *child,
+                options,
+                next_depth,
+                next_display,
+                entries,
+                truncated,
+            );
+            if *truncated {
+                break;
+            }
+        }
+    }
+
+    let mut entries = Vec::new();
+    let mut truncated = false;
+    for root in roots {
+        visit(nodes, *root, options, 0, None, &mut entries, &mut truncated);
+        if truncated {
+            break;
+        }
+    }
+    (entries, truncated)
+}
+
+fn collect_ax_snapshot(
+    state: &ServePage,
+    options: &AgentSnapshotOptions,
+) -> OpenPageResult<Option<(Vec<Value>, bool)>> {
+    let frame = state.current_frame()?;
+    let params = match frame.as_ref() {
+        Some(frame) => GetFullAxTreeParams::builder()
+            .frame_id(FrameId::new(frame.id().to_string()))
+            .build(),
+        None => GetFullAxTreeParams::default(),
+    };
+    let response = state.page.execute_cdp(params)?;
+    let (nodes, default_roots) = ax_snapshot_nodes(response.nodes);
+    let roots = if let Some(selector) = options.selector.as_deref() {
+        let backend_node_id = match state.find_raw(selector) {
+            Ok(element) => *element.backend_node_id().inner(),
+            Err(_) => return Ok(None),
+        };
+        let Some(index) = nodes
+            .iter()
+            .position(|node| node.backend_node_id == Some(backend_node_id))
+        else {
+            return Ok(None);
+        };
+        vec![index]
+    } else {
+        default_roots
+    };
+    Ok(Some(render_ax_entries(&nodes, &roots, options)))
+}
+
 pub(super) fn snapshot_payload(state: &mut ServePage, params: &Value) -> OpenPageResult<Value> {
     let options = AgentSnapshotOptions::from_params(params)?;
-    let snapshot = state.run_js(&agent_snapshot_script(&options)?)?;
-
     let origin = current_page_origin(state);
     let title = current_page_title(state);
-    let mut entries = snapshot
-        .get("entries")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let ax_snapshot = collect_ax_snapshot(state, &options).ok().flatten();
+    let fallback = if ax_snapshot.is_none() {
+        Some(state.run_js(&agent_snapshot_script(&options)?)?)
+    } else {
+        None
+    };
+    let (mut entries, truncated) = match ax_snapshot {
+        Some(result) => result,
+        None => {
+            let snapshot = fallback.as_ref().expect("fallback snapshot");
+            (
+                snapshot
+                    .get("entries")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default(),
+                snapshot
+                    .get("truncated")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+            )
+        }
+    };
     state.register_snapshot_entries(&mut entries);
 
     let mut payload = payload_object(
@@ -293,27 +569,32 @@ pub(super) fn snapshot_payload(state: &mut ServePage, params: &Value) -> OpenPag
         origin.as_deref(),
         title.as_deref(),
     );
-    payload.insert("refs".to_string(), Value::Object(snapshot_refs(&entries)));
+    if !options.compact {
+        payload.insert("refs".to_string(), Value::Object(snapshot_refs(&entries)));
+    }
     payload.insert("count".to_string(), json!(entries.len()));
     payload.insert("mode".to_string(), json!(options.mode.as_str()));
     payload.insert("depth".to_string(), json!(options.depth));
     if let Some(selector) = options.selector {
         payload.insert("selector".to_string(), json!(selector));
     }
-    if snapshot
-        .get("truncated")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
+    if truncated {
         payload.insert("truncated".to_string(), json!(true));
     }
-    if let Some(error) = snapshot.get("error").and_then(Value::as_str) {
+    if let Some(error) = fallback
+        .as_ref()
+        .and_then(|snapshot| snapshot.get("error"))
+        .and_then(Value::as_str)
+    {
         if !error.is_empty() {
             payload.insert("warning".to_string(), json!(error));
         }
     }
     if options.raw || options.format == AgentSnapshotFormat::Json {
         payload.insert("snapshot".to_string(), Value::Array(entries));
+    }
+    if options.compact && options.format == AgentSnapshotFormat::Json {
+        payload.remove("text");
     }
 
     Ok(Value::Object(payload))
@@ -340,9 +621,9 @@ fn format_snapshot_text(entries: &[Value], title: Option<&str>, origin: Option<&
         let Some(obj) = entry.as_object() else {
             continue;
         };
-        let ref_id = obj.get("ref").and_then(Value::as_str).unwrap_or("?");
+        let ref_id = obj.get("ref").and_then(Value::as_str);
         let role = obj.get("role").and_then(Value::as_str).unwrap_or("element");
-        let tag = obj.get("tag").and_then(Value::as_str).unwrap_or("unknown");
+        let tag = obj.get("tag").and_then(Value::as_str);
         let name = obj.get("name").and_then(Value::as_str).unwrap_or("");
         let text = obj.get("text").and_then(Value::as_str).unwrap_or("");
         let attrs = obj.get("attrs").and_then(Value::as_object);
@@ -376,7 +657,15 @@ fn format_snapshot_text(entries: &[Value], title: Option<&str>, origin: Option<&
             .map(|depth| "  ".repeat(depth.min(6) as usize))
             .unwrap_or_default();
         let display = if !name.is_empty() { name } else { text };
-        let mut line = format!("{indent}@{ref_id} {role} [{tag}]");
+        let mut line = match ref_id {
+            Some(ref_id) => format!("{indent}@{ref_id} {role}"),
+            None => format!("{indent}{role}"),
+        };
+        if let Some(tag) = tag {
+            line.push_str(" [");
+            line.push_str(tag);
+            line.push(']');
+        }
         if !display.is_empty() {
             line.push(' ');
             line.push('"');
@@ -483,4 +772,89 @@ fn snapshot_refs(entries: &[Value]) -> Map<String, Value> {
 
 fn escape_snapshot_value(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(role: &str, name: &str, backend_node_id: i64) -> AxSnapshotNode {
+        AxSnapshotNode {
+            parent_id: None,
+            role: role.to_string(),
+            name: name.to_string(),
+            value: None,
+            backend_node_id: Some(backend_node_id),
+            frame_id: None,
+            state: Map::new(),
+            ignored: false,
+            children: Vec::new(),
+        }
+    }
+
+    fn options(mode: AgentSnapshotMode, depth: usize) -> AgentSnapshotOptions {
+        AgentSnapshotOptions {
+            mode,
+            format: AgentSnapshotFormat::Json,
+            raw: false,
+            compact: false,
+            depth,
+            selector: None,
+        }
+    }
+
+    #[test]
+    fn snapshot_modes_keep_only_relevant_ax_nodes() {
+        let button = node("button", "Sign in", 1);
+        let heading = node("heading", "Products", 2);
+        let text = node("statictext", "Six products", 3);
+
+        assert!(includes_ax_node(&button, AgentSnapshotMode::Interactive));
+        assert!(!includes_ax_node(&heading, AgentSnapshotMode::Interactive));
+        assert!(includes_ax_node(&heading, AgentSnapshotMode::Semantic));
+        assert!(includes_ax_node(&text, AgentSnapshotMode::Semantic));
+    }
+
+    #[test]
+    fn snapshot_depth_ignores_unincluded_wrapper_nodes() {
+        let mut root = node("rootwebarea", "Page", 1);
+        root.children = vec![1];
+        let mut wrapper = node("generic", "", 2);
+        wrapper.children = vec![2];
+        let button = node("button", "Deep button", 3);
+        let nodes = vec![root, wrapper, button];
+
+        let (entries, truncated) =
+            render_ax_entries(&nodes, &[0], &options(AgentSnapshotMode::Interactive, 0));
+
+        assert!(!truncated);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["name"], "Deep button");
+        assert_eq!(entries[0]["depth"], 0);
+    }
+
+    #[test]
+    fn snapshot_omits_duplicate_static_text_under_named_parent() {
+        let mut button = node("button", "Sign in", 1);
+        button.children = vec![1];
+        let text = node("statictext", "Sign in", 2);
+        let nodes = vec![button, text];
+
+        let (entries, _) =
+            render_ax_entries(&nodes, &[0], &options(AgentSnapshotMode::Semantic, 2));
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["role"], "button");
+    }
+
+    #[test]
+    fn ax_text_format_does_not_invent_unknown_tag() {
+        let text = format_snapshot_text(
+            &[json!({"ref": "e1", "role": "button", "name": "Sign in", "depth": 0})],
+            None,
+            None,
+        );
+
+        assert_eq!(text, "@e1 button \"Sign in\"");
+    }
 }
