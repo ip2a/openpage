@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
-cargo fmt --manifest-path rust/Cargo.toml --all -- --check
+cargo fmt --manifest-path rust/apps/openpage/Cargo.toml --all -- --check
 cargo check --manifest-path rust/Cargo.toml
 cargo test --manifest-path rust/Cargo.toml -- --test-threads=1
 bash scripts/test/mcp_smoke_test.sh
