@@ -8,7 +8,6 @@ function getBinaryPath() {
 
   const mapping = {
     "darwin arm64": "openpage-bin-darwin-arm64",
-    "darwin x64": "openpage-bin-darwin-x64",
     "linux x64": "openpage-bin-linux-x64-gnu",
     "linux arm64": "openpage-bin-linux-arm64-gnu",
     "win32 x64": "openpage-bin-win32-x64-msvc"

@@ -25,9 +25,6 @@ jobs:
           - platform_id: windows-x64
             runner: windows-latest
             target: x86_64-pc-windows-msvc
-          - platform_id: macos-x64
-            runner: macos-13
-            target: x86_64-apple-darwin
           - platform_id: macos-arm64
             runner: macos-latest
             target: aarch64-apple-darwin

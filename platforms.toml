@@ -12,15 +12,6 @@ npm_package = "openpage-bin-darwin-arm64"
 npm_dir = "openpage-bin-darwin-arm64"
 
 [[platforms]]
-id = "darwin-x64"
-target = "x86_64-apple-darwin"
-os = "darwin"
-cpu = "x64"
-artifact_binary = "openpage"
-npm_package = "openpage-bin-darwin-x64"
-npm_dir = "openpage-bin-darwin-x64"
-
-[[platforms]]
 id = "linux-x64-gnu"
 target = "x86_64-unknown-linux-musl"
 os = "linux"

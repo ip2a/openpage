@@ -4,13 +4,12 @@ set -e
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INTERNAL_DIR="$ROOT_DIR/npm/packages/internal"
 MAIN_PKG="$ROOT_DIR/npm/packages/openpage"
-PLATFORM_PKGS="openpage-bin-darwin-arm64 openpage-bin-darwin-x64 openpage-bin-linux-x64-gnu openpage-bin-linux-arm64-gnu openpage-bin-win32-x64-msvc"
+PLATFORM_PKGS="openpage-bin-darwin-arm64 openpage-bin-linux-x64-gnu openpage-bin-linux-arm64-gnu openpage-bin-win32-x64-msvc"
 
 # detect current platform -> internal npm package name (mirrors bin/openpage.js)
 npm_platform_pkg() {
   case "$(uname -s)-$(uname -m)" in
     Darwin-arm64|Darwin-aarch64) echo "openpage-bin-darwin-arm64" ;;
-    Darwin-x86_64|Darwin-amd64)  echo "openpage-bin-darwin-x64" ;;
     Linux-x86_64|Linux-amd64)    echo "openpage-bin-linux-x64-gnu" ;;
     Linux-aarch64|Linux-arm64)   echo "openpage-bin-linux-arm64-gnu" ;;
     *) return 1 ;;

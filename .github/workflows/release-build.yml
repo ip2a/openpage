@@ -57,9 +57,8 @@ jobs:
         if: matrix.platform_id == 'darwin'
         shell: bash
         run: |
-          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          rustup target add aarch64-apple-darwin
           ./scripts/build/build_target.sh aarch64-apple-darwin darwin-arm64 openpage
-          ./scripts/build/build_target.sh x86_64-apple-darwin darwin-x64 openpage
 
       - name: Run smoke test
         if: matrix.platform_id != 'darwin'
@@ -83,7 +82,6 @@ jobs:
         shell: bash
         run: |
           ./scripts/test/smoke_test.sh "dist/darwin-arm64/openpage"
-          ./scripts/test/smoke_test.sh "dist/darwin-x64/openpage"
 
       - name: Generate checksums
         if: matrix.platform_id != 'darwin'
@@ -97,7 +95,6 @@ jobs:
         shell: bash
         run: |
           (cd dist/darwin-arm64 && shasum -a 256 openpage > SHA256SUMS)
-          (cd dist/darwin-x64 && shasum -a 256 openpage > SHA256SUMS)
 
       - name: Upload build artifacts
         if: matrix.platform_id != 'darwin'
@@ -115,14 +112,6 @@ jobs:
           path: dist/darwin-arm64/*
           if-no-files-found: error
 
-      - name: Upload build artifacts (macOS x64)
-        if: matrix.platform_id == 'darwin'
-        uses: actions/upload-artifact@v4
-        with:
-          name: openpage-darwin-x64
-          path: dist/darwin-x64/*
-          if-no-files-found: error
-
   release:
     needs: build
     runs-on: ubuntu-latest
@@ -138,7 +127,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          for id in darwin-arm64 darwin-x64 linux-x64-gnu linux-arm64-gnu win32-x64-msvc; do
+          for id in darwin-arm64 linux-x64-gnu linux-arm64-gnu win32-x64-msvc; do
             src="dist/openpage-$id"
             if [ ! -d "$src" ]; then echo "[warn] missing $src, skipping"; continue; fi
             if [ "$id" = "win32-x64-msvc" ]; then bin="openpage.exe"; else bin="openpage"; fi

@@ -44,7 +44,7 @@ jobs:
       - name: Download release-build artifacts
         run: |
           mkdir -p dist
-          for platform in darwin-arm64 darwin-x64 linux-x64-gnu linux-arm64-gnu win32-x64-msvc; do
+          for platform in darwin-arm64 linux-x64-gnu linux-arm64-gnu win32-x64-msvc; do
             gh run download "${{ inputs.build_run_id }}" --name "openpage-${platform}" --dir "dist/${platform}"
           done
 
@@ -55,7 +55,6 @@ jobs:
         run: |
           for pkg in \
             npm/packages/internal/openpage-bin-darwin-arm64 \
-            npm/packages/internal/openpage-bin-darwin-x64 \
             npm/packages/internal/openpage-bin-linux-x64-gnu \
             npm/packages/internal/openpage-bin-linux-arm64-gnu \
             npm/packages/internal/openpage-bin-win32-x64-msvc; do
