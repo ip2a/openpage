@@ -577,6 +577,9 @@ pub fn openpage_error_from_structured_context(
             };
             message = match state {
                 Some("inactive") => format!("session `{session}` is not active"),
+                Some("incomplete") if has_reason("broken_target") => {
+                    format!("session `{session}` has a broken page target")
+                }
                 Some("incomplete") if has_reason("daemon_unresponsive") => {
                     format!("session `{session}` is currently busy or unresponsive")
                 }
@@ -675,6 +678,7 @@ fn openpage_error_fix(error: &OpenPageError) -> Option<&str> {
 
     let (_, fix) = detail.split_once(". ")?;
     let canonical_session_state = detail.contains(" is not active")
+        || detail.contains(" has a broken page target")
         || detail.contains(" is currently busy or unresponsive")
         || detail.contains(" exists but its daemon is not ready")
         || detail.contains(" has a daemon version mismatch");
@@ -695,11 +699,20 @@ struct ErrorContext<'a> {
 }
 
 fn openpage_error_context(error: &OpenPageError) -> ErrorContext<'_> {
-    if error
+    let failure_reason = error
         .diagnostic()
-        .and_then(|diagnostic| diagnostic.failure_reason.as_deref())
-        == Some("stale_ref")
-    {
+        .and_then(|diagnostic| diagnostic.failure_reason.as_deref());
+    if failure_reason == Some("revision_mismatch") {
+        return ErrorContext {
+            fix: Some(Cow::Borrowed(
+                "The page state changed since the last snapshot. Retry the same command                  without `expected_revision`, or run `openpage snapshot` again to refresh.",
+            )),
+            retryable: Some(true),
+            suggested_action: Some("retry_without_revision"),
+            ..ErrorContext::default()
+        };
+    }
+    if failure_reason == Some("stale_ref") {
         return ErrorContext {
             fix: Some(Cow::Borrowed(
                 "Run `openpage snapshot` again and retry with the new ref and revision.",
@@ -768,7 +781,12 @@ fn openpage_error_context(error: &OpenPageError) -> ErrorContext<'_> {
         return context;
     }
 
-    if detail.contains(" is backed by daemon version ") {
+    if detail.contains(" has a broken page target") {
+        context.state = Some("incomplete");
+        context.reasons.push("broken_target");
+        context.retryable = Some(false);
+        context.suggested_action = Some("restart_session");
+    } else if detail.contains(" is backed by daemon version ") {
         context.state = Some("incompatible");
         context.reasons.push("version_mismatch");
     } else if detail.contains(" has a daemon version mismatch") {

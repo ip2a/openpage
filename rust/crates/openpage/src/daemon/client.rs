@@ -16,7 +16,7 @@ use windows_sys::Win32::Foundation::CloseHandle;
 use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
 
 use crate::error::{OpenPageError, OpenPageResult};
-use crate::protocol::{Request, Response, openpage_error_from_structured_context};
+use crate::protocol::{Request, Response, ResponseError, openpage_error_from_structured_context};
 
 const CONNECT_TIMEOUT_MS: u64 = 200;
 const READ_TIMEOUT_SECS: u64 = 30;
@@ -537,12 +537,12 @@ fn daemon_unresponsive_fix(status: &DaemonSessionInfo) -> String {
 fn broken_target_fix_parts(session: &str, log_path: &str, log_exists: bool) -> String {
     if log_exists {
         format!(
-            "Run `openpage browser start --session {0} --replace` to recreate the broken page target, or `openpage goto --session {0} <url>` if you want to recreate it and navigate in one step. Inspect {1} with `openpage browser logs --session {0} --tail 20` if you need the daemon-side failure detail.",
+            "Run `openpage browser start --session {0} --replace` to recreate the broken page target, or `openpage browser start --session {0} --replace <url>` to recreate it and navigate immediately. Inspect {1} with `openpage browser logs --session {0} --tail 20` if you need the daemon-side failure detail.",
             session, log_path
         )
     } else {
         format!(
-            "Run `openpage browser start --session {0} --replace` to recreate the broken page target, or `openpage goto --session {0} <url>` if you want to recreate it and navigate in one step.",
+            "Run `openpage browser start --session {0} --replace` to recreate the broken page target, or `openpage browser start --session {0} --replace <url>` to recreate it and navigate immediately.",
             session
         )
     }
@@ -1111,13 +1111,40 @@ pub fn send_request(session: &str, request: &Request) -> OpenPageResult<Response
 }
 
 pub fn send_request_existing(session: &str, request: &Request) -> OpenPageResult<Response> {
-    send_request_with_retry(
+    let response = send_request_with_retry(
         session,
         request,
         |session| ensure_existing_daemon(session),
         send_request_once,
     )
-    .map_err(|error| remap_existing_session_request_error(session, error))
+    .map_err(|error| remap_existing_session_request_error(session, error))?;
+    Ok(remap_broken_target_response(session, response))
+}
+
+fn is_broken_target_error(error: &ResponseError) -> bool {
+    error.kind == "page_operation" && error.message.contains("receiver is gone")
+}
+
+fn remap_broken_target_response(session: &str, mut response: Response) -> Response {
+    let Some(error) = response
+        .error
+        .as_mut()
+        .filter(|error| is_broken_target_error(error))
+    else {
+        return response;
+    };
+    let fix = daemon_status(session)
+        .map(|status| broken_target_fix(&status))
+        .unwrap_or_else(|_| broken_target_fix_parts(session, "", false));
+    error.kind = "browser_operation".to_string();
+    error.message = "page target receiver is gone".to_string();
+    error.fix = Some(fix);
+    error.session = Some(session.to_string());
+    error.state = Some("incomplete".to_string());
+    error.reasons = Some(vec!["broken_target".to_string()]);
+    error.retryable = Some(false);
+    error.suggested_action = Some("restart_session".to_string());
+    response
 }
 
 fn session_target_state(status: &DaemonSessionInfo) -> OpenPageResult<Option<SessionTargetState>> {
@@ -1170,10 +1197,7 @@ fn session_target_state_from_response(
     let is_broken_target = response
         .error
         .as_ref()
-        .map(|error| {
-            error.kind == "page_operation"
-                && error.message == "send failed because receiver is gone"
-        })
+        .map(is_broken_target_error)
         .unwrap_or(false);
 
     if is_broken_target {
@@ -2548,6 +2572,28 @@ mod tests {
     }
 
     #[test]
+    fn broken_target_response_exposes_recovery_action() {
+        let response = super::remap_broken_target_response(
+            "gamma",
+            Response::error(
+                None,
+                "page_operation",
+                "page operation navigate failed: send failed because receiver is gone",
+            ),
+        );
+        let error = response.error.unwrap();
+        assert_eq!(error.kind, "browser_operation");
+        assert_eq!(error.session.as_deref(), Some("gamma"));
+        assert_eq!(error.state.as_deref(), Some("incomplete"));
+        assert_eq!(error.reasons, Some(vec!["broken_target".to_string()]));
+        assert_eq!(error.suggested_action.as_deref(), Some("restart_session"));
+        let fix = error.fix.unwrap();
+        assert!(fix.contains("browser start --session gamma --replace"));
+        assert!(fix.contains("--replace <url>"));
+        assert!(!fix.contains("openpage goto"));
+    }
+
+    #[test]
     fn session_target_state_from_response_detects_broken_target() {
         let status = super::DaemonSessionInfo {
             session: "gamma".to_string(),
@@ -2562,7 +2608,7 @@ mod tests {
         let response = Response::error(
             None,
             "page_operation",
-            "send failed because receiver is gone",
+            "page operation url failed: send failed because receiver is gone",
         );
 
         assert_eq!(
