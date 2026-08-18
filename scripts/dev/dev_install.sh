@@ -11,5 +11,4 @@ fi
 export VIRTUAL_ENV="$ROOT_DIR/python/.venv"
 export PATH="$ROOT_DIR/python/.venv/bin:$PATH"
 
-uv tool run maturin develop --manifest-path rust/bindings/python/Cargo.toml --features python-module --uv
-uv pip install --python python/.venv/bin/python -e python
+uv tool run maturin develop --features python-module --uv

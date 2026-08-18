@@ -53,7 +53,7 @@ jobs:
           python -m pip install openpage==${{ inputs.version }}
           python - <<'PY'
           import openpage
-          import openpage_rs
+          from openpage import openpage_rs
 
           print("openpage import ok")
           print(openpage.Browser)
