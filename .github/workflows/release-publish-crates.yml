@@ -1,3 +1,4 @@
+# Manually triggered crates.io publish via OIDC trusted publishing.
 name: release-publish-crates
 
 on:

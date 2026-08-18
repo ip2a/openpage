@@ -1,3 +1,4 @@
+# Desktop (Tauri) build workflow.
 name: desktop-build
 
 on:

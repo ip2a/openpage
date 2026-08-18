@@ -1,3 +1,4 @@
+# Manually triggered npm publish via OIDC trusted publishing.
 name: release-publish-npm
 
 on:

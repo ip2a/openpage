@@ -1,3 +1,4 @@
+# Manually triggered PyPI publish via OIDC trusted publishing.
 name: release-publish-pypi
 
 on:
