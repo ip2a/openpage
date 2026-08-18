@@ -1,6 +1,6 @@
 {
   "name": "openpage-bin-win32-x64-msvc",
-  "version": "0.1.0",
+  "version": "0.1.6",
   "description": "openpage platform package (win32 x64)",
   "author": "ip2a <ooooofish@126.com>",
   "license": "MIT",
