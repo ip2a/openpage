@@ -583,6 +583,7 @@ fn run_snapshot(args: SnapshotArgs) -> OpenPageResult<()> {
             "compact": args.compact,
             "depth": args.depth,
             "selector": args.selector,
+            "exclude_roles": args.exclude_roles,
         }),
     )?;
     print_json(simple_ok(paginate_snapshot_result(
@@ -728,7 +729,11 @@ fn run_click(args: ClickArgs) -> OpenPageResult<()> {
     let mut result = rpc_page(
         &args.session,
         "element.click",
-        json!({"locator": args.locator, "expected_revision": args.expected_revision}),
+        json!({
+            "locator": args.locator,
+            "expected_revision": args.expected_revision,
+            "detect_new_tab": args.wait_navigation,
+        }),
     )?;
     if !args.wait_navigation {
         return print_page_result(&args.session, result);
@@ -742,11 +747,19 @@ fn run_click(args: ClickArgs) -> OpenPageResult<()> {
             OpenPageError::BrowserOperation("click did not return a navigation token".to_string())
         })?
         .to_string();
-    let navigation = rpc_page(
-        &args.session,
-        "wait.navigation",
-        json!({"timeout_ms": 10000, "token": token}),
-    )?;
+    let opened_tab_target_id = result
+        .get("opened_tab_target_id")
+        .and_then(Value::as_str)
+        .map(ToString::to_string);
+    let navigation = if let Some(target_id) = opened_tab_target_id {
+        json!({"navigated": false, "opened_tab": true, "target_id": target_id})
+    } else {
+        rpc_page(
+            &args.session,
+            "wait.navigation",
+            json!({"timeout_ms": 10000, "token": token}),
+        )?
+    };
     if let Some(object) = result.as_object_mut() {
         object.remove("navigation_token");
         object.insert("navigation".to_string(), navigation);
@@ -4031,6 +4044,7 @@ mod tests {
             "openpage",
             "screenshot-element",
             "#hero",
+            "--output",
             "hero.png",
             "--session",
             "agent",
@@ -5343,6 +5357,41 @@ mod tests {
                 .as_str()
                 .expect("message should be a string")
                 .contains("daemon for session 'io-review': permission denied")
+        );
+    }
+
+    #[test]
+    fn response_result_preserves_broken_target_recovery_context() {
+        let response = super::Response::error_with_context(
+            None,
+            "browser_operation",
+            "page target receiver is gone",
+            Some(
+                "Run `openpage browser start --session gamma --replace` to recreate the page target, or `openpage browser start --session gamma --replace <url>` to recreate it and navigate immediately."
+                    .to_string(),
+            ),
+            Some("gamma".to_string()),
+            Some("incomplete".to_string()),
+            Some(vec!["broken_target".to_string()]),
+            Some(false),
+            Some("restart_session".to_string()),
+        );
+
+        let error =
+            super::response_result(response).expect_err("broken target should not look successful");
+        let payload = openpage::protocol::simple_openpage_error(&error);
+
+        assert_eq!(payload["error"]["kind"], "browser_operation");
+        assert_eq!(payload["error"]["session"], "gamma");
+        assert_eq!(payload["error"]["state"], "incomplete");
+        assert_eq!(payload["error"]["reasons"], json!(["broken_target"]));
+        assert_eq!(payload["error"]["retryable"], false);
+        assert_eq!(payload["error"]["suggested_action"], "restart_session");
+        assert!(
+            payload["error"]["fix"]
+                .as_str()
+                .expect("fix should be a string")
+                .contains("browser start --session gamma --replace")
         );
     }
 

@@ -101,7 +101,7 @@ fn openpage_top_level_help_text() -> String {
         "  page        title, url, html, snapshot, screenshot, js, reload, back, forward",
         "  actions     click, fill, press, scroll, select, upload, download",
         "  waits       wait, wait-for-navigation, wait-for-ready, wait-for-text",
-        "  browser     tab, frame, window, downloads, cookies, storage, permissions",
+        "  tab/frame   Top-level tab and frame commands (also browser downloads/cookies/storage)",
         "  automation  batch, serve",
         "",
         "Bootstrap Rules:",
@@ -294,7 +294,7 @@ mod tests {
         assert!(help.contains("Examples:"));
         assert!(help.contains("openpage batch --bail"));
         assert!(help.contains("[ [\"browser\",\"start\""));
-        assert!(help.contains("Each command writes its own JSON result as a separate line."));
+        assert!(help.contains("Returns one JSON envelope with a `result.commands` array."));
         assert!(help.contains("`--bail` stops after the first failing command."));
     }
 }

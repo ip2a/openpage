@@ -1597,8 +1597,8 @@ pub(crate) fn element_top_frame_check_failed_message(detail: &str) -> String {
 
 pub(crate) fn frame_index_must_start_message() -> String {
     localized_message(
-        "frame index must start from 1 or use negative indices from -1",
-        "frame 序号必须从 1 开始，或使用从 -1 开始的负序号",
+        "frame index must start from 1, use negative indices from -1, or use `frame switch main` for the top document",
+        "frame 序号必须从 1 开始，可使用从 -1 开始的负序号，或用 `frame switch main` 回到主文档",
     )
 }
 

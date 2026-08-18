@@ -447,6 +447,9 @@ pub struct SnapshotArgs {
     /// Restrict snapshot traversal to a CSS selector subtree
     #[arg(long)]
     pub selector: Option<String>,
+    /// Comma-separated roles to omit from the snapshot (for example: option,listitem)
+    #[arg(long)]
+    pub exclude_roles: Option<String>,
     /// Maximum snapshot content characters returned in this page
     #[arg(long, default_value_t = 20_000)]
     pub max_output: usize,
@@ -1397,12 +1400,14 @@ pub struct TabSwitchArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum FrameCommand {
+    /// List frames in the active page
     List(SessionArgs),
     Switch(FrameSwitchArgs),
 }
 
 #[derive(Debug, Args)]
 pub struct FrameSwitchArgs {
+    /// Frame index/id, or main/root/page for the top document
     pub target: String,
     #[arg(long, default_value = "default")]
     pub session: String,
