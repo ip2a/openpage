@@ -118,14 +118,7 @@ impl McpState {
         } else {
             None
         };
-        let summary = tool_result
-            .get("content")
-            .and_then(Value::as_array)
-            .and_then(|content| content.first())
-            .and_then(|content| content.get("text"))
-            .and_then(Value::as_str)
-            .unwrap_or("OpenPage capture")
-            .to_string();
+        let summary = summarize_success(&result);
         let capture = self.captures.record(
             &self.session,
             CaptureCreate {
@@ -479,10 +472,19 @@ fn output_schema() -> Value {
                 "properties": {
                     "kind": {"type": "string"},
                     "message": {"type": "string"},
+                    "fix": {"type": "string"},
+                    "session": {"type": "string"},
+                    "state": {"type": "string"},
+                    "reasons": {"type": "array", "items": {"type": "string"}},
                     "retryable": {"type": "boolean"},
                     "suggested_action": {"type": "string"},
                     "operation": {"type": "string"},
                     "locator": {"type": "string"},
+                    "url": {"type": "string"},
+                    "timeout": {"type": "integer", "minimum": 0},
+                    "matched_count": {"type": "integer", "minimum": 0},
+                    "element_state": {"type": "string"},
+                    "failure_reason": {"type": "string"},
                     "current_revision": {"type": "string"},
                     "expected_revision": {"type": "string"}
                 },
@@ -507,7 +509,7 @@ fn tool_definitions() -> Vec<Value> {
         }),
         json!({
             "name": "openpage",
-            "description": "Execute one command or a structured batch for operations not covered by typed tools. The bound MCP session is injected automatically.",
+            "description": "Execute one command or a structured batch for operations not covered by typed tools. The bound MCP session is injected when the command accepts --session.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -528,6 +530,7 @@ fn tool_definitions() -> Vec<Value> {
                     "compact": {"type": "boolean", "default": false},
                     "depth": {"type": "integer", "minimum": 0, "maximum": 10},
                     "selector": {"type": "string"},
+                    "exclude_roles": {"type": "array", "items": {"type": "string"}, "uniqueItems": true, "description": "Roles to omit, e.g. [\"option\", \"listitem\"]"},
                     "max_length": {"type": "integer", "minimum": 1, "default": DEFAULT_MAX_OUTPUT_CHARS},
                     "offset": {"type": "integer", "minimum": 0, "default": 0}
                 }
@@ -604,8 +607,7 @@ fn call_help(args: &Value) -> Result<Value, String> {
     }
     let mut text = outcome.stdout;
     text.push_str(&outcome.stderr);
-    let structured = json!({"ok": true, "result": {"text": text}});
-    Ok(structured_tool_result(structured))
+    Ok(structured_text_result(text))
 }
 
 fn run_tool_args(args: Vec<String>) -> Result<Value, String> {
@@ -625,6 +627,9 @@ fn run_tool_args(args: Vec<String>) -> Result<Value, String> {
     } else {
         stdout
     };
+    if outcome.exit_code == Some(0) && !message.is_empty() {
+        return Ok(structured_text_result(message.to_string()));
+    }
     let kind = if outcome.exit_code == Some(0) {
         "invalid_output"
     } else {
@@ -638,12 +643,20 @@ fn structured_tool_result(value: Value) -> Value {
     let summary = if is_error {
         summarize_error(value.get("error").unwrap_or(&Value::Null))
     } else {
-        summarize_success(value.get("result").unwrap_or(&Value::Null))
+        render_success_content(value.get("result").unwrap_or(&Value::Null))
     };
     json!({
         "content": [{"type": "text", "text": summary}],
         "structuredContent": value,
         "isError": is_error
+    })
+}
+
+fn structured_text_result(text: String) -> Value {
+    json!({
+        "content": [{"type": "text", "text": text}],
+        "structuredContent": {"ok": true, "result": {"text": text}},
+        "isError": false
     })
 }
 
@@ -658,7 +671,17 @@ fn structured_error(kind: &str, message: impl Into<String>) -> Value {
     }))
 }
 
+fn render_success_content(result: &Value) -> String {
+    serde_json::to_string(result)
+        .ok()
+        .filter(|text| text != "null")
+        .unwrap_or_else(|| "OpenPage command completed".to_string())
+}
+
 fn summarize_success(result: &Value) -> String {
+    if let Some(output) = result.get("output").and_then(Value::as_str) {
+        return format!("saved {output}");
+    }
     if let Some(revision) = result.get("revision").and_then(Value::as_str) {
         let count = result.get("count").and_then(Value::as_u64);
         return match count {
@@ -676,8 +699,8 @@ fn summarize_success(result: &Value) -> String {
             commands.len()
         );
     }
-    if let Some(output) = result.get("output").and_then(Value::as_str) {
-        return format!("saved {output}");
+    if let Some(text) = result.get("text").and_then(Value::as_str) {
+        return text.to_string();
     }
     "OpenPage command completed".to_string()
 }
@@ -767,7 +790,19 @@ fn parse_command(
             tokens[0]
         ));
     }
-    if tokens[0] != "diff" {
+    let is_help = tokens[0] == "help"
+        || tokens
+            .iter()
+            .take_while(|token| token.as_str() != "--")
+            .any(|token| matches!(token.as_str(), "-h" | "--help"))
+        || matches!(tokens.get(1).map(String::as_str), Some("help") if tokens.len() == 2);
+    let is_version =
+        matches!(tokens.as_slice(), [flag] if matches!(flag.as_str(), "-V" | "--version"));
+    let accepts_session = !is_help
+        && !is_version
+        && !matches!(tokens[0].as_str(), "diff" | "doctor" | "batch")
+        && !matches!(tokens.get(1).map(String::as_str), Some("list") if tokens[0] == "browser");
+    if accepts_session {
         inject_session(&mut tokens, session);
     }
     Ok(tokens)
@@ -775,7 +810,11 @@ fn parse_command(
 
 fn inject_session(args: &mut Vec<String>, session: &str) {
     if !args.iter().any(|arg| arg == "--session") {
-        args.extend(["--session".into(), session.into()]);
+        let tail = args
+            .iter()
+            .position(|arg| arg == "--")
+            .unwrap_or(args.len());
+        args.splice(tail..tail, ["--session".into(), session.to_string()]);
     }
 }
 
@@ -789,6 +828,23 @@ fn build_snapshot_args(args: &Value, session: &str) -> Result<Vec<String>, Strin
         result.extend(["--depth".into(), depth.to_string()]);
     }
     push_string_option(&mut result, args, "selector", "--selector")?;
+    if let Some(roles) = args.get("exclude_roles").filter(|value| !value.is_null()) {
+        let roles = roles
+            .as_array()
+            .ok_or("invalid input: `exclude_roles` must be an array of strings")?
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .filter(|value| !value.trim().is_empty())
+                    .map(ToString::to_string)
+                    .ok_or("invalid input: `exclude_roles` must be an array of non-empty strings")
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if !roles.is_empty() {
+            result.extend(["--exclude-roles".into(), roles.join(",")]);
+        }
+    }
     let max_length = optional_u64(args, "max_length")?.unwrap_or(DEFAULT_MAX_OUTPUT_CHARS);
     let offset = optional_u64(args, "offset")?.unwrap_or(0);
     result.extend(["--max-output".into(), max_length.to_string()]);
@@ -1045,6 +1101,19 @@ mod tests {
         assert_eq!(names.len(), 7);
         assert!(names.contains("screenshot"));
         assert!(tools.iter().all(|tool| tool["outputSchema"].is_object()));
+        let error_schema = &tools[0]["outputSchema"]["properties"]["error"]["properties"];
+        for field in [
+            "url",
+            "timeout",
+            "matched_count",
+            "element_state",
+            "failure_reason",
+        ] {
+            assert!(
+                error_schema.get(field).is_some(),
+                "missing error field {field}"
+            );
+        }
         for name in ["snapshot", "navigate", "click", "fill"] {
             let tool = tools.iter().find(|tool| tool["name"] == name).unwrap();
             assert!(tool["inputSchema"]["properties"].get("session").is_none());
@@ -1069,6 +1138,49 @@ mod tests {
         }));
         assert_eq!(success["structuredContent"]["result"]["revision"], "r_2");
         assert_eq!(success["isError"], false);
+
+        let text_result = structured_tool_result(json!({
+            "ok": true,
+            "result": {"typed": true, "text": "hello"}
+        }));
+        let text_content: Value =
+            serde_json::from_str(text_result["content"][0]["text"].as_str().unwrap()).unwrap();
+        assert_eq!(text_content, json!({"typed": true, "text": "hello"}));
+        assert_eq!(text_result["isError"], false);
+
+        let help = structured_text_result("Usage: openpage [COMMAND]".to_string());
+        assert_eq!(help["content"][0]["text"], "Usage: openpage [COMMAND]");
+        assert_eq!(
+            help["structuredContent"]["result"]["text"],
+            "Usage: openpage [COMMAND]"
+        );
+
+        let browser = structured_tool_result(json!({
+            "ok": true,
+            "result": {
+                "session": "bound",
+                "url": "https://example.com",
+                "target": "page-1"
+            }
+        }));
+        let browser_text = browser["content"][0]["text"].as_str().unwrap();
+        assert!(browser_text.contains(r#""session":"bound""#));
+        assert!(browser_text.contains(r#""target":"page-1""#));
+
+        let snapshot = structured_tool_result(json!({
+            "ok": true,
+            "result": {
+                "revision": "r_3",
+                "count": 1,
+                "snapshot": [{"ref": "@e1", "role": "button"}]
+            }
+        }));
+        assert!(
+            snapshot["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("@e1")
+        );
 
         let error = structured_tool_result(json!({
             "ok": false,
@@ -1143,19 +1255,59 @@ mod tests {
             .unwrap(),
             vec!["diff", "snapshot", "--before", "a", "--after", "b"]
         );
+        assert_eq!(
+            build_openpage_args(&json!({"command": "browser list"}), "bound").unwrap(),
+            vec!["browser", "list"]
+        );
+        assert_eq!(
+            build_openpage_args(&json!({"command": "doctor --quick"}), "bound").unwrap(),
+            vec!["doctor", "--quick"]
+        );
+        assert_eq!(
+            build_openpage_args(&json!({"command": "help browser"}), "bound").unwrap(),
+            vec!["help", "browser"]
+        );
+        assert_eq!(
+            build_openpage_args(&json!({"command": "browser help"}), "bound").unwrap(),
+            vec!["browser", "help"]
+        );
+        assert_eq!(
+            build_openpage_args(&json!({"command": "browser --help"}), "bound").unwrap(),
+            vec!["browser", "--help"]
+        );
+        assert_eq!(
+            build_openpage_args(&json!({"command": "snapshot -h"}), "bound").unwrap(),
+            vec!["snapshot", "-h"]
+        );
+        assert_eq!(
+            build_openpage_args(&json!({"command": "--version"}), "bound").unwrap(),
+            vec!["--version"]
+        );
+        assert_eq!(
+            build_openpage_args(&json!({"command": "fill input -- -h"}), "bound").unwrap(),
+            vec!["fill", "input", "--session", "bound", "--", "-h"]
+        );
+        assert_eq!(
+            build_openpage_args(&json!({"command": "fill input help"}), "bound").unwrap(),
+            vec!["fill", "input", "help", "--session", "bound"]
+        );
+        assert_eq!(
+            build_openpage_args(&json!({"command": "browser stop"}), "bound").unwrap(),
+            vec!["browser", "stop", "--session", "bound"]
+        );
     }
 
     #[test]
     fn typed_tool_argv_builders_bind_session_and_revision() {
         assert_eq!(
             build_snapshot_args(
-                &json!({"mode": "semantic", "compact": true, "depth": 3, "selector": "main", "max_length": 1000, "offset": 2}),
+                &json!({"mode": "semantic", "compact": true, "depth": 3, "selector": "main", "exclude_roles": ["option"], "max_length": 1000, "offset": 2}),
                 "bound"
             )
             .unwrap(),
             vec![
                 "snapshot", "--format", "json", "--mode", "semantic", "--compact", "--depth",
-                "3", "--selector", "main", "--max-output", "1000", "--offset", "2",
+                "3", "--selector", "main", "--exclude-roles", "option", "--max-output", "1000", "--offset", "2",
                 "--session", "bound"
             ]
         );
