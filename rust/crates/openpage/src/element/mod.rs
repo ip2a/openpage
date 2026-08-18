@@ -584,12 +584,36 @@ impl Element {
 
         let timeout_ms = timeout_ms.unwrap_or(DEFAULT_CLICK_TIMEOUT_MS).max(1);
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
+
+        // Scroll into view first so elements outside the viewport can be rendered
+        // and obtain a rect. Without this, has_rect() may never become true for
+        // off-screen elements (e.g. lazy-loaded or below-the-fold content).
+        self.scroll_to_see(Some(false))?;
+
         let mut has_rect = self.has_rect()?;
         while !has_rect && Instant::now() < deadline {
             sleep(Duration::from_millis(1));
             has_rect = self.has_rect()?;
         }
         if !has_rect {
+            if by_js != Some(true)
+                && self
+                    .run_js(
+                        r"
+                        const proxy = this.htmlFor && document.getElementById(this.htmlFor);
+                        if (this instanceof HTMLLabelElement && proxy) {
+                          proxy.click();
+                          return true;
+                        }
+                        this.click();
+                        return true;
+                        ",
+                    )
+                    .and_then(|value| value_as_bool(value, "fallback click"))
+                    .unwrap_or(false)
+            {
+                return Ok(true);
+            }
             return Err(OpenPageError::PageOperation(click_failed_no_rect_message()));
         }
 
@@ -599,8 +623,6 @@ impl Element {
                 return Err(OpenPageError::PageOperation(click_failed_moving_message()));
             }
         }
-
-        self.scroll_to_see(Some(false))?;
 
         let mut can_click = self.is_enabled()? && self.is_displayed()?;
         while !can_click && Instant::now() < deadline {
@@ -896,6 +918,8 @@ impl Element {
 
     fn prepare_for_keyboard_input(&self, timeout_ms: u64) -> OpenPageResult<()> {
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        // Scroll into view first so off-screen elements can become interactable.
+        self.scroll_to_see(Some(false))?;
         let mut ready = self.has_rect()? && self.is_displayed()? && self.is_enabled()?;
         while !ready && Instant::now() < deadline {
             sleep(Duration::from_millis(10));
@@ -912,7 +936,6 @@ impl Element {
                 input_failed_not_interactable_message(),
             ));
         }
-        self.scroll_to_see(Some(false))?;
         let mut interactable = self.is_in_viewport()? && !self.is_covered()?;
         while !interactable && Instant::now() < deadline {
             sleep(Duration::from_millis(10));
@@ -2129,6 +2152,8 @@ impl Element {
             return element.hover_with_offset_and_timeout(offset_x, offset_y, timeout_ms);
         }
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        // Scroll into view first so off-screen elements can become interactable.
+        self.scroll_to_see(Some(false))?;
         if !self.has_rect()? {
             return Err(OpenPageError::PageOperation(
                 hover_failed_not_interactable_message(),
@@ -2140,7 +2165,6 @@ impl Element {
                 hover_failed_not_interactable_message(),
             ));
         }
-        self.scroll_to_see(Some(false))?;
         if !self.is_displayed()? || !self.is_in_viewport()? || self.is_covered()? {
             return Err(OpenPageError::PageOperation(
                 hover_failed_not_interactable_message(),
