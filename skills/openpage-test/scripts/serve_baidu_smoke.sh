@@ -4,11 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$ROOT_DIR"
 
-ARTIFACT_DIR="${OPENPAGE_ARTIFACT_DIR:-/tmp/openpage-cli-artifacts}"
+ARTIFACT_DIR="${OPENPAGE_ARTIFACT_DIR:-${TMPDIR:-/tmp}/openpage-cli-artifacts}"
 SCREENSHOT_PATH="${1:-$ARTIFACT_DIR/serve-baidu.png}"
 mkdir -p "$ARTIFACT_DIR"
 
-OPENPAGE_HOME_DIR="${OPENPAGE_HOME:-/tmp/openpage-cli-test-daemon}"
+OPENPAGE_HOME_DIR="${OPENPAGE_HOME:-${TMPDIR:-/tmp}/openpage-cli-test-daemon}"
 export OPENPAGE_HOME="$OPENPAGE_HOME_DIR"
 SESSION="smoke"
 LOG_PATH="$(mktemp)"
@@ -24,14 +24,16 @@ resolve_browser_path() {
       return 0
     fi
   done
-  for candidate in \
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-    "/Applications/Chromium.app/Contents/MacOS/Chromium"; do
-    if [[ -x "$candidate" ]]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  done
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    for candidate in \
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+      "/Applications/Chromium.app/Contents/MacOS/Chromium"; do
+      if [[ -x "$candidate" ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    done
+  fi
   return 1
 }
 

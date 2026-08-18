@@ -26,7 +26,6 @@ jobs:
           node-version: "24"
 
       - name: Verify npm install
-        shell: bash
         run: |
           npm install -g openpage@${{ inputs.version }}
           openpage --version

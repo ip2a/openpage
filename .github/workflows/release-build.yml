@@ -96,8 +96,8 @@ jobs:
         if: matrix.platform_id == 'darwin'
         shell: bash
         run: |
-          (cd dist/darwin-arm64 && sha256sum openpage > SHA256SUMS)
-          (cd dist/darwin-x64 && sha256sum openpage > SHA256SUMS)
+          (cd dist/darwin-arm64 && shasum -a 256 openpage > SHA256SUMS)
+          (cd dist/darwin-x64 && shasum -a 256 openpage > SHA256SUMS)
 
       - name: Upload build artifacts
         if: matrix.platform_id != 'darwin'
