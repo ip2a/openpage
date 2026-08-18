@@ -109,7 +109,10 @@ printf '%s\n' \
   '' \
   '  [pypi 渠道]' \
   '  7) 构建并安装最新本地 Python wheel' \
-  '  8) 卸载 pypi 本地安装 (openpage + openpage-rs)'
+  '  8) 卸载 pypi 本地安装 (openpage + openpage-rs)' \
+  '' \
+  '  [发布]' \
+  '  9) 发布前处理 (bump 版本号并同步)'
 read -r -p '请选择: ' choice
 
 case "$choice" in
@@ -146,6 +149,7 @@ case "$choice" in
     echo "[ok] Python 环境: $PYTHON_BIN"
     ;;
   8) uninstall_pypi ;;
+  9) "$ROOT_DIR/scripts/release/bump_version.sh" ;;
   *)
     echo '无效选项'
     exit 1
