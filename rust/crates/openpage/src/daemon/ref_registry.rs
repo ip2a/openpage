@@ -23,12 +23,6 @@ struct RefTarget {
 }
 
 impl RefRegistry {
-    pub(super) fn clear(&mut self) {
-        self.next_id = 0;
-        self.refs.clear();
-        self.by_key.clear();
-    }
-
     fn get(&self, ref_id: &str) -> Option<&RefTarget> {
         self.refs.get(ref_id)
     }
@@ -65,19 +59,19 @@ impl RefTarget {
         // are deliberately excluded so the same node keeps its ref_id across
         // minor text or sibling-order changes.
         let locator = self
-            .backend_node_id
-            .map(|value| format!("backend:{}", value.inner()))
-            .or_else(|| {
-                self.css_path
-                    .as_deref()
-                    .filter(|value| !value.is_empty())
-                    .map(|value| format!("css:{value}"))
-            })
+            .css_path
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("css:{value}"))
             .or_else(|| {
                 self.xpath
                     .as_deref()
                     .filter(|value| !value.is_empty())
                     .map(|value| format!("xpath:{value}"))
+            })
+            .or_else(|| {
+                self.backend_node_id
+                    .map(|value| format!("backend:{}", value.inner()))
             })
             .unwrap_or_else(|| {
                 format!(
@@ -174,11 +168,14 @@ impl ServePage {
                 backend_node_id,
                 self.current_frame()?.as_ref(),
             )
+            && candidate_matches_ref_target(&element, &target).unwrap_or(false)
         {
             self.refresh_ref_target(ref_id, &element)?;
             return Ok(element);
         }
-        if let Some(element) = self.find_ref_by_locator_hints(&target) {
+        if let Some(element) = self.find_ref_by_locator_hints(&target)
+            && candidate_matches_ref_target(&element, &target).unwrap_or(false)
+        {
             self.refresh_ref_target(ref_id, &element)?;
             return Ok(element);
         }
@@ -187,7 +184,7 @@ impl ServePage {
             return Ok(element);
         }
         Err(OpenPageError::ElementNotFound(format!(
-            "ref @{ref_id} is stale and could not be re-resolved; run `openpage snapshot` again"
+            "ref @{ref_id} is stale and could not be re-resolved"
         )))
     }
 
@@ -408,7 +405,21 @@ mod tests {
     }
 
     #[test]
-    fn backend_node_id_reuses_ref() {
+    fn stable_locator_reuses_ref_when_backend_node_changes() {
+        let mut first = target(10);
+        first.css_path = Some("input#search".to_string());
+        first.tag = Some("input".to_string());
+        let mut second = target(11);
+        second.css_path = Some("input#search".to_string());
+        second.tag = Some("input".to_string());
+
+        let mut refs = RefRegistry::default();
+        assert_eq!(refs.register(first), "e1");
+        assert_eq!(refs.register(second), "e1");
+    }
+
+    #[test]
+    fn backend_id_reuses_ref_without_locator() {
         let mut refs = RefRegistry::default();
         assert_eq!(refs.register(target(10)), "e1");
         assert_eq!(refs.register(target(10)), "e1");

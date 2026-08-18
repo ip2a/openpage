@@ -1,5 +1,6 @@
 use super::*;
 use chromiumoxide::cdp::browser_protocol::accessibility::{AxNode, AxValue, GetFullAxTreeParams};
+use chromiumoxide::cdp::browser_protocol::dom::{BackendNodeId, DescribeNodeParams, Node};
 use chromiumoxide::cdp::browser_protocol::page::FrameId;
 
 const MAX_SNAPSHOT_ENTRIES: usize = 200;
@@ -121,6 +122,7 @@ struct AgentSnapshotOptions {
     compact: bool,
     depth: usize,
     selector: Option<String>,
+    exclude_roles: Vec<String>,
 }
 
 impl AgentSnapshotOptions {
@@ -138,6 +140,16 @@ impl AgentSnapshotOptions {
             compact: optional_bool(params, "compact").unwrap_or(false),
             depth,
             selector: optional_string(params, "selector"),
+            exclude_roles: optional_string(params, "exclude_roles")
+                .map(|value| {
+                    value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_ascii_lowercase)
+                        .collect()
+                })
+                .unwrap_or_default(),
         })
     }
 }
@@ -388,7 +400,7 @@ fn ax_snapshot_nodes(nodes: Vec<AxNode>) -> (Vec<AxSnapshotNode>, Vec<usize>) {
             .parent_id
             .as_deref()
             .and_then(|id| ids.get(id))
-            .copied();
+            .cloned();
         if let Some(parent) = parent {
             result[parent].children.push(index);
         } else {
@@ -499,6 +511,131 @@ fn render_ax_entries(
     (entries, truncated)
 }
 
+fn collect_dom_nodes(node: &Node, nodes: &mut HashMap<i64, Node>) {
+    if node.node_type == 1 {
+        nodes.insert(*node.backend_node_id.inner(), node.clone());
+    }
+    for child in node.children.as_deref().unwrap_or_default() {
+        collect_dom_nodes(child, nodes);
+    }
+    if let Some(child) = node.content_document.as_deref() {
+        collect_dom_nodes(child, nodes);
+    }
+    for child in node.shadow_roots.as_deref().unwrap_or_default() {
+        collect_dom_nodes(child, nodes);
+    }
+    if let Some(child) = node.template_content.as_deref() {
+        collect_dom_nodes(child, nodes);
+    }
+    for child in node.pseudo_elements.as_deref().unwrap_or_default() {
+        collect_dom_nodes(child, nodes);
+    }
+}
+
+fn dom_css_escape(value: &str) -> String {
+    let mut result = String::new();
+    for char in value.chars() {
+        if char.is_ascii_alphanumeric() || char == '_' || char == '-' {
+            result.push(char);
+        } else {
+            result.push('\\');
+            result.push(char);
+        }
+    }
+    result
+}
+
+fn dom_locator_hints(state: &ServePage, entries: &mut [Value]) {
+    // Avoid DOM.getDocument depth=-1: it returns a detached snapshot and can miss
+    // newly attached AX nodes. Describe each AX node independently instead.
+    let mut nodes = HashMap::new();
+    for entry in &mut *entries {
+        let Some(backend_node_id) = entry
+            .as_object()
+            .and_then(|obj| obj.get("_backendNodeId"))
+            .and_then(Value::as_i64)
+        else {
+            continue;
+        };
+        let Ok(response) = state.page.execute_cdp(
+            DescribeNodeParams::builder()
+                .backend_node_id(BackendNodeId::new(backend_node_id))
+                .depth(-1)
+                .pierce(true)
+                .build(),
+        ) else {
+            continue;
+        };
+        collect_dom_nodes(&response.node, &mut nodes);
+    }
+
+    let mut path = Vec::new();
+    for entry in &mut *entries {
+        let Some(backend_node_id) = entry
+            .as_object()
+            .and_then(|obj| obj.get("_backendNodeId"))
+            .and_then(Value::as_i64)
+        else {
+            continue;
+        };
+        let Some(node) = nodes.get(&backend_node_id).cloned() else {
+            continue;
+        };
+        path.clear();
+        let mut current = Some(node.clone());
+        while let Some(item) = current {
+            let tag = if item.local_name.is_empty() {
+                item.node_name.to_ascii_lowercase()
+            } else {
+                item.local_name.clone()
+            };
+            let attrs = item.attributes.as_deref().unwrap_or_default();
+            let id = attrs
+                .chunks(2)
+                .find_map(|chunk| (chunk.len() == 2 && chunk[0] == "id").then(|| chunk[1].clone()));
+            if let Some(id) = id.filter(|value| !value.is_empty()) {
+                path.push(format!("{tag}#{}", dom_css_escape(&id)));
+                break;
+            }
+            let nth = item
+                .parent_id
+                .and_then(|parent| nodes.get(parent.inner()))
+                .map(|parent| {
+                    parent
+                        .children
+                        .as_deref()
+                        .unwrap_or_default()
+                        .iter()
+                        .filter(|sibling| sibling.local_name == item.local_name)
+                        .take_while(|sibling| sibling.backend_node_id != item.backend_node_id)
+                        .count()
+                        + 1
+                })
+                .unwrap_or(1);
+            path.push(format!("{tag}:nth-child({nth})"));
+            current = item
+                .parent_id
+                .and_then(|parent| nodes.get(parent.inner()))
+                .cloned();
+        }
+        if path.is_empty() {
+            continue;
+        }
+        path.reverse();
+        let Some(obj) = entry.as_object_mut() else {
+            continue;
+        };
+        obj.insert("_cssPath".to_string(), json!(path.join(" > ")));
+        obj.insert("_xpath".to_string(), json!(format!("/{}", path.join("/"))));
+        let tag = if node.local_name.is_empty() {
+            node.node_name.to_ascii_lowercase()
+        } else {
+            node.local_name.clone()
+        };
+        obj.insert("tag".to_string(), json!(tag));
+    }
+}
+
 fn collect_ax_snapshot(
     state: &ServePage,
     options: &AgentSnapshotOptions,
@@ -530,6 +667,21 @@ fn collect_ax_snapshot(
     Ok(Some(render_ax_entries(&nodes, &roots, options)))
 }
 
+pub(super) fn exclude_snapshot_entries(entries: &mut Vec<Value>, excluded: &[String]) -> usize {
+    let before = entries.len();
+    entries.retain(|entry| {
+        !entry
+            .get("role")
+            .and_then(Value::as_str)
+            .is_some_and(|role| {
+                excluded
+                    .iter()
+                    .any(|value| role.eq_ignore_ascii_case(value))
+            })
+    });
+    before - entries.len()
+}
+
 pub(super) fn snapshot_payload(state: &mut ServePage, params: &Value) -> OpenPageResult<Value> {
     let options = AgentSnapshotOptions::from_params(params)?;
     let origin = current_page_origin(state);
@@ -541,7 +693,7 @@ pub(super) fn snapshot_payload(state: &mut ServePage, params: &Value) -> OpenPag
         None
     };
     let (mut entries, truncated) = match ax_snapshot {
-        Some(result) => result,
+        Some(ref result) => result.clone(),
         None => {
             let snapshot = fallback.as_ref().expect("fallback snapshot");
             (
@@ -557,6 +709,10 @@ pub(super) fn snapshot_payload(state: &mut ServePage, params: &Value) -> OpenPag
             )
         }
     };
+    if ax_snapshot.is_some() {
+        dom_locator_hints(state, &mut entries);
+    }
+    let excluded_count = exclude_snapshot_entries(&mut entries, &options.exclude_roles);
     state.register_snapshot_entries(&mut entries);
     let revision = state.current_revision();
 
@@ -579,6 +735,10 @@ pub(super) fn snapshot_payload(state: &mut ServePage, params: &Value) -> OpenPag
     payload.insert("count".to_string(), json!(entries.len()));
     payload.insert("mode".to_string(), json!(options.mode.as_str()));
     payload.insert("depth".to_string(), json!(options.depth));
+    if !options.exclude_roles.is_empty() {
+        payload.insert("exclude_roles".to_string(), json!(options.exclude_roles));
+        payload.insert("excluded_count".to_string(), json!(excluded_count));
+    }
     if let Some(selector) = options.selector {
         payload.insert("selector".to_string(), json!(selector));
     }
@@ -805,6 +965,7 @@ mod tests {
             compact: false,
             depth,
             selector: None,
+            exclude_roles: Vec::new(),
         }
     }
 
@@ -862,6 +1023,19 @@ mod tests {
 
         assert_eq!(text, "@e1 button \"Sign in\"");
     }
+    #[test]
+    fn snapshot_role_filter_removes_only_requested_roles() {
+        let mut entries = vec![
+            json!({"role": "Option", "name": "China"}),
+            json!({"role": "textbox", "name": "Phone"}),
+        ];
+
+        let excluded = exclude_snapshot_entries(&mut entries, &["option".to_string()]);
+
+        assert_eq!(excluded, 1);
+        assert_eq!(entries[0]["role"], "textbox");
+    }
+
     #[test]
     fn snapshot_refs_include_revision() {
         let entries = vec![json!({

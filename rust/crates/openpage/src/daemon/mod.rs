@@ -12,6 +12,7 @@ use chromiumoxide::cdp::browser_protocol::page::{
 };
 use serde_json::{Map, Value, json};
 
+use crate::browser::Browser;
 use crate::browser::{DownloadFileExistsMode, LoadMode};
 use crate::config::{ConfigOverrides, load_resolved_config};
 use crate::download::DownloadMission;
@@ -220,7 +221,6 @@ impl ServePage {
             .ok_or_else(|| OpenPageError::BrowserOperation("page has no browser".to_string()))?
             .get_page(target_id)?;
         self.clear_frame();
-        self.refs.borrow_mut().clear();
         Ok(())
     }
 
@@ -1364,11 +1364,38 @@ fn dispatch_page(state: &mut ServePage, op: &str, params: &Value) -> OpenPageRes
         )),
         "page.ele.click" | "element.click" => {
             let locator = required_locator_string(params)?;
+            let detect_new_tab = optional_bool(params, "detect_new_tab").unwrap_or(false);
+            let tab_baseline = if detect_new_tab {
+                state
+                    .page
+                    .browser()
+                    .map(Browser::tab_ids)
+                    .transpose()?
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            };
             let navigation_token = state.record_navigation_baseline();
+            let current_tab_id = state.current_target_id();
             state
                 .find_revisioned("click", &locator, optional_str(params, "expected_revision"))?
                 .click()?;
-            Ok(json!({"clicked": true, "navigation_token": navigation_token}))
+            let opened_tab_target_id = if detect_new_tab
+                && let Some(browser) = state.page.browser()
+                && let Some(target_id) = browser
+                    .wait_for_new_tab_from(&tab_baseline, Some(&current_tab_id), 500)
+                    .ok()
+                    .flatten()
+            {
+                Some(target_id)
+            } else {
+                None
+            };
+            let mut result = json!({"clicked": true, "navigation_token": navigation_token});
+            if let Some(target_id) = opened_tab_target_id {
+                result["opened_tab_target_id"] = json!(target_id);
+            }
+            Ok(result)
         }
         "page.ele.click_right" | "element.click_right" => {
             state
@@ -2015,14 +2042,14 @@ fn validate_expected_revision(
     }
 
     Err(OpenPageError::ElementNotFound(format!(
-        "revision {expected_revision} is stale, current is {current_revision}"
+        "revision {expected_revision} is stale, current is {current_revision}; the element may still be on the page — retry without expected_revision, or run `openpage snapshot` again"
     ))
     .diagnosed(ErrorDiagnostic {
         operation: Some(operation.to_string()),
         locator: Some(locator.to_string()),
         current_revision: Some(current_revision.to_string()),
         expected_revision: Some(expected_revision.to_string()),
-        failure_reason: Some("stale_ref".to_string()),
+        failure_reason: Some("revision_mismatch".to_string()),
         ..ErrorDiagnostic::default()
     }))
 }
@@ -2983,14 +3010,17 @@ mod locator_chain_tests {
     }
 
     #[test]
-    fn rejects_stale_revision_with_resnapshot_contract() {
+    fn rejects_stale_revision_with_retry_without_revision_contract() {
         let error = validate_expected_revision("fill", "@e1", "r_2", Some("r_1"))
             .expect_err("stale revision must fail");
-        assert_eq!(openpage_error_kind(&error), "stale_ref");
+        assert_eq!(openpage_error_kind(&error), "element_not_found");
 
         let payload = simple_openpage_error(&error);
         assert_eq!(payload["error"]["retryable"], true);
-        assert_eq!(payload["error"]["suggested_action"], "re-snapshot");
+        assert_eq!(
+            payload["error"]["suggested_action"],
+            "retry_without_revision"
+        );
         assert_eq!(payload["error"]["current_revision"], "r_2");
         assert_eq!(payload["error"]["expected_revision"], "r_1");
         assert_eq!(payload["error"]["operation"], "fill");
